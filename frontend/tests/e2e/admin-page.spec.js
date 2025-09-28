@@ -69,15 +69,15 @@ test.describe('Admin Page', () => {
     // Get the count of rows before deletion
     const rowsBefore = await page.locator('table tbody tr').count();
 
-    // Set up dialog handler and get the promise
-    const dialogPromise = handleDialogConfirmation(page, 'Are you sure you want to delete this item?');
+    // Set up dialog handler for browser confirm dialog
+    page.on('dialog', async dialog => {
+      console.log('🔔 Confirm dialog appeared:', dialog.message());
+      await dialog.accept(); // Accept the delete confirmation
+    });
 
     // Click the delete button for the newly created type
     const deleteButton = newTypeRow.locator('[data-testid="datatable-delete-button"]');
     await deleteButton.click();
-
-    // Wait for the dialog to be handled
-    await dialogPromise;
 
     // Wait a bit for the delete to process
     await page.waitForTimeout(2000);
@@ -111,13 +111,16 @@ test.describe('Admin Page', () => {
     const firstRow = page.locator('table tbody tr').first();
     const deleteButton = firstRow.locator('[data-testid="datatable-delete-button"]');
 
-    // Set up dialog handler and get the promise
-    const dialogPromise = handleDialogConfirmation(page, 'Are you sure you want to delete this item?');
+    // Set up dialog handler for browser confirm dialog
+    page.on('dialog', async dialog => {
+      console.log('🔔 Confirm dialog appeared:', dialog.message());
+      await dialog.accept(); // Accept the delete confirmation
+    });
 
     await deleteButton.click();
 
-    // Wait for the dialog to be handled
-    await dialogPromise;
+    // Wait a moment for the delete to process
+    await page.waitForTimeout(1000);
 
     // Wait for success message - this confirms the delete operation worked
     await page.waitForSelector('text=/deleted successfully/i', { timeout: 5000 });

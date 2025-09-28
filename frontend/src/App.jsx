@@ -13,19 +13,20 @@ function App() {
   return (
     <ErrorBoundary>
       <BackendStatusProvider>
-        <AppProvider>
-          <Router>
-            <BackendStatus />
-            <Layout>
-              <Routes>
-                <Route path="/" element={<TransactionPage />} />
-                <Route path="/admin" element={<AdminPage />} />
-                <Route path="/reports" element={<ReportsPage />} />
-              </Routes>
-            </Layout>
-            <Toast />
-          </Router>
-        </AppProvider>
+        <Toast>
+          <AppProvider>
+            <Router>
+              <BackendStatus />
+              <Layout>
+                <Routes>
+                  <Route path="/" element={<TransactionPage />} />
+                  <Route path="/admin" element={<AdminPage />} />
+                  <Route path="/reports" element={<ReportsPage />} />
+                </Routes>
+              </Layout>
+            </Router>
+          </AppProvider>
+        </Toast>
       </BackendStatusProvider>
     </ErrorBoundary>
   )

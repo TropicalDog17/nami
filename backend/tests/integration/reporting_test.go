@@ -12,21 +12,11 @@ import (
 )
 
 func TestReportingReflectsTransactionChanges(t *testing.T) {
-	// Setup test database
-	config := &db.Config{
-		Host:     "localhost",
-		Port:     "5433",
-		User:     "nami_user",
-		Password: "nami_password",
-		Name:     "nami",
-		SSLMode:  "disable",
-	}
+	// Setup test database with testcontainers
+	tc := SetupTestContainer(t)
+	defer tc.Cleanup(t)
 
-	database, err := db.Connect(config)
-	if err != nil {
-		t.Skipf("Database connection failed: %v", err)
-	}
-	defer database.Close()
+	database := &db.DB{DB: tc.DB}
 
 	transactionService := services.NewTransactionService(database)
 	ctx := context.Background()

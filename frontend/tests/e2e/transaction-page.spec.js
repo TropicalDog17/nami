@@ -307,7 +307,7 @@ test.describe('Transaction Page', () => {
     await expect(firstRow).toBeVisible();
 
     // Click the Edit button in the actions column
-    const editButton = firstRow.locator('button:has-text("Edit")');
+    const editButton = firstRow.locator('td').last().locator('button:has-text("Edit")');
     await expect(editButton).toBeVisible();
     await editButton.click();
 
@@ -371,8 +371,8 @@ test.describe('Transaction Page', () => {
     const firstRow = page.locator('tbody tr').first();
     await expect(firstRow).toBeVisible();
 
-    // Click the Edit button
-    const editButton = firstRow.locator('button:has-text("Edit")');
+    // Click the Edit button in the actions column
+    const editButton = firstRow.locator('td').last().locator('button:has-text("Edit")');
     await editButton.click();
 
     // Click back button to cancel

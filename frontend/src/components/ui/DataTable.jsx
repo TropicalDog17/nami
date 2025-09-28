@@ -433,6 +433,7 @@ const DataTable = ({
                       </td>
                     );
                   })}
+                  {renderActions(row)}
                 </tr>
               ))
             )}

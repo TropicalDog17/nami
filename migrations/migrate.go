@@ -22,7 +22,7 @@ type Migration struct {
 func main() {
 	// Get database connection string from environment
 	dbHost := getEnv("DB_HOST", "localhost")
-	dbPort := getEnv("DB_PORT", "5432")
+	dbPort := getEnv("DB_PORT", "5433")
 	dbUser := getEnv("DB_USER", "nami_user")
 	dbPassword := getEnv("DB_PASSWORD", "nami_password")
 	dbName := getEnv("DB_NAME", "nami")

@@ -2,7 +2,6 @@ package integration
 
 import (
 	"context"
-	"os"
 	"testing"
 	"time"
 
@@ -13,28 +12,10 @@ import (
 )
 
 func setupTestDB(t *testing.T) *db.DB {
-	config := &db.Config{
-		Host:     getEnv("DB_HOST", "localhost"),
-		Port:     getEnv("DB_PORT", "5433"),
-		User:     getEnv("DB_USER", "nami_user"),
-		Password: getEnv("DB_PASSWORD", "nami_password"),
-		Name:     getEnv("DB_NAME", "nami"),
-		SSLMode:  getEnv("DB_SSL_MODE", "disable"),
-	}
+	tc := SetupTestContainer(t)
+	t.Cleanup(func() { tc.Cleanup(t) })
 
-	database, err := db.Connect(config)
-	if err != nil {
-		t.Fatalf("Failed to connect to test database: %v", err)
-	}
-
-	return database
-}
-
-func getEnv(key, defaultValue string) string {
-	if value := os.Getenv(key); value != "" {
-		return value
-	}
-	return defaultValue
+	return &db.DB{DB: tc.DB}
 }
 
 func TestDatabaseConnection(t *testing.T) {

@@ -79,23 +79,59 @@ nami/
 - Go 1.21+
 - Node.js 18+
 - PostgreSQL 15+
-- Docker (optional, for PostgreSQL)
+- Docker (required for integration tests)
+- Make (build automation)
 
-### Backend Setup
+### Quick Setup with Makefile
+
+```bash
+# Clone and setup everything
+git clone <repository-url>
+cd nami
+make setup
+
+# Start development environment
+make dev
+
+# Run tests
+make test
+```
+
+### Manual Setup
+
+#### Backend Setup
 
 ```bash
 cd backend
 go mod download
-go run migrations/migrate.go  # Run database migrations
-go run cmd/server/main.go     # Start the server
+go run ../migrations/migrate.go  # Run database migrations
+go run cmd/server/main.go        # Start the server
 ```
 
-### Frontend Setup
+#### Frontend Setup
 
 ```bash
 cd frontend
 npm install
-npm run dev                   # Start development server
+npm run dev                     # Start development server
+```
+
+### Available Make Targets
+
+```bash
+make help              # Show all available targets
+make setup             # Complete development environment setup
+make dev               # Start all development servers (DB + backend + frontend)
+make run-dev           # Run backend and frontend simultaneously
+make run-backend       # Run only backend server
+make run-frontend      # Run only frontend server
+make test              # Run all tests
+make test-integration  # Run Go integration tests with testcontainers
+make test-e2e          # Run end-to-end Playwright tests
+make build             # Build backend and frontend
+make clean             # Clean build artifacts
+make docker-up         # Start PostgreSQL with Docker
+make migrate           # Run database migrations
 ```
 
 ### Database Setup (Docker)

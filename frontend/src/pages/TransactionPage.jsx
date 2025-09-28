@@ -2,12 +2,14 @@ import React, { useState, useEffect } from 'react';
 import { transactionApi, adminApi } from '../services/api';
 import { useApp } from '../context/AppContext';
 import { useBackendStatus } from '../context/BackendStatusContext';
+import { useToast } from '../components/ui/Toast';
 import TransactionForm from '../components/TransactionForm';
 import DataTable from '../components/ui/DataTable';
 
 const TransactionPage = () => {
   const { currency, actions } = useApp();
   const { isOnline } = useBackendStatus();
+  const { error: showErrorToast, success: showSuccessToast } = useToast();
   const [transactions, setTransactions] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -76,9 +78,10 @@ const TransactionPage = () => {
       setTransactions((prev) => [newTransaction, ...prev]);
       setShowForm(false);
       actions.setError(null);
-      // Success notification would go here if using toast
+      showSuccessToast('Transaction created successfully');
     } catch (err) {
       actions.setError(err.message);
+      showErrorToast('Failed to create transaction. Please try again.');
     }
   };
 
@@ -96,8 +99,10 @@ const TransactionPage = () => {
       setEditingTransaction(null);
       setShowForm(false);
       actions.setError(null);
+      showSuccessToast('Transaction updated successfully');
     } catch (err) {
       actions.setError(err.message);
+      showErrorToast('Failed to update transaction. Please try again.');
     }
   };
 
@@ -108,8 +113,10 @@ const TransactionPage = () => {
       await transactionApi.delete(id);
       setTransactions((prev) => prev.filter((tx) => tx.id !== id));
       actions.setError(null);
+      showSuccessToast('Transaction deleted successfully');
     } catch (err) {
       actions.setError(err.message);
+      showErrorToast('Failed to delete transaction. Please try again.');
     }
   };
 
@@ -133,29 +140,24 @@ const TransactionPage = () => {
         transactionId,
         field,
         newValue,
-        transaction,
       });
 
-      // Create updated transaction data
-      const updatedData = { ...transaction, [field]: newValue };
-      console.log('Sending update data:', updatedData);
-
-      // Call the API to update
-      const updatedTransaction = await transactionApi.update(
-        transactionId,
-        updatedData
-      );
-      console.log('Received updated transaction:', updatedTransaction);
-
-      // Update local state
+      // Update local state optimistically
+      const updatedTransaction = { ...transaction, [field]: newValue };
       setTransactions((prev) =>
         prev.map((t) => (t.id === transactionId ? updatedTransaction : t))
       );
 
+      // Make API call to persist changes
+      const updateData = { [field]: newValue };
+      await transactionApi.update(transactionId, updateData);
+
       actions.setError(null);
+      showSuccessToast(`${field} updated successfully`);
     } catch (err) {
       console.error('Inline edit error:', err);
       actions.setError(`Failed to update ${field}: ${err.message}`);
+      showErrorToast(`Failed to update ${field}. Please try again.`);
       // Reload transactions to revert any optimistic updates
       loadTransactions();
     }
