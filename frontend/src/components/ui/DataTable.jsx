@@ -203,8 +203,8 @@ const DataTable = ({
     if (!actions || actions.length === 0) return null;
 
     return (
-      <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium sticky right-0 bg-white">
-        <div className="flex space-x-2 justify-end">
+      <td className="px-6 py-4 whitespace-nowrap text-center text-sm font-medium sticky right-0 bg-white">
+        <div className="flex space-x-2 justify-center">
           {actions.includes('view') && onView && (
             <button
               onClick={(e) => {
@@ -315,7 +315,7 @@ const DataTable = ({
       {/* Table */}
       <div className="overflow-x-auto shadow ring-1 ring-black ring-opacity-5 md:rounded-lg w-full">
         <table
-          className="min-w-max divide-y divide-gray-300"
+          className="min-w-full w-full divide-y divide-gray-300"
           data-testid="datatable"
         >
           <thead className="bg-gray-50">
@@ -351,7 +351,7 @@ const DataTable = ({
                 </th>
               ))}
               {actions && actions.length > 0 && (
-                <th scope="col" className="relative px-6 py-3 sticky right-0 bg-gray-50 z-10">
+                <th scope="col" className="relative px-6 py-3 text-center sticky right-0 bg-gray-50 z-10">
                   <span className="sr-only">Actions</span>
                   Actions
                 </th>
