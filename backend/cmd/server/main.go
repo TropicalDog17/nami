@@ -7,12 +7,19 @@ import (
 	"os"
 	"strings"
 
+	"github.com/joho/godotenv"
+
 	"github.com/tropicaldog17/nami/internal/db"
 	"github.com/tropicaldog17/nami/internal/handlers"
 	"github.com/tropicaldog17/nami/internal/services"
 )
 
 func main() {
+	// Load environment variables from .env file
+	if err := godotenv.Load(); err != nil {
+		log.Println("No .env file found")
+	}
+
 	// Database connection
 	config := db.NewConfig()
 	database, err := db.Connect(config)
@@ -27,8 +34,13 @@ func main() {
 	}
 	log.Println("Database connection established")
 
+	// Initialize FX services
+	// fxCacheService := services.NewFXCacheService(database) // For production use
+	mockFXProvider := services.NewMockFXProvider()
+	// For production, you can use: httpFXProvider := services.NewHTTPFXProvider(apiKey, fxCacheService, mockFXProvider)
+
 	// Initialize services
-	transactionService := services.NewTransactionService(database)
+	transactionService := services.NewTransactionServiceWithFX(database, mockFXProvider)
 	adminService := services.NewAdminService(database)
 	reportingService := services.NewReportingService(database)
 

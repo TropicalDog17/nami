@@ -3,6 +3,7 @@ package integration
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -283,6 +284,165 @@ func TestAdminAPI(t *testing.T) {
 		if len(assets) == 0 {
 			t.Error("Expected at least one asset")
 		}
+	})
+
+	t.Run("CRUD Transaction Types", func(t *testing.T) {
+		// Create a test transaction type
+		testType := models.TransactionType{
+			Name:        "test_type",
+			Description: stringPtr("Test transaction type"),
+			IsActive:    true,
+		}
+
+		t.Run("Create Transaction Type", func(t *testing.T) {
+			body, _ := json.Marshal(testType)
+			req := httptest.NewRequest("POST", "/api/admin/types", bytes.NewBuffer(body))
+			req.Header.Set("Content-Type", "application/json")
+			w := httptest.NewRecorder()
+
+			adminHandler.HandleTransactionTypes(w, req)
+
+			if w.Code != http.StatusCreated {
+				t.Errorf("Expected status %d, got %d", http.StatusCreated, w.Code)
+			}
+
+			var created models.TransactionType
+			if err := json.Unmarshal(w.Body.Bytes(), &created); err != nil {
+				t.Fatalf("Failed to unmarshal response: %v", err)
+			}
+
+			if created.ID == 0 {
+				t.Error("Expected ID to be set")
+			}
+			if created.Name != testType.Name {
+				t.Errorf("Expected name %s, got %s", testType.Name, created.Name)
+			}
+			testType.ID = created.ID
+		})
+
+		t.Run("Get Transaction Type", func(t *testing.T) {
+			req := httptest.NewRequest("GET", fmt.Sprintf("/api/admin/types/%d", testType.ID), nil)
+			w := httptest.NewRecorder()
+
+			adminHandler.HandleTransactionType(w, req)
+
+			if w.Code != http.StatusOK {
+				t.Errorf("Expected status %d, got %d", http.StatusOK, w.Code)
+			}
+
+			var retrieved models.TransactionType
+			if err := json.Unmarshal(w.Body.Bytes(), &retrieved); err != nil {
+				t.Fatalf("Failed to unmarshal response: %v", err)
+			}
+
+			if retrieved.ID != testType.ID {
+				t.Errorf("Expected ID %d, got %d", testType.ID, retrieved.ID)
+			}
+		})
+
+		t.Run("Update Transaction Type", func(t *testing.T) {
+			updatedType := testType
+			updatedType.Description = stringPtr("Updated description")
+
+			body, _ := json.Marshal(updatedType)
+			req := httptest.NewRequest("PUT", fmt.Sprintf("/api/admin/types/%d", testType.ID), bytes.NewBuffer(body))
+			req.Header.Set("Content-Type", "application/json")
+			w := httptest.NewRecorder()
+
+			adminHandler.HandleTransactionType(w, req)
+
+			if w.Code != http.StatusOK {
+				t.Errorf("Expected status %d, got %d", http.StatusOK, w.Code)
+			}
+
+			var updated models.TransactionType
+			if err := json.Unmarshal(w.Body.Bytes(), &updated); err != nil {
+				t.Fatalf("Failed to unmarshal response: %v", err)
+			}
+
+			if updated.Description == nil || *updated.Description != "Updated description" {
+				t.Error("Expected description to be updated")
+			}
+		})
+
+		t.Run("Delete Transaction Type", func(t *testing.T) {
+			req := httptest.NewRequest("DELETE", fmt.Sprintf("/api/admin/types/%d", testType.ID), nil)
+			w := httptest.NewRecorder()
+
+			adminHandler.HandleTransactionType(w, req)
+
+			if w.Code != http.StatusNoContent {
+				t.Errorf("Expected status %d, got %d", http.StatusNoContent, w.Code)
+			}
+		})
+
+		t.Run("Verify Transaction Type is Soft Deleted", func(t *testing.T) {
+			req := httptest.NewRequest("GET", fmt.Sprintf("/api/admin/types/%d", testType.ID), nil)
+			w := httptest.NewRecorder()
+
+			adminHandler.HandleTransactionType(w, req)
+
+			if w.Code != http.StatusOK {
+				t.Errorf("Expected status %d, got %d", http.StatusOK, w.Code)
+			}
+
+			var retrieved models.TransactionType
+			if err := json.Unmarshal(w.Body.Bytes(), &retrieved); err != nil {
+				t.Fatalf("Failed to unmarshal response: %v", err)
+			}
+
+			if retrieved.IsActive {
+				t.Error("Expected transaction type to be inactive after deletion")
+			}
+		})
+
+		t.Run("Delete Non-existent Transaction Type", func(t *testing.T) {
+			req := httptest.NewRequest("DELETE", "/api/admin/types/99999", nil)
+			w := httptest.NewRecorder()
+
+			adminHandler.HandleTransactionType(w, req)
+
+			if w.Code != http.StatusInternalServerError {
+				t.Errorf("Expected status %d for non-existent type, got %d", http.StatusInternalServerError, w.Code)
+			}
+		})
+
+		t.Run("Delete Already Inactive Transaction Type", func(t *testing.T) {
+			req := httptest.NewRequest("DELETE", fmt.Sprintf("/api/admin/types/%d", testType.ID), nil)
+			w := httptest.NewRecorder()
+
+			adminHandler.HandleTransactionType(w, req)
+
+			if w.Code != http.StatusInternalServerError {
+				t.Errorf("Expected status %d for already inactive type, got %d", http.StatusInternalServerError, w.Code)
+			}
+		})
+
+		t.Run("List Only Shows Active Types", func(t *testing.T) {
+			req := httptest.NewRequest("GET", "/api/admin/types", nil)
+			w := httptest.NewRecorder()
+
+			adminHandler.HandleTransactionTypes(w, req)
+
+			if w.Code != http.StatusOK {
+				t.Errorf("Expected status %d, got %d", http.StatusOK, w.Code)
+			}
+
+			var types []*models.TransactionType
+			if err := json.Unmarshal(w.Body.Bytes(), &types); err != nil {
+				t.Fatalf("Failed to unmarshal response: %v", err)
+			}
+
+			// Should not include the deleted (inactive) test type
+			for _, tt := range types {
+				if tt.ID == testType.ID {
+					t.Errorf("Inactive transaction type %d should not be in the list", testType.ID)
+				}
+				if !tt.IsActive {
+					t.Errorf("Inactive transaction type %d found in list", tt.ID)
+				}
+			}
+		})
 	})
 }
 

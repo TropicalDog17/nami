@@ -13,18 +13,33 @@ import (
 
 // transactionService implements the TransactionService interface
 type transactionService struct {
-	db *db.DB
+	db         *db.DB
+	fxProvider FXProvider
 }
 
 // NewTransactionService creates a new transaction service
 func NewTransactionService(database *db.DB) TransactionService {
 	return &transactionService{
-		db: database,
+		db:         database,
+		fxProvider: nil, // No FX provider
+	}
+}
+
+// NewTransactionServiceWithFX creates a new transaction service with FX provider
+func NewTransactionServiceWithFX(database *db.DB, fxProvider FXProvider) TransactionService {
+	return &transactionService{
+		db:         database,
+		fxProvider: fxProvider,
 	}
 }
 
 // CreateTransaction creates a new transaction
 func (s *transactionService) CreateTransaction(ctx context.Context, tx *models.Transaction) error {
+	// Auto-populate FX rates if not provided and FX provider is available
+	if err := s.populateFXRates(ctx, tx); err != nil {
+		return fmt.Errorf("failed to populate FX rates: %w", err)
+	}
+
 	// Prepare transaction for saving (calculate derived fields and validate)
 	if err := tx.PreSave(); err != nil {
 		return fmt.Errorf("transaction validation failed: %w", err)
@@ -402,4 +417,74 @@ func (s *transactionService) mergeTransactionUpdate(existing, update *models.Tra
 	}
 
 	return merged
+}
+
+// populateFXRates automatically populates FX rates if they are missing and FX provider is available
+func (s *transactionService) populateFXRates(ctx context.Context, tx *models.Transaction) error {
+	if s.fxProvider == nil {
+		// No FX provider available, skip auto-population
+		return nil
+	}
+
+	// Only populate if FX rates are not already set
+	needsUSD := tx.FXToUSD.IsZero()
+	needsVND := tx.FXToVND.IsZero()
+
+	if !needsUSD && !needsVND {
+		// Both rates already provided
+		return nil
+	}
+
+	asset := tx.Asset
+	date := tx.Date
+
+	// Determine which rates we need
+	targets := []string{}
+	if needsUSD {
+		targets = append(targets, "USD")
+	}
+	if needsVND {
+		targets = append(targets, "VND")
+	}
+
+	// Fetch rates
+	fetchedRates, err := s.fxProvider.GetRates(ctx, asset, targets, date)
+	if err != nil {
+		return fmt.Errorf("failed to fetch FX rates for %s: %w", asset, err)
+	}
+
+	// Apply fetched rates
+	if needsUSD {
+		if usdRate, exists := fetchedRates["USD"]; exists {
+			tx.FXToUSD = usdRate
+			if tx.FXSource == nil {
+				source := "auto-fx-provider"
+				tx.FXSource = &source
+			}
+			if tx.FXTimestamp == nil {
+				now := time.Now()
+				tx.FXTimestamp = &now
+			}
+		} else {
+			return fmt.Errorf("USD rate not available for %s", asset)
+		}
+	}
+
+	if needsVND {
+		if vndRate, exists := fetchedRates["VND"]; exists {
+			tx.FXToVND = vndRate
+			if tx.FXSource == nil {
+				source := "auto-fx-provider"
+				tx.FXSource = &source
+			}
+			if tx.FXTimestamp == nil {
+				now := time.Now()
+				tx.FXTimestamp = &now
+			}
+		} else {
+			return fmt.Errorf("VND rate not available for %s", asset)
+		}
+	}
+
+	return nil
 }

@@ -32,9 +32,15 @@ class ApiClient {
       const response = await fetch(url, config)
       
       if (!response.ok) {
-        const errorText = await response.text()
+        let errorText = `HTTP ${response.status}`
+        try {
+          errorText = await response.text() || errorText
+        } catch (e) {
+          // If we can't read the response body, use the status
+          errorText = `HTTP ${response.status}: ${e.message}`
+        }
         throw new ApiError(
-          errorText || `HTTP ${response.status}`,
+          errorText,
           response.status,
           response
         )
@@ -43,9 +49,10 @@ class ApiClient {
       // Handle empty responses
       const contentType = response.headers.get('content-type')
       if (contentType && contentType.includes('application/json')) {
-        return await response.json()
+        const text = await response.text()
+        return text ? JSON.parse(text) : null
       }
-      
+
       return null
     } catch (error) {
       if (error instanceof ApiError) {

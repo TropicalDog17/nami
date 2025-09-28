@@ -119,7 +119,8 @@ func (h *AdminHandler) deleteTransactionType(w http.ResponseWriter, r *http.Requ
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	w.WriteHeader(http.StatusNoContent)
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"message": "Transaction type deleted successfully"})
 }
 
 // Accounts handlers
@@ -219,7 +220,8 @@ func (h *AdminHandler) deleteAccount(w http.ResponseWriter, r *http.Request, id 
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	w.WriteHeader(http.StatusNoContent)
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"message": "Account deleted successfully"})
 }
 
 // Assets handlers
@@ -319,7 +321,8 @@ func (h *AdminHandler) deleteAsset(w http.ResponseWriter, r *http.Request, id in
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	w.WriteHeader(http.StatusNoContent)
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"message": "Asset deleted successfully"})
 }
 
 // Tags handlers
@@ -419,5 +422,6 @@ func (h *AdminHandler) deleteTag(w http.ResponseWriter, r *http.Request, id int)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	w.WriteHeader(http.StatusNoContent)
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"message": "Tag deleted successfully"})
 }

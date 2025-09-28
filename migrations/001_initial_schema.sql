@@ -5,7 +5,7 @@
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 -- Dynamic transaction types (admin configurable)
-CREATE TABLE transaction_types (
+CREATE TABLE IF NOT EXISTS transaction_types (
     id SERIAL PRIMARY KEY,
     name VARCHAR(50) UNIQUE NOT NULL,
     description TEXT,
@@ -15,7 +15,7 @@ CREATE TABLE transaction_types (
 );
 
 -- Audit trail for transaction type changes
-CREATE TABLE transaction_type_audit (
+CREATE TABLE IF NOT EXISTS transaction_type_audit (
     id SERIAL PRIMARY KEY,
     type_id INTEGER REFERENCES transaction_types(id),
     action VARCHAR(20) NOT NULL, -- 'CREATE', 'UPDATE', 'DELETE'
@@ -26,7 +26,7 @@ CREATE TABLE transaction_type_audit (
 );
 
 -- Accounts
-CREATE TABLE accounts (
+CREATE TABLE IF NOT EXISTS accounts (
     id SERIAL PRIMARY KEY,
     name VARCHAR(100) UNIQUE NOT NULL,
     type VARCHAR(50), -- 'Cash', 'Bank', 'CreditCard', 'Exchange', etc.
@@ -35,7 +35,7 @@ CREATE TABLE accounts (
 );
 
 -- Assets
-CREATE TABLE assets (
+CREATE TABLE IF NOT EXISTS assets (
     id SERIAL PRIMARY KEY,
     symbol VARCHAR(10) UNIQUE NOT NULL,
     name VARCHAR(100),
@@ -45,7 +45,7 @@ CREATE TABLE assets (
 );
 
 -- Tags for categorization
-CREATE TABLE tags (
+CREATE TABLE IF NOT EXISTS tags (
     id SERIAL PRIMARY KEY,
     name VARCHAR(100) UNIQUE NOT NULL,
     category VARCHAR(50),
@@ -54,7 +54,7 @@ CREATE TABLE tags (
 );
 
 -- FX rate cache
-CREATE TABLE fx_rates (
+CREATE TABLE IF NOT EXISTS fx_rates (
     id SERIAL PRIMARY KEY,
     from_currency VARCHAR(10) NOT NULL,
     to_currency VARCHAR(10) NOT NULL,
@@ -66,7 +66,7 @@ CREATE TABLE fx_rates (
 );
 
 -- Transaction table (core entity)
-CREATE TABLE transactions (
+CREATE TABLE IF NOT EXISTS transactions (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     date DATE NOT NULL,
     type VARCHAR(50) NOT NULL REFERENCES transaction_types(name),
@@ -75,33 +75,33 @@ CREATE TABLE transactions (
     counterparty VARCHAR(200),
     tag VARCHAR(100),
     note TEXT,
-    
+
     -- Amount fields
     quantity DECIMAL(20,8) NOT NULL,
     price_local DECIMAL(20,8) NOT NULL,
     amount_local DECIMAL(20,8) NOT NULL,
-    
+
     -- FX and dual currency
     fx_to_usd DECIMAL(12,8) NOT NULL,
     fx_to_vnd DECIMAL(12,2) NOT NULL,
     amount_usd DECIMAL(20,2) NOT NULL,
     amount_vnd DECIMAL(20,2) NOT NULL,
-    
+
     -- Fees
     fee_usd DECIMAL(20,2) DEFAULT 0,
     fee_vnd DECIMAL(20,2) DEFAULT 0,
-    
+
     -- Derived metrics (stored)
     delta_qty DECIMAL(20,8) NOT NULL,
     cashflow_usd DECIMAL(20,2) NOT NULL,
     cashflow_vnd DECIMAL(20,2) NOT NULL,
-    
+
     -- Optional tracking
     horizon VARCHAR(20), -- 'short-term', 'long-term'
     entry_date DATE,
     exit_date DATE,
     fx_impact DECIMAL(20,2),
-    
+
     -- Audit fields
     fx_source VARCHAR(50),
     fx_timestamp TIMESTAMP,
@@ -118,10 +118,18 @@ BEGIN
 END;
 $$ language 'plpgsql';
 
-CREATE TRIGGER update_transactions_updated_at 
-    BEFORE UPDATE ON transactions 
-    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+-- Create triggers only if they don't exist
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'update_transactions_updated_at') THEN
+        CREATE TRIGGER update_transactions_updated_at
+            BEFORE UPDATE ON transactions
+            FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+    END IF;
 
-CREATE TRIGGER update_transaction_types_updated_at 
-    BEFORE UPDATE ON transaction_types 
-    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+    IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'update_transaction_types_updated_at') THEN
+        CREATE TRIGGER update_transaction_types_updated_at
+            BEFORE UPDATE ON transaction_types
+            FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+    END IF;
+END $$;

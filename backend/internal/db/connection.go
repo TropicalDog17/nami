@@ -28,7 +28,7 @@ type DB struct {
 func NewConfig() *Config {
 	return &Config{
 		Host:     getEnv("DB_HOST", "localhost"),
-		Port:     getEnv("DB_PORT", "5432"),
+		Port:     getEnv("DB_PORT", "5433"),
 		User:     getEnv("DB_USER", "nami_user"),
 		Password: getEnv("DB_PASSWORD", "nami_password"),
 		Name:     getEnv("DB_NAME", "nami"),

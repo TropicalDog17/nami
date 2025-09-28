@@ -24,7 +24,7 @@ func NewAdminService(database *db.DB) AdminService {
 
 // Transaction Types methods
 
-// ListTransactionTypes retrieves all transaction types
+// ListTransactionTypes retrieves all transaction types (active and inactive for admin)
 func (s *adminService) ListTransactionTypes(ctx context.Context) ([]*models.TransactionType, error) {
 	query := `
 		SELECT id, name, description, is_active, created_at, updated_at
@@ -109,7 +109,15 @@ func (s *adminService) CreateTransactionType(ctx context.Context, tt *models.Tra
 		INSERT INTO transaction_type_audit (type_id, action, old_values, new_values, changed_by, changed_at)
 		VALUES ($1, $2, $3, $4, $5, $6)`
 
-	_, err = tx.ExecContext(ctx, auditQuery, audit.TypeID, audit.Action, audit.OldValues, audit.NewValues, audit.ChangedBy, audit.ChangedAt)
+	var oldValues, newValues interface{}
+	if audit.OldValues != nil {
+		oldValues = string(audit.OldValues)
+	}
+	if audit.NewValues != nil {
+		newValues = string(audit.NewValues)
+	}
+
+	_, err = tx.ExecContext(ctx, auditQuery, audit.TypeID, audit.Action, oldValues, newValues, audit.ChangedBy, audit.ChangedAt)
 	if err != nil {
 		return fmt.Errorf("failed to create audit record: %w", err)
 	}
@@ -168,7 +176,15 @@ func (s *adminService) UpdateTransactionType(ctx context.Context, tt *models.Tra
 		INSERT INTO transaction_type_audit (type_id, action, old_values, new_values, changed_by, changed_at)
 		VALUES ($1, $2, $3, $4, $5, $6)`
 
-	_, err = tx.ExecContext(ctx, auditQuery, audit.TypeID, audit.Action, audit.OldValues, audit.NewValues, audit.ChangedBy, audit.ChangedAt)
+	var oldValues, newValues interface{}
+	if audit.OldValues != nil {
+		oldValues = string(audit.OldValues)
+	}
+	if audit.NewValues != nil {
+		newValues = string(audit.NewValues)
+	}
+
+	_, err = tx.ExecContext(ctx, auditQuery, audit.TypeID, audit.Action, oldValues, newValues, audit.ChangedBy, audit.ChangedAt)
 	if err != nil {
 		return fmt.Errorf("failed to create audit record: %w", err)
 	}
@@ -184,6 +200,11 @@ func (s *adminService) DeleteTransactionType(ctx context.Context, id int, change
 		return err
 	}
 
+	// Check if already inactive
+	if !oldType.IsActive {
+		return fmt.Errorf("transaction type is already inactive: %d", id)
+	}
+
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)
@@ -194,7 +215,7 @@ func (s *adminService) DeleteTransactionType(ctx context.Context, id int, change
 	query := `
 		UPDATE transaction_types SET
 			is_active = false, updated_at = $2
-		WHERE id = $1`
+		WHERE id = $1 AND is_active = true`
 
 	result, err := tx.ExecContext(ctx, query, id, time.Now())
 	if err != nil {
@@ -207,7 +228,7 @@ func (s *adminService) DeleteTransactionType(ctx context.Context, id int, change
 	}
 
 	if rowsAffected == 0 {
-		return fmt.Errorf("transaction type not found: %d", id)
+		return fmt.Errorf("transaction type not found or already inactive: %d", id)
 	}
 
 	// Create audit record
@@ -220,7 +241,15 @@ func (s *adminService) DeleteTransactionType(ctx context.Context, id int, change
 		INSERT INTO transaction_type_audit (type_id, action, old_values, new_values, changed_by, changed_at)
 		VALUES ($1, $2, $3, $4, $5, $6)`
 
-	_, err = tx.ExecContext(ctx, auditQuery, audit.TypeID, audit.Action, audit.OldValues, audit.NewValues, audit.ChangedBy, audit.ChangedAt)
+	var oldValues, newValues interface{}
+	if audit.OldValues != nil {
+		oldValues = string(audit.OldValues)
+	}
+	if audit.NewValues != nil {
+		newValues = string(audit.NewValues)
+	}
+
+	_, err = tx.ExecContext(ctx, auditQuery, audit.TypeID, audit.Action, oldValues, newValues, audit.ChangedBy, audit.ChangedAt)
 	if err != nil {
 		return fmt.Errorf("failed to create audit record: %w", err)
 	}
@@ -257,12 +286,11 @@ func (s *adminService) GetTypeAuditTrail(ctx context.Context, typeID int) ([]*mo
 
 // Account methods
 
-// ListAccounts retrieves all accounts
+// ListAccounts retrieves all accounts (active and inactive for admin)
 func (s *adminService) ListAccounts(ctx context.Context) ([]*models.Account, error) {
 	query := `
 		SELECT id, name, type, is_active, created_at
 		FROM accounts
-		WHERE is_active = true
 		ORDER BY name`
 
 	rows, err := s.db.QueryContext(ctx, query)
@@ -379,12 +407,11 @@ func (s *adminService) DeleteAccount(ctx context.Context, id int) error {
 
 // Asset methods
 
-// ListAssets retrieves all assets
+// ListAssets retrieves all assets (active and inactive for admin)
 func (s *adminService) ListAssets(ctx context.Context) ([]*models.Asset, error) {
 	query := `
 		SELECT id, symbol, name, decimals, is_active, created_at
 		FROM assets
-		WHERE is_active = true
 		ORDER BY symbol`
 
 	rows, err := s.db.QueryContext(ctx, query)
@@ -501,12 +528,11 @@ func (s *adminService) DeleteAsset(ctx context.Context, id int) error {
 
 // Tag methods
 
-// ListTags retrieves all tags
+// ListTags retrieves all tags (active and inactive for admin)
 func (s *adminService) ListTags(ctx context.Context) ([]*models.Tag, error) {
 	query := `
 		SELECT id, name, category, is_active, created_at
 		FROM tags
-		WHERE is_active = true
 		ORDER BY category, name`
 
 	rows, err := s.db.QueryContext(ctx, query)
