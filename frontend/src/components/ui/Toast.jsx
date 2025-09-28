@@ -166,9 +166,10 @@ function Toast() {
 }
 
 // Wrap the default export with ToastProvider
-export default function ToastWithProvider() {
+export default function ToastWithProvider({ children }) {
   return (
     <ToastProvider>
+      {children}
       <Toast />
     </ToastProvider>
   )

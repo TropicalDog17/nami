@@ -6,14 +6,14 @@ import TransactionPage from './pages/TransactionPage'
 import AdminPage from './pages/AdminPage'
 import ReportsPage from './pages/ReportsPage'
 import ErrorBoundary from './components/ui/ErrorBoundary'
-import Toast from './components/ui/Toast'
+import ToastWithProvider from './components/ui/Toast'
 import BackendStatus from './components/ui/BackendStatus'
 
 function App() {
   return (
     <ErrorBoundary>
       <BackendStatusProvider>
-        <Toast>
+        <ToastWithProvider>
           <AppProvider>
             <Router>
               <BackendStatus />
@@ -26,7 +26,7 @@ function App() {
               </Layout>
             </Router>
           </AppProvider>
-        </Toast>
+        </ToastWithProvider>
       </BackendStatusProvider>
     </ErrorBoundary>
   )

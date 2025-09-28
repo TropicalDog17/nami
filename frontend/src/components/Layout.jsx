@@ -12,8 +12,8 @@ const Layout = ({ children }) => {
   ]
 
   return (
-    <div className={`min-h-screen bg-gray-50 ${!isOnline ? 'pt-12' : ''}`}>
-      <nav className="bg-white shadow">
+    <div className={`min-h-screen bg-gray-50 ${!isOnline ? 'pt-12' : ''}`} style={{ display: 'block', visibility: 'visible', opacity: 1, height: 'auto', minHeight: '100vh' }}>
+      <nav className="bg-white shadow" style={{ display: 'block', visibility: 'visible', opacity: 1 }}>
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
           <div className="flex h-16 justify-between">
             <div className="flex">
@@ -40,7 +40,7 @@ const Layout = ({ children }) => {
         </div>
       </nav>
 
-      <main className="mx-auto max-w-7xl py-6 sm:px-6 lg:px-8">
+      <main className="mx-auto max-w-7xl py-6 sm:px-6 lg:px-8" style={{ display: 'block', visibility: 'visible', opacity: 1, height: 'auto' }}>
         {children}
       </main>
     </div>

@@ -449,7 +449,7 @@ func (s *transactionService) mergeTransactionUpdate(existing, update *models.Tra
 	if update.ExitDate != nil && !update.ExitDate.IsZero() {
 		merged.ExitDate = update.ExitDate
 	}
-	if !update.FXImpact.IsZero() {
+	if update.FXImpact != nil && !update.FXImpact.IsZero() {
 		merged.FXImpact = update.FXImpact
 	}
 	if update.FXSource != nil && *update.FXSource != "" {

@@ -13,38 +13,15 @@ async function waitForBackendReady(page, timeout = 30000) {
   
   while (Date.now() - startTime < timeout) {
     try {
-      // Check if backend is offline
-      const offlineMessages = page.locator('text=/offline|unavailable|error/i');
-      const offlineCount = await offlineMessages.count();
+      // Make a direct HTTP request to the backend
+      const response = await page.request.get('http://localhost:8080/health');
       
-      if (offlineCount === 0) {
-        // Check if we have data or at least a functional UI
-        const hasData = await page.locator('table tbody tr').count() > 0;
-        const hasLoadingState = await page.locator('text=Loading').isVisible();
-        const hasEmptyState = await page.locator('text=No data').isVisible();
-        
-        if (hasData || hasLoadingState || hasEmptyState) {
-          backendReady = true;
-          break;
-        }
-      } else {
-        // Try to reconnect if retry button is available
-        const retryButton = page.locator('button:has-text("Retry"), button:has-text("Try Again")');
-        if (await retryButton.isVisible()) {
-          console.log('🔄 Attempting to reconnect to backend...');
-          await retryButton.click();
-          await page.waitForTimeout(3000);
-          
-          // Check again if backend is still offline
-          const stillOffline = await offlineMessages.count();
-          if (stillOffline === 0) {
-            backendReady = true;
-            break;
-          }
-        }
+      if (response.status() === 200) {
+        backendReady = true;
+        break;
       }
     } catch (error) {
-      console.log('⚠️ Error checking backend status:', error.message);
+      console.log('⚠️ Backend not ready yet:', error.message);
     }
     
     await page.waitForTimeout(1000);
@@ -271,32 +248,21 @@ async function waitForNetworkIdle(page, timeout = 10000) {
  * @param {Page} page - Playwright page object
  */
 async function handleBackendOffline(page) {
-  const offlineMessages = page.locator('text=/offline|unavailable|connection.*failed/i');
-  const offlineCount = await offlineMessages.count();
-  
-  if (offlineCount > 0) {
-    console.log('⚠️ Backend is offline');
+  try {
+    // Make a direct HTTP request to check if backend is online
+    const response = await page.request.get('http://localhost:8080/health');
     
-    // Look for retry button
-    const retryButton = page.locator('button:has-text("Retry"), button:has-text("Try Again")');
-    if (await retryButton.isVisible()) {
-      console.log('🔄 Clicking retry button...');
-      await retryButton.click();
-      await page.waitForTimeout(3000);
-      
-      // Check if backend is back online
-      const stillOffline = await offlineMessages.count();
-      if (stillOffline === 0) {
-        console.log('✅ Backend is back online');
-        return true;
-      } else {
-        console.log('⚠️ Backend still offline after retry');
-        return false;
-      }
+    if (response.status() === 200) {
+      console.log('✅ Backend is online');
+      return true;
+    } else {
+      console.log('⚠️ Backend is offline');
+      return false;
     }
+  } catch (error) {
+    console.log('⚠️ Backend is offline:', error.message);
+    return false;
   }
-  
-  return true; // Backend is online
 }
 
 export {
