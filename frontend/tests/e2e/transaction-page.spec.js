@@ -1,6 +1,25 @@
 import { test, expect } from '@playwright/test';
 
 test.describe('Transaction Page', () => {
+  test('should render actions column with edit & delete buttons (regression)', async ({ page }) => {
+    await page.goto('/');
+
+    // Wait for transactions to load
+    await page.waitForSelector('table');
+
+    // Ensure Actions header exists
+    await expect(
+      page.locator('[data-testid="datatable"] thead th', { hasText: 'Actions' })
+    ).toBeVisible();
+
+    // Ensure at least one row exists
+    const row = page.locator('tbody tr').first();
+    await expect(row).toBeVisible();
+
+    // Buttons should be visible in the sticky actions cell
+    await expect(row.locator('[data-testid="datatable-edit-button"]')).toBeVisible();
+    await expect(row.locator('[data-testid="datatable-delete-button"]')).toBeVisible();
+  });
   test('should display transaction management interface', async ({ page }) => {
     await page.goto('/');
 
@@ -128,7 +147,7 @@ test.describe('Transaction Page', () => {
 
     // Test editing account field
     const accountCell = firstRow.locator('td').nth(3); // Account column
-    await accountCell.dblclick();
+    await accountCell.click();
 
     // Should show select dropdown
     const accountSelect = page.locator('select');
@@ -307,13 +326,13 @@ test.describe('Transaction Page', () => {
     await expect(firstRow).toBeVisible();
 
     // Click the Edit button in the actions column
-    const editButton = firstRow.locator('td').last().locator('button:has-text("Edit")');
+    const editButton = firstRow.locator('[data-testid="datatable-edit-button"]');
     await expect(editButton).toBeVisible();
     await editButton.click();
 
     // Should navigate to edit form
     await expect(page.locator('text=Back to Transactions')).toBeVisible();
-    await expect(page.locator('button:has-text("Save Transaction")')).toBeVisible();
+    await expect(page.locator('button:has-text("Update Transaction")')).toBeVisible();
   });
 
   test('should allow canceling edit form', async ({ page }) => {
@@ -372,7 +391,8 @@ test.describe('Transaction Page', () => {
     await expect(firstRow).toBeVisible();
 
     // Click the Edit button in the actions column
-    const editButton = firstRow.locator('td').last().locator('button:has-text("Edit")');
+    const editButton = firstRow.locator('[data-testid="datatable-edit-button"]');
+    await expect(editButton).toBeVisible();
     await editButton.click();
 
     // Click back button to cancel

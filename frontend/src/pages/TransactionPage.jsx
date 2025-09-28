@@ -243,32 +243,7 @@ const TransactionPage = () => {
       editable: true,
       editType: 'select',
     },
-    {
-      key: 'actions',
-      title: 'Actions',
-      formatter: (_, row) => (
-        <div className="flex space-x-2">
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              handleEditClick(row);
-            }}
-            className="text-blue-600 hover:text-blue-900 text-sm"
-          >
-            Edit
-          </button>
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              handleDeleteTransaction(row.id);
-            }}
-            className="text-red-600 hover:text-red-900 text-sm"
-          >
-            Delete
-          </button>
-        </div>
-      ),
-    },
+    // Actions column handled by DataTable's built-in actions prop
   ];
 
   if (showForm) {
@@ -389,6 +364,9 @@ const TransactionPage = () => {
         onCellEdit={handleInlineEdit}
         masterData={masterData}
         onRowClick={null} // Disable row click when inline editing is enabled
+        actions={['edit', 'delete']}
+        onEdit={handleEditClick}
+        onDelete={handleDeleteTransaction}
       />
     </div>
   );
