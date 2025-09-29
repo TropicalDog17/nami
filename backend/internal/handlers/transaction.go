@@ -85,6 +85,22 @@ func (h *TransactionHandler) HandleTransaction(w http.ResponseWriter, r *http.Re
 		h.updateTransaction(w, r, id)
 	case "DELETE":
 		h.deleteTransaction(w, r, id)
+	case "POST":
+		// Support: /api/transactions/{id}/recalc?only_missing=true|false
+		if strings.HasSuffix(r.URL.Path, "/recalc") {
+			onlyMissing := true
+			if q := r.URL.Query().Get("only_missing"); q == "false" {
+				onlyMissing = false
+			}
+			tx, err := h.service.RecalculateOneFX(r.Context(), id, onlyMissing)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			json.NewEncoder(w).Encode(tx)
+			return
+		}
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 	default:
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 	}

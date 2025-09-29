@@ -140,6 +140,53 @@ func (s *reportingService) GetCashFlow(ctx context.Context, period models.Period
 		report.ByType[txType] = cf
 	}
 
+	// Derive Operating vs Financing and Combined totals from ByType
+	var opInUSD, opOutUSD, opNetUSD decimal.Decimal
+	var opInVND, opOutVND, opNetVND decimal.Decimal
+	var finInUSD, finOutUSD, finNetUSD decimal.Decimal
+	var finInVND, finOutVND, finNetVND decimal.Decimal
+
+	for t, cf := range report.ByType {
+		isFinancing := (t == "borrow" || t == "repay_borrow" || t == "interest_expense")
+		if isFinancing {
+			finInUSD = finInUSD.Add(cf.InflowUSD)
+			finOutUSD = finOutUSD.Add(cf.OutflowUSD)
+			finNetUSD = finNetUSD.Add(cf.NetUSD)
+			finInVND = finInVND.Add(cf.InflowVND)
+			finOutVND = finOutVND.Add(cf.OutflowVND)
+			finNetVND = finNetVND.Add(cf.NetVND)
+		} else {
+			opInUSD = opInUSD.Add(cf.InflowUSD)
+			opOutUSD = opOutUSD.Add(cf.OutflowUSD)
+			opNetUSD = opNetUSD.Add(cf.NetUSD)
+			opInVND = opInVND.Add(cf.InflowVND)
+			opOutVND = opOutVND.Add(cf.OutflowVND)
+			opNetVND = opNetVND.Add(cf.NetVND)
+		}
+	}
+
+	report.OperatingInUSD = opInUSD
+	report.OperatingOutUSD = opOutUSD
+	report.OperatingNetUSD = opNetUSD
+	report.OperatingInVND = opInVND
+	report.OperatingOutVND = opOutVND
+	report.OperatingNetVND = opNetVND
+
+	report.FinancingInUSD = finInUSD
+	report.FinancingOutUSD = finOutUSD
+	report.FinancingNetUSD = finNetUSD
+	report.FinancingInVND = finInVND
+	report.FinancingOutVND = finOutVND
+	report.FinancingNetVND = finNetVND
+
+	// Combined is simply operating + financing
+	report.CombinedInUSD = opInUSD.Add(finInUSD)
+	report.CombinedOutUSD = opOutUSD.Add(finOutUSD)
+	report.CombinedNetUSD = opNetUSD.Add(finNetUSD)
+	report.CombinedInVND = opInVND.Add(finInVND)
+	report.CombinedOutVND = opOutVND.Add(finOutVND)
+	report.CombinedNetVND = opNetVND.Add(finNetVND)
+
 	// Cash flow by tag (where tag is not null)
 	tagQuery := `
 		SELECT 

@@ -157,6 +157,50 @@ func (s *transactionService) RecalculateFX(ctx context.Context, onlyMissing bool
 	return updated, nil
 }
 
+// RecalculateOneFX recalculates FX and derived fields for a single transaction by ID.
+// If onlyMissing is true, preserves existing non-zero FX values; otherwise forces refresh.
+func (s *transactionService) RecalculateOneFX(ctx context.Context, id string, onlyMissing bool) (*models.Transaction, error) {
+	if s.fxProvider == nil {
+		return nil, fmt.Errorf("no FX provider configured")
+	}
+
+	// Get minimal fields required to fetch FX
+	var date time.Time
+	var asset string
+	var fxUSD, fxVND decimal.Decimal
+	if err := s.db.QueryRowContext(ctx, `SELECT date, asset, fx_to_usd, fx_to_vnd FROM transactions WHERE id = $1`, id).Scan(&date, &asset, &fxUSD, &fxVND); err != nil {
+		return nil, fmt.Errorf("failed to get transaction fx fields: %w", err)
+	}
+
+	tx := &models.Transaction{ID: id, Date: date, Asset: asset, FXToUSD: fxUSD, FXToVND: fxVND}
+	if !onlyMissing {
+		tx.FXToUSD = decimal.Zero
+		tx.FXToVND = decimal.Zero
+	}
+	if err := s.populateFXRates(ctx, tx); err != nil {
+		return nil, err
+	}
+
+	// Load existing amounts to recompute derived fields
+	var quantity, priceLocal, feeUSD, feeVND decimal.Decimal
+	var tType, tAccount string
+	if err := s.db.QueryRowContext(ctx, `SELECT quantity, price_local, fee_usd, fee_vnd, type, account FROM transactions WHERE id = $1`, id).
+		Scan(&quantity, &priceLocal, &feeUSD, &feeVND, &tType, &tAccount); err != nil {
+		return nil, fmt.Errorf("failed to get transaction compute fields: %w", err)
+	}
+	tmp := &models.Transaction{Quantity: quantity, PriceLocal: priceLocal, FXToUSD: tx.FXToUSD, FXToVND: tx.FXToVND, FeeUSD: feeUSD, FeeVND: feeVND, Type: tType, Account: tAccount}
+	tmp.CalculateDerivedFields()
+
+	// Apply update
+	if _, err := s.db.ExecContext(ctx, `UPDATE transactions SET fx_to_usd=$2, fx_to_vnd=$3, amount_usd=$4, amount_vnd=$5, cashflow_usd=$6, cashflow_vnd=$7, fx_source=$8, fx_timestamp=$9, updated_at=$10 WHERE id=$1`,
+		id, tx.FXToUSD, tx.FXToVND, tmp.AmountUSD, tmp.AmountVND, tmp.CashFlowUSD, tmp.CashFlowVND, tx.FXSource, tx.FXTimestamp, time.Now()); err != nil {
+		return nil, fmt.Errorf("failed to update transaction: %w", err)
+	}
+
+	// Return full transaction
+	return s.GetTransaction(ctx, id)
+}
+
 // ExportTransactions returns all transactions
 func (s *transactionService) ExportTransactions(ctx context.Context) ([]*models.Transaction, error) {
 	txs, err := s.ListTransactions(ctx, nil)

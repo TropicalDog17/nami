@@ -1,6 +1,44 @@
 import React, { useState, useMemo } from 'react';
 
-const DataTable = ({
+type Row = { id?: string | number; [key: string]: any };
+type Column = {
+  key: string;
+  title: string;
+  width?: number | string;
+  type?: 'date' | 'datetime' | 'currency' | 'number' | 'text' | string;
+  currency?: string;
+  editable?: boolean;
+  editType?: 'select' | 'date' | 'number' | 'text' | string;
+  decimals?: number;
+  render?: (value: any, column: Column) => React.ReactNode;
+};
+type Option = { value: string; label: string };
+type MasterData = Record<string, Option[]>;
+
+type Props = {
+  data?: Row[];
+  columns?: Column[];
+  loading?: boolean;
+  error?: any;
+  sortable?: boolean;
+  filterable?: boolean;
+  pagination?: boolean;
+  pageSize?: number;
+  onRowClick?: ((row: Row) => void) | null;
+  className?: string;
+  emptyMessage?: string;
+  editable?: boolean;
+  onCellEdit?: ((rowId: string | number, columnKey: string, newValue: any) => Promise<void>) | null;
+  masterData?: MasterData;
+  actions?: Array<'view' | 'edit' | 'delete' | 'recalc' | string>;
+  onEdit?: ((row: Row) => void) | null;
+  onDelete?: ((id: string | number) => void | Promise<void>) | null;
+  onRecalc?: ((row: Row) => void | Promise<void>) | null;
+  onView?: ((row: Row) => void) | null;
+  busyRowIds?: Set<string | number>;
+};
+
+const DataTable: React.FC<Props> = ({
   data = [],
   columns = [],
   loading = false,
@@ -18,7 +56,9 @@ const DataTable = ({
   actions = [],
   onEdit = null,
   onDelete = null,
+  onRecalc = null,
   onView = null,
+  busyRowIds = new Set(),
 }) => {
   const [sortConfig, setSortConfig] = useState({ key: null, direction: 'asc' });
   const [filterText, setFilterText] = useState('');
@@ -27,12 +67,12 @@ const DataTable = ({
   const [editValue, setEditValue] = useState('');
 
   // Helper function to get nested values
-  const getNestedValue = (obj, path) => {
+  const getNestedValue = (obj: Record<string, any>, path: string) => {
     return path.split('.').reduce((current, key) => current?.[key], obj);
   };
 
   // Sort data
-  const sortedData = useMemo(() => {
+  const sortedData = useMemo<Row[]>(() => {
     if (!sortConfig.key) return data;
 
     return [...data].sort((a, b) => {
@@ -49,7 +89,7 @@ const DataTable = ({
   }, [data, sortConfig]);
 
   // Filter data
-  const filteredData = useMemo(() => {
+  const filteredData = useMemo<Row[]>(() => {
     if (!filterText) return sortedData;
 
     const searchTerm = filterText.toLowerCase();
@@ -62,7 +102,7 @@ const DataTable = ({
   }, [sortedData, filterText, columns]);
 
   // Paginate data
-  const paginatedData = useMemo(() => {
+  const paginatedData = useMemo<Row[]>(() => {
     if (!pagination) return filteredData;
 
     const startIndex = (currentPage - 1) * pageSize;
@@ -72,7 +112,7 @@ const DataTable = ({
   const totalPages = Math.ceil(filteredData.length / pageSize);
 
   // Handle inline editing
-  const startEditing = (rowId, columnKey, currentValue) => {
+  const startEditing = (rowId: string | number, columnKey: string, currentValue: any) => {
     if (!editable) return;
     setEditingCell({ rowId, columnKey });
     setEditValue(currentValue || '');
@@ -96,7 +136,7 @@ const DataTable = ({
     }
   };
 
-  const handleKeyDown = (e) => {
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement | HTMLSelectElement>) => {
     if (e.key === 'Enter') {
       e.preventDefault();
       saveEditing();
@@ -107,7 +147,7 @@ const DataTable = ({
   };
 
   // Render edit input based on editType
-  const renderEditInput = (column, currentValue) => {
+  const renderEditInput = (column: Column, currentValue: any) => {
     const commonProps = {
       value: editValue,
       onChange: (e) => setEditValue(e.target.value),
@@ -115,7 +155,7 @@ const DataTable = ({
       onBlur: saveEditing,
       autoFocus: true,
       className: 'w-full px-2 py-1 text-sm border border-blue-500 rounded focus:outline-none focus:ring-2 focus:ring-blue-500',
-    };
+    } as const;
 
     switch (column.editType) {
       case 'select':
@@ -156,7 +196,7 @@ const DataTable = ({
   };
 
   // Handle sort
-  const handleSort = (key) => {
+  const handleSort = (key: string) => {
     if (!sortable) return;
 
     setSortConfig((prevConfig) => ({
@@ -169,7 +209,7 @@ const DataTable = ({
   };
 
   // Format cell value
-  const formatCellValue = (value, column) => {
+  const formatCellValue = (value: any, column: Column) => {
     if (value === null || value === undefined) return '-';
 
     if (column.render) {
@@ -199,7 +239,7 @@ const DataTable = ({
   };
 
   // Render action buttons
-  const renderActions = (row) => {
+  const renderActions = (row: Row) => {
     if (!actions || actions.length === 0) return null;
 
     return (
@@ -228,20 +268,47 @@ const DataTable = ({
               title="Edit"
               data-testid="datatable-edit-button"
             >
-              ✏️
+              <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16.862 3.487a2.25 2.25 0 013.182 3.182L7.5 19.313 3 21l1.687-4.5L16.862 3.487z" />
+              </svg>
             </button>
           )}
           {actions.includes('delete') && onDelete && (
             <button
               onClick={(e) => {
                 e.stopPropagation();
-                onDelete(row.id);
+                onDelete(row.id as string | number);
               }}
               className="text-red-600 hover:text-red-900"
               title="Delete"
               data-testid="datatable-delete-button"
             >
-              🗑️
+              <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M9 7V5a2 2 0 012-2h2a2 2 0 012 2v2m-9 0h10" />
+              </svg>
+            </button>
+          )}
+          {actions.includes('recalc') && onRecalc && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onRecalc(row);
+              }}
+              className={`text-gray-600 hover:text-gray-900 ${busyRowIds?.has?.(row.id) ? 'opacity-50 cursor-not-allowed' : ''}`}
+              disabled={!!busyRowIds?.has?.(row.id)}
+              title="Refresh"
+              data-testid="datatable-recalc-button"
+            >
+              {busyRowIds?.has?.(row.id) ? (
+                <svg className="w-5 h-5 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                </svg>
+              ) : (
+                <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v6h6M20 20v-6h-6M5 19A9 9 0 0019 5" />
+                </svg>
+              )}
             </button>
           )}
         </div>
@@ -425,7 +492,9 @@ const DataTable = ({
                             {formatCellValue(cellValue, column)}
                             {isEditable && (
                               <span className="ml-1 text-xs text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity">
-                                ✏️
+                                <svg className="w-3.5 h-3.5 inline" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16.862 3.487a2.25 2.25 0 013.182 3.182L7.5 19.313 3 21l1.687-4.5L16.862 3.487z" />
+                                </svg>
                               </span>
                             )}
                           </>

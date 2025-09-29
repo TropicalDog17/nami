@@ -19,6 +19,8 @@ type TransactionService interface {
 	// RecalculateFX recalculates FX and derived amounts for existing rows.
 	// If onlyMissing is true, only rows with missing/zero FX are updated; otherwise all rows.
 	RecalculateFX(ctx context.Context, onlyMissing bool) (int, error)
+	// RecalculateOneFX recalculates FX and derived amounts for a single transaction by ID
+	RecalculateOneFX(ctx context.Context, id string, onlyMissing bool) (*models.Transaction, error)
 	// ExportTransactions returns all transactions as JSON-serializable slice
 	ExportTransactions(ctx context.Context) ([]*models.Transaction, error)
 	// ImportTransactions creates or updates transactions from a dump; upsert by id when present

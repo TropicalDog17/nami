@@ -390,8 +390,9 @@ func (s *actionService) performBorrow(ctx context.Context, req *models.ActionReq
 		Account:    account,
 		Quantity:   amount,
 		PriceLocal: decimal.NewFromInt(1),
-		FXToUSD:    decimal.NewFromFloat(1.0),
-		FXToVND:    decimal.NewFromInt(1),
+		// Leave FX zero so TransactionService can auto-populate correct rates
+		FXToUSD: decimal.Zero,
+		FXToVND: decimal.Zero,
 	}
 	if counterparty != "" {
 		tx.Counterparty = &counterparty
@@ -426,8 +427,9 @@ func (s *actionService) performRepayBorrow(ctx context.Context, req *models.Acti
 		Account:    account,
 		Quantity:   amount,
 		PriceLocal: decimal.NewFromInt(1),
-		FXToUSD:    decimal.NewFromFloat(1.0),
-		FXToVND:    decimal.NewFromInt(1),
+		// Leave FX zero so TransactionService can auto-populate correct rates
+		FXToUSD: decimal.Zero,
+		FXToVND: decimal.Zero,
 	}
 	if counterparty != "" {
 		tx.Counterparty = &counterparty

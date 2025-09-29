@@ -128,6 +128,7 @@ export const transactionApi = {
   create: (transaction: unknown) => api.post('/api/transactions', transaction),
   update: (id: string | number, transaction: unknown) => api.put(`/api/transactions/${id}`, transaction),
   delete: (id: string | number) => api.delete(`/api/transactions/${id}`),
+  recalc: (id: string, onlyMissing: boolean = true) => api.post(`/api/transactions/${id}/recalc?only_missing=${onlyMissing ? 'true' : 'false'}`, {}),
 }
 
 // Actions API
@@ -164,6 +165,9 @@ export const adminApi = {
   createTag: (tag: unknown) => api.post('/api/admin/tags', tag),
   updateTag: (id: string | number, tag: unknown) => api.put(`/api/admin/tags/${id}`, tag),
   deleteTag: (id: string | number) => api.delete(`/api/admin/tags/${id}`),
+
+  // Maintenance
+  recalcFX: (onlyMissing: boolean = true) => api.post(`/api/admin/maintenance/recalc-fx?only_missing=${onlyMissing ? 'true' : 'false'}`, {}),
 }
 
 // Reports API

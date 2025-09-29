@@ -9,19 +9,44 @@ import { useApp } from '../context/AppContext';
 import { useBackendStatus } from '../context/BackendStatusContext';
 import { transactionApi, adminApi, actionsApi } from '../services/api';
 
-const TransactionPage = () => {
-  const { currency, actions } = useApp();
-  const { isOnline } = useBackendStatus();
-  const { error: showErrorToast, success: showSuccessToast } = useToast();
-  const [transactions, setTransactions] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
-  const [showForm, setShowForm] = useState(false);
-  const [editingTransaction, setEditingTransaction] = useState(null);
-  const [filters, setFilters] = useState({});
-  const [masterData, setMasterData] = useState({});
-  const [performing, setPerforming] = useState(false);
-  const [actionForm, setActionForm] = useState({
+type IdType = string | number;
+type Transaction = { id: IdType; [key: string]: any };
+type Option = { value: string; label: string };
+type MasterData = Record<string, Option[]>;
+type Column = {
+  key: string;
+  title: string;
+  type?: 'date' | 'datetime' | 'currency' | 'number' | 'text' | string;
+  width?: number | string;
+  editable?: boolean;
+  editType?: 'select' | 'date' | 'number' | 'text' | string;
+  formatter?: (value: any) => React.ReactNode;
+  decimals?: number;
+  currency?: string;
+};
+
+const TransactionPage: React.FC = () => {
+
+  const { currency, actions } = useApp() as unknown as {
+    currency: string;
+    actions: { setCurrency: (c: string) => void; setError: (m: string | null) => void };
+  };
+  const { isOnline } = useBackendStatus() as unknown as { isOnline: boolean };
+  const { error: showErrorToast, success: showSuccessToast } = useToast() as unknown as {
+    error: (m: string) => void;
+    success: (m: string) => void;
+  };
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [loading, setLoading] = useState<boolean>(false);
+  const [error, setError] = useState<any>(null);
+  const [showForm, setShowForm] = useState<boolean>(false);
+  const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
+  const [filters, setFilters] = useState<Record<string, any>>({});
+  const [masterData, setMasterData] = useState<MasterData>({});
+  const [performing, setPerforming] = useState<boolean>(false);
+  const [bulkRefreshing, setBulkRefreshing] = useState<boolean>(false);
+  const [busyRowIds, setBusyRowIds] = useState<Set<IdType>>(new Set<IdType>());
+  const [actionForm, setActionForm] = useState<{ action: string; params: Record<string, any>}>({
     action: '',
     params: {},
   });
@@ -34,63 +59,63 @@ const TransactionPage = () => {
     loadMasterData();
   }, [filters]);
 
-  const loadMasterData = async () => {
+  const loadMasterData = async (): Promise<void> => {
     try {
-      const [types, accounts, assets, tags] = await Promise.all([
+      const [types, accounts, assets, tags] = (await Promise.all([
         adminApi.listTypes(),
         adminApi.listAccounts(),
         adminApi.listAssets(),
         adminApi.listTags(),
-      ]);
+      ])) as [any[], any[], any[], any[]];
 
       setMasterData({
-        type: types.map((t) => ({
+        type: (types || []).map((t: any) => ({
           value: t.name,
           label: t.description || t.name,
         })),
-        account: accounts.map((a) => ({
+        account: (accounts || []).map((a: any) => ({
           value: a.name,
           label: `${a.name} (${a.type})`,
         })),
-        asset: assets.map((a) => ({
+        asset: (assets || []).map((a: any) => ({
           value: a.symbol,
           label: `${a.symbol} - ${a.name}`,
         })),
-        tag: tags.map((t) => ({
+        tag: (tags || []).map((t: any) => ({
           value: t.name,
           label: `${t.name} (${t.category})`,
         })),
         counterparty: [], // This could be populated from recent counterparties
       });
       console.log('Master data loaded:', { types, accounts, assets, tags });
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to load master data:', err);
     }
   };
 
-  const loadTransactions = async () => {
+  const loadTransactions = async (): Promise<void> => {
     try {
       setLoading(true);
       setError(null);
-      const data = await transactionApi.list(filters);
-      setTransactions(data || []);
-    } catch (err) {
+      const data = (await transactionApi.list(filters)) as any[];
+      setTransactions((data || []) as Transaction[]);
+    } catch (err: any) {
       setError(err);
-      actions.setError(err.message);
+      actions.setError(err?.message ?? 'Unknown error');
     } finally {
       setLoading(false);
     }
   };
 
-  const handlePerformAction = async () => {
+  const handlePerformAction = async (): Promise<void> => {
     if (!actionForm.action) {
       showErrorToast('Please select an action');
       return;
     }
     try {
       setPerforming(true);
-      const resp = await actionsApi.perform(actionForm.action, actionForm.params);
-      const created = resp?.transactions || [];
+      const resp: any = await actionsApi.perform(actionForm.action, actionForm.params);
+      const created: Transaction[] = (resp?.transactions || []) as Transaction[];
       if (created.length > 0) {
         setTransactions((prev) => [...created, ...prev]);
       } else {
@@ -98,49 +123,50 @@ const TransactionPage = () => {
       }
       showSuccessToast('Action performed successfully');
       setActionForm({ action: '', params: {} });
-    } catch (err) {
-      actions.setError(err.message);
+    } catch (err: any) {
+      actions.setError(err?.message ?? 'Unknown error');
       showErrorToast('Failed to perform action');
     } finally {
       setPerforming(false);
     }
   };
 
-  const handleCreateTransaction = async (transactionData) => {
+  const handleCreateTransaction = async (transactionData: Record<string, any>): Promise<void> => {
     try {
-      const newTransaction = await transactionApi.create(transactionData);
+      const newTransaction = (await transactionApi.create(transactionData)) as Transaction;
       setTransactions((prev) => [newTransaction, ...prev]);
       setShowForm(false);
       actions.setError(null);
       showSuccessToast('Transaction created successfully');
-    } catch (err) {
-      actions.setError(err.message);
+    } catch (err: any) {
+      actions.setError(err?.message ?? 'Unknown error');
       showErrorToast('Failed to create transaction. Please try again.');
     }
   };
 
-  const handleUpdateTransaction = async (transactionData) => {
+  const handleUpdateTransaction = async (transactionData: Record<string, any>): Promise<void> => {
     try {
+      if (!editingTransaction) return;
       const updatedTransaction = await transactionApi.update(
         editingTransaction.id,
         transactionData
       );
       setTransactions((prev) =>
         prev.map((tx) =>
-          tx.id === editingTransaction.id ? updatedTransaction : tx
+          tx.id === editingTransaction.id ? (updatedTransaction as Transaction) : tx
         )
       );
       setEditingTransaction(null);
       setShowForm(false);
       actions.setError(null);
       showSuccessToast('Transaction updated successfully');
-    } catch (err) {
-      actions.setError(err.message);
+    } catch (err: any) {
+      actions.setError(err?.message ?? 'Unknown error');
       showErrorToast('Failed to update transaction. Please try again.');
     }
   };
 
-  const handleDeleteTransaction = async (id) => {
+  const handleDeleteTransaction = async (id: IdType): Promise<void> => {
     if (!confirm('Are you sure you want to delete this transaction?')) return;
 
     try {
@@ -148,13 +174,13 @@ const TransactionPage = () => {
       setTransactions((prev) => prev.filter((tx) => tx.id !== id));
       actions.setError(null);
       showSuccessToast('Transaction deleted successfully');
-    } catch (err) {
-      actions.setError(err.message);
+    } catch (err: any) {
+      actions.setError(err?.message ?? 'Unknown error');
       showErrorToast('Failed to delete transaction. Please try again.');
     }
   };
 
-  const handleEditClick = (transaction) => {
+  const handleEditClick = (transaction: Transaction): void => {
     setEditingTransaction(transaction);
     setShowForm(true);
   };
@@ -164,7 +190,11 @@ const TransactionPage = () => {
     setEditingTransaction(null);
   };
 
-  const handleInlineEdit = async (transactionId, field, newValue) => {
+  const handleInlineEdit = async (
+    transactionId: IdType,
+    field: string,
+    newValue: any
+  ): Promise<void> => {
     try {
       // Find the transaction to update
       const transaction = transactions.find((t) => t.id === transactionId);
@@ -177,7 +207,7 @@ const TransactionPage = () => {
       });
 
       // Update local state optimistically
-      const updatedTransaction = { ...transaction, [field]: newValue };
+      const updatedTransaction: Transaction = { ...transaction, [field]: newValue };
       setTransactions((prev) =>
         prev.map((t) => (t.id === transactionId ? updatedTransaction : t))
       );
@@ -188,16 +218,16 @@ const TransactionPage = () => {
 
       actions.setError(null);
       showSuccessToast(`${field} updated successfully`);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Inline edit error:', err);
-      actions.setError(`Failed to update ${field}: ${err.message}`);
+      actions.setError(`Failed to update ${field}: ${err?.message ?? 'Unknown error'}`);
       showErrorToast(`Failed to update ${field}. Please try again.`);
       // Reload transactions to revert any optimistic updates
       loadTransactions();
     }
   };
 
-  const columns = [
+  const columns: Column[] = [
     {
       key: 'date',
       title: 'Date',
@@ -210,7 +240,7 @@ const TransactionPage = () => {
       title: 'Type',
       editable: true,
       editType: 'select',
-      formatter: (value) => (
+      formatter: (value: any) => (
         <span
           className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
             ['buy', 'income', 'reward'].includes(value)
@@ -255,7 +285,7 @@ const TransactionPage = () => {
       title: `Cash Flow (${currency})`,
       type: 'currency',
       currency: currency,
-      formatter: (value) => (
+      formatter: (value: number) => (
         <span className={value >= 0 ? 'text-green-600' : 'text-red-600'}>
           {new Intl.NumberFormat('en-US', {
             style: 'currency',
@@ -306,8 +336,8 @@ const TransactionPage = () => {
         </div>
 
         <TransactionForm
-          transaction={editingTransaction}
-          onSubmit={
+          transaction={editingTransaction as any}
+        onSubmit={
             editingTransaction
               ? handleUpdateTransaction
               : handleCreateTransaction
@@ -353,6 +383,23 @@ const TransactionPage = () => {
                 />
               </svg>
               New Transaction
+            </button>
+            <button
+              onClick={async ()=>{ try { setBulkRefreshing(true); await adminApi.recalcFX(true); await loadTransactions(); showSuccessToast('Refreshed derived fields (missing only)'); } catch (e) { showErrorToast('Refresh failed'); } finally { setBulkRefreshing(false); } }}
+              className={`inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${bulkRefreshing ? 'opacity-70 cursor-not-allowed' : ''}`}
+              disabled={bulkRefreshing}
+            >
+              {bulkRefreshing ? (
+                <svg className="w-4 h-4 mr-2 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                </svg>
+              ) : (
+                <svg className="w-4 h-4 mr-2" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v6h6M20 20v-6h-6M5 19A9 9 0 0019 5" />
+                </svg>
+              )}
+              {bulkRefreshing ? 'Refreshing...' : 'Refresh'}
             </button>
             <button className="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2">
               Export
@@ -421,20 +468,20 @@ const TransactionPage = () => {
                 onChange={(v)=>setActionForm(s=>({ ...s, params:{...s.params, date:v}}))}
               />
               <ComboBox
-                options={(masterData.account || [])}
+                options={(masterData.account || []) as any}
                 value={actionForm.params.bank_account || ''}
                 onChange={(v)=>setActionForm(s=>({ ...s, params:{...s.params, bank_account:v}}))}
                 placeholder="Bank Account"
                 allowCreate
-                onCreate={async (name)=>{ await adminApi.createAccount({ name, type:'bank', is_active:true }); const accounts = await adminApi.listAccounts(); setMasterData((prev)=>({ ...prev, account: (accounts||[]).map((a)=>({ value:a.name, label:`${a.name} (${a.type})`})) })); }}
+                onCreate={async (name)=>{ await adminApi.createAccount({ name, type:'bank', is_active:true }); const accounts = await adminApi.listAccounts(); setMasterData((prev)=>({ ...prev, account: ((accounts as any[])||[]).map((a: any)=>({ value:a.name, label:`${a.name} (${a.type})`})) })); }}
               />
               <ComboBox
-                options={(masterData.account || [])}
+                options={(masterData.account || []) as any}
                 value={actionForm.params.exchange_account || ''}
                 onChange={(v)=>setActionForm(s=>({ ...s, params:{...s.params, exchange_account:v}}))}
                 placeholder="Exchange Account"
                 allowCreate
-                onCreate={async (name)=>{ await adminApi.createAccount({ name, type:'exchange', is_active:true }); const accounts = await adminApi.listAccounts(); setMasterData((prev)=>({ ...prev, account: (accounts||[]).map((a)=>({ value:a.name, label:`${a.name} (${a.type})`})) })); }}
+                onCreate={async (name)=>{ await adminApi.createAccount({ name, type:'exchange', is_active:true }); const accounts = await adminApi.listAccounts(); setMasterData((prev)=>({ ...prev, account: ((accounts as any[])||[]).map((a: any)=>({ value:a.name, label:`${a.name} (${a.type})`})) })); }}
               />
               <input className="px-3 py-2 border rounded" placeholder="VND Amount" onChange={(e)=>setActionForm(s=>({ ...s, params:{...s.params, vnd_amount:e.target.value}}))} />
               <input className="px-3 py-2 border rounded" placeholder="Price VND per USDT" onChange={(e)=>setActionForm(s=>({ ...s, params:{...s.params, price_vnd_per_usdt:e.target.value}}))} />
@@ -451,12 +498,12 @@ const TransactionPage = () => {
                 onChange={(v)=>setActionForm(s=>({ ...s, params:{...s.params, date:v}}))}
               />
               <ComboBox
-                options={(masterData.account || [])}
+                options={(masterData.account || []) as any}
                 value={actionForm.params.account || ''}
                 onChange={(v)=>setActionForm(s=>({ ...s, params:{...s.params, account:v}}))}
                 placeholder="Account (Bank/CreditCard)"
                 allowCreate
-                onCreate={async (name)=>{ await adminApi.createAccount({ name, type:'bank', is_active:true }); const accounts = await adminApi.listAccounts(); setMasterData((prev)=>({ ...prev, account: (accounts||[]).map((a)=>({ value:a.name, label:`${a.name} (${a.type})`})) })); }}
+                onCreate={async (name)=>{ await adminApi.createAccount({ name, type:'bank', is_active:true }); const accounts = await adminApi.listAccounts(); setMasterData((prev)=>({ ...prev, account: ((accounts as any[])||[]).map((a: any)=>({ value:a.name, label:`${a.name} (${a.type})`})) })); }}
               />
               <input className="px-3 py-2 border rounded" placeholder="VND Amount" onChange={(e)=>setActionForm(s=>({ ...s, params:{...s.params, vnd_amount:e.target.value}}))} />
               <input className="px-3 py-2 border rounded" placeholder="Counterparty" onChange={(e)=>setActionForm(s=>({ ...s, params:{...s.params, counterparty:e.target.value}}))} />
@@ -478,10 +525,10 @@ const TransactionPage = () => {
                 onChange={(v)=>setActionForm(s=>({ ...s, params:{...s.params, account:v}}))}
                 placeholder="Account"
                 allowCreate
-                onCreate={async (name)=>{ await adminApi.createAccount({ name, type:'bank', is_active:true }); const accounts = await adminApi.listAccounts(); setMasterData((prev)=>({ ...prev, account: (accounts||[]).map((a)=>({ value:a.name, label:`${a.name} (${a.type})`})) })); }}
+                onCreate={async (name)=>{ await adminApi.createAccount({ name, type:'bank', is_active:true }); const accounts = await adminApi.listAccounts(); setMasterData((prev)=>({ ...prev, account: ((accounts as any[])||[]).map((a: any)=>({ value:a.name, label:`${a.name} (${a.type})`})) })); }}
               />
               <ComboBox
-                options={(masterData.asset || [])}
+                options={(masterData.asset || []) as any}
                 value={actionForm.params.asset || ''}
                 onChange={(v)=>setActionForm(s=>({ ...s, params:{...s.params, asset:v}}))}
                 placeholder="Asset"
@@ -503,12 +550,12 @@ const TransactionPage = () => {
                 onChange={(v)=>setActionForm(s=>({ ...s, params:{...s.params, date:v}}))}
               />
               <ComboBox
-                options={(masterData.account || [])}
+                options={(masterData.account || []) as any}
                 value={actionForm.params.exchange_account || ''}
                 onChange={(v)=>setActionForm(s=>({ ...s, params:{...s.params, exchange_account:v}}))}
                 placeholder="Exchange Account"
                 allowCreate
-                onCreate={async (name)=>{ await adminApi.createAccount({ name, type:'exchange', is_active:true }); const accounts = await adminApi.listAccounts(); setMasterData((prev)=>({ ...prev, account: (accounts||[]).map((a)=>({ value:a.name, label:`${a.name} (${a.type})`})) })); }}
+                onCreate={async (name)=>{ await adminApi.createAccount({ name, type:'exchange', is_active:true }); const accounts = await adminApi.listAccounts(); setMasterData((prev)=>({ ...prev, account: ((accounts as any[])||[]).map((a: any)=>({ value:a.name, label:`${a.name} (${a.type})`})) })); }}
               />
               <input className="px-3 py-2 border rounded" placeholder="Base Asset (e.g., BTC)" onChange={(e)=>setActionForm(s=>({ ...s, params:{...s.params, base_asset:e.target.value}}))} />
               <input className="px-3 py-2 border rounded" placeholder="Quote Asset (e.g., USDT)" onChange={(e)=>setActionForm(s=>({ ...s, params:{...s.params, quote_asset:e.target.value}}))} />
@@ -527,14 +574,21 @@ const TransactionPage = () => {
                 onChange={(v)=>setActionForm(s=>({ ...s, params:{...s.params, date:v}}))}
               />
               <ComboBox
-                options={(masterData.account || [])}
+                options={(masterData.account || []) as any}
                 value={actionForm.params.account || ''}
                 onChange={(v)=>setActionForm(s=>({ ...s, params:{...s.params, account:v}}))}
                 placeholder="Account"
                 allowCreate
-                onCreate={async (name)=>{ await adminApi.createAccount({ name, type:'bank', is_active:true }); const accounts = await adminApi.listAccounts(); setMasterData((prev)=>({ ...prev, account: (accounts||[]).map((a)=>({ value:a.name, label:`${a.name} (${a.type})`})) })); }}
+                onCreate={async (name)=>{ await adminApi.createAccount({ name, type:'bank', is_active:true }); const accounts = await adminApi.listAccounts(); setMasterData((prev)=>({ ...prev, account: ((accounts as any[])||[]).map((a: any)=>({ value:a.name, label:`${a.name} (${a.type})`})) })); }}
               />
-              <input className="px-3 py-2 border rounded" placeholder="Asset" onChange={(e)=>setActionForm(s=>({ ...s, params:{...s.params, asset:e.target.value}}))} />
+              <ComboBox
+                options={(masterData.asset || []) as any}
+                value={actionForm.params.asset || ''}
+                onChange={(v)=>setActionForm(s=>({ ...s, params:{...s.params, asset:v}}))}
+                placeholder="Asset"
+                allowCreate
+                onCreate={async (symbol)=>{ await adminApi.createAsset({ symbol, name: symbol, decimals: 0, is_active: true }); const assets = await adminApi.listAssets(); setMasterData((prev)=>({ ...prev, asset: ((assets as any[])||[]).map((a: any)=>({ value:a.symbol, label:`${a.symbol} - ${a.name}`})) })); }}
+              />
               <input className="px-3 py-2 border rounded" placeholder="Amount" onChange={(e)=>setActionForm(s=>({ ...s, params:{...s.params, amount:e.target.value}}))} />
               {actionForm.action === 'repay_borrow' && (
                 <input className="px-3 py-2 border rounded" placeholder="Borrow Tx ID (optional)" onChange={(e)=>setActionForm(s=>({ ...s, params:{...s.params, borrow_id:e.target.value}}))} />
@@ -552,20 +606,20 @@ const TransactionPage = () => {
                 onChange={(v)=>setActionForm(s=>({ ...s, params:{...s.params, date:v}}))}
               />
               <ComboBox
-                options={(masterData.account || [])}
+                options={(masterData.account || []) as any}
                 value={actionForm.params.source_account || ''}
                 onChange={(v)=>setActionForm(s=>({ ...s, params:{...s.params, source_account:v}}))}
                 placeholder="Source Account"
                 allowCreate
-                onCreate={async (name)=>{ await adminApi.createAccount({ name, type:'bank', is_active:true }); const accounts = await adminApi.listAccounts(); setMasterData((prev)=>({ ...prev, account: (accounts||[]).map((a)=>({ value:a.name, label:`${a.name} (${a.type})`})) })); }}
+                onCreate={async (name)=>{ await adminApi.createAccount({ name, type:'bank', is_active:true }); const accounts = await adminApi.listAccounts(); setMasterData((prev)=>({ ...prev, account: ((accounts as any[])||[]).map((a: any)=>({ value:a.name, label:`${a.name} (${a.type})`})) })); }}
               />
               <ComboBox
-                options={(masterData.account || [])}
+                options={(masterData.account || []) as any}
                 value={actionForm.params.investment_account || ''}
                 onChange={(v)=>setActionForm(s=>({ ...s, params:{...s.params, investment_account:v}}))}
                 placeholder="Investment Account"
                 allowCreate
-                onCreate={async (name)=>{ await adminApi.createAccount({ name, type:'investment', is_active:true }); const accounts = await adminApi.listAccounts(); setMasterData((prev)=>({ ...prev, account: (accounts||[]).map((a)=>({ value:a.name, label:`${a.name} (${a.type})`})) })); }}
+                onCreate={async (name)=>{ await adminApi.createAccount({ name, type:'investment', is_active:true }); const accounts = await adminApi.listAccounts(); setMasterData((prev)=>({ ...prev, account: ((accounts as any[])||[]).map((a: any)=>({ value:a.name, label:`${a.name} (${a.type})`})) })); }}
               />
               <input className="px-3 py-2 border rounded" placeholder="Asset" onChange={(e)=>setActionForm(s=>({ ...s, params:{...s.params, asset:e.target.value}}))} />
               <input className="px-3 py-2 border rounded" placeholder="Amount" onChange={(e)=>setActionForm(s=>({ ...s, params:{...s.params, amount:e.target.value}}))} />
@@ -585,12 +639,12 @@ const TransactionPage = () => {
                 onChange={(v)=>setActionForm(s=>({ ...s, params:{...s.params, date:v}}))}
               />
               <ComboBox
-                options={(masterData.account || [])}
+                options={(masterData.account || []) as any}
                 value={actionForm.params.investment_account || ''}
                 onChange={(v)=>setActionForm(s=>({ ...s, params:{...s.params, investment_account:v}}))}
                 placeholder="Investment Account"
                 allowCreate
-                onCreate={async (name)=>{ await adminApi.createAccount({ name, type:'investment', is_active:true }); const accounts = await adminApi.listAccounts(); setMasterData((prev)=>({ ...prev, account: (accounts||[]).map((a)=>({ value:a.name, label:`${a.name} (${a.type})`})) })); }}
+                onCreate={async (name)=>{ await adminApi.createAccount({ name, type:'investment', is_active:true }); const accounts = await adminApi.listAccounts(); setMasterData((prev)=>({ ...prev, account: ((accounts as any[])||[]).map((a: any)=>({ value:a.name, label:`${a.name} (${a.type})`})) })); }}
               />
               <ComboBox
                 options={(masterData.account || [])}
@@ -598,7 +652,7 @@ const TransactionPage = () => {
                 onChange={(v)=>setActionForm(s=>({ ...s, params:{...s.params, destination_account:v}}))}
                 placeholder="Destination Account"
                 allowCreate
-                onCreate={async (name)=>{ await adminApi.createAccount({ name, type:'bank', is_active:true }); const accounts = await adminApi.listAccounts(); setMasterData((prev)=>({ ...prev, account: (accounts||[]).map((a)=>({ value:a.name, label:`${a.name} (${a.type})`})) })); }}
+                onCreate={async (name)=>{ await adminApi.createAccount({ name, type:'bank', is_active:true }); const accounts = await adminApi.listAccounts(); setMasterData((prev)=>({ ...prev, account: ((accounts as any[])||[]).map((a: any)=>({ value:a.name, label:`${a.name} (${a.type})`})) })); }}
               />
               <input className="px-3 py-2 border rounded" placeholder="Asset" onChange={(e)=>setActionForm(s=>({ ...s, params:{...s.params, asset:e.target.value}}))} />
               <input className="px-3 py-2 border rounded" placeholder="Amount" onChange={(e)=>setActionForm(s=>({ ...s, params:{...s.params, amount:e.target.value}}))} />
@@ -621,18 +675,20 @@ const TransactionPage = () => {
 
       {/* Transactions Table */}
       <DataTable
-        data={transactions}
-        columns={columns}
+        data={transactions as any[]}
+        columns={columns as any[]}
         loading={loading}
         error={error}
         emptyMessage="No transactions found. Create your first transaction above."
         editable={true}
         onCellEdit={handleInlineEdit}
-        masterData={masterData}
-        onRowClick={null} // Disable row click when inline editing is enabled
-        actions={['edit', 'delete']}
-        onEdit={handleEditClick}
-        onDelete={handleDeleteTransaction}
+        masterData={masterData as any}
+        onRowClick={null}
+        actions={['edit', 'delete', 'recalc']}
+        onEdit={handleEditClick as any}
+        onDelete={handleDeleteTransaction as any}
+        busyRowIds={busyRowIds as any}
+        onRecalc={async (row: any)=>{ try { setBusyRowIds((s)=> { const next = new Set(s); next.add(row.id as IdType); return next; }); const updated = await transactionApi.recalc(row.id, false); if (updated) { setTransactions((prev)=> prev.map((t)=> t.id===row.id ? (updated as Transaction) : t)); showSuccessToast('Row refreshed'); } else { await loadTransactions(); } } catch(e){ showErrorToast('Row refresh failed'); } finally { setBusyRowIds((s)=>{ const next = new Set(s); next.delete(row.id as IdType); return next; }); } }}
       />
     </div>
   );
