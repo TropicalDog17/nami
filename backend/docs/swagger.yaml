@@ -182,6 +182,23 @@ definitions:
       total_value_vnd:
         type: number
     type: object
+  github_com_tropicaldog17_nami_internal_models.OutflowProjection:
+    properties:
+      account:
+        type: string
+      as_of:
+        type: string
+      asset:
+        type: string
+      id:
+        type: string
+      interest_accrued:
+        type: number
+      remaining_principal:
+        type: number
+      total_outflow:
+        type: number
+    type: object
   github_com_tropicaldog17_nami_internal_models.OutstandingBorrow:
     properties:
       account:
@@ -269,6 +286,13 @@ definitions:
         type: number
       asset:
         type: string
+      borrow_active:
+        type: boolean
+      borrow_apr:
+        description: Borrow metadata (for type = 'borrow')
+        type: number
+      borrow_term_days:
+        type: integer
       cashflow_usd:
         type: number
       cashflow_vnd:
@@ -308,6 +332,9 @@ definitions:
         type: string
       id:
         type: string
+      internal_flow:
+        description: Flow flags
+        type: boolean
       note:
         type: string
       price_local:
@@ -542,6 +569,31 @@ paths:
           schema:
             type: string
       summary: Get cash flow report
+      tags:
+      - reports
+  /reports/expected-borrow-outflows:
+    get:
+      description: Project remaining principal and interest for active borrows as
+        of a date
+      parameters:
+      - description: As-of date (YYYY-MM-DD)
+        in: query
+        name: as_of
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/github_com_tropicaldog17_nami_internal_models.OutflowProjection'
+            type: array
+        "500":
+          description: Internal server error
+          schema:
+            type: string
+      summary: Get expected borrow outflows
       tags:
       - reports
   /reports/holdings:

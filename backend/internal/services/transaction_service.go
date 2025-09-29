@@ -59,6 +59,7 @@ func (s *transactionService) CreateTransaction(ctx context.Context, tx *models.T
 			fee_usd, fee_vnd,
 			delta_qty, cashflow_usd, cashflow_vnd,
 			horizon, entry_date, exit_date, fx_impact,
+			borrow_apr, borrow_term_days, borrow_active, internal_flow,
 			fx_source, fx_timestamp, created_at, updated_at
 		) VALUES (
 			uuid_generate_v4(), $1, $2, $3, $4, $5, $6, $7,
@@ -67,7 +68,8 @@ func (s *transactionService) CreateTransaction(ctx context.Context, tx *models.T
 			$15, $16,
 			$17, $18, $19,
 			$20, $21, $22, $23,
-			$24, $25, $26, $27
+			$24, $25, $26, $27,
+			$28, $29, $30, $31
 		) RETURNING id`
 
 	err := s.db.QueryRowContext(ctx, query,
@@ -77,6 +79,7 @@ func (s *transactionService) CreateTransaction(ctx context.Context, tx *models.T
 		tx.FeeUSD, tx.FeeVND,
 		tx.DeltaQty, tx.CashFlowUSD, tx.CashFlowVND,
 		tx.Horizon, tx.EntryDate, tx.ExitDate, tx.FXImpact,
+		tx.BorrowAPR, tx.BorrowTermDays, tx.BorrowActive, tx.InternalFlow,
 		tx.FXSource, tx.FXTimestamp, tx.CreatedAt, tx.UpdatedAt,
 	).Scan(&tx.ID)
 
@@ -85,6 +88,215 @@ func (s *transactionService) CreateTransaction(ctx context.Context, tx *models.T
 	}
 
 	return nil
+}
+
+// CreateTransactionsBatch creates multiple transactions atomically and optionally links them.
+func (s *transactionService) CreateTransactionsBatch(ctx context.Context, txs []*models.Transaction, linkType string) ([]*models.Transaction, error) {
+	if len(txs) == 0 {
+		return nil, nil
+	}
+
+	// Begin SQL transaction
+	sqlTx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to begin tx: %w", err)
+	}
+	defer func() {
+		if err != nil {
+			_ = sqlTx.Rollback()
+		}
+	}()
+
+	created := make([]*models.Transaction, 0, len(txs))
+
+	insertQuery := `
+        INSERT INTO transactions (
+            id, date, type, asset, account, counterparty, tag, note,
+            quantity, price_local, amount_local,
+            fx_to_usd, fx_to_vnd, amount_usd, amount_vnd,
+            fee_usd, fee_vnd,
+            delta_qty, cashflow_usd, cashflow_vnd,
+            horizon, entry_date, exit_date, fx_impact,
+            borrow_apr, borrow_term_days, borrow_active, internal_flow,
+            fx_source, fx_timestamp, created_at, updated_at
+        ) VALUES (
+            uuid_generate_v4(), $1, $2, $3, $4, $5, $6, $7,
+            $8, $9, $10,
+            $11, $12, $13, $14,
+            $15, $16,
+            $17, $18, $19,
+            $20, $21, $22, $23,
+            $24, $25, $26, $27,
+            $28, $29, $30, $31
+        ) RETURNING id`
+
+	now := time.Now()
+	for _, t := range txs {
+		if t == nil {
+			err = fmt.Errorf("nil transaction in batch")
+			return nil, err
+		}
+		// Populate FX if needed
+		if e := s.populateFXRates(ctx, t); e != nil {
+			err = fmt.Errorf("failed to populate FX rates: %w", e)
+			return nil, err
+		}
+		if e := t.PreSave(); e != nil {
+			err = fmt.Errorf("transaction validation failed: %w", e)
+			return nil, err
+		}
+		t.CreatedAt = now
+		t.UpdatedAt = now
+
+		// Exec insert within the SQL tx
+		scanErr := sqlTx.QueryRowContext(ctx, insertQuery,
+			t.Date, t.Type, t.Asset, t.Account, t.Counterparty, t.Tag, t.Note,
+			t.Quantity, t.PriceLocal, t.AmountLocal,
+			t.FXToUSD, t.FXToVND, t.AmountUSD, t.AmountVND,
+			t.FeeUSD, t.FeeVND,
+			t.DeltaQty, t.CashFlowUSD, t.CashFlowVND,
+			t.Horizon, t.EntryDate, t.ExitDate, t.FXImpact,
+			t.BorrowAPR, t.BorrowTermDays, t.BorrowActive, t.InternalFlow,
+			t.FXSource, t.FXTimestamp, t.CreatedAt, t.UpdatedAt,
+		).Scan(&t.ID)
+		if scanErr != nil {
+			err = fmt.Errorf("failed to create transaction: %w", scanErr)
+			return nil, err
+		}
+		created = append(created, t)
+	}
+
+	// Optional linking: star topology from the first tx to others
+	if linkType != "" && len(created) > 1 {
+		linkStmt, prepErr := sqlTx.PrepareContext(ctx, `INSERT INTO transaction_links (link_type, from_tx, to_tx) VALUES ($1, $2, $3)`)
+		if prepErr != nil {
+			err = fmt.Errorf("failed to prepare link insert: %w", prepErr)
+			return nil, err
+		}
+		defer linkStmt.Close()
+		rootID := created[0].ID
+		for i := 1; i < len(created); i++ {
+			if _, execErr := linkStmt.ExecContext(ctx, linkType, rootID, created[i].ID); execErr != nil {
+				err = fmt.Errorf("failed to insert link: %w", execErr)
+				return nil, err
+			}
+		}
+	}
+
+	if err = sqlTx.Commit(); err != nil {
+		return nil, fmt.Errorf("failed to commit tx: %w", err)
+	}
+	return created, nil
+}
+
+// DeleteActionGroup deletes all transactions linked by an action group that includes oneID.
+func (s *transactionService) DeleteActionGroup(ctx context.Context, oneID string) (int, error) {
+	if oneID == "" {
+		return 0, fmt.Errorf("id is required")
+	}
+	sqlTx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, fmt.Errorf("failed to begin tx: %w", err)
+	}
+	defer func() {
+		if err != nil {
+			_ = sqlTx.Rollback()
+		}
+	}()
+
+	// Find action group root: any link_type='action' rows that connect to oneID.
+	// We delete all tx ids in the connected component formed by star topology.
+	// Strategy: find root candidates where from_tx in links that have either from_tx=oneID or to_tx=oneID.
+	// If oneID is not in any link, delete only that transaction.
+
+	// Gather candidate ids in this group
+	queryIDs := `
+        WITH group_links AS (
+            SELECT from_tx, to_tx
+            FROM transaction_links
+            WHERE link_type = 'action' AND (from_tx = $1 OR to_tx = $1)
+        ), roots AS (
+            SELECT DISTINCT from_tx AS root FROM group_links
+        ), members AS (
+            SELECT root FROM roots
+            UNION
+            SELECT to_tx AS root FROM group_links
+        )
+        SELECT DISTINCT id FROM (
+            SELECT $1::uuid AS id
+            UNION
+            SELECT root AS id FROM members
+        ) s`
+
+	rows, qerr := sqlTx.QueryContext(ctx, queryIDs, oneID)
+	if qerr != nil {
+		err = fmt.Errorf("failed to query group ids: %w", qerr)
+		return 0, err
+	}
+	defer rows.Close()
+
+	ids := make([]string, 0, 8)
+	for rows.Next() {
+		var id string
+		if scanErr := rows.Scan(&id); scanErr != nil {
+			err = fmt.Errorf("failed to scan id: %w", scanErr)
+			return 0, err
+		}
+		ids = append(ids, id)
+	}
+
+	if len(ids) == 0 {
+		// Not linked; delete the single row
+		res, derr := sqlTx.ExecContext(ctx, `DELETE FROM transactions WHERE id = $1`, oneID)
+		if derr != nil {
+			err = fmt.Errorf("failed to delete transaction: %w", derr)
+			return 0, err
+		}
+		n, _ := res.RowsAffected()
+		if cerr := sqlTx.Commit(); cerr != nil {
+			return int(n), fmt.Errorf("failed to commit: %w", cerr)
+		}
+		return int(n), nil
+	}
+
+	// Build placeholders for IN clauses
+	ph := make([]string, len(ids))
+	args := make([]interface{}, 0, len(ids)*2)
+	for i, id := range ids {
+		ph[i] = fmt.Sprintf("$%d", i+1)
+		args = append(args, id)
+	}
+	inClause := strings.Join(ph, ",")
+
+	// Delete links first (ON DELETE CASCADE would also handle via transaction FK, but be explicit and scoped)
+	linkQuery := fmt.Sprintf(`DELETE FROM transaction_links WHERE link_type = 'action' AND (from_tx IN (%s) OR to_tx IN (%s))`, inClause, inClause)
+	if _, lerr := sqlTx.ExecContext(ctx, linkQuery, append(args, args...)...); lerr != nil {
+		err = fmt.Errorf("failed to delete action links: %w", lerr)
+		return 0, err
+	}
+	// Delete all transactions in group
+	delQuery := fmt.Sprintf(`DELETE FROM transactions WHERE id IN (%s)`, inClause)
+	res, derr := sqlTx.ExecContext(ctx, delQuery, args...)
+	if derr != nil {
+		err = fmt.Errorf("failed to delete transactions: %w", derr)
+		return 0, err
+	}
+	affected, _ := res.RowsAffected()
+	if cerr := sqlTx.Commit(); cerr != nil {
+		return int(affected), fmt.Errorf("failed to commit: %w", cerr)
+	}
+	return int(affected), nil
+}
+
+// pqStringArray converts []string to a driver-friendly array parameter
+func pqStringArray(items []string) interface{} {
+	// Rely on pq array inference by using the pg-style array literal via sql package isn't straightforward here.
+	// We can use the text[] cast pattern.
+	// However, since we're using Exec with ANY($1), most drivers require pq.Array.
+	// To avoid importing lib/pq here, we pass as []any for IN building; keep simple using ANY with text[] literal.
+	// Fallback: build a text array literal. Ensure proper escaping is not needed for UUIDs.
+	// NOTE: Using this helper for simplicity within this codebase; consider pq.Array in future.
+	return interface{}(items)
 }
 
 // RecalculateFX recalculates FX rates and derived amounts for existing transactions.
@@ -241,6 +453,7 @@ func (s *transactionService) GetTransaction(ctx context.Context, id string) (*mo
 			   fee_usd, fee_vnd,
 			   delta_qty, cashflow_usd, cashflow_vnd,
 			   horizon, entry_date, exit_date, fx_impact,
+		       borrow_apr, borrow_term_days, borrow_active, internal_flow,
 			   fx_source, fx_timestamp, created_at, updated_at
 		FROM transactions
 		WHERE id = $1`
@@ -253,6 +466,7 @@ func (s *transactionService) GetTransaction(ctx context.Context, id string) (*mo
 		&tx.FeeUSD, &tx.FeeVND,
 		&tx.DeltaQty, &tx.CashFlowUSD, &tx.CashFlowVND,
 		&tx.Horizon, &tx.EntryDate, &tx.ExitDate, &tx.FXImpact,
+		&tx.BorrowAPR, &tx.BorrowTermDays, &tx.BorrowActive, &tx.InternalFlow,
 		&tx.FXSource, &tx.FXTimestamp, &tx.CreatedAt, &tx.UpdatedAt,
 	)
 
@@ -286,6 +500,7 @@ func (s *transactionService) ListTransactions(ctx context.Context, filter *model
 			&tx.FeeUSD, &tx.FeeVND,
 			&tx.DeltaQty, &tx.CashFlowUSD, &tx.CashFlowVND,
 			&tx.Horizon, &tx.EntryDate, &tx.ExitDate, &tx.FXImpact,
+			&tx.BorrowAPR, &tx.BorrowTermDays, &tx.BorrowActive, &tx.InternalFlow,
 			&tx.FXSource, &tx.FXTimestamp, &tx.CreatedAt, &tx.UpdatedAt,
 		)
 		if err != nil {
@@ -322,7 +537,9 @@ func (s *transactionService) UpdateTransaction(ctx context.Context, tx *models.T
 			fee_usd = $16, fee_vnd = $17,
 			delta_qty = $18, cashflow_usd = $19, cashflow_vnd = $20,
 			horizon = $21, entry_date = $22, exit_date = $23, fx_impact = $24,
-			fx_source = $25, fx_timestamp = $26, updated_at = $27
+			borrow_apr = $25, borrow_term_days = $26, borrow_active = $27,
+			internal_flow = $28,
+			fx_source = $29, fx_timestamp = $30, updated_at = $31
 		WHERE id = $1`
 
 	// Handle nil pointers for database compatibility
@@ -374,6 +591,8 @@ func (s *transactionService) UpdateTransaction(ctx context.Context, tx *models.T
 		merged.FeeUSD, merged.FeeVND,
 		merged.DeltaQty, merged.CashFlowUSD, merged.CashFlowVND,
 		horizon, entryDate, exitDate, fxImpact,
+		merged.BorrowAPR, merged.BorrowTermDays, merged.BorrowActive,
+		merged.InternalFlow,
 		fxSource, fxTimestamp, merged.UpdatedAt,
 	)
 
@@ -442,6 +661,7 @@ func (s *transactionService) buildListQuery(filter *models.TransactionFilter, is
 			   fee_usd, fee_vnd,
 			   delta_qty, cashflow_usd, cashflow_vnd,
 			   horizon, entry_date, exit_date, fx_impact,
+		       borrow_apr, borrow_term_days, borrow_active, internal_flow,
 			   fx_source, fx_timestamp, created_at, updated_at`
 	}
 

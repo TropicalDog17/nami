@@ -309,6 +309,43 @@ const docTemplate = `{
                 }
             }
         },
+        "/reports/expected-borrow-outflows": {
+            "get": {
+                "description": "Project remaining principal and interest for active borrows as of a date",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "reports"
+                ],
+                "summary": "Get expected borrow outflows",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "As-of date (YYYY-MM-DD)",
+                        "name": "as_of",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/github_com_tropicaldog17_nami_internal_models.OutflowProjection"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/reports/holdings": {
             "get": {
                 "description": "Get current holdings as of a date",
@@ -1090,6 +1127,32 @@ const docTemplate = `{
                 }
             }
         },
+        "github_com_tropicaldog17_nami_internal_models.OutflowProjection": {
+            "type": "object",
+            "properties": {
+                "account": {
+                    "type": "string"
+                },
+                "as_of": {
+                    "type": "string"
+                },
+                "asset": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "interest_accrued": {
+                    "type": "number"
+                },
+                "remaining_principal": {
+                    "type": "number"
+                },
+                "total_outflow": {
+                    "type": "number"
+                }
+            }
+        },
         "github_com_tropicaldog17_nami_internal_models.OutstandingBorrow": {
             "type": "object",
             "properties": {
@@ -1223,6 +1286,16 @@ const docTemplate = `{
                 "asset": {
                     "type": "string"
                 },
+                "borrow_active": {
+                    "type": "boolean"
+                },
+                "borrow_apr": {
+                    "description": "Borrow metadata (for type = 'borrow')",
+                    "type": "number"
+                },
+                "borrow_term_days": {
+                    "type": "integer"
+                },
                 "cashflow_usd": {
                     "type": "number"
                 },
@@ -1278,6 +1351,10 @@ const docTemplate = `{
                 },
                 "id": {
                     "type": "string"
+                },
+                "internal_flow": {
+                    "description": "Flow flags",
+                    "type": "boolean"
                 },
                 "note": {
                     "type": "string"

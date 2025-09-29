@@ -50,6 +50,8 @@ const TransactionPage: React.FC = () => {
     action: '',
     params: {},
   });
+  const [activeStakeOptions, setActiveStakeOptions] = useState<Option[]>([]);
+  const [stakeIdToInfo, setStakeIdToInfo] = useState<Record<string, any>>({});
 
   const todayStr = useMemo(() => new Date().toISOString().split('T')[0], []);
 
@@ -58,6 +60,42 @@ const TransactionPage: React.FC = () => {
     loadTransactions();
     loadMasterData();
   }, [filters]);
+
+  // Load active stakes when switching to Unstake action
+  useEffect(() => {
+    const loadActiveStakes = async (): Promise<void> => {
+      try {
+        // Fetch accounts to filter investment accounts
+        const accounts = (await adminApi.listAccounts()) as any[];
+        const investmentAccounts = (accounts || []).filter((a: any) => (a?.type || '').toLowerCase() === 'investment');
+        const investNames = investmentAccounts.map((a: any) => a.name);
+
+        // Fetch deposit transactions for those accounts
+        const deposits = (await transactionApi.list({ types: ['deposit'], accounts: investNames })) as any[];
+        const openDeposits = (deposits || []).filter((t: any) => !t.exit_date);
+
+        const idToInfo: Record<string, any> = {};
+        const options: Option[] = openDeposits.map((t: any) => {
+          idToInfo[String(t.id)] = t;
+          const d = new Date(t.date);
+          const dStr = isNaN(d.getTime()) ? String(t.date) : d.toISOString().split('T')[0];
+          return {
+            value: String(t.id),
+            label: `${t.asset} @ ${t.account} — ${dStr} — ${t.id}`,
+          } as Option;
+        });
+
+        setStakeIdToInfo(idToInfo);
+        setActiveStakeOptions(options);
+      } catch (e) {
+        // Silent failure; combo will simply be empty
+      }
+    };
+
+    if (actionForm.action === 'unstake') {
+      loadActiveStakes();
+    }
+  }, [actionForm.action]);
 
   const loadMasterData = async (): Promise<void> => {
     try {
@@ -608,7 +646,14 @@ const TransactionPage: React.FC = () => {
                 allowCreate
                 onCreate={async (name)=>{ await adminApi.createAccount({ name, type:'investment', is_active:true }); const accounts = await adminApi.listAccounts(); setMasterData((prev)=>({ ...prev, account: ((accounts as any[])||[]).map((a: any)=>({ value:a.name, label:`${a.name} (${a.type})`})) })); }}
               />
-              <input className="px-3 py-2 border rounded" placeholder="Asset" onChange={(e)=>setActionForm(s=>({ ...s, params:{...s.params, asset:e.target.value}}))} />
+              <ComboBox
+                options={(masterData.asset || []) as any}
+                value={actionForm.params.asset || ''}
+                onChange={(v)=>setActionForm(s=>({ ...s, params:{...s.params, asset:v}}))}
+                placeholder="Asset"
+                allowCreate
+                onCreate={async (symbol)=>{ await adminApi.createAsset({ symbol, name: symbol, decimals: 0, is_active: true }); const assets = await adminApi.listAssets(); setMasterData((prev)=>({ ...prev, asset: ((assets as any[])||[]).map((a: any)=>({ value:a.symbol, label:`${a.symbol} - ${a.name}`})) })); }}
+              />
               <input className="px-3 py-2 border rounded" placeholder="Amount" onChange={(e)=>setActionForm(s=>({ ...s, params:{...s.params, amount:e.target.value}}))} />
               <input className="px-3 py-2 border rounded" placeholder="Fee % (optional)" onChange={(e)=>setActionForm(s=>({ ...s, params:{...s.params, fee_percent:e.target.value}}))} />
               <input className="px-3 py-2 border rounded" placeholder="Horizon 'short-term'|'long-term' (optional)" onChange={(e)=>setActionForm(s=>({ ...s, params:{...s.params, horizon:e.target.value}}))} />
@@ -626,6 +671,23 @@ const TransactionPage: React.FC = () => {
                 onChange={(v)=>setActionForm(s=>({ ...s, params:{...s.params, date:v}}))}
               />
               <ComboBox
+                options={activeStakeOptions as any}
+                value={actionForm.params.stake_deposit_tx_id || ''}
+                onChange={(id)=>{
+                  const info = stakeIdToInfo[String(id)] || {};
+                  setActionForm((s)=>({
+                    ...s,
+                    params: {
+                      ...s.params,
+                      stake_deposit_tx_id: id,
+                      investment_account: info.account || s.params.investment_account,
+                      asset: info.asset || s.params.asset,
+                    },
+                  }));
+                }}
+                placeholder="Active Investment (optional)"
+              />
+              <ComboBox
                 options={(masterData.account || []) as any}
                 value={actionForm.params.investment_account || ''}
                 onChange={(v)=>setActionForm(s=>({ ...s, params:{...s.params, investment_account:v}}))}
@@ -641,9 +703,31 @@ const TransactionPage: React.FC = () => {
                 allowCreate
                 onCreate={async (name)=>{ await adminApi.createAccount({ name, type:'bank', is_active:true }); const accounts = await adminApi.listAccounts(); setMasterData((prev)=>({ ...prev, account: ((accounts as any[])||[]).map((a: any)=>({ value:a.name, label:`${a.name} (${a.type})`})) })); }}
               />
-              <input className="px-3 py-2 border rounded" placeholder="Asset" onChange={(e)=>setActionForm(s=>({ ...s, params:{...s.params, asset:e.target.value}}))} />
-              <input className="px-3 py-2 border rounded" placeholder="Amount" onChange={(e)=>setActionForm(s=>({ ...s, params:{...s.params, amount:e.target.value}}))} />
-              <input className="px-3 py-2 border rounded" placeholder="Stake Deposit Tx ID (optional)" onChange={(e)=>setActionForm(s=>({ ...s, params:{...s.params, stake_deposit_tx_id:e.target.value}}))} />
+              <ComboBox
+                options={(masterData.asset || []) as any}
+                value={actionForm.params.asset || ''}
+                onChange={(v)=>setActionForm(s=>({ ...s, params:{...s.params, asset:v}}))}
+                placeholder="Asset"
+                allowCreate
+                onCreate={async (symbol)=>{ await adminApi.createAsset({ symbol, name: symbol, decimals: 0, is_active: true }); const assets = await adminApi.listAssets(); setMasterData((prev)=>({ ...prev, asset: ((assets as any[])||[]).map((a: any)=>({ value:a.symbol, label:`${a.symbol} - ${a.name}`})) })); }}
+              />
+              <div className="flex items-center space-x-2">
+                <input
+                  id="unstake-close-all"
+                  type="checkbox"
+                  className="h-4 w-4 text-blue-600 border-gray-300 rounded"
+                  checked={Boolean(actionForm.params.close_all)}
+                  onChange={(e)=>setActionForm(s=>({ ...s, params:{...s.params, close_all:e.target.checked}}))}
+                />
+                <label htmlFor="unstake-close-all" className="text-sm text-gray-700">Close All</label>
+              </div>
+              <input
+                className={`px-3 py-2 border rounded ${actionForm.params.close_all ? 'bg-gray-100 cursor-not-allowed' : ''}`}
+                placeholder="Amount"
+                onChange={(e)=>setActionForm(s=>({ ...s, params:{...s.params, amount:e.target.value}}))}
+                disabled={Boolean(actionForm.params.close_all)}
+              />
+              <input className="px-3 py-2 border rounded" placeholder="Stake Deposit Tx ID (optional)" value={actionForm.params.stake_deposit_tx_id || ''} onChange={(e)=>setActionForm(s=>({ ...s, params:{...s.params, stake_deposit_tx_id:e.target.value}}))} />
               <input className="px-3 py-2 border rounded" placeholder="Note (optional)" onChange={(e)=>setActionForm(s=>({ ...s, params:{...s.params, note:e.target.value}}))} />
             </div>
           )}

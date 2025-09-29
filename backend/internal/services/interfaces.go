@@ -11,10 +11,17 @@ import (
 // TransactionService defines the interface for transaction operations
 type TransactionService interface {
 	CreateTransaction(ctx context.Context, tx *models.Transaction) error
+	// CreateTransactionsBatch creates multiple transactions atomically and optionally links them with a link type.
+	// When linkType is non-empty and 2+ transactions are provided, links are inserted in a star topology
+	// from the first transaction to all others using table `transaction_links`.
+	CreateTransactionsBatch(ctx context.Context, txs []*models.Transaction, linkType string) ([]*models.Transaction, error)
 	GetTransaction(ctx context.Context, id string) (*models.Transaction, error)
 	ListTransactions(ctx context.Context, filter *models.TransactionFilter) ([]*models.Transaction, error)
 	UpdateTransaction(ctx context.Context, tx *models.Transaction) error
 	DeleteTransaction(ctx context.Context, id string) error
+	// DeleteActionGroup deletes all transactions linked together by link_type = 'action' that are associated with the
+	// same group as the provided transaction id. Deletion is performed atomically in a single SQL transaction.
+	DeleteActionGroup(ctx context.Context, oneID string) (int, error)
 	GetTransactionCount(ctx context.Context, filter *models.TransactionFilter) (int, error)
 	// RecalculateFX recalculates FX and derived amounts for existing rows.
 	// If onlyMissing is true, only rows with missing/zero FX are updated; otherwise all rows.
@@ -42,6 +49,7 @@ type ReportingService interface {
 	GetHoldingsByAccount(ctx context.Context, asOf time.Time) (map[string][]*models.Holding, error)
 	GetHoldingsByAsset(ctx context.Context, asOf time.Time) (map[string]*models.Holding, error)
 	GetOutstandingBorrows(ctx context.Context, asOf time.Time) (map[string]map[string]decimal.Decimal, error)
+	GetExpectedBorrowOutflows(ctx context.Context, asOf time.Time) ([]*models.OutflowProjection, error)
 }
 
 // AdminService defines the interface for admin operations

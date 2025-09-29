@@ -27,6 +27,7 @@ const TransactionForm = ({ transaction = null, onSubmit, onCancel }) => {
     horizon: '',
     entry_date: '',
     exit_date: '',
+    internal_flow: false,
   })
 
   const [errors, setErrors] = useState({})
@@ -55,6 +56,7 @@ const TransactionForm = ({ transaction = null, onSubmit, onCancel }) => {
         horizon: transaction.horizon || '',
         entry_date: transaction.entry_date ? new Date(transaction.entry_date).toISOString().split('T')[0] : '',
         exit_date: transaction.exit_date ? new Date(transaction.exit_date).toISOString().split('T')[0] : '',
+        internal_flow: Boolean(transaction.internal_flow) || false,
       })
     }
   }, [transaction])
@@ -163,6 +165,7 @@ const TransactionForm = ({ transaction = null, onSubmit, onCancel }) => {
       horizon: formData.horizon || null,
       entry_date: formData.entry_date || null,
       exit_date: formData.exit_date || null,
+      internal_flow: !!formData.internal_flow,
     }
 
     onSubmit(transactionData)
@@ -324,6 +327,23 @@ const TransactionForm = ({ transaction = null, onSubmit, onCancel }) => {
               placeholder="Auto-calculated"
               className="bg-gray-50"
             />
+          </div>
+        </div>
+
+        {/* Internal Flow Flag */}
+        <div className="border-t border-gray-200 pt-4">
+          <h4 className="text-md font-medium text-gray-900 mb-4">Advanced</h4>
+          <div className="flex items-center">
+            <input
+              id="internal_flow"
+              type="checkbox"
+              checked={!!formData.internal_flow}
+              onChange={(e) => handleInputChange('internal_flow', e.target.checked)}
+              className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+            />
+            <label htmlFor="internal_flow" className="ml-2 block text-sm text-gray-700">
+              Treat as internal P2P trade (zero cash flow for Buy/Sell)
+            </label>
           </div>
         </div>
 

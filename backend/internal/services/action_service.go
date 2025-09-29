@@ -104,6 +104,23 @@ func getDate(params map[string]interface{}, key string) (time.Time, bool) {
 	return time.Now(), false
 }
 
+func getBool(params map[string]interface{}, key string) (bool, bool) {
+	if v, ok := params[key]; ok {
+		switch t := v.(type) {
+		case bool:
+			return t, true
+		case string:
+			if t == "true" {
+				return true, true
+			}
+			if t == "false" {
+				return false, true
+			}
+		}
+	}
+	return false, false
+}
+
 // P2P buy/sell USDT with VND
 // Params: date, exchange_account (e.g. "Binance Spot"), bank_account (e.g. "Bank"), vnd_amount, price_vnd_per_usdt, fee_vnd(optional), counterparty(optional)
 func (s *actionService) performP2P(ctx context.Context, req *models.ActionRequest, isBuy bool) (*models.ActionResponse, error) {
@@ -143,17 +160,15 @@ func (s *actionService) performP2P(ctx context.Context, req *models.ActionReques
 				}
 				return &counterparty
 			}(),
-			Quantity:   vndAmount,
-			PriceLocal: decimal.NewFromInt(1),
-			FXToUSD:    decimal.NewFromFloat(usdPerVnd),
-			FXToVND:    decimal.NewFromInt(1),
-			FeeUSD:     feeVND.Mul(decimal.NewFromFloat(usdPerVnd)),
-			FeeVND:     feeVND,
+			Quantity:     vndAmount,
+			PriceLocal:   decimal.NewFromInt(1),
+			FXToUSD:      decimal.NewFromFloat(usdPerVnd),
+			FXToVND:      decimal.NewFromInt(1),
+			FeeUSD:       feeVND.Mul(decimal.NewFromFloat(usdPerVnd)),
+			FeeVND:       feeVND,
+			InternalFlow: func() *bool { b := true; return &b }(),
 		}
 		bankTx.PreSave()
-		if err := s.transactionService.CreateTransaction(ctx, bankTx); err != nil {
-			return nil, err
-		}
 		created = append(created, bankTx)
 
 		// 2) Exchange USDT inflow with price in VND per USDT
@@ -168,16 +183,20 @@ func (s *actionService) performP2P(ctx context.Context, req *models.ActionReques
 				}
 				return &counterparty
 			}(),
-			Quantity:   qty,
-			PriceLocal: priceVND,
-			FXToUSD:    decimal.NewFromFloat(usdPerVnd),
-			FXToVND:    decimal.NewFromInt(1),
+			Quantity:     qty,
+			PriceLocal:   priceVND,
+			FXToUSD:      decimal.NewFromFloat(usdPerVnd),
+			FXToVND:      decimal.NewFromInt(1),
+			InternalFlow: func() *bool { b := true; return &b }(),
 		}
 		exchTx.PreSave()
-		if err := s.transactionService.CreateTransaction(ctx, exchTx); err != nil {
+		created = append(created, exchTx)
+		// Create atomically and link as one action
+		saved, err := s.transactionService.CreateTransactionsBatch(ctx, created, "action")
+		if err != nil {
 			return nil, err
 		}
-		created = append(created, exchTx)
+		return &models.ActionResponse{Action: req.Action, Transactions: saved, ExecutedAt: time.Now()}, nil
 	} else {
 		// SELL USDT for VND
 		// 1) Exchange USDT outflow
@@ -192,15 +211,13 @@ func (s *actionService) performP2P(ctx context.Context, req *models.ActionReques
 				}
 				return &counterparty
 			}(),
-			Quantity:   qty,
-			PriceLocal: priceVND,
-			FXToUSD:    decimal.NewFromFloat(usdPerVnd),
-			FXToVND:    decimal.NewFromInt(1),
+			Quantity:     qty,
+			PriceLocal:   priceVND,
+			FXToUSD:      decimal.NewFromFloat(usdPerVnd),
+			FXToVND:      decimal.NewFromInt(1),
+			InternalFlow: func() *bool { b := true; return &b }(),
 		}
 		usdtOut.PreSave()
-		if err := s.transactionService.CreateTransaction(ctx, usdtOut); err != nil {
-			return nil, err
-		}
 		created = append(created, usdtOut)
 
 		// 2) Bank VND inflow
@@ -215,15 +232,13 @@ func (s *actionService) performP2P(ctx context.Context, req *models.ActionReques
 				}
 				return &counterparty
 			}(),
-			Quantity:   vndAmount,
-			PriceLocal: decimal.NewFromInt(1),
-			FXToUSD:    decimal.NewFromFloat(usdPerVnd),
-			FXToVND:    decimal.NewFromInt(1),
+			Quantity:     vndAmount,
+			PriceLocal:   decimal.NewFromInt(1),
+			FXToUSD:      decimal.NewFromFloat(usdPerVnd),
+			FXToVND:      decimal.NewFromInt(1),
+			InternalFlow: func() *bool { b := true; return &b }(),
 		}
 		vndIn.PreSave()
-		if err := s.transactionService.CreateTransaction(ctx, vndIn); err != nil {
-			return nil, err
-		}
 		created = append(created, vndIn)
 
 		// Optional fee in VND (bank/cex fee)
@@ -239,14 +254,15 @@ func (s *actionService) performP2P(ctx context.Context, req *models.ActionReques
 				FXToVND:    decimal.NewFromInt(1),
 			}
 			feeTx.PreSave()
-			if err := s.transactionService.CreateTransaction(ctx, feeTx); err != nil {
-				return nil, err
-			}
 			created = append(created, feeTx)
 		}
 	}
-
-	return &models.ActionResponse{Action: req.Action, Transactions: created, ExecutedAt: time.Now()}, nil
+	// Create atomically and link as one action
+	saved, err := s.transactionService.CreateTransactionsBatch(ctx, created, "action")
+	if err != nil {
+		return nil, err
+	}
+	return &models.ActionResponse{Action: req.Action, Transactions: saved, ExecutedAt: time.Now()}, nil
 }
 
 // Spending VND, optionally via credit card
@@ -555,10 +571,34 @@ func (s *actionService) performUnstake(ctx context.Context, req *models.ActionRe
 	dest, ok2 := getString(p, "destination_account")
 	asset, ok3 := getString(p, "asset")
 	amount, ok4 := getDecimal(p, "amount")
+	closeAll, _ := getBool(p, "close_all")
 	stakeID, _ := getString(p, "stake_deposit_tx_id")
 	note, _ := getString(p, "note")
-	if !(ok1 && ok2 && ok3 && ok4) {
+	if !(ok1 && ok2 && ok3) {
 		return nil, fmt.Errorf("missing required params for unstake")
+	}
+
+	// If close_all is requested, compute remaining quantity in investment account for the asset as of the date
+	if closeAll && (!ok4 || amount.IsZero()) {
+		var remainingStr string
+		// Sum delta_qty up to the specified date
+		q := `SELECT COALESCE(TO_CHAR(SUM(delta_qty), 'FM999999999999999D999999999999999'), '0') FROM transactions WHERE account = $1 AND asset = $2 AND date <= $3`
+		if err := s.db.QueryRowContext(ctx, q, invest, asset, date).Scan(&remainingStr); err != nil {
+			return nil, fmt.Errorf("failed to compute remaining position: %w", err)
+		}
+		rem, err := decimal.NewFromString(remainingStr)
+		if err != nil {
+			return nil, fmt.Errorf("invalid remaining position: %w", err)
+		}
+		if rem.IsNegative() || rem.IsZero() {
+			return nil, fmt.Errorf("no remaining position to close for %s in %s", asset, invest)
+		}
+		amount = rem
+		ok4 = true
+	}
+
+	if !ok4 || amount.IsZero() {
+		return nil, fmt.Errorf("amount is required for unstake unless close_all=true and position exists")
 	}
 
 	// 1) withdraw from investment
@@ -600,6 +640,14 @@ func (s *actionService) performUnstake(ctx context.Context, req *models.ActionRe
 
 	if stakeID != "" && s.linkService != nil {
 		_ = s.linkService.CreateLink(ctx, &models.TransactionLink{LinkType: "stake_unstake", FromTx: stakeID, ToTx: outTx.ID})
+	}
+
+	// If this is a full close, mark the original stake deposit as ended by setting its ExitDate
+	if closeAll && stakeID != "" {
+		if orig, err := s.transactionService.GetTransaction(ctx, stakeID); err == nil && orig != nil {
+			orig.ExitDate = &date
+			_ = s.transactionService.UpdateTransaction(ctx, orig)
+		}
 	}
 
 	return &models.ActionResponse{Action: req.Action, Transactions: []*models.Transaction{outTx, inTx}, ExecutedAt: time.Now()}, nil

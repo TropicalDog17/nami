@@ -22,6 +22,17 @@ type Holding struct {
 	LastUpdated time.Time       `json:"last_updated" db:"last_updated"`
 }
 
+// OutflowProjection represents expected cash out for a borrow
+type OutflowProjection struct {
+	ID                 string          `json:"id"`
+	Account            string          `json:"account"`
+	Asset              string          `json:"asset"`
+	RemainingPrincipal decimal.Decimal `json:"remaining_principal"`
+	InterestAccrued    decimal.Decimal `json:"interest_accrued"`
+	TotalOutflow       decimal.Decimal `json:"total_outflow"`
+	AsOf               time.Time       `json:"as_of"`
+}
+
 // CashFlowReport represents cash flow analysis
 type CashFlowReport struct {
 	Period      Period                     `json:"period"`
@@ -34,29 +45,29 @@ type CashFlowReport struct {
 	ByType      map[string]*CashFlowByType `json:"by_type"`
 	ByTag       map[string]*CashFlowByType `json:"by_tag"`
 
-    // Operating totals exclude financing flows (borrow, repay_borrow, interest_expense)
-    OperatingInUSD  decimal.Decimal `json:"operating_in_usd"`
-    OperatingOutUSD decimal.Decimal `json:"operating_out_usd"`
-    OperatingNetUSD decimal.Decimal `json:"operating_net_usd"`
-    OperatingInVND  decimal.Decimal `json:"operating_in_vnd"`
-    OperatingOutVND decimal.Decimal `json:"operating_out_vnd"`
-    OperatingNetVND decimal.Decimal `json:"operating_net_vnd"`
+	// Operating totals exclude financing flows (borrow, repay_borrow, interest_expense)
+	OperatingInUSD  decimal.Decimal `json:"operating_in_usd"`
+	OperatingOutUSD decimal.Decimal `json:"operating_out_usd"`
+	OperatingNetUSD decimal.Decimal `json:"operating_net_usd"`
+	OperatingInVND  decimal.Decimal `json:"operating_in_vnd"`
+	OperatingOutVND decimal.Decimal `json:"operating_out_vnd"`
+	OperatingNetVND decimal.Decimal `json:"operating_net_vnd"`
 
-    // Financing totals include borrow (as inflow), repay_borrow and interest_expense (as outflows)
-    FinancingInUSD  decimal.Decimal `json:"financing_in_usd"`
-    FinancingOutUSD decimal.Decimal `json:"financing_out_usd"`
-    FinancingNetUSD decimal.Decimal `json:"financing_net_usd"`
-    FinancingInVND  decimal.Decimal `json:"financing_in_vnd"`
-    FinancingOutVND decimal.Decimal `json:"financing_out_vnd"`
-    FinancingNetVND decimal.Decimal `json:"financing_net_vnd"`
+	// Financing totals include borrow (as inflow), repay_borrow and interest_expense (as outflows)
+	FinancingInUSD  decimal.Decimal `json:"financing_in_usd"`
+	FinancingOutUSD decimal.Decimal `json:"financing_out_usd"`
+	FinancingNetUSD decimal.Decimal `json:"financing_net_usd"`
+	FinancingInVND  decimal.Decimal `json:"financing_in_vnd"`
+	FinancingOutVND decimal.Decimal `json:"financing_out_vnd"`
+	FinancingNetVND decimal.Decimal `json:"financing_net_vnd"`
 
-    // Combined totals = Operating + Financing
-    CombinedInUSD  decimal.Decimal `json:"combined_in_usd"`
-    CombinedOutUSD decimal.Decimal `json:"combined_out_usd"`
-    CombinedNetUSD decimal.Decimal `json:"combined_net_usd"`
-    CombinedInVND  decimal.Decimal `json:"combined_in_vnd"`
-    CombinedOutVND decimal.Decimal `json:"combined_out_vnd"`
-    CombinedNetVND decimal.Decimal `json:"combined_net_vnd"`
+	// Combined totals = Operating + Financing
+	CombinedInUSD  decimal.Decimal `json:"combined_in_usd"`
+	CombinedOutUSD decimal.Decimal `json:"combined_out_usd"`
+	CombinedNetUSD decimal.Decimal `json:"combined_net_usd"`
+	CombinedInVND  decimal.Decimal `json:"combined_in_vnd"`
+	CombinedOutVND decimal.Decimal `json:"combined_out_vnd"`
+	CombinedNetVND decimal.Decimal `json:"combined_net_vnd"`
 }
 
 // CashFlowByType represents cash flow breakdown by type or tag

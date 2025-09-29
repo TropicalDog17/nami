@@ -90,7 +90,7 @@ func (s *reportingService) GetCashFlow(ctx context.Context, period models.Period
 			COALESCE(SUM(CASE WHEN cashflow_vnd < 0 THEN ABS(cashflow_vnd) ELSE 0 END), 0) as total_out_vnd,
 			COALESCE(SUM(cashflow_vnd), 0) as net_vnd
 		FROM transactions 
-		WHERE date >= $1 AND date <= $2`
+			WHERE date >= $1 AND date <= $2 AND (internal_flow IS DISTINCT FROM TRUE)`
 
 	report := &models.CashFlowReport{
 		Period: period,
@@ -118,7 +118,7 @@ func (s *reportingService) GetCashFlow(ctx context.Context, period models.Period
 			COALESCE(SUM(cashflow_vnd), 0) as net_vnd,
 			COUNT(*) as count
 		FROM transactions 
-		WHERE date >= $1 AND date <= $2
+			WHERE date >= $1 AND date <= $2 AND (internal_flow IS DISTINCT FROM TRUE)
 		GROUP BY type`
 
 	rows, err := s.db.QueryContext(ctx, typeQuery, period.StartDate, period.EndDate)
@@ -180,7 +180,7 @@ func (s *reportingService) GetCashFlow(ctx context.Context, period models.Period
 			COALESCE(SUM(ABS(cashflow_usd)), 0) AS outflow_usd,
 			COALESCE(SUM(ABS(cashflow_vnd)), 0) AS outflow_vnd
 		FROM transactions
-		WHERE date >= $1 AND date <= $2 AND type IN ('repay_borrow','interest_expense')`
+			WHERE date >= $1 AND date <= $2 AND type IN ('repay_borrow','interest_expense') AND (internal_flow IS DISTINCT FROM TRUE)`
 
 	var finOutUSD, finOutVND decimal.Decimal
 	if err := s.db.QueryRowContext(ctx, finOutQuery, period.StartDate, period.EndDate).Scan(&finOutUSD, &finOutVND); err != nil {
@@ -214,7 +214,7 @@ func (s *reportingService) GetCashFlow(ctx context.Context, period models.Period
 			COALESCE(SUM(cashflow_vnd), 0) as net_vnd,
 			COUNT(*) as count
 		FROM transactions 
-		WHERE date >= $1 AND date <= $2
+			WHERE date >= $1 AND date <= $2 AND (internal_flow IS DISTINCT FROM TRUE)
 		GROUP BY tag`
 
 	tagRows, err := s.db.QueryContext(ctx, tagQuery, period.StartDate, period.EndDate)
@@ -247,7 +247,7 @@ func (s *reportingService) GetSpending(ctx context.Context, period models.Period
 			COALESCE(SUM(CASE WHEN cashflow_usd < 0 THEN ABS(cashflow_usd) ELSE 0 END), 0) as total_usd,
 			COALESCE(SUM(CASE WHEN cashflow_vnd < 0 THEN ABS(cashflow_vnd) ELSE 0 END), 0) as total_vnd
 		FROM transactions 
-		WHERE date >= $1 AND date <= $2 AND cashflow_usd < 0`
+			WHERE date >= $1 AND date <= $2 AND cashflow_usd < 0 AND (internal_flow IS DISTINCT FROM TRUE)`
 
 	report := &models.SpendingReport{
 		Period:         period,
@@ -270,7 +270,7 @@ func (s *reportingService) GetSpending(ctx context.Context, period models.Period
 			COALESCE(SUM(ABS(cashflow_vnd)), 0) as amount_vnd,
 			COUNT(*) as count
 		FROM transactions 
-		WHERE date >= $1 AND date <= $2 AND cashflow_usd < 0
+			WHERE date >= $1 AND date <= $2 AND cashflow_usd < 0 AND (internal_flow IS DISTINCT FROM TRUE)
 		GROUP BY tag
 		ORDER BY amount_usd DESC`
 
@@ -304,7 +304,7 @@ func (s *reportingService) GetSpending(ctx context.Context, period models.Period
 			COALESCE(SUM(ABS(cashflow_vnd)), 0) as amount_vnd,
 			COUNT(*) as count
 		FROM transactions 
-		WHERE date >= $1 AND date <= $2 AND cashflow_usd < 0
+			WHERE date >= $1 AND date <= $2 AND cashflow_usd < 0 AND (internal_flow IS DISTINCT FROM TRUE)
 		GROUP BY counterparty
 		ORDER BY amount_usd DESC`
 
@@ -409,13 +409,48 @@ func (s *reportingService) GetPnL(ctx context.Context, period models.Period) (*m
 	// For now, we'll calculate a simplified P&L based on realized gains/losses
 	// This is a basic implementation - in a real system you'd want more sophisticated P&L calculation
 
-	// Get realized P&L from sales/disposals
+	// Get realized P&L from sales/disposals and stake-unstake pairs (linked deposit->withdraw)
 	realizedQuery := `
-		SELECT 
-			COALESCE(SUM(CASE WHEN type IN ('sell', 'disposal') THEN amount_usd ELSE 0 END), 0) as realized_pnl_usd,
-			COALESCE(SUM(CASE WHEN type IN ('sell', 'disposal') THEN amount_vnd ELSE 0 END), 0) as realized_pnl_vnd
-		FROM transactions 
-		WHERE date >= $1 AND date <= $2`
+        WITH sell_disposal AS (
+            SELECT 
+                COALESCE(SUM(CASE WHEN type IN ('sell', 'disposal') THEN amount_usd ELSE 0 END), 0) as usd,
+                COALESCE(SUM(CASE WHEN type IN ('sell', 'disposal') THEN amount_vnd ELSE 0 END), 0) as vnd
+            FROM transactions 
+            WHERE date >= $1 AND date <= $2
+        ),
+        stake_pairs AS (
+            SELECT l.from_tx AS deposit_id, l.to_tx AS withdraw_id
+            FROM transaction_links l
+            WHERE l.link_type = 'stake_unstake'
+        ),
+        dep AS (
+            SELECT id, amount_usd, amount_vnd, quantity
+            FROM transactions
+        ),
+        wit AS (
+            SELECT id, date, amount_usd, amount_vnd, quantity
+            FROM transactions
+        ),
+        stake_unstake AS (
+            SELECT 
+                COALESCE(SUM(
+                    -- USD realized PnL = withdraw USD - withdraw_qty * entry_unit_usd
+                    w.amount_usd - (w.quantity * (d.amount_usd / NULLIF(d.quantity, 0)))
+                ), 0) AS usd,
+                COALESCE(SUM(
+                    -- VND realized PnL = withdraw VND - withdraw_qty * entry_unit_vnd
+                    w.amount_vnd - (w.quantity * (d.amount_vnd / NULLIF(d.quantity, 0)))
+                ), 0) AS vnd
+            FROM stake_pairs p
+            JOIN dep d ON d.id = p.deposit_id
+            JOIN wit w ON w.id = p.withdraw_id
+            WHERE w.date >= $1 AND w.date <= $2
+        )
+        SELECT 
+            COALESCE(sd.usd, 0) + COALESCE(su.usd, 0) AS realized_pnl_usd,
+            COALESCE(sd.vnd, 0) + COALESCE(su.vnd, 0) AS realized_pnl_vnd
+        FROM sell_disposal sd
+        CROSS JOIN stake_unstake su`
 
 	err := s.db.QueryRowContext(ctx, realizedQuery, period.StartDate, period.EndDate).Scan(
 		&report.RealizedPnLUSD, &report.RealizedPnLVND,
@@ -496,5 +531,81 @@ func (s *reportingService) GetHoldingsByAsset(ctx context.Context, asOf time.Tim
 		}
 	}
 
+	return result, nil
+}
+
+// GetExpectedBorrowOutflows returns projected principal+interest outflows for active borrows as of a date
+func (s *reportingService) GetExpectedBorrowOutflows(ctx context.Context, asOf time.Time) ([]*models.OutflowProjection, error) {
+	query := `
+        WITH borrows AS (
+            SELECT id, account, asset, date, quantity AS principal, 
+                   COALESCE(borrow_apr, 0) AS apr,
+                   COALESCE(borrow_term_days, 0) AS term_days,
+                   COALESCE(borrow_active, TRUE) AS active
+            FROM transactions
+            WHERE type = 'borrow' AND (borrow_active IS NULL OR borrow_active = TRUE)
+        ),
+        repayments AS (
+            SELECT account, asset, SUM(quantity) AS repaid
+            FROM transactions
+            WHERE type = 'repay_borrow'
+            GROUP BY account, asset
+        ),
+        agg AS (
+            SELECT b.id, b.account, b.asset, b.date, b.principal, b.apr, b.term_days,
+                   COALESCE(r.repaid, 0) AS repaid
+            FROM borrows b
+            LEFT JOIN repayments r ON r.account = b.account AND r.asset = b.asset
+        )
+        SELECT id, account, asset, date, principal, apr, term_days, repaid
+        FROM agg`
+
+	rows, err := s.db.QueryContext(ctx, query)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get expected borrow outflows: %w", err)
+	}
+	defer rows.Close()
+
+	var result []*models.OutflowProjection
+	for rows.Next() {
+		var (
+			id             string
+			account, asset string
+			start          time.Time
+			principal, apr decimal.Decimal
+			termDays       int
+			repaid         decimal.Decimal
+		)
+		if err := rows.Scan(&id, &account, &asset, &start, &principal, &apr, &termDays, &repaid); err != nil {
+			return nil, err
+		}
+		remaining := principal.Sub(repaid)
+		if remaining.IsNegative() {
+			remaining = decimal.Zero
+		}
+		daysRemaining := 0
+		if termDays > 0 {
+			end := start.AddDate(0, 0, termDays)
+			if asOf.Before(end) {
+				daysRemaining = int(end.Sub(asOf).Hours() / 24)
+			} else {
+				daysRemaining = 0
+			}
+		}
+		interest := decimal.Zero
+		if daysRemaining > 0 && !apr.IsZero() && !remaining.IsZero() {
+			interest = remaining.Mul(apr).Mul(decimal.NewFromInt(int64(daysRemaining))).Div(decimal.NewFromInt(365))
+		}
+		total := remaining.Add(interest)
+		result = append(result, &models.OutflowProjection{
+			ID:                 id,
+			Account:            account,
+			Asset:              asset,
+			RemainingPrincipal: remaining,
+			InterestAccrued:    interest,
+			TotalOutflow:       total,
+			AsOf:               asOf,
+		})
+	}
 	return result, nil
 }

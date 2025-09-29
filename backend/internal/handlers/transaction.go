@@ -100,6 +100,20 @@ func (h *TransactionHandler) HandleTransaction(w http.ResponseWriter, r *http.Re
 			json.NewEncoder(w).Encode(tx)
 			return
 		}
+
+		// Support: /api/transactions/{id}/mark-borrow-inactive
+		if strings.HasSuffix(r.URL.Path, "/mark-borrow-inactive") {
+			update := &models.Transaction{BorrowActive: new(bool)}
+			*update.BorrowActive = false
+			update.ID = id
+			if err := h.service.UpdateTransaction(r.Context(), update); err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte(`{"status":"ok"}`))
+			return
+		}
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 	default:
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)

@@ -108,6 +108,34 @@ func (h *ReportingHandler) HandleHoldingsSummary(w http.ResponseWriter, r *http.
 	json.NewEncoder(w).Encode(summary)
 }
 
+// HandleExpectedBorrowOutflows handles GET /api/reports/expected-borrow-outflows
+// @Summary Get expected borrow outflows
+// @Description Project remaining principal and interest for active borrows as of a date
+// @Tags reports
+// @Produce json
+// @Param as_of query string false "As-of date (YYYY-MM-DD)"
+// @Success 200 {array} models.OutflowProjection
+// @Failure 500 {string} string "Internal server error"
+// @Router /reports/expected-borrow-outflows [get]
+func (h *ReportingHandler) HandleExpectedBorrowOutflows(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	asOf := time.Now()
+	if asOfStr := r.URL.Query().Get("as_of"); asOfStr != "" {
+		if parsed, err := time.Parse("2006-01-02", asOfStr); err == nil {
+			asOf = parsed
+		}
+	}
+
+	projections, err := h.service.GetExpectedBorrowOutflows(r.Context(), asOf)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	json.NewEncoder(w).Encode(projections)
+}
+
 // HandleCashFlow handles GET /api/reports/cashflow
 // @Summary Get cash flow report
 // @Description Get cash flow over a period

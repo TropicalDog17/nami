@@ -38,11 +38,19 @@ type Transaction struct {
 	CashFlowUSD decimal.Decimal `json:"cashflow_usd" db:"cashflow_usd"`
 	CashFlowVND decimal.Decimal `json:"cashflow_vnd" db:"cashflow_vnd"`
 
+	// Flow flags
+	InternalFlow *bool `json:"internal_flow" db:"internal_flow"`
+
 	// Optional tracking
 	Horizon   *string          `json:"horizon" db:"horizon"`
 	EntryDate *time.Time       `json:"entry_date" db:"entry_date"`
 	ExitDate  *time.Time       `json:"exit_date" db:"exit_date"`
 	FXImpact  *decimal.Decimal `json:"fx_impact" db:"fx_impact"`
+
+	// Borrow metadata (for type = 'borrow')
+	BorrowAPR      *decimal.Decimal `json:"borrow_apr" db:"borrow_apr"`
+	BorrowTermDays *int             `json:"borrow_term_days" db:"borrow_term_days"`
+	BorrowActive   *bool            `json:"borrow_active" db:"borrow_active"`
 
 	// Audit fields
 	FXSource    *string    `json:"fx_source" db:"fx_source"`
@@ -91,6 +99,16 @@ func (t *Transaction) Validate() error {
 		return errors.New("FX to VND rate is required")
 	}
 
+	// Validate borrow fields if provided
+	if t.Type == "borrow" {
+		if t.BorrowAPR != nil && t.BorrowAPR.IsNegative() {
+			return errors.New("borrow_apr must be non-negative")
+		}
+		if t.BorrowTermDays != nil && *t.BorrowTermDays < 0 {
+			return errors.New("borrow_term_days must be non-negative")
+		}
+	}
+
 	// Validate horizon if provided
 	if t.Horizon != nil && *t.Horizon != "short-term" && *t.Horizon != "long-term" {
 		return errors.New("horizon must be 'short-term' or 'long-term'")
@@ -121,6 +139,14 @@ func (t *Transaction) CalculateDerivedFields() {
 	}
 
 	// Calculate CashFlow based on transaction type and account
+	// Special case: internal P2P buy/sell should not affect cash flow
+	if t.InternalFlow != nil && *t.InternalFlow && (t.Type == "buy" || t.Type == "sell") {
+		// Zero out cash flow for internal P2P trades
+		t.CashFlowUSD = decimal.Zero
+		t.CashFlowVND = decimal.Zero
+		return
+	}
+
 	if t.Account == "CreditCard" && t.Type == "expense" {
 		// Credit card expense: no immediate cash flow
 		t.CashFlowUSD = decimal.Zero
