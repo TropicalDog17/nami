@@ -11,11 +11,17 @@ import (
 )
 
 type AdminHandler struct {
-	service services.AdminService
+	service   services.AdminService
+	txService services.TransactionService
 }
 
 func NewAdminHandler(service services.AdminService) *AdminHandler {
 	return &AdminHandler{service: service}
+}
+
+// NewAdminHandlerWithTx allows wiring transaction service for maintenance tasks
+func NewAdminHandlerWithTx(admin services.AdminService, tx services.TransactionService) *AdminHandler {
+	return &AdminHandler{service: admin, txService: tx}
 }
 
 // Transaction Types handlers
@@ -424,4 +430,78 @@ func (h *AdminHandler) deleteTag(w http.ResponseWriter, r *http.Request, id int)
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{"message": "Tag deleted successfully"})
+}
+
+// Maintenance: Recalculate FX for existing transactions
+func (h *AdminHandler) HandleMaintenance(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	if r.Method != "POST" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if h.txService == nil {
+		http.Error(w, "maintenance not configured", http.StatusInternalServerError)
+		return
+	}
+
+	// optional query param only_missing=true|false
+	onlyMissing := true
+	q := r.URL.Query().Get("only_missing")
+	if q == "false" {
+		onlyMissing = false
+	}
+	updated, err := h.txService.RecalculateFX(r.Context(), onlyMissing)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	json.NewEncoder(w).Encode(map[string]interface{}{"updated": updated, "only_missing": onlyMissing})
+}
+
+// Backup transactions (export)
+func (h *AdminHandler) HandleBackupTransactions(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	if r.Method != "GET" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if h.txService == nil {
+		http.Error(w, "not configured", http.StatusInternalServerError)
+		return
+	}
+	txs, err := h.txService.ExportTransactions(r.Context())
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	json.NewEncoder(w).Encode(txs)
+}
+
+// Restore transactions (import)
+func (h *AdminHandler) HandleRestoreTransactions(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	if r.Method != "POST" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if h.txService == nil {
+		http.Error(w, "not configured", http.StatusInternalServerError)
+		return
+	}
+	// optional query: upsert=true|false
+	upsert := true
+	if q := r.URL.Query().Get("upsert"); q == "false" {
+		upsert = false
+	}
+	var txs []*models.Transaction
+	if err := json.NewDecoder(r.Body).Decode(&txs); err != nil {
+		http.Error(w, "Invalid JSON: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	n, err := h.txService.ImportTransactions(r.Context(), txs, upsert)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	json.NewEncoder(w).Encode(map[string]interface{}{"imported": n, "upsert": upsert})
 }

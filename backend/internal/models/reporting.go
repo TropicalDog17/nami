@@ -128,3 +128,10 @@ type HoldingSummary struct {
 	ByAccount     map[string][]*Holding `json:"by_account"`
 	LastUpdated   time.Time             `json:"last_updated"`
 }
+
+// OutstandingBorrow represents an outstanding borrow by asset and account
+type OutstandingBorrow struct {
+	Asset   string          `json:"asset"`
+	Account string          `json:"account"`
+	Amount  decimal.Decimal `json:"amount"`
+}

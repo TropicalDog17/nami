@@ -1,0 +1,15 @@
+node_modules/
+dist/
+.playwright/
+playwright-report/
+coverage/
+.vite/
+.eslintcache
+.test-cache/
+.DS_Store
+
+test-results/
+
+# Type definition shims
+env.d.ts
+

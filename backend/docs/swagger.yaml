@@ -1,0 +1,840 @@
+basePath: /api
+definitions:
+  github_com_tropicaldog17_nami_internal_models.AccountPnL:
+    properties:
+      account:
+        type: string
+      realized_pnl_usd:
+        type: number
+      realized_pnl_vnd:
+        type: number
+      total_pnl_usd:
+        type: number
+      total_pnl_vnd:
+        type: number
+      total_value_usd:
+        type: number
+      total_value_vnd:
+        type: number
+      unrealized_pnl_usd:
+        type: number
+      unrealized_pnl_vnd:
+        type: number
+    type: object
+  github_com_tropicaldog17_nami_internal_models.ActionRequest:
+    properties:
+      action:
+        type: string
+      params:
+        additionalProperties: true
+        type: object
+    type: object
+  github_com_tropicaldog17_nami_internal_models.ActionResponse:
+    properties:
+      action:
+        type: string
+      executed_at:
+        type: string
+      transactions:
+        items:
+          $ref: '#/definitions/github_com_tropicaldog17_nami_internal_models.Transaction'
+        type: array
+    type: object
+  github_com_tropicaldog17_nami_internal_models.AssetPnL:
+    properties:
+      asset:
+        type: string
+      average_cost_usd:
+        type: number
+      current_quantity:
+        type: number
+      current_value_usd:
+        type: number
+      current_value_vnd:
+        type: number
+      realized_pnl_usd:
+        type: number
+      realized_pnl_vnd:
+        type: number
+      total_pnl_usd:
+        type: number
+      total_pnl_vnd:
+        type: number
+      unrealized_pnl_usd:
+        type: number
+      unrealized_pnl_vnd:
+        type: number
+    type: object
+  github_com_tropicaldog17_nami_internal_models.CashFlowByType:
+    properties:
+      count:
+        type: integer
+      inflow_usd:
+        type: number
+      inflow_vnd:
+        type: number
+      net_usd:
+        type: number
+      net_vnd:
+        type: number
+      outflow_usd:
+        type: number
+      outflow_vnd:
+        type: number
+    type: object
+  github_com_tropicaldog17_nami_internal_models.CashFlowReport:
+    properties:
+      by_tag:
+        additionalProperties:
+          $ref: '#/definitions/github_com_tropicaldog17_nami_internal_models.CashFlowByType'
+        type: object
+      by_type:
+        additionalProperties:
+          $ref: '#/definitions/github_com_tropicaldog17_nami_internal_models.CashFlowByType'
+        type: object
+      net_usd:
+        type: number
+      net_vnd:
+        type: number
+      period:
+        $ref: '#/definitions/github_com_tropicaldog17_nami_internal_models.Period'
+      total_in_usd:
+        type: number
+      total_in_vnd:
+        type: number
+      total_out_usd:
+        type: number
+      total_out_vnd:
+        type: number
+    type: object
+  github_com_tropicaldog17_nami_internal_models.Holding:
+    properties:
+      account:
+        type: string
+      asset:
+        type: string
+      last_updated:
+        type: string
+      quantity:
+        type: number
+      value_usd:
+        type: number
+      value_vnd:
+        type: number
+    type: object
+  github_com_tropicaldog17_nami_internal_models.HoldingSummary:
+    properties:
+      by_account:
+        additionalProperties:
+          items:
+            $ref: '#/definitions/github_com_tropicaldog17_nami_internal_models.Holding'
+          type: array
+        type: object
+      by_asset:
+        additionalProperties:
+          $ref: '#/definitions/github_com_tropicaldog17_nami_internal_models.Holding'
+        type: object
+      last_updated:
+        type: string
+      total_value_usd:
+        type: number
+      total_value_vnd:
+        type: number
+    type: object
+  github_com_tropicaldog17_nami_internal_models.OutstandingBorrow:
+    properties:
+      account:
+        type: string
+      amount:
+        type: number
+      asset:
+        type: string
+    type: object
+  github_com_tropicaldog17_nami_internal_models.Period:
+    properties:
+      end_date:
+        type: string
+      start_date:
+        type: string
+    type: object
+  github_com_tropicaldog17_nami_internal_models.PnLReport:
+    properties:
+      by_account:
+        additionalProperties:
+          $ref: '#/definitions/github_com_tropicaldog17_nami_internal_models.AccountPnL'
+        type: object
+      by_asset:
+        additionalProperties:
+          $ref: '#/definitions/github_com_tropicaldog17_nami_internal_models.AssetPnL'
+        type: object
+      period:
+        $ref: '#/definitions/github_com_tropicaldog17_nami_internal_models.Period'
+      realized_pnl_usd:
+        type: number
+      realized_pnl_vnd:
+        type: number
+      roi_percent:
+        type: number
+      total_pnl_usd:
+        type: number
+      total_pnl_vnd:
+        type: number
+      unrealized_pnl_usd:
+        type: number
+      unrealized_pnl_vnd:
+        type: number
+    type: object
+  github_com_tropicaldog17_nami_internal_models.SpendingByTag:
+    properties:
+      amount_usd:
+        type: number
+      amount_vnd:
+        type: number
+      count:
+        type: integer
+      percentage:
+        type: number
+    type: object
+  github_com_tropicaldog17_nami_internal_models.SpendingReport:
+    properties:
+      by_counterparty:
+        additionalProperties:
+          $ref: '#/definitions/github_com_tropicaldog17_nami_internal_models.SpendingByTag'
+        type: object
+      by_tag:
+        additionalProperties:
+          $ref: '#/definitions/github_com_tropicaldog17_nami_internal_models.SpendingByTag'
+        type: object
+      period:
+        $ref: '#/definitions/github_com_tropicaldog17_nami_internal_models.Period'
+      top_expenses:
+        items:
+          $ref: '#/definitions/github_com_tropicaldog17_nami_internal_models.TransactionSummary'
+        type: array
+      total_usd:
+        type: number
+      total_vnd:
+        type: number
+    type: object
+  github_com_tropicaldog17_nami_internal_models.Transaction:
+    properties:
+      account:
+        type: string
+      amount_local:
+        type: number
+      amount_usd:
+        type: number
+      amount_vnd:
+        type: number
+      asset:
+        type: string
+      cashflow_usd:
+        type: number
+      cashflow_vnd:
+        type: number
+      counterparty:
+        type: string
+      created_at:
+        type: string
+      date:
+        type: string
+      delta_qty:
+        description: Derived metrics
+        type: number
+      entry_date:
+        type: string
+      exit_date:
+        type: string
+      fee_usd:
+        description: Fees
+        type: number
+      fee_vnd:
+        type: number
+      fx_impact:
+        type: number
+      fx_source:
+        description: Audit fields
+        type: string
+      fx_timestamp:
+        type: string
+      fx_to_usd:
+        description: FX and dual currency
+        type: number
+      fx_to_vnd:
+        type: number
+      horizon:
+        description: Optional tracking
+        type: string
+      id:
+        type: string
+      note:
+        type: string
+      price_local:
+        type: number
+      quantity:
+        description: Amount fields
+        type: number
+      tag:
+        type: string
+      type:
+        type: string
+      updated_at:
+        type: string
+    type: object
+  github_com_tropicaldog17_nami_internal_models.TransactionSummary:
+    properties:
+      account:
+        type: string
+      amount_usd:
+        type: number
+      amount_vnd:
+        type: number
+      asset:
+        type: string
+      counterparty:
+        type: string
+      date:
+        type: string
+      id:
+        type: string
+      note:
+        type: string
+      tag:
+        type: string
+      type:
+        type: string
+    type: object
+info:
+  contact: {}
+  description: API documentation for Nami Transaction Tracking System.
+  title: Nami Backend API
+  version: "1.0"
+paths:
+  /actions:
+    post:
+      consumes:
+      - application/json
+      description: Perform a domain-specific action
+      parameters:
+      - description: Action request
+        in: body
+        name: action
+        required: true
+        schema:
+          $ref: '#/definitions/github_com_tropicaldog17_nami_internal_models.ActionRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/github_com_tropicaldog17_nami_internal_models.ActionResponse'
+        "400":
+          description: Bad request
+          schema:
+            type: string
+      summary: Perform an action
+      tags:
+      - actions
+  /fx/history:
+    get:
+      description: Get daily FX rates for a period
+      parameters:
+      - description: Base currency (default USD)
+        in: query
+        name: from
+        type: string
+      - description: Quote currency (default VND)
+        in: query
+        name: to
+        type: string
+      - description: Start date (YYYY-MM-DD)
+        in: query
+        name: start
+        type: string
+      - description: End date (YYYY-MM-DD)
+        in: query
+        name: end
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              additionalProperties: true
+              type: object
+            type: array
+        "500":
+          description: Internal server error
+          schema:
+            type: string
+      summary: Get FX history
+      tags:
+      - fx
+  /fx/today:
+    get:
+      description: Fetch today's FX rate for a currency pair, cache it, and return
+      parameters:
+      - description: Base currency (default USD)
+        in: query
+        name: from
+        type: string
+      - description: Quote currency (default VND)
+        in: query
+        name: to
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            type: string
+      summary: Get today's FX rate (fetched and stored)
+      tags:
+      - fx
+  /prices/daily:
+    get:
+      description: Get daily prices for a symbol or asset ID in a currency
+      parameters:
+      - description: Asset symbol (e.g., BTC)
+        in: query
+        name: symbol
+        type: string
+      - description: Asset ID
+        in: query
+        name: asset_id
+        type: string
+      - description: Target currency (default USD)
+        in: query
+        name: currency
+        type: string
+      - description: Start date (YYYY-MM-DD)
+        in: query
+        name: start
+        type: string
+      - description: End date (YYYY-MM-DD)
+        in: query
+        name: end
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              additionalProperties: true
+              type: object
+            type: array
+        "400":
+          description: Bad request
+          schema:
+            type: string
+        "500":
+          description: Internal server error
+          schema:
+            type: string
+      summary: Get daily asset prices
+      tags:
+      - prices
+  /reports/borrows/outstanding:
+    get:
+      description: Get list of outstanding borrows as of a date
+      parameters:
+      - description: As of date (YYYY-MM-DD)
+        in: query
+        name: as_of
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/github_com_tropicaldog17_nami_internal_models.OutstandingBorrow'
+            type: array
+        "500":
+          description: Internal server error
+          schema:
+            type: string
+      summary: Get outstanding borrows
+      tags:
+      - reports
+  /reports/cashflow:
+    get:
+      description: Get cash flow over a period
+      parameters:
+      - description: Start date (YYYY-MM-DD)
+        in: query
+        name: start_date
+        type: string
+      - description: End date (YYYY-MM-DD)
+        in: query
+        name: end_date
+        type: string
+      - description: Days back from end_date
+        in: query
+        name: days
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/github_com_tropicaldog17_nami_internal_models.CashFlowReport'
+        "400":
+          description: Invalid period parameters
+          schema:
+            type: string
+        "500":
+          description: Internal server error
+          schema:
+            type: string
+      summary: Get cash flow report
+      tags:
+      - reports
+  /reports/holdings:
+    get:
+      description: Get current holdings as of a date
+      parameters:
+      - description: As of date (YYYY-MM-DD)
+        in: query
+        name: as_of
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/github_com_tropicaldog17_nami_internal_models.Holding'
+            type: array
+        "500":
+          description: Internal server error
+          schema:
+            type: string
+      summary: Get holdings
+      tags:
+      - reports
+  /reports/holdings/summary:
+    get:
+      description: Get aggregated holdings summary as of a date
+      parameters:
+      - description: As of date (YYYY-MM-DD)
+        in: query
+        name: as_of
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/github_com_tropicaldog17_nami_internal_models.HoldingSummary'
+        "500":
+          description: Internal server error
+          schema:
+            type: string
+      summary: Get holdings summary
+      tags:
+      - reports
+  /reports/pnl:
+    get:
+      description: Get profit and loss over a period
+      parameters:
+      - description: Start date (YYYY-MM-DD)
+        in: query
+        name: start_date
+        type: string
+      - description: End date (YYYY-MM-DD)
+        in: query
+        name: end_date
+        type: string
+      - description: Days back from end_date
+        in: query
+        name: days
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/github_com_tropicaldog17_nami_internal_models.PnLReport'
+        "400":
+          description: Invalid period parameters
+          schema:
+            type: string
+        "500":
+          description: Internal server error
+          schema:
+            type: string
+      summary: Get PnL report
+      tags:
+      - reports
+  /reports/spending:
+    get:
+      description: Get spending over a period
+      parameters:
+      - description: Start date (YYYY-MM-DD)
+        in: query
+        name: start_date
+        type: string
+      - description: End date (YYYY-MM-DD)
+        in: query
+        name: end_date
+        type: string
+      - description: Days back from end_date
+        in: query
+        name: days
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/github_com_tropicaldog17_nami_internal_models.SpendingReport'
+        "400":
+          description: Invalid period parameters
+          schema:
+            type: string
+        "500":
+          description: Internal server error
+          schema:
+            type: string
+      summary: Get spending report
+      tags:
+      - reports
+  /transactions:
+    get:
+      consumes:
+      - application/json
+      description: Get a list of transactions or create a new one
+      parameters:
+      - description: Start date (YYYY-MM-DD)
+        in: query
+        name: start_date
+        type: string
+      - description: End date (YYYY-MM-DD)
+        in: query
+        name: end_date
+        type: string
+      - description: Comma-separated transaction types
+        in: query
+        name: types
+        type: string
+      - description: Comma-separated asset symbols
+        in: query
+        name: assets
+        type: string
+      - description: Comma-separated account names
+        in: query
+        name: accounts
+        type: string
+      - description: Comma-separated tag names
+        in: query
+        name: tags
+        type: string
+      - description: Counterparty name
+        in: query
+        name: counterparty
+        type: string
+      - description: Limit
+        in: query
+        name: limit
+        type: integer
+      - description: Offset
+        in: query
+        name: offset
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/github_com_tropicaldog17_nami_internal_models.Transaction'
+            type: array
+        "400":
+          description: Invalid request
+          schema:
+            type: string
+        "500":
+          description: Internal server error
+          schema:
+            type: string
+      summary: List or create transactions
+      tags:
+      - transactions
+    post:
+      consumes:
+      - application/json
+      description: Get a list of transactions or create a new one
+      parameters:
+      - description: Start date (YYYY-MM-DD)
+        in: query
+        name: start_date
+        type: string
+      - description: End date (YYYY-MM-DD)
+        in: query
+        name: end_date
+        type: string
+      - description: Comma-separated transaction types
+        in: query
+        name: types
+        type: string
+      - description: Comma-separated asset symbols
+        in: query
+        name: assets
+        type: string
+      - description: Comma-separated account names
+        in: query
+        name: accounts
+        type: string
+      - description: Comma-separated tag names
+        in: query
+        name: tags
+        type: string
+      - description: Counterparty name
+        in: query
+        name: counterparty
+        type: string
+      - description: Limit
+        in: query
+        name: limit
+        type: integer
+      - description: Offset
+        in: query
+        name: offset
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/github_com_tropicaldog17_nami_internal_models.Transaction'
+            type: array
+        "400":
+          description: Invalid request
+          schema:
+            type: string
+        "500":
+          description: Internal server error
+          schema:
+            type: string
+      summary: List or create transactions
+      tags:
+      - transactions
+  /transactions/{id}:
+    delete:
+      consumes:
+      - application/json
+      description: Operate on a single transaction by ID
+      parameters:
+      - description: Transaction ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/github_com_tropicaldog17_nami_internal_models.Transaction'
+        "400":
+          description: Bad request
+          schema:
+            type: string
+        "404":
+          description: Not found
+          schema:
+            type: string
+        "500":
+          description: Internal server error
+          schema:
+            type: string
+      summary: Get, update, or delete a transaction
+      tags:
+      - transactions
+    get:
+      consumes:
+      - application/json
+      description: Operate on a single transaction by ID
+      parameters:
+      - description: Transaction ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/github_com_tropicaldog17_nami_internal_models.Transaction'
+        "400":
+          description: Bad request
+          schema:
+            type: string
+        "404":
+          description: Not found
+          schema:
+            type: string
+        "500":
+          description: Internal server error
+          schema:
+            type: string
+      summary: Get, update, or delete a transaction
+      tags:
+      - transactions
+    put:
+      consumes:
+      - application/json
+      description: Operate on a single transaction by ID
+      parameters:
+      - description: Transaction ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/github_com_tropicaldog17_nami_internal_models.Transaction'
+        "400":
+          description: Bad request
+          schema:
+            type: string
+        "404":
+          description: Not found
+          schema:
+            type: string
+        "500":
+          description: Internal server error
+          schema:
+            type: string
+      summary: Get, update, or delete a transaction
+      tags:
+      - transactions
+swagger: "2.0"

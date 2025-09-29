@@ -1,4 +1,3 @@
-import React from 'react'
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -11,6 +10,7 @@ import {
   PointElement,
   LineElement,
 } from 'chart.js'
+import React from 'react'
 import { Bar, Doughnut, Line } from 'react-chartjs-2'
 
 ChartJS.register(

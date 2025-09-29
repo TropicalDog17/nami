@@ -16,6 +16,19 @@ type TransactionService interface {
 	UpdateTransaction(ctx context.Context, tx *models.Transaction) error
 	DeleteTransaction(ctx context.Context, id string) error
 	GetTransactionCount(ctx context.Context, filter *models.TransactionFilter) (int, error)
+	// RecalculateFX recalculates FX and derived amounts for existing rows.
+	// If onlyMissing is true, only rows with missing/zero FX are updated; otherwise all rows.
+	RecalculateFX(ctx context.Context, onlyMissing bool) (int, error)
+	// ExportTransactions returns all transactions as JSON-serializable slice
+	ExportTransactions(ctx context.Context) ([]*models.Transaction, error)
+	// ImportTransactions creates or updates transactions from a dump; upsert by id when present
+	ImportTransactions(ctx context.Context, txs []*models.Transaction, upsert bool) (int, error)
+}
+
+// LinkService establishes logical links between related transactions (e.g., stake-unstake, borrow-repay)
+type LinkService interface {
+	CreateLink(ctx context.Context, link *models.TransactionLink) error
+	GetLinked(ctx context.Context, txID string) ([]*models.TransactionLink, error)
 }
 
 // ReportingService defines the interface for reporting operations
@@ -26,6 +39,7 @@ type ReportingService interface {
 	GetPnL(ctx context.Context, period models.Period) (*models.PnLReport, error)
 	GetHoldingsByAccount(ctx context.Context, asOf time.Time) (map[string][]*models.Holding, error)
 	GetHoldingsByAsset(ctx context.Context, asOf time.Time) (map[string]*models.Holding, error)
+	GetOutstandingBorrows(ctx context.Context, asOf time.Time) (map[string]map[string]decimal.Decimal, error)
 }
 
 // AdminService defines the interface for admin operations
@@ -75,4 +89,36 @@ type FXCacheService interface {
 	CacheRate(ctx context.Context, rate *models.FXRate) error
 	GetCachedRates(ctx context.Context, from string, targets []string, date time.Time) (map[string]*models.FXRate, error)
 	InvalidateCache(ctx context.Context, from, to string, date time.Time) error
+	// ListRatesRange returns only existing rates in DB for a date range (no fetching)
+	ListRatesRange(ctx context.Context, from, to string, start, end time.Time) ([]*models.FXRate, error)
+}
+
+// PriceProvider defines interface for asset prices (e.g., crypto)
+type PriceProvider interface {
+	// GetHistoricalDaily returns price for a date (UTC, daily granularity)
+	GetHistoricalDaily(ctx context.Context, symbol string, currency string, date time.Time) (decimal.Decimal, error)
+	// GetLatest returns latest price
+	GetLatest(ctx context.Context, symbol string, currency string) (decimal.Decimal, error)
+}
+
+// PriceCacheService caches asset prices
+type PriceCacheService interface {
+	GetCachedPrice(ctx context.Context, symbol, currency string, date time.Time) (*models.AssetPrice, error)
+	CachePrice(ctx context.Context, price *models.AssetPrice) error
+}
+
+// FXHistoryService supports backfilling and retrieving historical USD/VND
+type FXHistoryService interface {
+	// GetDaily ensures a rate exists (cache or fetch) for a given date
+	GetDaily(ctx context.Context, from, to string, date time.Time) (*models.FXRate, error)
+	// GetRange returns daily rates inclusive between start and end; fetch-and-cache if missing
+	GetRange(ctx context.Context, from, to string, start, end time.Time) ([]*models.FXRate, error)
+	// ListExistingRange returns only records that already exist in DB (no fetching)
+	ListExistingRange(ctx context.Context, from, to string, start, end time.Time) ([]*models.FXRate, error)
+}
+
+// AssetPriceService provides historical/latest prices and conversion helpers
+type AssetPriceService interface {
+	GetDaily(ctx context.Context, symbol, currency string, date time.Time) (*models.AssetPrice, error)
+	GetRange(ctx context.Context, symbol, currency string, start, end time.Time) ([]*models.AssetPrice, error)
 }

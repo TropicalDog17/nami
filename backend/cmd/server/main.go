@@ -1,8 +1,12 @@
 package main
 
+// @title Nami Backend API
+// @version 1.0
+// @description API documentation for Nami Transaction Tracking System.
+// @BasePath /api
+
 import (
 	"encoding/json"
-	"log"
 	"net/http"
 	"os"
 	"strings"
@@ -11,46 +15,77 @@ import (
 
 	"github.com/tropicaldog17/nami/internal/db"
 	"github.com/tropicaldog17/nami/internal/handlers"
+	"github.com/tropicaldog17/nami/internal/logger"
 	"github.com/tropicaldog17/nami/internal/services"
+
+	// swagger docs and ui
+	_swaggerHttp "github.com/swaggo/http-swagger"
+	_ "github.com/tropicaldog17/nami/docs"
+
+	"go.uber.org/zap"
 )
 
 func main() {
 	// Load environment variables from .env file
-	if err := godotenv.Load(); err != nil {
-		log.Println("No .env file found")
+	_ = godotenv.Load()
+
+	// Initialize structured logger
+	zl, err := logger.New()
+	if err != nil {
+		panic(err)
 	}
+	defer zl.Sync()
+	sugar := zl.Sugar()
 
 	// Database connection
 	config := db.NewConfig()
 	database, err := db.Connect(config)
 	if err != nil {
-		log.Fatal("Failed to connect to database:", err)
+		sugar.Fatalf("Failed to connect to database: %v", err)
 	}
 	defer database.Close()
 
 	// Test database connection
 	if err := database.Health(); err != nil {
-		log.Fatal("Database health check failed:", err)
+		sugar.Fatalf("Database health check failed: %v", err)
 	}
-	log.Println("Database connection established")
+	sugar.Infow("Database connection established")
 
-	// Initialize FX services
-	// fxCacheService := services.NewFXCacheService(database) // For production use
-	mockFXProvider := services.NewMockFXProvider()
-	// For production, you can use: httpFXProvider := services.NewHTTPFXProvider(apiKey, fxCacheService, mockFXProvider)
+	// Initialize FX services (no mock fallback)
+	fxCacheService := services.NewFXCacheService(database)
+	httpFXProvider := services.NewHTTPFXProvider(os.Getenv("EXCHANGERATE_API_KEY"), fxCacheService)
+	fxHistoryService := services.NewFXHistoryService(httpFXProvider, fxCacheService)
+
+	// Asset price services (crypto)
+	priceCacheService := services.NewPriceCacheService(database)
+	coinGeckoProvider := services.NewCoinGeckoPriceProvider()
+	assetPriceService := services.NewAssetPriceService(coinGeckoProvider, priceCacheService)
+	priceMappingResolver := services.NewPriceMappingResolver(database)
 
 	// Initialize services
-	transactionService := services.NewTransactionServiceWithFX(database, mockFXProvider)
+	transactionService := services.NewTransactionServiceWithFX(database, httpFXProvider)
 	adminService := services.NewAdminService(database)
 	reportingService := services.NewReportingService(database)
+	linkService := services.NewLinkService(database)
+	_ = linkService
+	actionService := services.NewActionService(database, transactionService)
 
 	// Initialize handlers
 	transactionHandler := handlers.NewTransactionHandler(transactionService)
-	adminHandler := handlers.NewAdminHandler(adminService)
+	adminHandler := handlers.NewAdminHandlerWithTx(adminService, transactionService)
 	reportingHandler := handlers.NewReportingHandler(reportingService)
+	actionHandler := handlers.NewActionHandler(actionService)
+	fxHandler := handlers.NewFXHandler(fxHistoryService)
+	priceHandler := handlers.NewPriceHandler(assetPriceService, priceMappingResolver, fxHistoryService)
 
 	// Setup HTTP server
 	mux := http.NewServeMux()
+
+	// Swagger UI: redirect base and serve docs
+	mux.HandleFunc("/swagger", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/swagger/index.html", http.StatusFound)
+	})
+	mux.Handle("/swagger/", _swaggerHttp.WrapHandler)
 
 	// Health check endpoint
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
@@ -70,6 +105,9 @@ func main() {
 			transactionHandler.HandleTransactions(w, r)
 		}
 	})
+
+	// Actions endpoint
+	mux.HandleFunc("/api/actions", actionHandler.HandleActions)
 
 	// Admin endpoints
 	mux.HandleFunc("/api/admin/types", adminHandler.HandleTransactionTypes)
@@ -108,12 +146,30 @@ func main() {
 		}
 	})
 
+	// Maintenance endpoints
+	mux.HandleFunc("/api/admin/maintenance/recalc-fx", adminHandler.HandleMaintenance)
+
+	// Backup/Restore endpoints
+	mux.HandleFunc("/api/admin/backup/transactions", adminHandler.HandleBackupTransactions)
+	mux.HandleFunc("/api/admin/restore/transactions", adminHandler.HandleRestoreTransactions)
+
 	// Reporting endpoints
 	mux.HandleFunc("/api/reports/holdings", reportingHandler.HandleHoldings)
 	mux.HandleFunc("/api/reports/holdings/summary", reportingHandler.HandleHoldingsSummary)
 	mux.HandleFunc("/api/reports/cashflow", reportingHandler.HandleCashFlow)
 	mux.HandleFunc("/api/reports/spending", reportingHandler.HandleSpending)
 	mux.HandleFunc("/api/reports/pnl", reportingHandler.HandlePnL)
+	mux.HandleFunc("/api/reports/borrows/outstanding", reportingHandler.HandleOutstandingBorrows)
+
+	// FX endpoints
+	mux.HandleFunc("/api/fx/history", fxHandler.HandleHistory)
+	// Shortcut: usd-vnd last N days
+	mux.HandleFunc("/api/fx/usd-vnd", fxHandler.HandleHistory)
+	// Today's rate (fetch and store)
+	mux.HandleFunc("/api/fx/today", fxHandler.HandleToday)
+
+	// Asset prices
+	mux.HandleFunc("/api/prices/daily", priceHandler.HandleDaily)
 
 	// CORS middleware
 	corsHandler := func(next http.Handler) http.Handler {
@@ -137,7 +193,42 @@ func main() {
 		port = "8080"
 	}
 
-	// Start server
-	log.Printf("Server starting on port %s", port)
-	log.Fatal(http.ListenAndServe(":"+port, corsHandler(mux)))
+	// Start server with logging middleware and recovery
+	logged := requestLogger(zl)(mux)
+	server := http.Server{Addr: ":" + port, Handler: recovery(zl)(corsHandler(logged))}
+	sugar.Infof("Server starting on port %s", port)
+	if err := server.ListenAndServe(); err != nil {
+		sugar.Fatalf("server error: %v", err)
+	}
+}
+
+// requestLogger logs basic request info
+func requestLogger(l *zap.Logger) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			l.Info("request",
+				zap.String("method", r.Method),
+				zap.String("path", r.URL.Path),
+				zap.String("remote", r.RemoteAddr),
+				zap.String("agent", r.UserAgent()),
+			)
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
+// recovery recovers from panics and logs the error
+func recovery(l *zap.Logger) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			defer func() {
+				if rec := recover(); rec != nil {
+					l.Error("panic recovered", zap.Any("error", rec))
+					w.WriteHeader(http.StatusInternalServerError)
+					_, _ = w.Write([]byte("internal server error"))
+				}
+			}()
+			next.ServeHTTP(w, r)
+		})
+	}
 }

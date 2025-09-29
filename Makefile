@@ -1,7 +1,7 @@
 # Nami Transaction Tracking System - Makefile
 # This Makefile provides convenient targets for development, testing, and deployment
 
-.PHONY: help test test-integration test-e2e test-unit build run clean setup deps fmt lint docker-up docker-down docker-logs migrate db-reset demo backend frontend install
+.PHONY: help test test-integration test-e2e test-unit build run clean setup deps fmt lint docker-up docker-down docker-logs migrate db-reset demo backend frontend stop stop-backend stop-frontend install swagger swagger-install
 
 # Default target
 help: ## Show this help message
@@ -81,6 +81,19 @@ run-frontend: ## Run only the frontend (requires backend)
 backend: run-backend ## Alias for run-backend
 frontend: run-frontend ## Alias for run-frontend
 
+# Stop targets
+stop: ## Stop backend, frontend, and docker services
+	@echo "🛑 Stopping all services..."
+	@./demo.sh stop
+
+stop-backend: ## Stop backend service
+	@echo "🛑 Stopping backend..."
+	@./demo.sh stop-backend
+
+stop-frontend: ## Stop frontend service
+	@echo "🛑 Stopping frontend..."
+	@./demo.sh stop-frontend
+
 # Database targets
 migrate: ## Run database migrations
 	@echo "🗄️ Running database migrations..."
@@ -114,6 +127,17 @@ lint: ## Run Go linter
 	@cd backend && go vet ./...
 	@cd migrations && go vet ./...
 	@echo "✅ Linting completed"
+
+# Swagger/OpenAPI
+swagger-install: ## Install swag CLI (OpenAPI generator)
+	@echo "📦 Installing swag CLI..."
+	@GOBIN="$(shell go env GOPATH)/bin" go install github.com/swaggo/swag/cmd/swag@latest
+	@echo "✅ swag installed"
+
+swagger: ## Generate Swagger docs (OpenAPI) under backend/docs
+	@echo "📝 Generating Swagger docs..."
+	@cd backend && "$(shell go env GOPATH)/bin/swag" init -g cmd/server/main.go -o docs --parseDependency --parseInternal
+	@echo "✅ Swagger docs generated at backend/docs"
 
 # Cleanup targets
 clean: clean-build clean-test-results ## Clean build artifacts and test results

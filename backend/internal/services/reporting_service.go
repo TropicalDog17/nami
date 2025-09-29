@@ -225,12 +225,12 @@ func (s *reportingService) GetSpending(ctx context.Context, period models.Period
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan spending by tag: %w", err)
 		}
-		
+
 		// Calculate percentage
 		if !report.TotalUSD.IsZero() {
 			sp.Percentage = sp.AmountUSD.Div(report.TotalUSD).Mul(decimal.NewFromInt(100))
 		}
-		
+
 		report.ByTag[tag] = sp
 	}
 
@@ -259,12 +259,12 @@ func (s *reportingService) GetSpending(ctx context.Context, period models.Period
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan spending by counterparty: %w", err)
 		}
-		
+
 		// Calculate percentage
 		if !report.TotalUSD.IsZero() {
 			sp.Percentage = sp.AmountUSD.Div(report.TotalUSD).Mul(decimal.NewFromInt(100))
 		}
-		
+
 		report.ByCounterparty[counterparty] = sp
 	}
 
@@ -298,6 +298,44 @@ func (s *reportingService) GetSpending(ctx context.Context, period models.Period
 	return report, nil
 }
 
+// GetOutstandingBorrows returns current open borrows by asset/account with remaining amounts (borrow minus linked repays)
+func (s *reportingService) GetOutstandingBorrows(ctx context.Context, asOf time.Time) (map[string]map[string]decimal.Decimal, error) {
+	// Sum borrows and subtract repays linked via transaction_links
+	// Fallback heuristic without links: treat type borrow positive, repay_borrow negative grouped by account+asset
+	query := `
+        WITH sums AS (
+            SELECT account, asset,
+                   SUM(CASE WHEN type = 'borrow' THEN quantity ELSE 0 END) AS borrowed,
+                   SUM(CASE WHEN type = 'repay_borrow' THEN quantity ELSE 0 END) AS repaid
+            FROM transactions
+            WHERE date <= $1
+            GROUP BY account, asset
+        )
+        SELECT account, asset, borrowed - repaid AS remaining
+        FROM sums
+        WHERE (borrowed - repaid) > 0`
+
+	rows, err := s.db.QueryContext(ctx, query, asOf)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	result := make(map[string]map[string]decimal.Decimal)
+	for rows.Next() {
+		var account, asset string
+		var remaining decimal.Decimal
+		if err := rows.Scan(&account, &asset, &remaining); err != nil {
+			return nil, err
+		}
+		if _, ok := result[account]; !ok {
+			result[account] = make(map[string]decimal.Decimal)
+		}
+		result[account][asset] = remaining
+	}
+	return result, nil
+}
+
 // GetPnL retrieves profit and loss analysis for a period
 func (s *reportingService) GetPnL(ctx context.Context, period models.Period) (*models.PnLReport, error) {
 	report := &models.PnLReport{
@@ -308,7 +346,7 @@ func (s *reportingService) GetPnL(ctx context.Context, period models.Period) (*m
 
 	// For now, we'll calculate a simplified P&L based on realized gains/losses
 	// This is a basic implementation - in a real system you'd want more sophisticated P&L calculation
-	
+
 	// Get realized P&L from sales/disposals
 	realizedQuery := `
 		SELECT 
@@ -328,7 +366,7 @@ func (s *reportingService) GetPnL(ctx context.Context, period models.Period) (*m
 	// So we'll set it to zero for now
 	report.UnrealizedPnLUSD = decimal.Zero
 	report.UnrealizedPnLVND = decimal.Zero
-	
+
 	report.TotalPnLUSD = report.RealizedPnLUSD.Add(report.UnrealizedPnLUSD)
 	report.TotalPnLVND = report.RealizedPnLVND.Add(report.UnrealizedPnLVND)
 

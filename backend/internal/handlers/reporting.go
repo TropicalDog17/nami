@@ -20,6 +20,14 @@ func NewReportingHandler(service services.ReportingService) *ReportingHandler {
 }
 
 // HandleHoldings handles GET /api/reports/holdings
+// @Summary Get holdings
+// @Description Get current holdings as of a date
+// @Tags reports
+// @Produce json
+// @Param as_of query string false "As of date (YYYY-MM-DD)"
+// @Success 200 {array} models.Holding
+// @Failure 500 {string} string "Internal server error"
+// @Router /reports/holdings [get]
 func (h *ReportingHandler) HandleHoldings(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
@@ -46,6 +54,14 @@ func (h *ReportingHandler) HandleHoldings(w http.ResponseWriter, r *http.Request
 }
 
 // HandleHoldingsSummary handles GET /api/reports/holdings/summary
+// @Summary Get holdings summary
+// @Description Get aggregated holdings summary as of a date
+// @Tags reports
+// @Produce json
+// @Param as_of query string false "As of date (YYYY-MM-DD)"
+// @Success 200 {object} models.HoldingSummary
+// @Failure 500 {string} string "Internal server error"
+// @Router /reports/holdings/summary [get]
 func (h *ReportingHandler) HandleHoldingsSummary(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
@@ -93,6 +109,17 @@ func (h *ReportingHandler) HandleHoldingsSummary(w http.ResponseWriter, r *http.
 }
 
 // HandleCashFlow handles GET /api/reports/cashflow
+// @Summary Get cash flow report
+// @Description Get cash flow over a period
+// @Tags reports
+// @Produce json
+// @Param start_date query string false "Start date (YYYY-MM-DD)"
+// @Param end_date query string false "End date (YYYY-MM-DD)"
+// @Param days query int false "Days back from end_date"
+// @Success 200 {object} models.CashFlowReport
+// @Failure 400 {string} string "Invalid period parameters"
+// @Failure 500 {string} string "Internal server error"
+// @Router /reports/cashflow [get]
 func (h *ReportingHandler) HandleCashFlow(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
@@ -117,6 +144,17 @@ func (h *ReportingHandler) HandleCashFlow(w http.ResponseWriter, r *http.Request
 }
 
 // HandleSpending handles GET /api/reports/spending
+// @Summary Get spending report
+// @Description Get spending over a period
+// @Tags reports
+// @Produce json
+// @Param start_date query string false "Start date (YYYY-MM-DD)"
+// @Param end_date query string false "End date (YYYY-MM-DD)"
+// @Param days query int false "Days back from end_date"
+// @Success 200 {object} models.SpendingReport
+// @Failure 400 {string} string "Invalid period parameters"
+// @Failure 500 {string} string "Internal server error"
+// @Router /reports/spending [get]
 func (h *ReportingHandler) HandleSpending(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
@@ -141,6 +179,17 @@ func (h *ReportingHandler) HandleSpending(w http.ResponseWriter, r *http.Request
 }
 
 // HandlePnL handles GET /api/reports/pnl
+// @Summary Get PnL report
+// @Description Get profit and loss over a period
+// @Tags reports
+// @Produce json
+// @Param start_date query string false "Start date (YYYY-MM-DD)"
+// @Param end_date query string false "End date (YYYY-MM-DD)"
+// @Param days query int false "Days back from end_date"
+// @Success 200 {object} models.PnLReport
+// @Failure 400 {string} string "Invalid period parameters"
+// @Failure 500 {string} string "Internal server error"
+// @Router /reports/pnl [get]
 func (h *ReportingHandler) HandlePnL(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
@@ -162,6 +211,42 @@ func (h *ReportingHandler) HandlePnL(w http.ResponseWriter, r *http.Request) {
 	}
 
 	json.NewEncoder(w).Encode(report)
+}
+
+// HandleOutstandingBorrows handles GET /api/reports/borrows/outstanding
+// @Summary Get outstanding borrows
+// @Description Get list of outstanding borrows as of a date
+// @Tags reports
+// @Produce json
+// @Param as_of query string false "As of date (YYYY-MM-DD)"
+// @Success 200 {array} models.OutstandingBorrow
+// @Failure 500 {string} string "Internal server error"
+// @Router /reports/borrows/outstanding [get]
+func (h *ReportingHandler) HandleOutstandingBorrows(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	if r.Method != "GET" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	asOf := time.Now()
+	if asOfStr := r.URL.Query().Get("as_of"); asOfStr != "" {
+		if parsed, err := time.Parse("2006-01-02", asOfStr); err == nil {
+			asOf = parsed
+		}
+	}
+	data, err := h.service.GetOutstandingBorrows(r.Context(), asOf)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	// convert map to slice of OutstandingBorrow
+	var result []models.OutstandingBorrow
+	for asset, accounts := range data {
+		for account, amount := range accounts {
+			result = append(result, models.OutstandingBorrow{Asset: asset, Account: account, Amount: amount})
+		}
+	}
+	json.NewEncoder(w).Encode(result)
 }
 
 // parsePeriod parses start_date and end_date query parameters

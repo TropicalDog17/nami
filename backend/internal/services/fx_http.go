@@ -18,24 +18,18 @@ type HTTPFXProvider struct {
 	baseURL    string
 	httpClient *http.Client
 	cache      FXCacheService
-	fallback   FXProvider
 }
 
 // ExchangeRateResponse represents the API response structure
 type ExchangeRateResponse struct {
-	Success bool                       `json:"success"`
-	Rates   map[string]decimal.Decimal `json:"rates"`
-	Base    string                     `json:"base"`
-	Date    string                     `json:"date"`
-	Error   *struct {
-		Code string `json:"code"`
-		Info string `json:"info"`
-	} `json:"error,omitempty"`
+	Result          string                     `json:"result"`
+	BaseCode        string                     `json:"base_code"`
+	ConversionRates map[string]decimal.Decimal `json:"conversion_rates"`
 }
 
 // NewHTTPFXProvider creates a new HTTP FX provider
 // Uses exchangerate-api.com as the default provider (free tier available)
-func NewHTTPFXProvider(apiKey string, cache FXCacheService, fallback FXProvider) FXProvider {
+func NewHTTPFXProvider(apiKey string, cache FXCacheService) FXProvider {
 	baseURL := "https://api.exchangerate-api.com/v4/latest"
 	if apiKey != "" {
 		baseURL = "https://v6.exchangerate-api.com/v6/" + apiKey + "/latest"
@@ -47,8 +41,7 @@ func NewHTTPFXProvider(apiKey string, cache FXCacheService, fallback FXProvider)
 		httpClient: &http.Client{
 			Timeout: 10 * time.Second,
 		},
-		cache:    cache,
-		fallback: fallback,
+		cache: cache,
 	}
 }
 
@@ -61,20 +54,10 @@ func (p *HTTPFXProvider) GetRate(ctx context.Context, from, to string, date time
 		}
 	}
 
-	// For historical dates more than 1 day old, try fallback first to avoid API costs
-	if time.Since(date) > 24*time.Hour && p.fallback != nil {
-		if rate, err := p.fallback.GetRate(ctx, from, to, date); err == nil {
-			return rate, nil
-		}
-	}
-
 	// Fetch from API
 	rate, err := p.fetchRateFromAPI(ctx, from, to)
 	if err != nil {
-		// Fall back to mock provider if API fails
-		if p.fallback != nil {
-			return p.fallback.GetRate(ctx, from, to, date)
-		}
+
 		return decimal.Zero, err
 	}
 
@@ -88,7 +71,7 @@ func (p *HTTPFXProvider) GetRate(ctx context.Context, from, to string, date time
 			Source:       "exchangerate-api.com",
 			CreatedAt:    time.Now(),
 		}
-		// Don't fail if caching fails
+		// Don't fail if caching fails; CacheRate will populate ID/CreatedAt on success
 		_ = p.cache.CacheRate(ctx, cacheRate)
 	}
 
@@ -122,18 +105,7 @@ func (p *HTTPFXProvider) GetRates(ctx context.Context, base string, targets []st
 	if len(uncachedTargets) > 0 {
 		apiRates, err := p.fetchRatesFromAPI(ctx, base, uncachedTargets)
 		if err != nil {
-			// Fall back to mock provider
-			if p.fallback != nil {
-				fallbackRates, fallbackErr := p.fallback.GetRates(ctx, base, uncachedTargets, date)
-				if fallbackErr == nil {
-					for target, rate := range fallbackRates {
-						rates[target] = rate
-					}
-				}
-			}
-			if len(rates) == 0 {
-				return nil, err
-			}
+			return nil, err
 		} else {
 			// Merge API rates and cache them
 			for target, rate := range apiRates {
@@ -218,19 +190,15 @@ func (p *HTTPFXProvider) fetchRatesFromAPI(ctx context.Context, base string, tar
 		return nil, fmt.Errorf("failed to decode response: %w", err)
 	}
 
-	if !apiResponse.Success && apiResponse.Error != nil {
-		return nil, fmt.Errorf("API error: %s - %s", apiResponse.Error.Code, apiResponse.Error.Info)
-	}
-
-	if !apiResponse.Success {
-		return nil, fmt.Errorf("API request was not successful")
+	if apiResponse.Result != "success" {
+		return nil, fmt.Errorf("API error: %s", apiResponse.Result)
 	}
 
 	// Filter rates for requested targets
 	result := make(map[string]decimal.Decimal)
 	for _, target := range targets {
 		targetUpper := strings.ToUpper(target)
-		if rate, exists := apiResponse.Rates[targetUpper]; exists {
+		if rate, exists := apiResponse.ConversionRates[targetUpper]; exists {
 			result[target] = rate
 		}
 	}

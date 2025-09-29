@@ -33,6 +33,15 @@ type Tag struct {
 	CreatedAt time.Time `json:"created_at" db:"created_at"`
 }
 
+// TransactionLink represents a logical link between transactions
+type TransactionLink struct {
+	ID        int       `json:"id" db:"id"`
+	LinkType  string    `json:"link_type" db:"link_type"`
+	FromTx    string    `json:"from_tx" db:"from_tx"`
+	ToTx      string    `json:"to_tx" db:"to_tx"`
+	CreatedAt time.Time `json:"created_at" db:"created_at"`
+}
+
 // Common account types
 const (
 	AccountTypeCash       = "Cash"

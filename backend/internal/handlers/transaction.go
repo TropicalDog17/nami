@@ -19,6 +19,26 @@ func NewTransactionHandler(service services.TransactionService) *TransactionHand
 	return &TransactionHandler{service: service}
 }
 
+// HandleTransactions handles collection-level operations for transactions.
+// @Summary List or create transactions
+// @Description Get a list of transactions or create a new one
+// @Tags transactions
+// @Accept json
+// @Produce json
+// @Param start_date query string false "Start date (YYYY-MM-DD)"
+// @Param end_date query string false "End date (YYYY-MM-DD)"
+// @Param types query string false "Comma-separated transaction types"
+// @Param assets query string false "Comma-separated asset symbols"
+// @Param accounts query string false "Comma-separated account names"
+// @Param tags query string false "Comma-separated tag names"
+// @Param counterparty query string false "Counterparty name"
+// @Param limit query int false "Limit"
+// @Param offset query int false "Offset"
+// @Success 200 {array} models.Transaction
+// @Failure 400 {string} string "Invalid request"
+// @Failure 500 {string} string "Internal server error"
+// @Router /transactions [get]
+// @Router /transactions [post]
 func (h *TransactionHandler) HandleTransactions(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
@@ -32,6 +52,20 @@ func (h *TransactionHandler) HandleTransactions(w http.ResponseWriter, r *http.R
 	}
 }
 
+// HandleTransaction handles item-level operations for a transaction.
+// @Summary Get, update, or delete a transaction
+// @Description Operate on a single transaction by ID
+// @Tags transactions
+// @Accept json
+// @Produce json
+// @Param id path string true "Transaction ID"
+// @Success 200 {object} models.Transaction
+// @Failure 400 {string} string "Bad request"
+// @Failure 404 {string} string "Not found"
+// @Failure 500 {string} string "Internal server error"
+// @Router /transactions/{id} [get]
+// @Router /transactions/{id} [put]
+// @Router /transactions/{id} [delete]
 func (h *TransactionHandler) HandleTransaction(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 

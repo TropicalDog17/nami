@@ -1,8 +1,11 @@
 import React, { useState, useEffect } from 'react'
+import DateInput from './ui/DateInput'
+import ComboBox from './ui/ComboBox'
+
 import { useApp } from '../context/AppContext'
 
 const TransactionForm = ({ transaction = null, onSubmit, onCancel }) => {
-  const { transactionTypes, accounts, assets, tags, currency } = useApp()
+  const { transactionTypes, accounts, assets, tags, currency, actions } = useApp()
   
   const [formData, setFormData] = useState({
     date: new Date().toISOString().split('T')[0],
@@ -220,12 +223,19 @@ const TransactionForm = ({ transaction = null, onSubmit, onCancel }) => {
 
         {/* Basic Information */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          <InputField
-            label="Date"
-            field="date"
-            type="date"
-            required
-          />
+          <div>
+            <label htmlFor="date" className="block text-sm font-medium text-gray-700 mb-1">
+              Date<span className="text-red-500 ml-1">*</span>
+            </label>
+            <DateInput
+              id="date"
+              value={formData.date}
+              onChange={(v) => handleInputChange('date', v)}
+            />
+            {errors.date && (
+              <p className="mt-1 text-sm text-red-600">{errors.date}</p>
+            )}
+          </div>
           
           <InputField
             label="Transaction Type"
@@ -249,15 +259,23 @@ const TransactionForm = ({ transaction = null, onSubmit, onCancel }) => {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          <InputField
-            label="Account"
-            field="account"
-            required
-            options={accounts.filter(a => a.is_active).map(a => ({ 
-              value: a.name, 
-              label: `${a.name} (${a.type || 'Unknown'})` 
-            }))}
-          />
+          <div>
+            <label htmlFor="account" className="block text-sm font-medium text-gray-700 mb-1">
+              Account<span className="text-red-500 ml-1">*</span>
+            </label>
+            <ComboBox
+              id="account"
+              value={formData.account}
+              onChange={(v) => handleInputChange('account', v)}
+              options={(accounts || []).filter(a => a.is_active).map(a => ({ value: a.name, label: `${a.name} (${a.type || 'Unknown'})` }))}
+              placeholder="Select or type an account"
+              allowCreate
+              onCreate={async (name) => { await actions.createAccount({ name, type: 'bank', is_active: true }); await actions.loadAccounts(); }}
+            />
+            {errors.account && (
+              <p className="mt-1 text-sm text-red-600">{errors.account}</p>
+            )}
+          </div>
           
           <InputField
             label="Counterparty"
@@ -386,17 +404,15 @@ const TransactionForm = ({ transaction = null, onSubmit, onCancel }) => {
               ]}
             />
             
-            <InputField
-              label="Entry Date"
-              field="entry_date"
-              type="date"
-            />
+            <div>
+              <label htmlFor="entry_date" className="block text-sm font-medium text-gray-700 mb-1">Entry Date</label>
+              <DateInput id="entry_date" value={formData.entry_date} onChange={(v) => handleInputChange('entry_date', v)} />
+            </div>
             
-            <InputField
-              label="Exit Date"
-              field="exit_date"
-              type="date"
-            />
+            <div>
+              <label htmlFor="exit_date" className="block text-sm font-medium text-gray-700 mb-1">Exit Date</label>
+              <DateInput id="exit_date" value={formData.exit_date} onChange={(v) => handleInputChange('exit_date', v)} />
+            </div>
           </div>
         </div>
 

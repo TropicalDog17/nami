@@ -87,6 +87,107 @@ func (s *transactionService) CreateTransaction(ctx context.Context, tx *models.T
 	return nil
 }
 
+// RecalculateFX recalculates FX rates and derived amounts for existing transactions.
+// If onlyMissing is true, only updates rows where FX is zero for either USD or VND.
+func (s *transactionService) RecalculateFX(ctx context.Context, onlyMissing bool) (int, error) {
+	if s.fxProvider == nil {
+		return 0, fmt.Errorf("no FX provider configured")
+	}
+
+	// Select candidate rows
+	where := ""
+	if onlyMissing {
+		where = "WHERE (fx_to_usd = 0 OR fx_to_vnd = 0)"
+	}
+	query := `SELECT id, date, asset, fx_to_usd, fx_to_vnd FROM transactions ` + where
+
+	rows, err := s.db.QueryContext(ctx, query)
+	if err != nil {
+		return 0, fmt.Errorf("failed to list transactions for FX recalc: %w", err)
+	}
+	defer rows.Close()
+
+	type rec struct {
+		id    string
+		date  time.Time
+		asset string
+		fxUSD decimal.Decimal
+		fxVND decimal.Decimal
+	}
+	var candidates []rec
+	for rows.Next() {
+		var r rec
+		if err := rows.Scan(&r.id, &r.date, &r.asset, &r.fxUSD, &r.fxVND); err != nil {
+			return 0, fmt.Errorf("failed to scan: %w", err)
+		}
+		candidates = append(candidates, r)
+	}
+
+	// For each, fetch rates and update
+	updated := 0
+	for _, c := range candidates {
+		tx := &models.Transaction{ID: c.id, Date: c.date, Asset: c.asset, FXToUSD: c.fxUSD, FXToVND: c.fxVND}
+		// Force refresh both FX rates when onlyMissing == false
+		if !onlyMissing {
+			tx.FXToUSD = decimal.Zero
+			tx.FXToVND = decimal.Zero
+		}
+		if err := s.populateFXRates(ctx, tx); err != nil {
+			// skip on failure, continue
+			continue
+		}
+		// Recompute derived amounts using existing quantity/price/fees, type and account
+		var quantity, priceLocal, feeUSD, feeVND decimal.Decimal
+		var tType, tAccount string
+		err := s.db.QueryRowContext(ctx, `SELECT quantity, price_local, fee_usd, fee_vnd, type, account FROM transactions WHERE id = $1`, c.id).
+			Scan(&quantity, &priceLocal, &feeUSD, &feeVND, &tType, &tAccount)
+		if err != nil {
+			continue
+		}
+		tmp := &models.Transaction{Quantity: quantity, PriceLocal: priceLocal, FXToUSD: tx.FXToUSD, FXToVND: tx.FXToVND, FeeUSD: feeUSD, FeeVND: feeVND, Type: tType, Account: tAccount}
+		tmp.CalculateDerivedFields()
+
+		_, err = s.db.ExecContext(ctx, `UPDATE transactions SET fx_to_usd=$2, fx_to_vnd=$3, amount_usd=$4, amount_vnd=$5, cashflow_usd=$6, cashflow_vnd=$7, fx_source=$8, fx_timestamp=$9, updated_at=$10 WHERE id=$1`,
+			c.id, tx.FXToUSD, tx.FXToVND, tmp.AmountUSD, tmp.AmountVND, tmp.CashFlowUSD, tmp.CashFlowVND, tx.FXSource, tx.FXTimestamp, time.Now())
+		if err == nil {
+			updated++
+		}
+	}
+
+	return updated, nil
+}
+
+// ExportTransactions returns all transactions
+func (s *transactionService) ExportTransactions(ctx context.Context) ([]*models.Transaction, error) {
+	txs, err := s.ListTransactions(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	return txs, nil
+}
+
+// ImportTransactions imports transactions; when upsert is true, update existing by ID
+func (s *transactionService) ImportTransactions(ctx context.Context, txs []*models.Transaction, upsert bool) (int, error) {
+	if len(txs) == 0 {
+		return 0, nil
+	}
+	count := 0
+	for _, t := range txs {
+		if upsert && t.ID != "" {
+			// Try update existing minimal: re-use UpdateTransaction which merges and recalculates
+			if err := s.UpdateTransaction(ctx, t); err == nil {
+				count++
+				continue
+			}
+			// fall through to create if update failed
+		}
+		if err := s.CreateTransaction(ctx, t); err == nil {
+			count++
+		}
+	}
+	return count, nil
+}
+
 // GetTransaction retrieves a transaction by ID
 func (s *transactionService) GetTransaction(ctx context.Context, id string) (*models.Transaction, error) {
 	query := `

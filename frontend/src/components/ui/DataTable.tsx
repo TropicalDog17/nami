@@ -351,7 +351,7 @@ const DataTable = ({
                 </th>
               ))}
               {actions && actions.length > 0 && (
-                <th scope="col" className="relative px-6 py-3 text-center sticky right-0 bg-gray-50 z-10">
+                <th scope="col" className="relative px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider sticky right-0 bg-gray-50 z-10">
                   <span className="sr-only">Actions</span>
                   Actions
                 </th>

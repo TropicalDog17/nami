@@ -1,13 +1,14 @@
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom'
-import { AppProvider } from './context/AppContext'
-import { BackendStatusProvider } from './context/BackendStatusContext'
+
 import Layout from './components/Layout'
-import TransactionPage from './pages/TransactionPage'
-import AdminPage from './pages/AdminPage'
-import ReportsPage from './pages/ReportsPage'
+import BackendStatus from './components/ui/BackendStatus'
 import ErrorBoundary from './components/ui/ErrorBoundary'
 import ToastWithProvider from './components/ui/Toast'
-import BackendStatus from './components/ui/BackendStatus'
+import { AppProvider } from './context/AppContext'
+import { BackendStatusProvider } from './context/BackendStatusContext'
+import AdminPage from './pages/AdminPage'
+import ReportsPage from './pages/ReportsPage'
+import TransactionPage from './pages/TransactionPage'
 
 function App() {
   return (

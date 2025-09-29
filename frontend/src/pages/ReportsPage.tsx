@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { reportsApi } from '../services/api';
-import { useBackendStatus } from '../context/BackendStatusContext';
+import DateInput from '../components/ui/DateInput';
+
 import DataTable from '../components/ui/DataTable';
+import { useBackendStatus } from '../context/BackendStatusContext';
+import { reportsApi } from '../services/api';
 
 const ReportsPage = () => {
   const [activeTab, setActiveTab] = useState('holdings');
@@ -134,30 +136,14 @@ const ReportsPage = () => {
             activeTab === 'pnl') && (
             <>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Start Date
-                </label>
-                <input
-                  type="date"
-                  value={filters.startDate}
-                  onChange={(e) =>
-                    handleFilterChange('startDate', e.target.value)
-                  }
-                  className="w-full border border-gray-300 rounded px-3 py-2 text-sm"
-                />
+                <label className="block text-sm font-medium text-gray-700 mb-1">Start Date</label>
+                <DateInput value={filters.startDate} onChange={(v) => handleFilterChange('startDate', v)} />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   End Date
                 </label>
-                <input
-                  type="date"
-                  value={filters.endDate}
-                  onChange={(e) =>
-                    handleFilterChange('endDate', e.target.value)
-                  }
-                  className="w-full border border-gray-300 rounded px-3 py-2 text-sm"
-                />
+                <DateInput value={filters.endDate} onChange={(v) => handleFilterChange('endDate', v)} />
               </div>
             </>
           )}
@@ -165,15 +151,8 @@ const ReportsPage = () => {
           {/* As Of Date for Holdings */}
           {activeTab === 'holdings' && (
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                As Of Date
-              </label>
-              <input
-                type="date"
-                value={filters.asOf}
-                onChange={(e) => handleFilterChange('asOf', e.target.value)}
-                className="w-full border border-gray-300 rounded px-3 py-2 text-sm"
-              />
+              <label className="block text-sm font-medium text-gray-700 mb-1">As Of Date</label>
+              <DateInput value={filters.asOf} onChange={(v) => handleFilterChange('asOf', v)} />
             </div>
           )}
 

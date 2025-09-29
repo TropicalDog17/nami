@@ -94,6 +94,19 @@ CREATE INDEX IF NOT EXISTS idx_transactions_date_type_id ON transactions(date, t
 CREATE INDEX IF NOT EXISTS idx_transactions_account_id_date ON transactions(account_id, date);
 CREATE INDEX IF NOT EXISTS idx_transactions_metadata_gin ON transactions USING GIN (metadata);
 
+-- 8) Add transaction_links table to track logical relationships (stake-unstake, borrow-repay, etc.)
+CREATE TABLE IF NOT EXISTS transaction_links (
+    id SERIAL PRIMARY KEY,
+    link_type VARCHAR(50) NOT NULL, -- e.g., 'stake_unstake', 'borrow_repay'
+    from_tx UUID NOT NULL REFERENCES transactions(id) ON DELETE CASCADE,
+    to_tx UUID NOT NULL REFERENCES transactions(id) ON DELETE CASCADE,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_transaction_links_from ON transaction_links(from_tx);
+CREATE INDEX IF NOT EXISTS idx_transaction_links_to ON transaction_links(to_tx);
+CREATE INDEX IF NOT EXISTS idx_transaction_links_type ON transaction_links(link_type);
+
 COMMIT;
 
 

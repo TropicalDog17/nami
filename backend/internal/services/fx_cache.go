@@ -48,15 +48,18 @@ func (s *FXCacheServiceImpl) GetCachedRate(ctx context.Context, from, to string,
 // CacheRate stores an exchange rate in the cache
 func (s *FXCacheServiceImpl) CacheRate(ctx context.Context, rate *models.FXRate) error {
 	query := `
-		INSERT INTO fx_rates (from_currency, to_currency, rate, date, source)
-		VALUES ($1, $2, $3, $4, $5)
-		ON CONFLICT (from_currency, to_currency, date, source)
-		DO UPDATE SET
-			rate = EXCLUDED.rate,
-			created_at = NOW()`
+        INSERT INTO fx_rates (from_currency, to_currency, rate, date, source)
+        VALUES ($1, $2, $3, $4, $5)
+        ON CONFLICT (from_currency, to_currency, date, source)
+        DO UPDATE SET
+            rate = EXCLUDED.rate,
+            created_at = NOW()
+        RETURNING id, created_at, rate`
 
-	_, err := s.db.ExecContext(ctx, query,
-		rate.FromCurrency, rate.ToCurrency, rate.Rate, rate.Date, rate.Source)
+	// Use QueryRowContext to capture the assigned/updated id and timestamps
+	err := s.db.QueryRowContext(ctx, query,
+		rate.FromCurrency, rate.ToCurrency, rate.Rate, rate.Date, rate.Source,
+	).Scan(&rate.ID, &rate.CreatedAt, &rate.Rate)
 
 	if err != nil {
 		return fmt.Errorf("failed to cache rate: %w", err)
@@ -112,6 +115,31 @@ func (s *FXCacheServiceImpl) InvalidateCache(ctx context.Context, from, to strin
 	}
 
 	return nil
+}
+
+// ListRatesRange returns only existing rates in DB for a date range
+func (s *FXCacheServiceImpl) ListRatesRange(ctx context.Context, from, to string, start, end time.Time) ([]*models.FXRate, error) {
+	query := `
+        SELECT id, from_currency, to_currency, rate, date, source, created_at
+        FROM fx_rates
+        WHERE from_currency = $1 AND to_currency = $2 AND date >= $3 AND date <= $4
+        ORDER BY date ASC, created_at DESC`
+
+	rows, err := s.db.QueryContext(ctx, query, from, to, start, end)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list rates range: %w", err)
+	}
+	defer rows.Close()
+
+	var rates []*models.FXRate
+	for rows.Next() {
+		r := &models.FXRate{}
+		if err := rows.Scan(&r.ID, &r.FromCurrency, &r.ToCurrency, &r.Rate, &r.Date, &r.Source, &r.CreatedAt); err != nil {
+			return nil, fmt.Errorf("failed to scan rate: %w", err)
+		}
+		rates = append(rates, r)
+	}
+	return rates, nil
 }
 
 // Helper function to join strings

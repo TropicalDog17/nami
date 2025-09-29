@@ -111,6 +111,25 @@ start_backend() {
     exit 1
 }
 
+# Stop backend
+stop_backend() {
+    print_status "Stopping backend server..."
+
+    # Try to kill by port 8080
+    if command -v lsof >/dev/null 2>&1; then
+        PIDS=$(lsof -ti tcp:8080 || true)
+        if [ ! -z "$PIDS" ]; then
+            kill $PIDS 2>/dev/null || true
+        fi
+    fi
+
+    # Try to kill common backend processes
+    pkill -f "go run cmd/server/main.go" 2>/dev/null || true
+    pkill -f "/bin/nami-server" 2>/dev/null || true
+
+    print_success "Backend stop signal sent"
+}
+
 # Start frontend
 start_frontend() {
     print_status "Starting frontend server..."
@@ -155,6 +174,25 @@ start_frontend() {
 
     print_error "Frontend failed to start within 45 seconds"
     exit 1
+}
+
+# Stop frontend
+stop_frontend() {
+    print_status "Stopping frontend server..."
+
+    # Try to kill by port 3000
+    if command -v lsof >/dev/null 2>&1; then
+        PIDS=$(lsof -ti tcp:3000 || true)
+        if [ ! -z "$PIDS" ]; then
+            kill $PIDS 2>/dev/null || true
+        fi
+    fi
+
+    # Try to kill common frontend processes
+    pkill -f "npm run dev" 2>/dev/null || true
+    pkill -f "vite" 2>/dev/null || true
+
+    print_success "Frontend stop signal sent"
 }
 
 # Show demo information
@@ -282,7 +320,8 @@ main() {
     case $command in
         "demo")
             print_status "Starting full Nami demo..."
-            main_demo
+            # Use the earlier demo routine
+            main
             ;;
         "backend")
             check_prerequisites
@@ -299,6 +338,21 @@ main() {
             print_success "Frontend is running on port 3000"
             print_status "Press Ctrl+C to stop"
             wait
+            ;;
+        "stop")
+            print_status "Stopping backend, frontend, and Docker services..."
+            stop_frontend
+            stop_backend
+            if command -v docker >/dev/null 2>&1; then
+                docker-compose down 2>/dev/null || true
+            fi
+            print_success "All services stopped"
+            ;;
+        "stop-backend")
+            stop_backend
+            ;;
+        "stop-frontend")
+            stop_frontend
             ;;
         "test")
             run_tests

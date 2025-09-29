@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { adminApi } from '../services/api';
-import { useApp } from '../context/AppContext';
+
 import DataTable from '../components/ui/DataTable';
+import { useApp } from '../context/AppContext';
+import { adminApi } from '../services/api';
 
 const AdminPage = () => {
   const { actions, error, success } = useApp();
@@ -210,7 +211,7 @@ const AdminPage = () => {
 
   // Update renderTable to use filtered data
   const renderTable = () => {
-    let data = getFilteredData();
+    const data = getFilteredData();
     let columns = [];
 
     switch (activeTab) {
