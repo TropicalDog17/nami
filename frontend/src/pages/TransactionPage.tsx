@@ -240,19 +240,21 @@ const TransactionPage: React.FC = () => {
       title: 'Type',
       editable: true,
       editType: 'select',
-      formatter: (value: any) => (
-        <span
-          className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-            ['buy', 'income', 'reward'].includes(value)
-              ? 'bg-green-100 text-green-800'
-              : ['sell', 'expense', 'fee'].includes(value)
-                ? 'bg-red-100 text-red-800'
-                : 'bg-gray-100 text-gray-800'
-          }`}
-        >
-          {value}
-        </span>
-      ),
+      formatter: (value: any) => {
+        const isInflow = ['buy', 'income', 'reward'].includes(value);
+        const isOutflow = ['sell', 'expense', 'fee', 'repay_borrow'].includes(value);
+        const direction = isInflow ? 'Inflow' : isOutflow ? 'Outflow' : 'Transfer';
+        const cls = isInflow
+          ? 'bg-green-100 text-green-800'
+          : isOutflow
+            ? 'bg-red-100 text-red-800'
+            : 'bg-gray-100 text-gray-800';
+        return (
+          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${cls}`}>
+            {direction}
+          </span>
+        );
+      },
     },
     {
       key: 'asset',
@@ -279,21 +281,6 @@ const TransactionPage: React.FC = () => {
       title: `Amount (${currency})`,
       type: 'currency',
       currency: currency,
-    },
-    {
-      key: currency === 'USD' ? 'cashflow_usd' : 'cashflow_vnd',
-      title: `Cash Flow (${currency})`,
-      type: 'currency',
-      currency: currency,
-      formatter: (value: number) => (
-        <span className={value >= 0 ? 'text-green-600' : 'text-red-600'}>
-          {new Intl.NumberFormat('en-US', {
-            style: 'currency',
-            currency: currency,
-            minimumFractionDigits: 2,
-          }).format(value)}
-        </span>
-      ),
     },
     {
       key: 'counterparty',

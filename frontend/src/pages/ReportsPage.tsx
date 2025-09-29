@@ -9,8 +9,8 @@ const ReportsPage = () => {
   const [activeTab, setActiveTab] = useState('holdings');
   const [currency, setCurrency] = useState('USD');
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
-  const [data, setData] = useState({});
+  const [error, setError] = useState<string | null>(null);
+  const [data, setData] = useState<any>({});
 
   // Filters
   const [filters, setFilters] = useState({
@@ -26,7 +26,7 @@ const ReportsPage = () => {
     type: '',
   });
 
-  const { isOnline } = useBackendStatus();
+  const { isOnline } = useBackendStatus() as any;
 
   const tabs = [
     { id: 'holdings', name: 'Holdings', icon: '📊' },
@@ -72,16 +72,19 @@ const ReportsPage = () => {
           break;
       }
 
-      setData((prev) => ({ ...prev, [activeTab]: result }));
+      setData((prev: any) => ({ ...prev, [activeTab]: result }));
     } catch (err) {
-      setError(`Failed to load ${activeTab}: ${err.message}`);
+      const message = err && typeof err === 'object' && 'message' in (err as any)
+        ? String((err as any).message)
+        : String(err);
+      setError(`Failed to load ${activeTab}: ${message}`);
       console.error('Reports fetch error:', err);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleFilterChange = (key, value) => {
+  const handleFilterChange = (key: any, value: any) => {
     setFilters((prev) => ({ ...prev, [key]: value }));
   };
 
@@ -191,7 +194,7 @@ const ReportsPage = () => {
   };
 
   const renderHoldingsTable = () => {
-    const holdings = data.holdings || [];
+    const holdings = (data as any).holdings || [];
 
     const columns = [
       { key: 'asset', title: 'Asset' },
@@ -200,14 +203,14 @@ const ReportsPage = () => {
         key: 'quantity',
         title: 'Quantity',
         type: 'number',
-        render: (value) => parseFloat(value || 0).toLocaleString(),
+        render: (value: any) => parseFloat(value || 0).toLocaleString(),
       },
       {
         key: currency === 'USD' ? 'value_usd' : 'value_vnd',
         title: `Value (${currency})`,
         type: 'currency',
         currency: currency,
-        render: (value) => {
+        render: (value: any) => {
           const num = parseFloat(value || 0);
           return currency === 'USD'
             ? `$${num.toLocaleString()}`
@@ -218,7 +221,7 @@ const ReportsPage = () => {
         key: 'last_updated',
         title: 'Last Updated',
         type: 'date',
-        render: (value) => new Date(value).toLocaleDateString(),
+        render: (value: any) => new Date(value).toLocaleDateString(),
       },
     ];
 
@@ -236,13 +239,58 @@ const ReportsPage = () => {
   };
 
   const renderCashFlowTable = () => {
-    const cashFlow = data.cashflow || {};
-    const byType = Object.entries(cashFlow.by_type || {}).map(
-      ([type, data]) => ({
-        type,
-        ...data,
-      })
+    const cashFlow: any = (data as any).cashflow || {};
+    type CashRow = {
+      type: string;
+      inflow_usd?: number | string;
+      outflow_usd?: number | string;
+      net_usd?: number | string;
+      inflow_vnd?: number | string;
+      outflow_vnd?: number | string;
+      net_vnd?: number | string;
+      count?: number;
+      [key: string]: any;
+    };
+    let allRows: CashRow[] = Object.entries(cashFlow.by_type || {}).map(
+      ([type, d]: [string, any]) => ({ type, ...(d as any) })
     );
+
+    // For borrow, inflow is tracked in amount fields not cashflow; override so the row reflects real inflow
+    allRows = allRows.map((row) => {
+      if (row.type === 'borrow') {
+        const inflowUSD = parseFloat(String((cashFlow as any).financing_in_usd ?? 0));
+        const inflowVND = parseFloat(String((cashFlow as any).financing_in_vnd ?? 0));
+        return {
+          ...row,
+          inflow_usd: inflowUSD,
+          inflow_vnd: inflowVND,
+          // keep existing outflow fields as-is; net will be computed from dataset columns in UI
+        } as CashRow;
+      }
+      return row;
+    });
+
+    // Split into Operating vs Financing rows
+    const financingTypes = new Set(['borrow', 'repay_borrow', 'interest_expense']);
+    const financingRows: CashRow[] = allRows.filter((r: CashRow) => financingTypes.has(r.type));
+    const operatingRows: CashRow[] = allRows.filter((r: CashRow) => !financingTypes.has(r.type));
+
+    // Helper to compute section subtotals based on current currency
+    const computeTotals = (rows: CashRow[]) => {
+      const keyIn = currency === 'USD' ? 'inflow_usd' : 'inflow_vnd';
+      const keyOut = currency === 'USD' ? 'outflow_usd' : 'outflow_vnd';
+      const keyNet = currency === 'USD' ? 'net_usd' : 'net_vnd';
+      const totals = rows.reduce(
+        (acc: { inflow: number; outflow: number; net: number; count: number }, r: CashRow) => ({
+          inflow: acc.inflow + parseFloat(String(r[keyIn] ?? 0)),
+          outflow: acc.outflow + parseFloat(String(r[keyOut] ?? 0)),
+          net: acc.net + parseFloat(String(r[keyNet] ?? 0)),
+          count: acc.count + (r.count || 0),
+        }),
+        { inflow: 0, outflow: 0, net: 0, count: 0 }
+      );
+      return totals;
+    };
 
     const columns = [
       { key: 'type', title: 'Transaction Type' },
@@ -250,7 +298,7 @@ const ReportsPage = () => {
         key: currency === 'USD' ? 'inflow_usd' : 'inflow_vnd',
         title: `Inflow (${currency})`,
         type: 'currency',
-        render: (value) => {
+        render: (value: any) => {
           const num = parseFloat(value || 0);
           return currency === 'USD'
             ? `$${num.toLocaleString()}`
@@ -261,7 +309,7 @@ const ReportsPage = () => {
         key: currency === 'USD' ? 'outflow_usd' : 'outflow_vnd',
         title: `Outflow (${currency})`,
         type: 'currency',
-        render: (value) => {
+        render: (value: any) => {
           const num = parseFloat(value || 0);
           return currency === 'USD'
             ? `$${num.toLocaleString()}`
@@ -272,7 +320,7 @@ const ReportsPage = () => {
         key: currency === 'USD' ? 'net_usd' : 'net_vnd',
         title: `Net (${currency})`,
         type: 'currency',
-        render: (value) => {
+        render: (value: any) => {
           const num = parseFloat(value || 0);
           const formatted =
             currency === 'USD'
@@ -290,56 +338,177 @@ const ReportsPage = () => {
 
     return (
       <div>
-        {/* Summary Stats */}
+        {/* Summary Stats - Combined */}
         {cashFlow.total_in_usd !== undefined && (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
             <div className="bg-green-50 p-4 rounded-lg">
               <h4 className="text-sm font-medium text-green-800">
-                Total Inflow
+                Combined Inflow
               </h4>
               <p className="text-2xl font-bold text-green-900">
                 {currency === 'USD'
-                  ? `$${parseFloat(cashFlow.total_in_usd || 0).toLocaleString()}`
-                  : `₫${parseFloat(cashFlow.total_in_vnd || 0).toLocaleString()}`}
+                  ? `$${parseFloat((cashFlow.combined_in_usd ?? cashFlow.total_in_usd) || 0).toLocaleString()}`
+                  : `₫${parseFloat((cashFlow.combined_in_vnd ?? cashFlow.total_in_vnd) || 0).toLocaleString()}`}
               </p>
             </div>
             <div className="bg-red-50 p-4 rounded-lg">
               <h4 className="text-sm font-medium text-red-800">
-                Total Outflow
+                Combined Outflow
               </h4>
               <p className="text-2xl font-bold text-red-900">
                 {currency === 'USD'
-                  ? `$${parseFloat(cashFlow.total_out_usd || 0).toLocaleString()}`
-                  : `₫${parseFloat(cashFlow.total_out_vnd || 0).toLocaleString()}`}
+                  ? `$${parseFloat((cashFlow.combined_out_usd ?? cashFlow.total_out_usd) || 0).toLocaleString()}`
+                  : `₫${parseFloat((cashFlow.combined_out_vnd ?? cashFlow.total_out_vnd) || 0).toLocaleString()}`}
               </p>
             </div>
             <div className="bg-blue-50 p-4 rounded-lg">
-              <h4 className="text-sm font-medium text-blue-800">Net Flow</h4>
+              <h4 className="text-sm font-medium text-blue-800">Combined Net</h4>
               <p className="text-2xl font-bold text-blue-900">
                 {currency === 'USD'
-                  ? `$${parseFloat(cashFlow.net_usd || 0).toLocaleString()}`
-                  : `₫${parseFloat(cashFlow.net_vnd || 0).toLocaleString()}`}
+                  ? `$${parseFloat((cashFlow.combined_net_usd ?? cashFlow.net_usd) || 0).toLocaleString()}`
+                  : `₫${parseFloat((cashFlow.combined_net_vnd ?? cashFlow.net_vnd) || 0).toLocaleString()}`}
               </p>
             </div>
           </div>
         )}
 
-        <DataTable
-          data={byType}
-          columns={columns}
-          loading={loading}
-          emptyMessage="No cash flow data found"
-          filterable={true}
-          sortable={true}
-          pagination={true}
-        />
+        {/* Secondary: Operating vs Financing */}
+        {cashFlow.operating_in_usd !== undefined && (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+            <div className="bg-gray-50 p-4 rounded-lg">
+              <h4 className="text-sm font-medium text-gray-800 mb-2">Operating</h4>
+              <div className="flex items-center justify-between text-sm">
+                <span>Inflow</span>
+                <span>
+                  {currency === 'USD'
+                    ? `$${parseFloat(cashFlow.operating_in_usd || 0).toLocaleString()}`
+                    : `₫${parseFloat(cashFlow.operating_in_vnd || 0).toLocaleString()}`}
+                </span>
+              </div>
+              <div className="flex items-center justify-between text-sm">
+                <span>Outflow</span>
+                <span>
+                  {currency === 'USD'
+                    ? `$${parseFloat(cashFlow.operating_out_usd || 0).toLocaleString()}`
+                    : `₫${parseFloat(cashFlow.operating_out_vnd || 0).toLocaleString()}`}
+                </span>
+              </div>
+              <div className="flex items-center justify-between font-semibold">
+                <span>Net</span>
+                <span>
+                  {currency === 'USD'
+                    ? `$${parseFloat(cashFlow.operating_net_usd || 0).toLocaleString()}`
+                    : `₫${parseFloat(cashFlow.operating_net_vnd || 0).toLocaleString()}`}
+                </span>
+              </div>
+            </div>
+
+            <div className="bg-gray-50 p-4 rounded-lg">
+              <h4 className="text-sm font-medium text-gray-800 mb-2">Financing</h4>
+              <div className="flex items-center justify-between text-sm">
+                <span>Inflow (Borrow)</span>
+                <span>
+                  {currency === 'USD'
+                    ? `$${parseFloat(cashFlow.financing_in_usd || 0).toLocaleString()}`
+                    : `₫${parseFloat(cashFlow.financing_in_vnd || 0).toLocaleString()}`}
+                </span>
+              </div>
+              <div className="flex items-center justify-between text-sm">
+                <span>Outflow (Repay + Interest)</span>
+                <span>
+                  {currency === 'USD'
+                    ? `$${parseFloat(cashFlow.financing_out_usd || 0).toLocaleString()}`
+                    : `₫${parseFloat(cashFlow.financing_out_vnd || 0).toLocaleString()}`}
+                </span>
+              </div>
+              <div className="flex items-center justify-between font-semibold">
+                <span>Net</span>
+                <span>
+                  {currency === 'USD'
+                    ? `$${parseFloat(cashFlow.financing_net_usd || 0).toLocaleString()}`
+                    : `₫${parseFloat(cashFlow.financing_net_vnd || 0).toLocaleString()}`}
+                </span>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Operating section */}
+        <div className="space-y-2 mb-8">
+          <div className="flex items-center justify-between">
+            <h4 className="text-md font-semibold text-gray-900">Operating Cash Flows</h4>
+            {operatingRows.length > 0 && (
+              (() => {
+                const t = computeTotals(operatingRows);
+                const fmt = (n: number) =>
+                  currency === 'USD'
+                    ? `$${Math.abs(n).toLocaleString()}`
+                    : `₫${Math.abs(n).toLocaleString()}`;
+                return (
+                  <div className="text-sm text-gray-700 flex items-center gap-4">
+                    <span>In: {fmt(t.inflow)}</span>
+                    <span>Out: {fmt(t.outflow)}</span>
+                    <span>
+                      Net: {t.net >= 0 ? '+' : '-'}{fmt(t.net)}
+                    </span>
+                    <span>Tx: {t.count}</span>
+                  </div>
+                );
+              })()
+            )}
+          </div>
+          <DataTable
+            data={operatingRows}
+            columns={columns}
+            loading={loading}
+            emptyMessage="No operating cash flows"
+            filterable={true}
+            sortable={true}
+            pagination={true}
+          />
+        </div>
+
+        {/* Financing section */}
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <h4 className="text-md font-semibold text-gray-900">Financing Cash Flows</h4>
+            {financingRows.length > 0 && (
+              (() => {
+                const t = computeTotals(financingRows);
+                const fmt = (n: number) =>
+                  currency === 'USD'
+                    ? `$${Math.abs(n).toLocaleString()}`
+                    : `₫${Math.abs(n).toLocaleString()}`;
+                return (
+                  <div className="text-sm text-gray-700 flex items-center gap-4">
+                    <span>In: {fmt(t.inflow)}</span>
+                    <span>Out: {fmt(t.outflow)}</span>
+                    <span>
+                      Net: {t.net >= 0 ? '+' : '-'}{fmt(t.net)}
+                    </span>
+                    <span>Tx: {t.count}</span>
+                  </div>
+                );
+              })()
+            )}
+          </div>
+          <DataTable
+            data={financingRows}
+            columns={columns}
+            loading={loading}
+            emptyMessage="No financing cash flows"
+            filterable={true}
+            sortable={true}
+            pagination={true}
+          />
+        </div>
       </div>
     );
   };
 
   const renderSpendingTable = () => {
-    const spending = data.spending || {};
-    const byTag = Object.entries(spending.by_tag || {}).map(([tag, data]) => ({
+    const spending: any = (data as any).spending || {};
+    const byTag = Object.entries(spending.by_tag || {}).map(([tag, data]: [string, any]) => ({
       tag,
       ...data,
     }));
@@ -350,7 +519,7 @@ const ReportsPage = () => {
         key: currency === 'USD' ? 'amount_usd' : 'amount_vnd',
         title: `Amount (${currency})`,
         type: 'currency',
-        render: (value) => {
+        render: (value: any) => {
           const num = parseFloat(value || 0);
           return currency === 'USD'
             ? `$${num.toLocaleString()}`
@@ -360,7 +529,7 @@ const ReportsPage = () => {
       {
         key: 'percentage',
         title: 'Percentage',
-        render: (value) => `${parseFloat(value || 0).toFixed(1)}%`,
+        render: (value: any) => `${parseFloat(value || 0).toFixed(1)}%`,
       },
       {
         key: 'count',
@@ -399,7 +568,7 @@ const ReportsPage = () => {
   };
 
   const renderPnLTable = () => {
-    const pnl = data.pnl || {};
+    const pnl: any = (data as any).pnl || {};
 
     return (
       <div>

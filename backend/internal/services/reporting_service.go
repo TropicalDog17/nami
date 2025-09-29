@@ -140,29 +140,19 @@ func (s *reportingService) GetCashFlow(ctx context.Context, period models.Period
 		report.ByType[txType] = cf
 	}
 
-	// Derive Operating vs Financing and Combined totals from ByType
+	// Derive Operating totals from ByType (exclude financing types)
 	var opInUSD, opOutUSD, opNetUSD decimal.Decimal
 	var opInVND, opOutVND, opNetVND decimal.Decimal
-	var finInUSD, finOutUSD, finNetUSD decimal.Decimal
-	var finInVND, finOutVND, finNetVND decimal.Decimal
-
 	for t, cf := range report.ByType {
-		isFinancing := (t == "borrow" || t == "repay_borrow" || t == "interest_expense")
-		if isFinancing {
-			finInUSD = finInUSD.Add(cf.InflowUSD)
-			finOutUSD = finOutUSD.Add(cf.OutflowUSD)
-			finNetUSD = finNetUSD.Add(cf.NetUSD)
-			finInVND = finInVND.Add(cf.InflowVND)
-			finOutVND = finOutVND.Add(cf.OutflowVND)
-			finNetVND = finNetVND.Add(cf.NetVND)
-		} else {
-			opInUSD = opInUSD.Add(cf.InflowUSD)
-			opOutUSD = opOutUSD.Add(cf.OutflowUSD)
-			opNetUSD = opNetUSD.Add(cf.NetUSD)
-			opInVND = opInVND.Add(cf.InflowVND)
-			opOutVND = opOutVND.Add(cf.OutflowVND)
-			opNetVND = opNetVND.Add(cf.NetVND)
+		if t == "borrow" || t == "repay_borrow" || t == "interest_expense" {
+			continue
 		}
+		opInUSD = opInUSD.Add(cf.InflowUSD)
+		opOutUSD = opOutUSD.Add(cf.OutflowUSD)
+		opNetUSD = opNetUSD.Add(cf.NetUSD)
+		opInVND = opInVND.Add(cf.InflowVND)
+		opOutVND = opOutVND.Add(cf.OutflowVND)
+		opNetVND = opNetVND.Add(cf.NetVND)
 	}
 
 	report.OperatingInUSD = opInUSD
@@ -172,20 +162,45 @@ func (s *reportingService) GetCashFlow(ctx context.Context, period models.Period
 	report.OperatingOutVND = opOutVND
 	report.OperatingNetVND = opNetVND
 
+	// Compute Financing directly to include borrow as inflow even if cashflow is zero
+	finBorrowQuery := `
+		SELECT 
+			COALESCE(SUM(amount_usd), 0) AS inflow_usd,
+			COALESCE(SUM(amount_vnd), 0) AS inflow_vnd
+		FROM transactions
+		WHERE date >= $1 AND date <= $2 AND type = 'borrow'`
+
+	var finInUSD, finInVND decimal.Decimal
+	if err := s.db.QueryRowContext(ctx, finBorrowQuery, period.StartDate, period.EndDate).Scan(&finInUSD, &finInVND); err != nil {
+		return nil, fmt.Errorf("failed to get financing borrow inflow: %w", err)
+	}
+
+	finOutQuery := `
+		SELECT 
+			COALESCE(SUM(ABS(cashflow_usd)), 0) AS outflow_usd,
+			COALESCE(SUM(ABS(cashflow_vnd)), 0) AS outflow_vnd
+		FROM transactions
+		WHERE date >= $1 AND date <= $2 AND type IN ('repay_borrow','interest_expense')`
+
+	var finOutUSD, finOutVND decimal.Decimal
+	if err := s.db.QueryRowContext(ctx, finOutQuery, period.StartDate, period.EndDate).Scan(&finOutUSD, &finOutVND); err != nil {
+		return nil, fmt.Errorf("failed to get financing outflows: %w", err)
+	}
+
 	report.FinancingInUSD = finInUSD
 	report.FinancingOutUSD = finOutUSD
-	report.FinancingNetUSD = finNetUSD
+	report.FinancingNetUSD = finInUSD.Sub(finOutUSD)
 	report.FinancingInVND = finInVND
 	report.FinancingOutVND = finOutVND
-	report.FinancingNetVND = finNetVND
+	report.FinancingNetVND = finInVND.Sub(finOutVND)
 
-	// Combined is simply operating + financing
-	report.CombinedInUSD = opInUSD.Add(finInUSD)
-	report.CombinedOutUSD = opOutUSD.Add(finOutUSD)
-	report.CombinedNetUSD = opNetUSD.Add(finNetUSD)
-	report.CombinedInVND = opInVND.Add(finInVND)
-	report.CombinedOutVND = opOutVND.Add(finOutVND)
-	report.CombinedNetVND = opNetVND.Add(finNetVND)
+	// Combined is operating + financing
+	report.CombinedInUSD = report.OperatingInUSD.Add(report.FinancingInUSD)
+	report.CombinedOutUSD = report.OperatingOutUSD.Add(report.FinancingOutUSD)
+	report.CombinedNetUSD = report.OperatingNetUSD.Add(report.FinancingNetUSD)
+	report.CombinedInVND = report.OperatingInVND.Add(report.FinancingInVND)
+	report.CombinedOutVND = report.OperatingOutVND.Add(report.FinancingOutVND)
+	report.CombinedNetVND = report.OperatingNetVND.Add(report.FinancingNetVND)
 
 	// Cash flow by tag (where tag is not null)
 	tagQuery := `

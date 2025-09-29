@@ -147,8 +147,8 @@ func (s *transactionService) RecalculateFX(ctx context.Context, onlyMissing bool
 		tmp := &models.Transaction{Quantity: quantity, PriceLocal: priceLocal, FXToUSD: tx.FXToUSD, FXToVND: tx.FXToVND, FeeUSD: feeUSD, FeeVND: feeVND, Type: tType, Account: tAccount}
 		tmp.CalculateDerivedFields()
 
-		_, err = s.db.ExecContext(ctx, `UPDATE transactions SET fx_to_usd=$2, fx_to_vnd=$3, amount_usd=$4, amount_vnd=$5, cashflow_usd=$6, cashflow_vnd=$7, fx_source=$8, fx_timestamp=$9, updated_at=$10 WHERE id=$1`,
-			c.id, tx.FXToUSD, tx.FXToVND, tmp.AmountUSD, tmp.AmountVND, tmp.CashFlowUSD, tmp.CashFlowVND, tx.FXSource, tx.FXTimestamp, time.Now())
+		_, err = s.db.ExecContext(ctx, `UPDATE transactions SET fx_to_usd=$2, fx_to_vnd=$3, amount_usd=$4, amount_vnd=$5, delta_qty=$6, cashflow_usd=$7, cashflow_vnd=$8, fx_source=$9, fx_timestamp=$10, updated_at=$11 WHERE id=$1`,
+			c.id, tx.FXToUSD, tx.FXToVND, tmp.AmountUSD, tmp.AmountVND, tmp.DeltaQty, tmp.CashFlowUSD, tmp.CashFlowVND, tx.FXSource, tx.FXTimestamp, time.Now())
 		if err == nil {
 			updated++
 		}
@@ -192,8 +192,8 @@ func (s *transactionService) RecalculateOneFX(ctx context.Context, id string, on
 	tmp.CalculateDerivedFields()
 
 	// Apply update
-	if _, err := s.db.ExecContext(ctx, `UPDATE transactions SET fx_to_usd=$2, fx_to_vnd=$3, amount_usd=$4, amount_vnd=$5, cashflow_usd=$6, cashflow_vnd=$7, fx_source=$8, fx_timestamp=$9, updated_at=$10 WHERE id=$1`,
-		id, tx.FXToUSD, tx.FXToVND, tmp.AmountUSD, tmp.AmountVND, tmp.CashFlowUSD, tmp.CashFlowVND, tx.FXSource, tx.FXTimestamp, time.Now()); err != nil {
+	if _, err := s.db.ExecContext(ctx, `UPDATE transactions SET fx_to_usd=$2, fx_to_vnd=$3, amount_usd=$4, amount_vnd=$5, delta_qty=$6, cashflow_usd=$7, cashflow_vnd=$8, fx_source=$9, fx_timestamp=$10, updated_at=$11 WHERE id=$1`,
+		id, tx.FXToUSD, tx.FXToVND, tmp.AmountUSD, tmp.AmountVND, tmp.DeltaQty, tmp.CashFlowUSD, tmp.CashFlowVND, tx.FXSource, tx.FXTimestamp, time.Now()); err != nil {
 		return nil, fmt.Errorf("failed to update transaction: %w", err)
 	}
 

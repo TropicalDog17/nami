@@ -951,10 +951,67 @@
                         "$ref": "#/definitions/github_com_tropicaldog17_nami_internal_models.CashFlowByType"
                     }
                 },
+                "combined_in_usd": {
+                    "description": "Combined totals = Operating + Financing",
+                    "type": "number"
+                },
+                "combined_in_vnd": {
+                    "type": "number"
+                },
+                "combined_net_usd": {
+                    "type": "number"
+                },
+                "combined_net_vnd": {
+                    "type": "number"
+                },
+                "combined_out_usd": {
+                    "type": "number"
+                },
+                "combined_out_vnd": {
+                    "type": "number"
+                },
+                "financing_in_usd": {
+                    "description": "Financing totals include borrow (as inflow), repay_borrow and interest_expense (as outflows)",
+                    "type": "number"
+                },
+                "financing_in_vnd": {
+                    "type": "number"
+                },
+                "financing_net_usd": {
+                    "type": "number"
+                },
+                "financing_net_vnd": {
+                    "type": "number"
+                },
+                "financing_out_usd": {
+                    "type": "number"
+                },
+                "financing_out_vnd": {
+                    "type": "number"
+                },
                 "net_usd": {
                     "type": "number"
                 },
                 "net_vnd": {
+                    "type": "number"
+                },
+                "operating_in_usd": {
+                    "description": "Operating totals exclude financing flows (borrow, repay_borrow, interest_expense)",
+                    "type": "number"
+                },
+                "operating_in_vnd": {
+                    "type": "number"
+                },
+                "operating_net_usd": {
+                    "type": "number"
+                },
+                "operating_net_vnd": {
+                    "type": "number"
+                },
+                "operating_out_usd": {
+                    "type": "number"
+                },
+                "operating_out_vnd": {
                     "type": "number"
                 },
                 "period": {

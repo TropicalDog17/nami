@@ -115,12 +115,9 @@ func (t *Transaction) CalculateDerivedFields() {
 	case "sell", "withdraw", "transfer_out", "expense", "fee", "repay_borrow", "interest_expense":
 		t.DeltaQty = t.Quantity.Neg()
 	case "borrow":
-		// Borrow increases liability (negative for cash, positive for debt)
-		if t.Account == "CreditCard" {
-			t.DeltaQty = t.Quantity
-		} else {
-			t.DeltaQty = t.Quantity.Neg()
-		}
+		// Borrow increases cash/asset holdings in the receiving account
+		// Liability tracking is handled separately via reporting
+		t.DeltaQty = t.Quantity
 	}
 
 	// Calculate CashFlow based on transaction type and account
