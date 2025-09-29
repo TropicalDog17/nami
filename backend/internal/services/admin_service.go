@@ -27,9 +27,10 @@ func NewAdminService(database *db.DB) AdminService {
 // ListTransactionTypes retrieves all transaction types (active and inactive for admin)
 func (s *adminService) ListTransactionTypes(ctx context.Context) ([]*models.TransactionType, error) {
 	query := `
-		SELECT id, name, description, is_active, created_at, updated_at
-		FROM transaction_types
-		ORDER BY name`
+        SELECT id, name, description, is_active, created_at, updated_at
+        FROM transaction_types
+        WHERE is_active = true
+        ORDER BY name`
 
 	rows, err := s.db.QueryContext(ctx, query)
 	if err != nil {
@@ -260,7 +261,10 @@ func (s *adminService) DeleteTransactionType(ctx context.Context, id int, change
 // GetTypeAuditTrail retrieves the audit trail for a transaction type
 func (s *adminService) GetTypeAuditTrail(ctx context.Context, typeID int) ([]*models.TransactionTypeAudit, error) {
 	query := `
-		SELECT id, type_id, action, old_values, new_values, changed_by, changed_at
+        SELECT id, type_id, action,
+               COALESCE(old_values, '{}'::jsonb) AS old_values,
+               COALESCE(new_values, '{}'::jsonb) AS new_values,
+               changed_by, changed_at
 		FROM transaction_type_audit
 		WHERE type_id = $1
 		ORDER BY changed_at DESC`

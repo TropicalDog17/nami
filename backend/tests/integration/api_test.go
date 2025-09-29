@@ -17,9 +17,11 @@ import (
 )
 
 func TestTransactionAPI(t *testing.T) {
-	// Setup test database with testcontainers
-	tc := SetupTestContainer(t)
-	defer tc.Cleanup(t)
+	if testing.Short() {
+		t.Skip("skipping integration tests in short mode")
+	}
+	// Setup or reuse suite test database with testcontainers
+	tc := GetSuiteContainer(t)
 
 	database := &db.DB{DB: tc.DB}
 
@@ -78,8 +80,10 @@ func TestTransactionAPI(t *testing.T) {
 			t.Error("Expected delta_qty to be calculated")
 		}
 
-		if result.CashFlowUSD.IsZero() {
-			t.Error("Expected cashflow_usd to be calculated")
+		// With fee_usd 1.5 and amount_usd 67, expect -(67+1.5) = -68.5 cashflow
+		expected := mustDecimal("-68.5")
+		if !result.CashFlowUSD.Equal(expected) {
+			t.Errorf("Expected cashflow_usd %s, got %s", expected.String(), result.CashFlowUSD.String())
 		}
 	})
 
@@ -183,10 +187,8 @@ func TestTransactionAPI(t *testing.T) {
 }
 
 func TestAdminAPI(t *testing.T) {
-	// Setup test database with testcontainers
-	tc := SetupTestContainer(t)
-	defer tc.Cleanup(t)
-
+	// Reuse suite container without per-test cleanup
+	tc := GetSuiteContainer(t)
 	database := &db.DB{DB: tc.DB}
 
 	// Initialize services and handlers
@@ -267,9 +269,9 @@ func TestAdminAPI(t *testing.T) {
 	})
 
 	t.Run("CRUD Transaction Types", func(t *testing.T) {
-		// Create a test transaction type
+		// Create a test transaction type with unique name per run
 		testType := models.TransactionType{
-			Name:        "test_type",
+			Name:        fmt.Sprintf("test_type_%d", time.Now().UnixNano()),
 			Description: stringPtr("Test transaction type"),
 			IsActive:    true,
 		}

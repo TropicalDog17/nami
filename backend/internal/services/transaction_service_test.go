@@ -21,6 +21,9 @@ type testDB struct {
 }
 
 func setupTestDB(t *testing.T) *testDB {
+	if testing.Short() {
+		t.Skip("skipping container-based DB tests in short mode")
+	}
 	ctx := context.Background()
 
 	// Start PostgreSQL container
@@ -272,6 +275,48 @@ func TestTransactionService_UpdateTransactionMultipleFields(t *testing.T) {
 	}
 	if updated.Account != "Cash" {
 		t.Errorf("Expected account to be preserved as 'Cash', got '%s'", updated.Account)
+	}
+}
+
+func TestTransactionService_CreateTransaction_WithFees(t *testing.T) {
+	tdb := setupTestDB(t)
+	defer tdb.cleanup(t)
+
+	ctx := context.Background()
+	service := NewTransactionService(tdb.database)
+
+	// Create a BUY with fees; cashflow should be negative amount minus fees (amount+fee)
+	tx := &models.Transaction{
+		Date:       time.Date(2024, 9, 26, 0, 0, 0, 0, time.UTC),
+		Type:       "buy",
+		Asset:      "BTC",
+		Account:    "Exchange",
+		Quantity:   decimal.NewFromFloat(0.001),
+		PriceLocal: decimal.NewFromFloat(67000),
+		FXToUSD:    decimal.NewFromFloat(1.0),
+		FXToVND:    decimal.NewFromFloat(24000),
+		FeeUSD:     decimal.NewFromFloat(1.5),
+		FeeVND:     decimal.NewFromFloat(36000),
+	}
+
+	if err := service.CreateTransaction(ctx, tx); err != nil {
+		t.Fatalf("failed to create transaction: %v", err)
+	}
+
+	got, err := service.GetTransaction(ctx, tx.ID)
+	if err != nil {
+		t.Fatalf("failed to get transaction: %v", err)
+	}
+
+	// amount_usd = 0.001 * 67000 * 1 = 67
+	if !got.AmountUSD.Equal(decimal.NewFromFloat(67)) {
+		t.Fatalf("expected AmountUSD 67, got %s", got.AmountUSD.String())
+	}
+
+	// cashflow_usd = -(amount_usd + fee_usd) = -(67 + 1.5) = -68.5
+	expectedCF := decimal.NewFromFloat(-68.5)
+	if !got.CashFlowUSD.Equal(expectedCF) {
+		t.Fatalf("expected CashFlowUSD %s, got %s", expectedCF.String(), got.CashFlowUSD.String())
 	}
 }
 

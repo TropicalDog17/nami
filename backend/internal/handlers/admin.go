@@ -125,8 +125,7 @@ func (h *AdminHandler) deleteTransactionType(w http.ResponseWriter, r *http.Requ
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{"message": "Transaction type deleted successfully"})
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // Accounts handlers

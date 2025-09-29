@@ -12,15 +12,13 @@ import (
 )
 
 func setupTestDB(t *testing.T) *db.DB {
-	tc := SetupTestContainer(t)
-	t.Cleanup(func() { tc.Cleanup(t) })
-
+	// Reuse shared suite container started in TestMain
+	tc := GetSuiteContainer(t)
 	return &db.DB{DB: tc.DB}
 }
 
 func TestDatabaseConnection(t *testing.T) {
 	database := setupTestDB(t)
-	defer database.Close()
 
 	err := database.Health()
 	if err != nil {
@@ -30,7 +28,6 @@ func TestDatabaseConnection(t *testing.T) {
 
 func TestAdminServiceIntegration(t *testing.T) {
 	database := setupTestDB(t)
-	defer database.Close()
 
 	adminService := services.NewAdminService(database)
 	ctx := context.Background()
@@ -110,7 +107,6 @@ func TestAdminServiceIntegration(t *testing.T) {
 
 func TestTransactionServiceIntegration(t *testing.T) {
 	database := setupTestDB(t)
-	defer database.Close()
 
 	transactionService := services.NewTransactionService(database)
 	ctx := context.Background()
@@ -224,7 +220,6 @@ func TestTransactionServiceIntegration(t *testing.T) {
 
 func TestCreditCardTransactionFlow(t *testing.T) {
 	database := setupTestDB(t)
-	defer database.Close()
 
 	transactionService := services.NewTransactionService(database)
 	ctx := context.Background()

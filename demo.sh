@@ -70,9 +70,9 @@ start_database() {
 run_migrations() {
     print_status "Running database migrations..."
 
-    cd migrations
+    cd backend/migrations
     go run migrate.go
-    cd ..
+    cd ../../
     print_success "Database migrations completed"
 }
 

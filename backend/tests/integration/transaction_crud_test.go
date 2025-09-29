@@ -15,9 +15,11 @@ import (
 )
 
 func TestTransactionCRUD(t *testing.T) {
-	// Setup test database with testcontainers
-	tc := SetupTestContainer(t)
-	defer tc.Cleanup(t)
+	if testing.Short() {
+		t.Skip("skipping integration tests in short mode")
+	}
+	// Setup or reuse suite test database with testcontainers
+	tc := GetSuiteContainer(t)
 
 	database := &db.DB{DB: tc.DB}
 
@@ -407,20 +409,12 @@ func TestTransactionTypesAndCalculations(t *testing.T) {
 
 func TestCreditCardFlow(t *testing.T) {
 	// Setup test database
-	config := &db.Config{
-		Host:     "localhost",
-		Port:     "5433",
-		User:     "nami_user",
-		Password: "nami_password",
-		Name:     "nami",
-		SSLMode:  "disable",
+	if testing.Short() {
+		t.Skip("skipping integration tests in short mode")
 	}
-
-	database, err := db.Connect(config)
-	if err != nil {
-		t.Skipf("Database connection failed: %v", err)
-	}
-	defer database.Close()
+	// Reuse suite container
+	tc := GetSuiteContainer(t)
+	database := &db.DB{DB: tc.DB}
 
 	transactionService := services.NewTransactionService(database)
 	transactionHandler := handlers.NewTransactionHandler(transactionService)

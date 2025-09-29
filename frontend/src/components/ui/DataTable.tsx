@@ -10,7 +10,7 @@ type Column = {
   editable?: boolean;
   editType?: 'select' | 'date' | 'number' | 'text' | string;
   decimals?: number;
-  render?: (value: any, column: Column) => React.ReactNode;
+  render?: (value: any, column: Column, row: Row) => React.ReactNode;
 };
 type Option = { value: string; label: string };
 type MasterData = Record<string, Option[]>;
@@ -209,11 +209,11 @@ const DataTable: React.FC<Props> = ({
   };
 
   // Format cell value
-  const formatCellValue = (value: any, column: Column) => {
+  const formatCellValue = (value: any, column: Column, row: Row) => {
     if (value === null || value === undefined) return '-';
 
     if (column.render) {
-      return column.render(value, column);
+      return column.render(value, column, row);
     }
 
     if (column.type === 'datetime') {
@@ -489,7 +489,7 @@ const DataTable: React.FC<Props> = ({
                           renderEditInput(column, cellValue)
                         ) : (
                           <>
-                            {formatCellValue(cellValue, column)}
+                            {formatCellValue(cellValue, column, row)}
                             {isEditable && (
                               <span className="ml-1 text-xs text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity">
                                 <svg className="w-3.5 h-3.5 inline" viewBox="0 0 24 24" fill="none" stroke="currentColor">

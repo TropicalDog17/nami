@@ -20,7 +20,7 @@ type Column = {
   width?: number | string;
   editable?: boolean;
   editType?: 'select' | 'date' | 'number' | 'text' | string;
-  formatter?: (value: any) => React.ReactNode;
+  render?: (value: any, column: any, row: any) => React.ReactNode;
   decimals?: number;
   currency?: string;
 };
@@ -278,7 +278,7 @@ const TransactionPage: React.FC = () => {
       title: 'Type',
       editable: true,
       editType: 'select',
-      formatter: (value: any) => {
+      render: (value: any) => {
         const isInflow = ['buy', 'income', 'reward'].includes(value);
         const isOutflow = ['sell', 'expense', 'fee', 'repay_borrow'].includes(value);
         const direction = isInflow ? 'Inflow' : isOutflow ? 'Outflow' : 'Transfer';
@@ -319,6 +319,19 @@ const TransactionPage: React.FC = () => {
       title: `Amount (${currency})`,
       type: 'currency',
       currency: currency,
+      render: (_value: any, _column: any, row: any) => {
+        const numberFormatter = new Intl.NumberFormat('en-US', {
+          style: 'currency',
+          currency: currency,
+        });
+        const cashflow = currency === 'USD' ? Number(row?.cashflow_usd || 0) : Number(row?.cashflow_vnd || 0);
+        if (!cashflow) return '-';
+        const isPositive = cashflow > 0;
+        const formatted = numberFormatter.format(Math.abs(cashflow));
+        const sign = isPositive ? '+' : '-';
+        const cls = isPositive ? 'text-green-700' : 'text-red-700';
+        return <span className={`font-medium ${cls}`}>{`${sign}${formatted}`}</span>;
+      },
     },
     {
       key: 'counterparty',

@@ -20,6 +20,63 @@ test.describe('Transaction Page', () => {
     await expect(row.locator('[data-testid="datatable-edit-button"]')).toBeVisible();
     await expect(row.locator('[data-testid="datatable-delete-button"]')).toBeVisible();
   });
+
+  test('should reflect fee in cashflow rendering for buy', async ({ page }) => {
+    await page.goto('/');
+
+    // Create a transaction via UI with a fee
+    const newTransactionBtn = page.locator('button:has-text("New Transaction")');
+    await newTransactionBtn.click();
+
+    // Wait for form
+    await expect(page.locator('text=Back to Transactions')).toBeVisible();
+
+    // Fill fields
+    const dateInput = page.locator('input[type="date"]').first();
+    await dateInput.fill('2024-01-15');
+
+    const typeSelect = page.locator('select').first();
+    await typeSelect.selectOption('buy');
+
+    const assetSelect = page.locator('select').nth(1);
+    await assetSelect.selectOption('BTC');
+
+    const accountSelect = page.locator('select').nth(2);
+    await accountSelect.selectOption('Main Account');
+
+    // quantity
+    const quantityInput = page.locator('input[type="number"]').first();
+    await quantityInput.fill('0.001');
+
+    // price_local
+    const priceInput = page.locator('input[type="number"]').nth(1);
+    await priceInput.fill('67000');
+
+    // fee_usd
+    // Locate by label text to be robust
+    const feeUsdInput = page.locator('label:has-text("Fee (USD)")').locator('..').locator('input[type="number"]');
+    await feeUsdInput.fill('1.5');
+
+    // Save
+    const saveButton = page.locator('button:has-text("Save Transaction")');
+    await saveButton.click();
+
+    // Back to list
+    await expect(page.locator('[data-testid="transactions-page-title"]')).toBeVisible();
+    await page.waitForSelector('table');
+
+    // Wait a bit for row to show
+    await page.waitForTimeout(1500);
+
+    const firstRow = page.locator('tbody tr').first();
+    await expect(firstRow).toBeVisible();
+
+    // Cashflow cell is the Amount column with +/- formatting. Expect negative 68.50 USD (-(67+1.5))
+    const cashflowCell = firstRow.locator('td').nth(6); // depends on column order (date,type,asset,account,qty,price,amount,...)
+    const text = await cashflowCell.innerText();
+    // Accept either -$68.50 or localized formatting
+    expect(text.replace(/\s/g, '')).toMatch(/^-\$?68\.5\d?/);
+  });
   test('should display transaction management interface', async ({ page }) => {
     await page.goto('/');
 

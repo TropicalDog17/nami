@@ -12,10 +12,8 @@ import (
 )
 
 func TestReportingReflectsTransactionChanges(t *testing.T) {
-	// Setup test database with testcontainers
-	tc := SetupTestContainer(t)
-	defer tc.Cleanup(t)
-
+	// Reuse suite container without per-test cleanup
+	tc := GetSuiteContainer(t)
 	database := &db.DB{DB: tc.DB}
 
 	transactionService := services.NewTransactionService(database)
