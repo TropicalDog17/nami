@@ -264,11 +264,8 @@ func (s *transactionService) UpdateTransaction(ctx context.Context, tx *models.T
 	// Merge the update with existing data to ensure we have all required fields
 	merged := s.mergeTransactionUpdate(existing, tx)
 
-	// Now validate and calculate derived fields on the complete transaction
-	// Temporarily disabled for debugging
-	// if err := merged.PreSave(); err != nil {
-	// 	return fmt.Errorf("transaction validation failed: %w", err)
-	// }
+	// Recalculate derived fields based on merged data
+	merged.CalculateDerivedFields()
 
 	// Update timestamp
 	merged.UpdatedAt = time.Now()

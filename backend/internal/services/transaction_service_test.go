@@ -72,7 +72,12 @@ func (tdb *testDB) cleanup(t *testing.T) {
 }
 
 func setupTestTables(database *db.DB) error {
-	// Create transactions table
+	// Enable required extensions and create transactions table
+	// Ensure uuid_generate_v4() is available
+	if _, err := database.Exec(`CREATE EXTENSION IF NOT EXISTS "uuid-ossp"`); err != nil {
+		return err
+	}
+
 	query := `
 		CREATE TABLE IF NOT EXISTS transactions (
 			id TEXT PRIMARY KEY,
@@ -119,7 +124,6 @@ func TestTransactionService_UpdateTransaction(t *testing.T) {
 
 	// Create a test transaction
 	testTx := &models.Transaction{
-		ID:           "test-123",
 		Date:         time.Date(2024, 9, 26, 0, 0, 0, 0, time.UTC),
 		Type:         "expense",
 		Asset:        "USD",
@@ -153,7 +157,7 @@ func TestTransactionService_UpdateTransaction(t *testing.T) {
 
 	// Test partial update - only update type
 	updateData := &models.Transaction{
-		ID:   "test-123",
+		ID:   testTx.ID,
 		Type: "income",
 	}
 
@@ -163,7 +167,7 @@ func TestTransactionService_UpdateTransaction(t *testing.T) {
 	}
 
 	// Verify the update
-	updated, err := service.GetTransaction(ctx, "test-123")
+	updated, err := service.GetTransaction(ctx, testTx.ID)
 	if err != nil {
 		t.Fatalf("Failed to get updated transaction: %v", err)
 	}
@@ -197,7 +201,6 @@ func TestTransactionService_UpdateTransactionMultipleFields(t *testing.T) {
 
 	// Create a test transaction
 	testTx := &models.Transaction{
-		ID:           "test-456",
 		Date:         time.Date(2024, 9, 26, 0, 0, 0, 0, time.UTC),
 		Type:         "expense",
 		Asset:        "USD",
@@ -231,7 +234,7 @@ func TestTransactionService_UpdateTransactionMultipleFields(t *testing.T) {
 
 	// Test partial update - update multiple fields
 	updateData := &models.Transaction{
-		ID:           "test-456",
+		ID:           testTx.ID,
 		Type:         "buy",
 		Asset:        "BTC",
 		Counterparty: stringPtr("New Shop"),
@@ -244,7 +247,7 @@ func TestTransactionService_UpdateTransactionMultipleFields(t *testing.T) {
 	}
 
 	// Verify the update
-	updated, err := service.GetTransaction(ctx, "test-456")
+	updated, err := service.GetTransaction(ctx, testTx.ID)
 	if err != nil {
 		t.Fatalf("Failed to get updated transaction: %v", err)
 	}
@@ -298,4 +301,214 @@ func TestTransactionService_UpdateTransactionNotFound(t *testing.T) {
 
 func stringPtr(s string) *string {
 	return &s
+}
+
+func TestTransactionService_ExportTransactions(t *testing.T) {
+	tdb := setupTestDB(t)
+	defer tdb.cleanup(t)
+
+	ctx := context.Background()
+	service := NewTransactionService(tdb.database)
+
+	baseTime := time.Date(2024, 9, 26, 0, 0, 0, 0, time.UTC)
+
+	// Create first transaction
+	tx1 := &models.Transaction{
+		Date:         baseTime,
+		Type:         "expense",
+		Asset:        "USD",
+		Account:      "Cash",
+		Counterparty: stringPtr("Store A"),
+		Tag:          stringPtr("Food"),
+		Note:         stringPtr("Lunch"),
+		Quantity:     decimal.NewFromFloat(1),
+		PriceLocal:   decimal.NewFromFloat(10),
+		AmountLocal:  decimal.NewFromFloat(10),
+		FXToUSD:      decimal.NewFromFloat(1),
+		FXToVND:      decimal.NewFromFloat(24000),
+		AmountUSD:    decimal.NewFromFloat(10),
+		AmountVND:    decimal.NewFromFloat(240000),
+		FeeUSD:       decimal.Zero,
+		FeeVND:       decimal.Zero,
+		DeltaQty:     decimal.NewFromFloat(-1),
+		CashFlowUSD:  decimal.NewFromFloat(-10),
+		CashFlowVND:  decimal.NewFromFloat(-240000),
+		FXSource:     stringPtr("auto-fx-provider"),
+		FXTimestamp:  &time.Time{},
+		CreatedAt:    time.Now(),
+		UpdatedAt:    time.Now(),
+	}
+	if err := service.CreateTransaction(ctx, tx1); err != nil {
+		t.Fatalf("failed to create tx1: %v", err)
+	}
+
+	// Create second transaction
+	tx2 := &models.Transaction{
+		Date:         baseTime.Add(24 * time.Hour),
+		Type:         "income",
+		Asset:        "USD",
+		Account:      "Bank",
+		Counterparty: stringPtr("Employer"),
+		Tag:          stringPtr("Salary"),
+		Note:         stringPtr("September"),
+		Quantity:     decimal.NewFromFloat(1),
+		PriceLocal:   decimal.NewFromFloat(1000),
+		AmountLocal:  decimal.NewFromFloat(1000),
+		FXToUSD:      decimal.NewFromFloat(1),
+		FXToVND:      decimal.NewFromFloat(24000),
+		AmountUSD:    decimal.NewFromFloat(1000),
+		AmountVND:    decimal.NewFromFloat(24000000),
+		FeeUSD:       decimal.Zero,
+		FeeVND:       decimal.Zero,
+		DeltaQty:     decimal.NewFromFloat(0),
+		CashFlowUSD:  decimal.NewFromFloat(1000),
+		CashFlowVND:  decimal.NewFromFloat(24000000),
+		FXSource:     stringPtr("auto-fx-provider"),
+		FXTimestamp:  &time.Time{},
+		CreatedAt:    time.Now(),
+		UpdatedAt:    time.Now(),
+	}
+	if err := service.CreateTransaction(ctx, tx2); err != nil {
+		t.Fatalf("failed to create tx2: %v", err)
+	}
+
+	// Export
+	exported, err := service.ExportTransactions(ctx)
+	if err != nil {
+		t.Fatalf("ExportTransactions failed: %v", err)
+	}
+	if len(exported) != 2 {
+		t.Fatalf("expected 2 transactions exported, got %d", len(exported))
+	}
+	// Basic sanity check that IDs are present
+	if exported[0].ID == "" || exported[1].ID == "" {
+		t.Fatalf("expected exported transactions to have IDs")
+	}
+}
+
+func TestTransactionService_ImportTransactions_CreateAndUpsert(t *testing.T) {
+	tdb := setupTestDB(t)
+	defer tdb.cleanup(t)
+
+	ctx := context.Background()
+	service := NewTransactionService(tdb.database)
+
+	// Import two new transactions (upsert=false)
+	newTxs := []*models.Transaction{
+		{
+			Date:        time.Date(2024, 9, 1, 0, 0, 0, 0, time.UTC),
+			Type:        "expense",
+			Asset:       "USD",
+			Account:     "Cash",
+			Quantity:    decimal.NewFromFloat(2),
+			PriceLocal:  decimal.NewFromFloat(5),
+			AmountLocal: decimal.NewFromFloat(10),
+			FXToUSD:     decimal.NewFromFloat(1),
+			FXToVND:     decimal.NewFromFloat(24000),
+			AmountUSD:   decimal.NewFromFloat(10),
+			AmountVND:   decimal.NewFromFloat(240000),
+			FeeUSD:      decimal.Zero,
+			FeeVND:      decimal.Zero,
+			DeltaQty:    decimal.NewFromFloat(-2),
+			CashFlowUSD: decimal.NewFromFloat(-10),
+			CashFlowVND: decimal.NewFromFloat(-240000),
+			CreatedAt:   time.Now(),
+			UpdatedAt:   time.Now(),
+		},
+		{
+			Date:        time.Date(2024, 9, 2, 0, 0, 0, 0, time.UTC),
+			Type:        "income",
+			Asset:       "USD",
+			Account:     "Bank",
+			Quantity:    decimal.NewFromFloat(1),
+			PriceLocal:  decimal.NewFromFloat(100),
+			AmountLocal: decimal.NewFromFloat(100),
+			FXToUSD:     decimal.NewFromFloat(1),
+			FXToVND:     decimal.NewFromFloat(24000),
+			AmountUSD:   decimal.NewFromFloat(100),
+			AmountVND:   decimal.NewFromFloat(2400000),
+			FeeUSD:      decimal.Zero,
+			FeeVND:      decimal.Zero,
+			DeltaQty:    decimal.Zero,
+			CashFlowUSD: decimal.NewFromFloat(100),
+			CashFlowVND: decimal.NewFromFloat(2400000),
+			CreatedAt:   time.Now(),
+			UpdatedAt:   time.Now(),
+		},
+	}
+	createdCount, err := service.ImportTransactions(ctx, newTxs, false)
+	if err != nil {
+		t.Fatalf("ImportTransactions (create) failed: %v", err)
+	}
+	if createdCount != 2 {
+		t.Fatalf("expected 2 created, got %d", createdCount)
+	}
+
+	// Create one existing transaction to upsert
+	existing := &models.Transaction{
+		Date:         time.Date(2024, 9, 3, 0, 0, 0, 0, time.UTC),
+		Type:         "expense",
+		Asset:        "USD",
+		Account:      "Cash",
+		Counterparty: stringPtr("Store B"),
+		Quantity:     decimal.NewFromFloat(3),
+		PriceLocal:   decimal.NewFromFloat(7),
+		AmountLocal:  decimal.NewFromFloat(21),
+		FXToUSD:      decimal.NewFromFloat(1),
+		FXToVND:      decimal.NewFromFloat(24000),
+		AmountUSD:    decimal.NewFromFloat(21),
+		AmountVND:    decimal.NewFromFloat(504000),
+		FeeUSD:       decimal.Zero,
+		FeeVND:       decimal.Zero,
+		DeltaQty:     decimal.NewFromFloat(-3),
+		CashFlowUSD:  decimal.NewFromFloat(-21),
+		CashFlowVND:  decimal.NewFromFloat(-504000),
+		FXSource:     stringPtr("auto-fx-provider"),
+		FXTimestamp:  &time.Time{},
+		CreatedAt:    time.Now(),
+		UpdatedAt:    time.Now(),
+	}
+	if err := service.CreateTransaction(ctx, existing); err != nil {
+		t.Fatalf("failed to create existing tx: %v", err)
+	}
+
+	// Prepare upsert payload with the same ID but changed type
+	upsertPayload := []*models.Transaction{
+		{
+			ID:          existing.ID,
+			Type:        "income",
+			Date:        existing.Date,
+			Asset:       existing.Asset,
+			Account:     existing.Account,
+			Quantity:    existing.Quantity,
+			PriceLocal:  existing.PriceLocal,
+			AmountLocal: existing.AmountLocal,
+			FXToUSD:     existing.FXToUSD,
+			FXToVND:     existing.FXToVND,
+			AmountUSD:   existing.AmountUSD,
+			AmountVND:   existing.AmountVND,
+			FeeUSD:      existing.FeeUSD,
+			FeeVND:      existing.FeeVND,
+			DeltaQty:    existing.DeltaQty,
+			CashFlowUSD: existing.CashFlowUSD,
+			CashFlowVND: existing.CashFlowVND,
+		},
+	}
+
+	upsertedCount, err := service.ImportTransactions(ctx, upsertPayload, true)
+	if err != nil {
+		t.Fatalf("ImportTransactions (upsert) failed: %v", err)
+	}
+	if upsertedCount != 1 {
+		t.Fatalf("expected 1 upserted, got %d", upsertedCount)
+	}
+
+	// Verify the update took effect
+	got, err := service.GetTransaction(ctx, existing.ID)
+	if err != nil {
+		t.Fatalf("failed to fetch upserted tx: %v", err)
+	}
+	if got.Type != "income" {
+		t.Fatalf("expected type to be 'income' after upsert, got %s", got.Type)
+	}
 }

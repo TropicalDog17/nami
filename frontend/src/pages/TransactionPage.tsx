@@ -399,6 +399,7 @@ const TransactionPage = () => {
               onChange={(e) => setActionForm({ action: e.target.value, params: {} })}
             >
               <option value="">Select an action</option>
+              <option value="init_balance">Init Balance (seed existing holding)</option>
               <option value="p2p_buy_usdt">P2P: Buy USDT with VND</option>
               <option value="p2p_sell_usdt">P2P: Sell USDT for VND</option>
               <option value="spend_vnd">Spend VND (daily)</option>
@@ -461,6 +462,36 @@ const TransactionPage = () => {
               <input className="px-3 py-2 border rounded" placeholder="Counterparty" onChange={(e)=>setActionForm(s=>({ ...s, params:{...s.params, counterparty:e.target.value}}))} />
               <input className="px-3 py-2 border rounded" placeholder="Tag" onChange={(e)=>setActionForm(s=>({ ...s, params:{...s.params, tag:e.target.value}}))} />
               <input className="px-3 py-2 border rounded" placeholder="Note" onChange={(e)=>setActionForm(s=>({ ...s, params:{...s.params, note:e.target.value}}))} />
+            </div>
+          ) : null}
+
+          {actionForm.action === 'init_balance' ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+              <DateInput
+                className="w-full"
+                value={actionForm.params.date || todayStr}
+                onChange={(v)=>setActionForm(s=>({ ...s, params:{...s.params, date:v}}))}
+              />
+              <ComboBox
+                options={(masterData.account || [])}
+                value={actionForm.params.account || ''}
+                onChange={(v)=>setActionForm(s=>({ ...s, params:{...s.params, account:v}}))}
+                placeholder="Account"
+                allowCreate
+                onCreate={async (name)=>{ await adminApi.createAccount({ name, type:'bank', is_active:true }); const accounts = await adminApi.listAccounts(); setMasterData((prev)=>({ ...prev, account: (accounts||[]).map((a)=>({ value:a.name, label:`${a.name} (${a.type})`})) })); }}
+              />
+              <ComboBox
+                options={(masterData.asset || [])}
+                value={actionForm.params.asset || ''}
+                onChange={(v)=>setActionForm(s=>({ ...s, params:{...s.params, asset:v}}))}
+                placeholder="Asset"
+              />
+              <input className="px-3 py-2 border rounded" placeholder="Quantity" onChange={(e)=>setActionForm(s=>({ ...s, params:{...s.params, quantity:e.target.value}}))} />
+              <input className="px-3 py-2 border rounded" placeholder="Price Local (default 1)" onChange={(e)=>setActionForm(s=>({ ...s, params:{...s.params, price_local:e.target.value}}))} />
+              <input className="px-3 py-2 border rounded" placeholder="FX to USD (optional)" onChange={(e)=>setActionForm(s=>({ ...s, params:{...s.params, fx_to_usd:e.target.value}}))} />
+              <input className="px-3 py-2 border rounded" placeholder="FX to VND (optional)" onChange={(e)=>setActionForm(s=>({ ...s, params:{...s.params, fx_to_vnd:e.target.value}}))} />
+              <input className="px-3 py-2 border rounded" placeholder="Tag (optional)" onChange={(e)=>setActionForm(s=>({ ...s, params:{...s.params, tag:e.target.value}}))} />
+              <input className="px-3 py-2 border rounded" placeholder="Note (optional)" onChange={(e)=>setActionForm(s=>({ ...s, params:{...s.params, note:e.target.value}}))} />
             </div>
           ) : null}
 
