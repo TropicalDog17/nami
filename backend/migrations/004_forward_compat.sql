@@ -82,8 +82,22 @@ END $$;
 
 -- 6) Add recommended CHECK constraints where safe (non-strict to avoid legacy failures)
 -- Use NOT VALID initially; can be VALIDATED later after data cleanup
-ALTER TABLE transactions ADD CONSTRAINT chk_transactions_quantity_positive CHECK (quantity > 0) NOT VALID;
-ALTER TABLE transactions ADD CONSTRAINT chk_transactions_price_local_nonneg CHECK (price_local >= 0) NOT VALID;
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.table_constraints
+        WHERE constraint_name = 'chk_transactions_quantity_positive' AND table_name = 'transactions'
+    ) THEN
+        ALTER TABLE transactions ADD CONSTRAINT chk_transactions_quantity_positive CHECK (quantity > 0) NOT VALID;
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.table_constraints
+        WHERE constraint_name = 'chk_transactions_price_local_nonneg' AND table_name = 'transactions'
+    ) THEN
+        ALTER TABLE transactions ADD CONSTRAINT chk_transactions_price_local_nonneg CHECK (price_local >= 0) NOT VALID;
+    END IF;
+END $$;
 
 -- 7) Indexes for new columns and JSONB
 CREATE INDEX IF NOT EXISTS idx_transactions_account_id ON transactions(account_id);
