@@ -530,6 +530,32 @@ func (s *adminService) DeleteAsset(ctx context.Context, id int) error {
 	return nil
 }
 
+// CreateAssetPriceMapping inserts a mapping between an asset and an external price provider
+func (s *adminService) CreateAssetPriceMapping(ctx context.Context, mapping *models.AssetPriceMapping) error {
+	if mapping == nil {
+		return fmt.Errorf("mapping is required")
+	}
+	if mapping.AssetID == 0 {
+		return fmt.Errorf("asset_id is required")
+	}
+	if mapping.Provider == "" || mapping.ProviderID == "" || mapping.QuoteCurrency == "" {
+		return fmt.Errorf("provider, provider_id, and quote_currency are required")
+	}
+
+	mapping.CreatedAt = time.Now()
+
+	query := `
+        INSERT INTO asset_price_mappings (asset_id, provider, provider_id, quote_currency, is_popular, created_at)
+        VALUES ($1, $2, $3, $4, $5, $6)
+        RETURNING id`
+
+	err := s.db.QueryRowContext(ctx, query, mapping.AssetID, mapping.Provider, mapping.ProviderID, mapping.QuoteCurrency, mapping.IsPopular, mapping.CreatedAt).Scan(&mapping.ID)
+	if err != nil {
+		return fmt.Errorf("failed to create asset price mapping: %w", err)
+	}
+	return nil
+}
+
 // Tag methods
 
 // ListTags retrieves all tags (active and inactive for admin)

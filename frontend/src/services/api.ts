@@ -186,3 +186,9 @@ export const healthApi = {
 
 export default api
 export { ApiError }
+
+// Prices API (simple helper for daily spot price)
+export const pricesApi = {
+  // Returns array; we read last element's price
+  daily: (symbol: string, currency: string, start: string, end: string) => api.get('/api/prices/daily', { symbol, currency, start, end }),
+}

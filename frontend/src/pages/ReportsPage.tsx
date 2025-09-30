@@ -196,6 +196,13 @@ const ReportsPage = () => {
   const renderHoldingsTable = () => {
     const holdings = (data as any).holdings || [];
 
+    // Filter holdings to only show the chosen currency
+    // - If USD is selected, hide pure VND rows
+    // - If VND is selected, only show VND rows
+    const filteredHoldings = Array.isArray(holdings)
+      ? holdings.filter((h: any) => (currency === 'USD' ? h?.asset !== 'VND' : h?.asset === 'VND'))
+      : holdings;
+
     const columns = [
       { key: 'asset', title: 'Asset' },
       { key: 'account', title: 'Account' },
@@ -227,7 +234,7 @@ const ReportsPage = () => {
 
     return (
       <DataTable
-        data={holdings}
+        data={filteredHoldings}
         columns={columns}
         loading={loading}
         emptyMessage="No holdings found"

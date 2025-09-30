@@ -19,10 +19,16 @@ type actionService struct {
 	db                 *db.DB
 	transactionService TransactionService
 	linkService        LinkService
+	priceService       AssetPriceService
 }
 
 func NewActionService(database *db.DB, txService TransactionService) ActionService {
 	return &actionService{db: database, transactionService: txService}
+}
+
+// NewActionServiceWithPrices allows passing an AssetPriceService for price lookups
+func NewActionServiceWithPrices(database *db.DB, txService TransactionService, priceService AssetPriceService) ActionService {
+	return &actionService{db: database, transactionService: txService, priceService: priceService}
 }
 
 func (s *actionService) Perform(ctx context.Context, req *models.ActionRequest) (*models.ActionResponse, error) {
@@ -51,6 +57,8 @@ func (s *actionService) Perform(ctx context.Context, req *models.ActionRequest) 
 		return s.performUnstake(ctx, req)
 	case models.ActionInitBalance:
 		return s.performInitBalance(ctx, req)
+	case models.ActionInternalTransfer:
+		return s.performInternalTransfer(ctx, req)
 	default:
 		return nil, fmt.Errorf("unknown action: %s", req.Action)
 	}
@@ -318,11 +326,26 @@ func (s *actionService) performSpotBuy(ctx context.Context, req *models.ActionRe
 	base, ok2 := getString(p, "base_asset")
 	quote, ok3 := getString(p, "quote_asset")
 	qty, ok4 := getDecimal(p, "quantity")
-	price, ok5 := getDecimal(p, "price_quote")
-	fee, _ := getDecimal(p, "fee_quote")
+	price, hasPrice := getDecimal(p, "price_quote")
+	feeQuote, _ := getDecimal(p, "fee_quote")
+	feeBase, _ := getDecimal(p, "fee_base")
+	feePercent, _ := getDecimal(p, "fee_percent")
 	counterparty, _ := getString(p, "counterparty")
-	if !(ok1 && ok2 && ok3 && ok4 && ok5) {
+	if !(ok1 && ok2 && ok3 && ok4) {
 		return nil, fmt.Errorf("missing required params for spot_buy")
+	}
+
+	// Auto-fetch price when not provided
+	if !hasPrice || price.IsZero() {
+		if s.priceService == nil {
+			return nil, fmt.Errorf("price service unavailable and price_quote not provided")
+		}
+		// Try to fetch price for the given date; fall back to same-day daily price
+		ap, err := s.priceService.GetDaily(ctx, base, quote, date)
+		if err != nil || ap == nil || ap.Price.IsZero() {
+			return nil, fmt.Errorf("failed to fetch price for %s/%s: %v", base, quote, err)
+		}
+		price = ap.Price
 	}
 
 	// 1) Buy base
@@ -362,14 +385,31 @@ func (s *actionService) performSpotBuy(ctx context.Context, req *models.ActionRe
 	if counterparty != "" {
 		sellTx.Counterparty = &counterparty
 	}
-	if !fee.IsZero() {
-		// 3) Fee in quote asset
+	// 3) Optional fee handling: percentage, base, or quote
+	created := []*models.Transaction{buyTx, sellTx}
+	// Calculate explicit fee quantities, prefer percent > base/quote when provided
+	var feeBaseQty decimal.Decimal
+	var feeQuoteQty decimal.Decimal
+	if !feePercent.IsZero() {
+		// percentage of spent (in quote) -> fee in quote
+		spent := qty.Mul(price)
+		feeQuoteQty = spent.Mul(feePercent).Div(decimal.NewFromInt(100))
+	}
+	if !feeBase.IsZero() {
+		feeBaseQty = feeBase
+	}
+	if !feeQuote.IsZero() {
+		feeQuoteQty = feeQuote
+	}
+
+	// Create fee transactions when amounts > 0
+	if feeBaseQty.IsPositive() {
 		feeTx := &models.Transaction{
 			Date:       date,
 			Type:       "fee",
-			Asset:      quote,
+			Asset:      base,
 			Account:    account,
-			Quantity:   fee,
+			Quantity:   feeBaseQty,
 			PriceLocal: decimal.NewFromInt(1),
 			FXToUSD:    decimal.NewFromFloat(1.0),
 			FXToVND:    decimal.NewFromInt(1),
@@ -377,12 +417,28 @@ func (s *actionService) performSpotBuy(ctx context.Context, req *models.ActionRe
 		if err := s.transactionService.CreateTransaction(ctx, feeTx); err != nil {
 			return nil, err
 		}
-		return &models.ActionResponse{Action: req.Action, Transactions: []*models.Transaction{buyTx, sellTx, feeTx}, ExecutedAt: time.Now()}, nil
+		created = append(created, feeTx)
+	}
+	if feeQuoteQty.IsPositive() {
+		feeTx := &models.Transaction{
+			Date:       date,
+			Type:       "fee",
+			Asset:      quote,
+			Account:    account,
+			Quantity:   feeQuoteQty,
+			PriceLocal: decimal.NewFromInt(1),
+			FXToUSD:    decimal.NewFromFloat(1.0),
+			FXToVND:    decimal.NewFromInt(1),
+		}
+		if err := s.transactionService.CreateTransaction(ctx, feeTx); err != nil {
+			return nil, err
+		}
+		created = append(created, feeTx)
 	}
 	if err := s.transactionService.CreateTransaction(ctx, sellTx); err != nil {
 		return nil, err
 	}
-	return &models.ActionResponse{Action: req.Action, Transactions: []*models.Transaction{buyTx, sellTx}, ExecutedAt: time.Now()}, nil
+	return &models.ActionResponse{Action: req.Action, Transactions: created}, nil
 }
 
 // Borrow money
@@ -488,15 +544,16 @@ func (s *actionService) performStake(ctx context.Context, req *models.ActionRequ
 
 	// 1) transfer_out from source
 	outTx := &models.Transaction{
-		Date:       date,
-		Type:       "transfer_out",
-		Asset:      asset,
-		Account:    source,
-		Quantity:   amount,
-		PriceLocal: decimal.NewFromInt(1),
-		FXToUSD:    decimal.NewFromFloat(1.0),
-		FXToVND:    decimal.NewFromInt(1),
-		Horizon:    horizonPtr,
+		Date:         date,
+		Type:         "transfer_out",
+		Asset:        asset,
+		Account:      source,
+		Quantity:     amount,
+		PriceLocal:   decimal.NewFromInt(1),
+		FXToUSD:      decimal.NewFromFloat(1.0),
+		FXToVND:      decimal.NewFromInt(1),
+		InternalFlow: func() *bool { b := true; return &b }(),
+		Horizon:      horizonPtr,
 	}
 	if counterparty != "" {
 		outTx.Counterparty = &counterparty
@@ -511,18 +568,26 @@ func (s *actionService) performStake(ctx context.Context, req *models.ActionRequ
 		return nil, err
 	}
 
-	// 2) deposit into investment
+	// 2) deposit into investment (net of fee when provided)
+	netAmount := amount
+	if !feePct.IsZero() {
+		feeQty := amount.Mul(feePct).Div(decimal.NewFromInt(100))
+		if feeQty.IsPositive() {
+			netAmount = amount.Sub(feeQty)
+		}
+	}
 	inTx := &models.Transaction{
-		Date:       date,
-		Type:       "deposit",
-		Asset:      asset,
-		Account:    invest,
-		Quantity:   amount,
-		PriceLocal: decimal.NewFromInt(1),
-		FXToUSD:    decimal.NewFromFloat(1.0),
-		FXToVND:    decimal.NewFromInt(1),
-		Horizon:    horizonPtr,
-		EntryDate:  &date,
+		Date:         date,
+		Type:         "deposit",
+		Asset:        asset,
+		Account:      invest,
+		Quantity:     netAmount,
+		PriceLocal:   decimal.NewFromInt(1),
+		FXToUSD:      decimal.NewFromFloat(1.0),
+		FXToVND:      decimal.NewFromInt(1),
+		InternalFlow: func() *bool { b := true; return &b }(),
+		Horizon:      horizonPtr,
+		EntryDate:    &date,
 	}
 	if counterparty != "" {
 		inTx.Counterparty = &counterparty
@@ -603,14 +668,15 @@ func (s *actionService) performUnstake(ctx context.Context, req *models.ActionRe
 
 	// 1) withdraw from investment
 	outTx := &models.Transaction{
-		Date:       date,
-		Type:       "withdraw",
-		Asset:      asset,
-		Account:    invest,
-		Quantity:   amount,
-		PriceLocal: decimal.NewFromInt(1),
-		FXToUSD:    decimal.NewFromFloat(1.0),
-		FXToVND:    decimal.NewFromInt(1),
+		Date:         date,
+		Type:         "withdraw",
+		Asset:        asset,
+		Account:      invest,
+		Quantity:     amount,
+		PriceLocal:   decimal.NewFromInt(1),
+		FXToUSD:      decimal.NewFromFloat(1.0),
+		FXToVND:      decimal.NewFromInt(1),
+		InternalFlow: func() *bool { b := true; return &b }(),
 	}
 	if note != "" {
 		outTx.Note = &note
@@ -621,15 +687,16 @@ func (s *actionService) performUnstake(ctx context.Context, req *models.ActionRe
 
 	// 2) transfer_in to destination
 	inTx := &models.Transaction{
-		Date:       date,
-		Type:       "transfer_in",
-		Asset:      asset,
-		Account:    dest,
-		Quantity:   amount,
-		PriceLocal: decimal.NewFromInt(1),
-		FXToUSD:    decimal.NewFromFloat(1.0),
-		FXToVND:    decimal.NewFromInt(1),
-		ExitDate:   &date,
+		Date:         date,
+		Type:         "transfer_in",
+		Asset:        asset,
+		Account:      dest,
+		Quantity:     amount,
+		PriceLocal:   decimal.NewFromInt(1),
+		FXToUSD:      decimal.NewFromFloat(1.0),
+		FXToVND:      decimal.NewFromInt(1),
+		InternalFlow: func() *bool { b := true; return &b }(),
+		ExitDate:     &date,
 	}
 	if note != "" {
 		inTx.Note = &note
@@ -711,4 +778,64 @@ func (s *actionService) performInitBalance(ctx context.Context, req *models.Acti
 		return nil, err
 	}
 	return &models.ActionResponse{Action: req.Action, Transactions: []*models.Transaction{tx}, ExecutedAt: time.Now()}, nil
+}
+
+// Internal transfer between two accounts of the same asset
+// Params: date, source_account, destination_account, asset, amount, note(optional), counterparty(optional)
+func (s *actionService) performInternalTransfer(ctx context.Context, req *models.ActionRequest) (*models.ActionResponse, error) {
+	p := req.Params
+	date, _ := getDate(p, "date")
+	source, ok1 := getString(p, "source_account")
+	dest, ok2 := getString(p, "destination_account")
+	asset, ok3 := getString(p, "asset")
+	amount, ok4 := getDecimal(p, "amount")
+	counterparty, _ := getString(p, "counterparty")
+	note, _ := getString(p, "note")
+	if !(ok1 && ok2 && ok3 && ok4) {
+		return nil, fmt.Errorf("missing required params: source_account, destination_account, asset, amount")
+	}
+	if source == dest {
+		return nil, fmt.Errorf("source_account and destination_account must differ")
+	}
+	if amount.IsZero() || amount.IsNegative() {
+		return nil, fmt.Errorf("amount must be > 0")
+	}
+
+	outTx := &models.Transaction{
+		Date:         date,
+		Type:         "transfer_out",
+		Asset:        asset,
+		Account:      source,
+		Quantity:     amount,
+		PriceLocal:   decimal.NewFromInt(1),
+		FXToUSD:      decimal.NewFromFloat(1.0),
+		FXToVND:      decimal.NewFromInt(1),
+		InternalFlow: func() *bool { b := true; return &b }(),
+	}
+	inTx := &models.Transaction{
+		Date:         date,
+		Type:         "transfer_in",
+		Asset:        asset,
+		Account:      dest,
+		Quantity:     amount,
+		PriceLocal:   decimal.NewFromInt(1),
+		FXToUSD:      decimal.NewFromFloat(1.0),
+		FXToVND:      decimal.NewFromInt(1),
+		InternalFlow: func() *bool { b := true; return &b }(),
+	}
+	if counterparty != "" {
+		outTx.Counterparty = &counterparty
+		inTx.Counterparty = &counterparty
+	}
+	if note != "" {
+		outTx.Note = &note
+		inTx.Note = &note
+	}
+
+	// Create atomically in one linked action
+	created, err := s.transactionService.CreateTransactionsBatch(ctx, []*models.Transaction{outTx, inTx}, "action")
+	if err != nil {
+		return nil, err
+	}
+	return &models.ActionResponse{Action: req.Action, Transactions: created, ExecutedAt: time.Now()}, nil
 }

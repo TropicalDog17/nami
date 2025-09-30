@@ -68,7 +68,7 @@ func main() {
 	reportingService := services.NewReportingService(database)
 	linkService := services.NewLinkService(database)
 	_ = linkService
-	actionService := services.NewActionService(database, transactionService)
+	actionService := services.NewActionServiceWithPrices(database, transactionService, assetPriceService)
 
 	// Initialize handlers
 	transactionHandler := handlers.NewTransactionHandler(transactionService)
@@ -170,6 +170,9 @@ func main() {
 
 	// Asset prices
 	mux.HandleFunc("/api/prices/daily", priceHandler.HandleDaily)
+
+	// Crypto tokens management
+	mux.HandleFunc("/api/admin/crypto/tokens", adminHandler.HandleCryptoTokens)
 
 	// CORS middleware
 	corsHandler := func(next http.Handler) http.Handler {

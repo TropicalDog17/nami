@@ -3,6 +3,11 @@ package services
 import (
 	"context"
 	"database/sql"
+	"fmt"
+	"os"
+	"path/filepath"
+	"sort"
+	"strings"
 	"testing"
 	"time"
 
@@ -75,47 +80,60 @@ func (tdb *testDB) cleanup(t *testing.T) {
 }
 
 func setupTestTables(database *db.DB) error {
-	// Enable required extensions and create transactions table
-	// Ensure uuid_generate_v4() is available
-	if _, err := database.Exec(`CREATE EXTENSION IF NOT EXISTS "uuid-ossp"`); err != nil {
-		return err
+	// Locate migrations directory robustly
+	// 1) Allow override via MIGRATIONS_DIR
+	// 2) Search upwards from current working directory for a folder containing backend/migrations
+	migrationsDir := os.Getenv("MIGRATIONS_DIR")
+	if migrationsDir == "" {
+		// Start with the current working directory and move up a few levels
+		wd, _ := os.Getwd()
+		dir := wd
+		for i := 0; i < 8; i++ {
+			candidate := filepath.Join(dir, "backend", "migrations")
+			if info, err := os.Stat(candidate); err == nil && info.IsDir() {
+				migrationsDir = candidate
+				break
+			}
+			parent := filepath.Dir(dir)
+			if parent == dir {
+				break
+			}
+			dir = parent
+		}
+		// As a last resort, try the relative path from the repo root assumption
+		if migrationsDir == "" {
+			candidate := filepath.Join("backend", "migrations")
+			if info, err := os.Stat(candidate); err == nil && info.IsDir() {
+				migrationsDir = candidate
+			}
+		}
+	}
+	if migrationsDir == "" {
+		return fmt.Errorf("failed to locate migrations directory; set MIGRATIONS_DIR or run tests from repo root")
 	}
 
-	query := `
-		CREATE TABLE IF NOT EXISTS transactions (
-			id TEXT PRIMARY KEY,
-			date TIMESTAMP NOT NULL,
-			type TEXT NOT NULL,
-			asset TEXT NOT NULL,
-			account TEXT NOT NULL,
-			counterparty TEXT,
-			tag TEXT,
-			note TEXT,
-			quantity DECIMAL(20,10) NOT NULL DEFAULT 0,
-			price_local DECIMAL(20,10) NOT NULL DEFAULT 0,
-			amount_local DECIMAL(20,10) NOT NULL DEFAULT 0,
-			fx_to_usd DECIMAL(20,10) NOT NULL DEFAULT 1,
-			fx_to_vnd DECIMAL(20,10) NOT NULL DEFAULT 24000,
-			amount_usd DECIMAL(20,10) NOT NULL DEFAULT 0,
-			amount_vnd DECIMAL(20,10) NOT NULL DEFAULT 0,
-			fee_usd DECIMAL(20,10) NOT NULL DEFAULT 0,
-			fee_vnd DECIMAL(20,10) NOT NULL DEFAULT 0,
-			delta_qty DECIMAL(20,10) NOT NULL DEFAULT 0,
-			cashflow_usd DECIMAL(20,10) NOT NULL DEFAULT 0,
-			cashflow_vnd DECIMAL(20,10) NOT NULL DEFAULT 0,
-			horizon TEXT,
-			entry_date TIMESTAMP,
-			exit_date TIMESTAMP,
-			fx_impact DECIMAL(20,10),
-			fx_source TEXT,
-			fx_timestamp TIMESTAMP,
-			created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-			updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
-		)
-	`
+	entries, err := os.ReadDir(migrationsDir)
+	if err != nil {
+		return err
+	}
+	// Sort by filename to ensure correct order
+	sort.Slice(entries, func(i, j int) bool { return entries[i].Name() < entries[j].Name() })
 
-	_, err := database.Exec(query)
-	return err
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".sql") {
+			continue
+		}
+		b, rerr := os.ReadFile(filepath.Join(migrationsDir, e.Name()))
+		if rerr != nil {
+			return rerr
+		}
+		sqlText := string(b)
+		// Execute the entire file content at once to preserve dollar-quoted blocks
+		if _, exErr := database.Exec(sqlText); exErr != nil {
+			return exErr
+		}
+	}
+	return nil
 }
 
 func TestTransactionService_UpdateTransaction(t *testing.T) {

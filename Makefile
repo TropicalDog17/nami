@@ -97,7 +97,7 @@ stop-frontend: ## Stop frontend service
 # Database targets
 migrate: ## Run database migrations
 	@echo "🗄️ Running database migrations..."
-	@cd migrations && go run migrate.go
+	@cd backend/migrations && go run migrate.go
 	@echo "✅ Migrations completed"
 
 db-reset: docker-down docker-up migrate ## Reset database (stop, start, migrate)

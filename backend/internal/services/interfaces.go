@@ -76,6 +76,9 @@ type AdminService interface {
 	UpdateAsset(ctx context.Context, asset *models.Asset) error
 	DeleteAsset(ctx context.Context, id int) error
 
+	// Asset price mappings
+	CreateAssetPriceMapping(ctx context.Context, mapping *models.AssetPriceMapping) error
+
 	// Tags
 	ListTags(ctx context.Context) ([]*models.Tag, error)
 	GetTag(ctx context.Context, id int) (*models.Tag, error)

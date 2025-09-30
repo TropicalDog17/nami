@@ -446,6 +446,10 @@ func (s *transactionService) ImportTransactions(ctx context.Context, txs []*mode
 
 // GetTransaction retrieves a transaction by ID
 func (s *transactionService) GetTransaction(ctx context.Context, id string) (*models.Transaction, error) {
+	// Normalize error behavior for invalid UUIDs or non-existing ids
+	if id == "" {
+		return nil, fmt.Errorf("transaction not found: %s", id)
+	}
 	query := `
 		SELECT id, date, type, asset, account, counterparty, tag, note,
 			   quantity, price_local, amount_local,
@@ -471,7 +475,8 @@ func (s *transactionService) GetTransaction(ctx context.Context, id string) (*mo
 	)
 
 	if err != nil {
-		if err == sql.ErrNoRows {
+		// Hide database uuid cast errors behind a consistent not-found message
+		if err == sql.ErrNoRows || strings.Contains(strings.ToLower(err.Error()), "invalid input syntax for type uuid") {
 			return nil, fmt.Errorf("transaction not found: %s", id)
 		}
 		return nil, fmt.Errorf("failed to get transaction: %w", err)
@@ -514,9 +519,16 @@ func (s *transactionService) ListTransactions(ctx context.Context, filter *model
 
 // UpdateTransaction updates an existing transaction
 func (s *transactionService) UpdateTransaction(ctx context.Context, tx *models.Transaction) error {
+	if tx == nil || tx.ID == "" {
+		return fmt.Errorf("no transaction found with id %s", "")
+	}
 	// First, get the existing transaction to merge with the update
 	existing, err := s.GetTransaction(ctx, tx.ID)
 	if err != nil {
+		// If the underlying cause is not-found, standardize the error message expected by tests
+		if strings.Contains(err.Error(), "transaction not found:") {
+			return fmt.Errorf("no transaction found with id %s", tx.ID)
+		}
 		return fmt.Errorf("failed to get existing transaction: %w", err)
 	}
 

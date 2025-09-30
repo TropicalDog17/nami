@@ -431,6 +431,51 @@ func (h *AdminHandler) deleteTag(w http.ResponseWriter, r *http.Request, id int)
 	json.NewEncoder(w).Encode(map[string]string{"message": "Tag deleted successfully"})
 }
 
+// Crypto: Create token (asset) and optional price mapping
+func (h *AdminHandler) HandleCryptoTokens(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	if r.Method != "POST" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Expected payload: {
+	//   asset: { symbol, name, decimals, is_active },
+	//   mapping: { provider, provider_id, quote_currency, is_popular }
+	// }
+	var payload struct {
+		Asset   models.Asset              `json:"asset"`
+		Mapping *models.AssetPriceMapping `json:"mapping"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		http.Error(w, "Invalid JSON: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	// Create asset first
+	if err := h.service.CreateAsset(r.Context(), &payload.Asset); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Optionally create mapping
+	var mapping *models.AssetPriceMapping
+	if payload.Mapping != nil {
+		payload.Mapping.AssetID = payload.Asset.ID
+		if err := h.service.CreateAssetPriceMapping(r.Context(), payload.Mapping); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		mapping = payload.Mapping
+	}
+
+	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"asset":   &payload.Asset,
+		"mapping": mapping,
+	})
+}
+
 // Maintenance: Recalculate FX for existing transactions
 func (h *AdminHandler) HandleMaintenance(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")

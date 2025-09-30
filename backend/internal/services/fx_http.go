@@ -20,6 +20,18 @@ type HTTPFXProvider struct {
 	cache      FXCacheService
 }
 
+// normalizeCurrencyForAPI maps currencies that the upstream API does not support
+// as a base into an equivalent supported currency. For example, most fiat FX
+// providers do not accept stablecoins (USDT/USDC) as a base currency even though
+// they are expected to trade 1:1 with USD. In those cases we map them to USD.
+func normalizeCurrencyForAPI(symbol string) string {
+	s := strings.ToUpper(symbol)
+	if s == "USDT" || s == "USDC" {
+		return "USD"
+	}
+	return s
+}
+
 // ExchangeRateResponse represents the API response structure
 type ExchangeRateResponse struct {
 	Result          string                     `json:"result"`
@@ -168,7 +180,9 @@ func (p *HTTPFXProvider) fetchRateFromAPI(ctx context.Context, from, to string) 
 
 // fetchRatesFromAPI fetches multiple exchange rates from the API
 func (p *HTTPFXProvider) fetchRatesFromAPI(ctx context.Context, base string, targets []string) (map[string]decimal.Decimal, error) {
-	url := fmt.Sprintf("%s/%s", p.baseURL, strings.ToUpper(base))
+	// Map unsupported bases (e.g., stablecoins) to a supported equivalent (USD)
+	normalizedBase := normalizeCurrencyForAPI(base)
+	url := fmt.Sprintf("%s/%s", p.baseURL, normalizedBase)
 
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
@@ -194,11 +208,13 @@ func (p *HTTPFXProvider) fetchRatesFromAPI(ctx context.Context, base string, tar
 		return nil, fmt.Errorf("API error: %s", apiResponse.Result)
 	}
 
-	// Filter rates for requested targets
+	// Filter rates for requested targets. If any requested target is a stablecoin
+	// (USDT/USDC), treat it as USD since the upstream response uses USD.
 	result := make(map[string]decimal.Decimal)
 	for _, target := range targets {
 		targetUpper := strings.ToUpper(target)
-		if rate, exists := apiResponse.ConversionRates[targetUpper]; exists {
+		normalizedTarget := normalizeCurrencyForAPI(targetUpper)
+		if rate, exists := apiResponse.ConversionRates[normalizedTarget]; exists {
 			result[target] = rate
 		}
 	}

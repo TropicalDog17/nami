@@ -139,9 +139,9 @@ func (t *Transaction) CalculateDerivedFields() {
 	}
 
 	// Calculate CashFlow based on transaction type and account
-	// Special case: internal P2P buy/sell should not affect cash flow
-	if t.InternalFlow != nil && *t.InternalFlow && (t.Type == "buy" || t.Type == "sell") {
-		// Zero out cash flow for internal P2P trades
+	// Special cases: internal flows should not affect net cash flow
+	if t.InternalFlow != nil && *t.InternalFlow && (t.Type == "buy" || t.Type == "sell" || t.Type == "transfer_in" || t.Type == "transfer_out") {
+		// Zero out cash flow for internal trades/transfers between own accounts
 		t.CashFlowUSD = decimal.Zero
 		t.CashFlowVND = decimal.Zero
 		return

@@ -4,16 +4,17 @@ import "time"
 
 // Predefined action names
 const (
-	ActionP2PBuyUSDT  = "p2p_buy_usdt"
-	ActionP2PSellUSDT = "p2p_sell_usdt"
-	ActionSpendVND    = "spend_vnd"
-	ActionCreditSpend = "credit_spend_vnd"
-	ActionSpotBuy     = "spot_buy"
-	ActionBorrow      = "borrow"
-	ActionRepayBorrow = "repay_borrow"
-	ActionStake       = "stake"
-	ActionUnstake     = "unstake"
-	ActionInitBalance = "init_balance"
+	ActionP2PBuyUSDT       = "p2p_buy_usdt"
+	ActionP2PSellUSDT      = "p2p_sell_usdt"
+	ActionSpendVND         = "spend_vnd"
+	ActionCreditSpend      = "credit_spend_vnd"
+	ActionSpotBuy          = "spot_buy"
+	ActionBorrow           = "borrow"
+	ActionRepayBorrow      = "repay_borrow"
+	ActionStake            = "stake"
+	ActionUnstake          = "unstake"
+	ActionInitBalance      = "init_balance"
+	ActionInternalTransfer = "internal_transfer"
 )
 
 // ActionRequest represents a request to perform a predefined action
