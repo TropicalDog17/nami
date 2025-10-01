@@ -135,3 +135,14 @@ type AssetPriceService interface {
 	GetDaily(ctx context.Context, symbol, currency string, date time.Time) (*models.AssetPrice, error)
 	GetRange(ctx context.Context, symbol, currency string, start, end time.Time) ([]*models.AssetPrice, error)
 }
+
+// InvestmentService defines the interface for investment tracking operations
+type InvestmentService interface {
+	GetInvestments(ctx context.Context, filter *models.InvestmentFilter) ([]*models.Investment, error)
+	GetInvestmentByID(ctx context.Context, depositID string) (*models.Investment, error)
+	GetInvestmentSummary(ctx context.Context, filter *models.InvestmentFilter) (*models.InvestmentSummary, error)
+	GetWithdrawalsForDeposit(ctx context.Context, depositID string) ([]*models.Transaction, error)
+	GetAvailableDeposits(ctx context.Context, asset, account string) ([]*models.Investment, error)
+	CreateDeposit(ctx context.Context, tx *models.Transaction) (*models.Investment, error)
+	CreateWithdrawal(ctx context.Context, tx *models.Transaction) (*models.Investment, error)
+}

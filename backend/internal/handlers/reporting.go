@@ -21,7 +21,7 @@ func NewReportingHandler(service services.ReportingService) *ReportingHandler {
 
 // HandleHoldings handles GET /api/reports/holdings
 // @Summary Get holdings
-// @Description Get current holdings as of a date
+// @Description Get current holdings as of a date with portfolio percentages
 // @Tags reports
 // @Produce json
 // @Param as_of query string false "As of date (YYYY-MM-DD)"
@@ -55,7 +55,7 @@ func (h *ReportingHandler) HandleHoldings(w http.ResponseWriter, r *http.Request
 
 // HandleHoldingsSummary handles GET /api/reports/holdings/summary
 // @Summary Get holdings summary
-// @Description Get aggregated holdings summary as of a date
+// @Description Get aggregated holdings summary as of a date with portfolio percentages
 // @Tags reports
 // @Produce json
 // @Param as_of query string false "As of date (YYYY-MM-DD)"

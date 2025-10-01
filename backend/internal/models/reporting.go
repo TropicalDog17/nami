@@ -19,6 +19,7 @@ type Holding struct {
 	Quantity    decimal.Decimal `json:"quantity" db:"quantity"`
 	ValueUSD    decimal.Decimal `json:"value_usd" db:"value_usd"`
 	ValueVND    decimal.Decimal `json:"value_vnd" db:"value_vnd"`
+	Percentage  decimal.Decimal `json:"percentage"` // Percentage of total portfolio value
 	LastUpdated time.Time       `json:"last_updated" db:"last_updated"`
 }
 

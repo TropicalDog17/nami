@@ -660,11 +660,9 @@ func (s *actionService) performUnstake(ctx context.Context, req *models.ActionRe
 
 	// Get the original stake deposit to retrieve entry date for PnL calculation
 	var entryDatePtr *time.Time
-	var originalStakeAmount decimal.Decimal
 	if stakeID != "" {
 		if orig, err := s.transactionService.GetTransaction(ctx, stakeID); err == nil && orig != nil {
 			entryDatePtr = orig.EntryDate
-			originalStakeAmount = orig.Quantity
 		}
 	}
 
@@ -677,9 +675,9 @@ func (s *actionService) performUnstake(ctx context.Context, req *models.ActionRe
 	var finalExitPriceUSD decimal.Decimal
 	if hasExitPrice && !exitPriceUSD.IsZero() {
 		finalExitPriceUSD = exitPriceUSD
-	} else if hasExitAmount && !exitAmountUSD.IsZero() && !originalStakeAmount.IsZero() {
-		// Derive price from exit_amount_usd and original stake amount
-		finalExitPriceUSD = exitAmountUSD.Div(originalStakeAmount)
+	} else if hasExitAmount && !exitAmountUSD.IsZero() && !amount.IsZero() {
+		// Derive price from exit_amount_usd and actual unstake amount
+		finalExitPriceUSD = exitAmountUSD.Div(amount)
 	} else if s.priceService != nil {
 		if ap, err := s.priceService.GetDaily(ctx, asset, "USD", date); err == nil && ap != nil {
 			finalExitPriceUSD = ap.Price
@@ -703,6 +701,9 @@ func (s *actionService) performUnstake(ctx context.Context, req *models.ActionRe
 		FXToVND:      decimal.NewFromInt(1),
 		InternalFlow: func() *bool { b := true; return &b }(),
 		EntryDate:    entryDatePtr, // Set entry date for PnL calculation
+	}
+	if stakeID != "" {
+		outTx.DepositID = &stakeID
 	}
 	if note != "" {
 		outTx.Note = &note

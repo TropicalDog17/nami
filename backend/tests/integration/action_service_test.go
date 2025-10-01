@@ -1,4 +1,4 @@
-package services
+package integration
 
 import (
 	"context"
@@ -6,14 +6,16 @@ import (
 	"time"
 
 	"github.com/shopspring/decimal"
+
 	"github.com/tropicaldog17/nami/internal/models"
+	"github.com/tropicaldog17/nami/internal/services"
 )
 
 type stakeTestCase struct {
 	name            string
 	params          map[string]interface{}
 	expectedTxCount int
-	validations     func(t *testing.T, resp *models.ActionResponse, svc ActionService, txService TransactionService)
+	validations     func(t *testing.T, resp *models.ActionResponse, svc services.ActionService, txService services.TransactionService)
 }
 
 type unstakeTestCase struct {
@@ -22,7 +24,7 @@ type unstakeTestCase struct {
 	expectedTxCount int
 	setupStake      bool
 	stakeAmount     float64
-	validations     func(t *testing.T, resp *models.ActionResponse, svc ActionService, txService TransactionService, stakeResp *models.ActionResponse)
+	validations     func(t *testing.T, resp *models.ActionResponse, svc services.ActionService, txService services.TransactionService, stakeResp *models.ActionResponse)
 }
 
 func TestActionService_Stake_TableDriven(t *testing.T) {
@@ -38,7 +40,7 @@ func TestActionService_Stake_TableDriven(t *testing.T) {
 				"fee_percent":        0.8,
 			},
 			expectedTxCount: 3,
-			validations: func(t *testing.T, resp *models.ActionResponse, svc ActionService, txService TransactionService) {
+			validations: func(t *testing.T, resp *models.ActionResponse, svc services.ActionService, txService services.TransactionService) {
 				var transferOut, deposit, fee *models.Transaction
 				for _, tx := range resp.Transactions {
 					switch tx.Type {
@@ -85,8 +87,8 @@ func TestActionService_Stake_TableDriven(t *testing.T) {
 			defer tdb.cleanup(t)
 
 			ctx := context.Background()
-			txService := NewTransactionService(tdb.database)
-			svc := NewActionService(tdb.database, txService)
+			txService := services.NewTransactionService(tdb.database)
+			svc := services.NewActionService(tdb.database, txService)
 
 			req := &models.ActionRequest{
 				Action: models.ActionStake,
@@ -121,7 +123,7 @@ func TestActionService_Unstake_TableDriven(t *testing.T) {
 			},
 			expectedTxCount: 2,
 			setupStake:      false,
-			validations: func(t *testing.T, resp *models.ActionResponse, svc ActionService, txService TransactionService, stakeResp *models.ActionResponse) {
+			validations: func(t *testing.T, resp *models.ActionResponse, svc services.ActionService, txService services.TransactionService, stakeResp *models.ActionResponse) {
 				var withdraw, transferIn *models.Transaction
 				for _, tx := range resp.Transactions {
 					if tx.Type == "withdraw" {
@@ -160,7 +162,7 @@ func TestActionService_Unstake_TableDriven(t *testing.T) {
 			expectedTxCount: 2,
 			setupStake:      true,
 			stakeAmount:     500.0,
-			validations: func(t *testing.T, resp *models.ActionResponse, svc ActionService, txService TransactionService, stakeResp *models.ActionResponse) {
+			validations: func(t *testing.T, resp *models.ActionResponse, svc services.ActionService, txService services.TransactionService, stakeResp *models.ActionResponse) {
 				var withdraw, transferIn *models.Transaction
 				for _, tx := range resp.Transactions {
 					if tx.Type == "withdraw" {
@@ -230,7 +232,7 @@ func TestActionService_Unstake_TableDriven(t *testing.T) {
 			expectedTxCount: 2,
 			setupStake:      true,
 			stakeAmount:     500.0,
-			validations: func(t *testing.T, resp *models.ActionResponse, svc ActionService, txService TransactionService, stakeResp *models.ActionResponse) {
+			validations: func(t *testing.T, resp *models.ActionResponse, svc services.ActionService, txService services.TransactionService, stakeResp *models.ActionResponse) {
 				var withdraw *models.Transaction
 				for _, tx := range resp.Transactions {
 					if tx.Type == "withdraw" {
@@ -281,14 +283,14 @@ func TestActionService_Unstake_TableDriven(t *testing.T) {
 			defer tdb.cleanup(t)
 
 			ctx := context.Background()
-			txService := NewTransactionService(tdb.database)
-			var svc ActionService
+			txService := services.NewTransactionService(tdb.database)
+			var svc services.ActionService
 
 			if tc.name == "PnL calculation" {
-				linkService := NewLinkService(tdb.database)
-				svc = NewActionServiceFull(tdb.database, txService, linkService, nil)
+				linkService := services.NewLinkService(tdb.database)
+				svc = services.NewActionServiceFull(tdb.database, txService, linkService, nil)
 			} else {
-				svc = NewActionService(tdb.database, txService)
+				svc = services.NewActionService(tdb.database, txService)
 			}
 
 			var stakeResp *models.ActionResponse

@@ -1,22 +1,23 @@
-package models
+package integration
 
 import (
 	"testing"
 	"time"
 
 	"github.com/shopspring/decimal"
+	"github.com/tropicaldog17/nami/internal/models"
 )
 
 func TestTransactionValidation(t *testing.T) {
 	tests := []struct {
 		name        string
-		transaction Transaction
+		transaction models.Transaction
 		wantErr     bool
 		errContains string
 	}{
 		{
 			name: "valid transaction",
-			transaction: Transaction{
+			transaction: models.Transaction{
 				Date:       time.Now(),
 				Type:       "buy",
 				Asset:      "BTC",
@@ -30,7 +31,7 @@ func TestTransactionValidation(t *testing.T) {
 		},
 		{
 			name: "missing date",
-			transaction: Transaction{
+			transaction: models.Transaction{
 				Type:       "buy",
 				Asset:      "BTC",
 				Account:    "Exchange",
@@ -44,7 +45,7 @@ func TestTransactionValidation(t *testing.T) {
 		},
 		{
 			name: "missing type",
-			transaction: Transaction{
+			transaction: models.Transaction{
 				Date:       time.Now(),
 				Asset:      "BTC",
 				Account:    "Exchange",
@@ -58,7 +59,7 @@ func TestTransactionValidation(t *testing.T) {
 		},
 		{
 			name: "zero quantity",
-			transaction: Transaction{
+			transaction: models.Transaction{
 				Date:       time.Now(),
 				Type:       "buy",
 				Asset:      "BTC",
@@ -73,7 +74,7 @@ func TestTransactionValidation(t *testing.T) {
 		},
 		{
 			name: "negative price",
-			transaction: Transaction{
+			transaction: models.Transaction{
 				Date:       time.Now(),
 				Type:       "buy",
 				Asset:      "BTC",
@@ -111,13 +112,13 @@ func TestTransactionValidation(t *testing.T) {
 func TestCalculateDerivedFields(t *testing.T) {
 	tests := []struct {
 		name            string
-		transaction     Transaction
+		transaction     models.Transaction
 		wantDeltaQty    decimal.Decimal
 		wantCashFlowUSD decimal.Decimal
 	}{
 		{
 			name: "buy transaction",
-			transaction: Transaction{
+			transaction: models.Transaction{
 				Type:       "buy",
 				Account:    "Exchange",
 				Quantity:   decimal.NewFromFloat(1.0),
@@ -132,7 +133,7 @@ func TestCalculateDerivedFields(t *testing.T) {
 		},
 		{
 			name: "sell transaction",
-			transaction: Transaction{
+			transaction: models.Transaction{
 				Type:       "sell",
 				Account:    "Exchange",
 				Quantity:   decimal.NewFromFloat(1.0),
@@ -147,7 +148,7 @@ func TestCalculateDerivedFields(t *testing.T) {
 		},
 		{
 			name: "credit card expense",
-			transaction: Transaction{
+			transaction: models.Transaction{
 				Type:       "expense",
 				Account:    "CreditCard",
 				Quantity:   decimal.NewFromFloat(1.0),

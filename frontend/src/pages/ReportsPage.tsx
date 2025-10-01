@@ -240,6 +240,12 @@ const ReportsPage = () => {
         },
       },
       {
+        key: 'percentage',
+        title: 'Portfolio %',
+        type: 'percentage',
+        render: (value: any) => `${parseFloat(value || 0).toFixed(2)}%`,
+      },
+      {
         key: 'last_updated',
         title: 'Last Updated',
         type: 'date',
@@ -286,7 +292,8 @@ const ReportsPage = () => {
           currency === 'USD'
             ? parseFloat(holding.value_usd || 0)
             : parseFloat(holding.value_vnd || 0);
-        const percentage = totalValue > 0 ? (value / totalValue) * 100 : 0;
+        // Use backend percentage instead of calculating on frontend
+        const percentage = parseFloat(holding.percentage || 0);
 
         return {
           asset,

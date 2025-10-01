@@ -1,4 +1,4 @@
-package services
+package integration
 
 import (
 	"context"
@@ -7,6 +7,7 @@ import (
 
 	"github.com/shopspring/decimal"
 	"github.com/tropicaldog17/nami/internal/models"
+	"github.com/tropicaldog17/nami/internal/services"
 )
 
 // mockAssetPriceService implements AssetPriceService for tests
@@ -30,11 +31,11 @@ func TestUnstake_AmountOnly_UsesFetchedPriceAndPnL(t *testing.T) {
 	defer tdb.cleanup(t)
 
 	ctx := context.Background()
-	txService := NewTransactionService(tdb.database)
-	linkService := NewLinkService(tdb.database)
+	txService := services.NewTransactionService(tdb.database)
+	linkService := services.NewLinkService(tdb.database)
 	priceSvc := &mockAssetPriceService{price: decimal.NewFromFloat(1.23)}
-	actionService := NewActionServiceFull(tdb.database, txService, linkService, priceSvc)
-	reportingService := NewReportingService(tdb.database)
+	actionService := services.NewActionServiceFull(tdb.database, txService, linkService, priceSvc)
+	reportingService := services.NewReportingService(tdb.database)
 
 	// Stake 500 USDT
 	stakeReq := &models.ActionRequest{
@@ -100,11 +101,11 @@ func TestUnstake_CloseAll_ExitAmountUSD_PriceDerivedAndPnL(t *testing.T) {
 	defer tdb.cleanup(t)
 
 	ctx := context.Background()
-	txService := NewTransactionService(tdb.database)
-	linkService := NewLinkService(tdb.database)
+	txService := services.NewTransactionService(tdb.database)
+	linkService := services.NewLinkService(tdb.database)
 	// priceSvc not needed since exit_amount_usd is provided
-	actionService := NewActionServiceFull(tdb.database, txService, linkService, nil)
-	reportingService := NewReportingService(tdb.database)
+	actionService := services.NewActionServiceFull(tdb.database, txService, linkService, nil)
+	reportingService := services.NewReportingService(tdb.database)
 
 	// Stake 500 USDT
 	stakeReq := &models.ActionRequest{
@@ -133,7 +134,7 @@ func TestUnstake_CloseAll_ExitAmountUSD_PriceDerivedAndPnL(t *testing.T) {
 			"destination_account": "Binance Earn",
 			"asset":               "USDT",
 			"amount":              275.0, // Actual amount to unstake
-			"close_all":           true, // Just mark original as closed
+			"close_all":           true,  // Just mark original as closed
 			"exit_amount_usd":     "275",
 			"stake_deposit_tx_id": depositTxID,
 		},

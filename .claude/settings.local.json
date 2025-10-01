@@ -5,7 +5,17 @@
       "Bash(env:*)",
       "Bash(/usr/local/go/bin/go test:*)",
       "Bash(make:*)",
-      "Bash(go run:*)"
+      "Bash(go run:*)",
+      "Bash(go build:*)",
+      "Bash(npm run dev:*)",
+      "Bash(curl:*)",
+      "Bash(pkill:*)",
+      "Bash(lsof:*)",
+      "Bash(xargs kill:*)",
+      "Bash(mv:*)",
+      "Bash(mkdir:*)",
+      "Bash(find:*)",
+      "Bash(psql:*)"
     ],
     "deny": [],
     "ask": []

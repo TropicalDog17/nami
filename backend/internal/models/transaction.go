@@ -41,6 +41,9 @@ type Transaction struct {
 	// Flow flags
 	InternalFlow *bool `json:"internal_flow" db:"internal_flow"`
 
+	// Investment tracking - links withdrawal to its deposit
+	DepositID *string `json:"deposit_id" db:"deposit_id"`
+
 	// Optional tracking
 	Horizon   *string          `json:"horizon" db:"horizon"`
 	EntryDate *time.Time       `json:"entry_date" db:"entry_date"`
@@ -112,6 +115,12 @@ func (t *Transaction) Validate() error {
 	// Validate horizon if provided
 	if t.Horizon != nil && *t.Horizon != "short-term" && *t.Horizon != "long-term" {
 		return errors.New("horizon must be 'short-term' or 'long-term'")
+	}
+
+	// Validate deposit_id - only withdrawal types can have deposit_id
+	isWithdrawalType := t.Type == "withdraw" || t.Type == "unstake" || t.Type == "sell"
+	if !isWithdrawalType && t.DepositID != nil && *t.DepositID != "" {
+		return errors.New("deposit_id should only be set for withdrawal/unstake/sell transactions")
 	}
 
 	return nil
