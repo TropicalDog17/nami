@@ -14,23 +14,35 @@ import (
 
 // transactionService implements the TransactionService interface
 type transactionService struct {
-	db         *db.DB
-	fxProvider FXProvider
+	db           *db.DB
+	fxProvider   FXProvider
+	priceService AssetPriceService
 }
 
 // NewTransactionService creates a new transaction service
 func NewTransactionService(database *db.DB) TransactionService {
 	return &transactionService{
-		db:         database,
-		fxProvider: nil, // No FX provider
+		db:           database,
+		fxProvider:   nil, // No FX provider
+		priceService: nil, // No price service
 	}
 }
 
 // NewTransactionServiceWithFX creates a new transaction service with FX provider
 func NewTransactionServiceWithFX(database *db.DB, fxProvider FXProvider) TransactionService {
 	return &transactionService{
-		db:         database,
-		fxProvider: fxProvider,
+		db:           database,
+		fxProvider:   fxProvider,
+		priceService: nil, // No price service
+	}
+}
+
+// NewTransactionServiceWithFXAndPrices creates a new transaction service with FX and price providers
+func NewTransactionServiceWithFXAndPrices(database *db.DB, fxProvider FXProvider, priceService AssetPriceService) TransactionService {
+	return &transactionService{
+		db:           database,
+		fxProvider:   fxProvider,
+		priceService: priceService,
 	}
 }
 
@@ -82,7 +94,6 @@ func (s *transactionService) CreateTransaction(ctx context.Context, tx *models.T
 		tx.BorrowAPR, tx.BorrowTermDays, tx.BorrowActive, tx.InternalFlow,
 		tx.FXSource, tx.FXTimestamp, tx.CreatedAt, tx.UpdatedAt,
 	).Scan(&tx.ID)
-
 	if err != nil {
 		return fmt.Errorf("failed to create transaction: %w", err)
 	}
@@ -338,16 +349,6 @@ func (s *transactionService) RecalculateFX(ctx context.Context, onlyMissing bool
 	// For each, fetch rates and update
 	updated := 0
 	for _, c := range candidates {
-		tx := &models.Transaction{ID: c.id, Date: c.date, Asset: c.asset, FXToUSD: c.fxUSD, FXToVND: c.fxVND}
-		// Force refresh both FX rates when onlyMissing == false
-		if !onlyMissing {
-			tx.FXToUSD = decimal.Zero
-			tx.FXToVND = decimal.Zero
-		}
-		if err := s.populateFXRates(ctx, tx); err != nil {
-			// skip on failure, continue
-			continue
-		}
 		// Recompute derived amounts using existing quantity/price/fees, type and account
 		var quantity, priceLocal, feeUSD, feeVND decimal.Decimal
 		var tType, tAccount string
@@ -356,11 +357,38 @@ func (s *transactionService) RecalculateFX(ctx context.Context, onlyMissing bool
 		if err != nil {
 			continue
 		}
-		tmp := &models.Transaction{Quantity: quantity, PriceLocal: priceLocal, FXToUSD: tx.FXToUSD, FXToVND: tx.FXToVND, FeeUSD: feeUSD, FeeVND: feeVND, Type: tType, Account: tAccount}
+
+		// For cryptocurrencies, refresh the price from the price provider
+		if models.IsCryptocurrency(c.asset) && s.priceService != nil {
+			// Fetch the latest price in USD
+			ap, err := s.priceService.GetDaily(ctx, c.asset, "USD", c.date)
+			if err == nil && ap != nil && !ap.Price.IsZero() {
+				priceLocal = ap.Price
+			}
+			// For crypto, always set FX rates to 1 (price is already in USD)
+			c.fxUSD = decimal.NewFromInt(1)
+			c.fxVND = decimal.NewFromInt(1)
+		} else {
+			// For fiat currencies, use the FX provider
+			tx := &models.Transaction{ID: c.id, Date: c.date, Asset: c.asset, FXToUSD: c.fxUSD, FXToVND: c.fxVND}
+			// Force refresh both FX rates when onlyMissing == false
+			if !onlyMissing {
+				tx.FXToUSD = decimal.Zero
+				tx.FXToVND = decimal.Zero
+			}
+			if err := s.populateFXRates(ctx, tx); err != nil {
+				// skip on failure, continue
+				continue
+			}
+			c.fxUSD = tx.FXToUSD
+			c.fxVND = tx.FXToVND
+		}
+
+		tmp := &models.Transaction{Quantity: quantity, PriceLocal: priceLocal, FXToUSD: c.fxUSD, FXToVND: c.fxVND, FeeUSD: feeUSD, FeeVND: feeVND, Type: tType, Account: tAccount}
 		tmp.CalculateDerivedFields()
 
-		_, err = s.db.ExecContext(ctx, `UPDATE transactions SET fx_to_usd=$2, fx_to_vnd=$3, amount_usd=$4, amount_vnd=$5, delta_qty=$6, cashflow_usd=$7, cashflow_vnd=$8, fx_source=$9, fx_timestamp=$10, updated_at=$11 WHERE id=$1`,
-			c.id, tx.FXToUSD, tx.FXToVND, tmp.AmountUSD, tmp.AmountVND, tmp.DeltaQty, tmp.CashFlowUSD, tmp.CashFlowVND, tx.FXSource, tx.FXTimestamp, time.Now())
+		_, err = s.db.ExecContext(ctx, `UPDATE transactions SET price_local=$2, fx_to_usd=$3, fx_to_vnd=$4, amount_local=$5, amount_usd=$6, amount_vnd=$7, delta_qty=$8, cashflow_usd=$9, cashflow_vnd=$10, updated_at=$11 WHERE id=$1`,
+			c.id, priceLocal, c.fxUSD, c.fxVND, tmp.AmountLocal, tmp.AmountUSD, tmp.AmountVND, tmp.DeltaQty, tmp.CashFlowUSD, tmp.CashFlowVND, time.Now())
 		if err == nil {
 			updated++
 		}
@@ -371,41 +399,57 @@ func (s *transactionService) RecalculateFX(ctx context.Context, onlyMissing bool
 
 // RecalculateOneFX recalculates FX and derived fields for a single transaction by ID.
 // If onlyMissing is true, preserves existing non-zero FX values; otherwise forces refresh.
+// For cryptocurrencies, also refreshes the price_local from the price provider.
 func (s *transactionService) RecalculateOneFX(ctx context.Context, id string, onlyMissing bool) (*models.Transaction, error) {
-	if s.fxProvider == nil {
-		return nil, fmt.Errorf("no FX provider configured")
-	}
-
-	// Get minimal fields required to fetch FX
+	// Get minimal fields required to fetch FX and price
 	var date time.Time
 	var asset string
-	var fxUSD, fxVND decimal.Decimal
-	if err := s.db.QueryRowContext(ctx, `SELECT date, asset, fx_to_usd, fx_to_vnd FROM transactions WHERE id = $1`, id).Scan(&date, &asset, &fxUSD, &fxVND); err != nil {
-		return nil, fmt.Errorf("failed to get transaction fx fields: %w", err)
+	var fxUSD, fxVND, priceLocal decimal.Decimal
+	if err := s.db.QueryRowContext(ctx, `SELECT date, asset, fx_to_usd, fx_to_vnd, price_local FROM transactions WHERE id = $1`, id).
+		Scan(&date, &asset, &fxUSD, &fxVND, &priceLocal); err != nil {
+		return nil, fmt.Errorf("failed to get transaction fields: %w", err)
 	}
 
-	tx := &models.Transaction{ID: id, Date: date, Asset: asset, FXToUSD: fxUSD, FXToVND: fxVND}
-	if !onlyMissing {
-		tx.FXToUSD = decimal.Zero
-		tx.FXToVND = decimal.Zero
-	}
-	if err := s.populateFXRates(ctx, tx); err != nil {
-		return nil, err
+	// For cryptocurrencies, refresh the price from the price provider
+	if models.IsCryptocurrency(asset) && s.priceService != nil {
+		// Fetch the latest price in USD
+		ap, err := s.priceService.GetDaily(ctx, asset, "USD", date)
+		if err == nil && ap != nil && !ap.Price.IsZero() {
+			priceLocal = ap.Price
+		}
+		// For crypto, always set FX rates to 1 (price is already in USD)
+		fxUSD = decimal.NewFromInt(1)
+		fxVND = decimal.NewFromInt(1)
+	} else {
+		// For fiat currencies, use the FX provider
+		if s.fxProvider == nil {
+			return nil, fmt.Errorf("no FX provider configured")
+		}
+		tx := &models.Transaction{ID: id, Date: date, Asset: asset, FXToUSD: fxUSD, FXToVND: fxVND}
+		if !onlyMissing {
+			tx.FXToUSD = decimal.Zero
+			tx.FXToVND = decimal.Zero
+		}
+		if err := s.populateFXRates(ctx, tx); err != nil {
+			return nil, err
+		}
+		fxUSD = tx.FXToUSD
+		fxVND = tx.FXToVND
 	}
 
 	// Load existing amounts to recompute derived fields
-	var quantity, priceLocal, feeUSD, feeVND decimal.Decimal
+	var quantity, feeUSD, feeVND decimal.Decimal
 	var tType, tAccount string
-	if err := s.db.QueryRowContext(ctx, `SELECT quantity, price_local, fee_usd, fee_vnd, type, account FROM transactions WHERE id = $1`, id).
-		Scan(&quantity, &priceLocal, &feeUSD, &feeVND, &tType, &tAccount); err != nil {
+	if err := s.db.QueryRowContext(ctx, `SELECT quantity, fee_usd, fee_vnd, type, account FROM transactions WHERE id = $1`, id).
+		Scan(&quantity, &feeUSD, &feeVND, &tType, &tAccount); err != nil {
 		return nil, fmt.Errorf("failed to get transaction compute fields: %w", err)
 	}
-	tmp := &models.Transaction{Quantity: quantity, PriceLocal: priceLocal, FXToUSD: tx.FXToUSD, FXToVND: tx.FXToVND, FeeUSD: feeUSD, FeeVND: feeVND, Type: tType, Account: tAccount}
+	tmp := &models.Transaction{Quantity: quantity, PriceLocal: priceLocal, FXToUSD: fxUSD, FXToVND: fxVND, FeeUSD: feeUSD, FeeVND: feeVND, Type: tType, Account: tAccount}
 	tmp.CalculateDerivedFields()
 
-	// Apply update
-	if _, err := s.db.ExecContext(ctx, `UPDATE transactions SET fx_to_usd=$2, fx_to_vnd=$3, amount_usd=$4, amount_vnd=$5, delta_qty=$6, cashflow_usd=$7, cashflow_vnd=$8, fx_source=$9, fx_timestamp=$10, updated_at=$11 WHERE id=$1`,
-		id, tx.FXToUSD, tx.FXToVND, tmp.AmountUSD, tmp.AmountVND, tmp.DeltaQty, tmp.CashFlowUSD, tmp.CashFlowVND, tx.FXSource, tx.FXTimestamp, time.Now()); err != nil {
+	// Apply update (now also updating price_local for crypto)
+	if _, err := s.db.ExecContext(ctx, `UPDATE transactions SET price_local=$2, fx_to_usd=$3, fx_to_vnd=$4, amount_local=$5, amount_usd=$6, amount_vnd=$7, delta_qty=$8, cashflow_usd=$9, cashflow_vnd=$10, updated_at=$11 WHERE id=$1`,
+		id, priceLocal, fxUSD, fxVND, tmp.AmountLocal, tmp.AmountUSD, tmp.AmountVND, tmp.DeltaQty, tmp.CashFlowUSD, tmp.CashFlowVND, time.Now()); err != nil {
 		return nil, fmt.Errorf("failed to update transaction: %w", err)
 	}
 
@@ -473,7 +517,6 @@ func (s *transactionService) GetTransaction(ctx context.Context, id string) (*mo
 		&tx.BorrowAPR, &tx.BorrowTermDays, &tx.BorrowActive, &tx.InternalFlow,
 		&tx.FXSource, &tx.FXTimestamp, &tx.CreatedAt, &tx.UpdatedAt,
 	)
-
 	if err != nil {
 		// Hide database uuid cast errors behind a consistent not-found message
 		if err == sql.ErrNoRows || strings.Contains(strings.ToLower(err.Error()), "invalid input syntax for type uuid") {
@@ -607,7 +650,6 @@ func (s *transactionService) UpdateTransaction(ctx context.Context, tx *models.T
 		merged.InternalFlow,
 		fxSource, fxTimestamp, merged.UpdatedAt,
 	)
-
 	if err != nil {
 		return fmt.Errorf("failed to update transaction: %w", err)
 	}
@@ -629,9 +671,36 @@ func (s *transactionService) UpdateTransaction(ctx context.Context, tx *models.T
 
 // DeleteTransaction deletes a transaction by ID
 func (s *transactionService) DeleteTransaction(ctx context.Context, id string) error {
+	// Use a transaction to ensure atomicity when clearing exit_date before deletion
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	// Before deleting, check if this is a withdraw transaction linked to a deposit (stake/unstake pair)
+	// If so, clear the exit_date on the linked deposit to make it "active" again
+	// IMPORTANT: Query the link BEFORE deleting because ON DELETE CASCADE will remove the link
+	linkQuery := `
+		SELECT from_tx
+		FROM transaction_links
+		WHERE link_type = 'stake_unstake' AND to_tx = $1`
+
+	var linkedDepositID string
+	err = tx.QueryRowContext(ctx, linkQuery, id).Scan(&linkedDepositID)
+
+	// Clear the exit_date BEFORE deleting the transaction (to avoid CASCADE removing the link first)
+	if err == nil && linkedDepositID != "" {
+		// Clear the exit_date on the linked deposit
+		if _, updateErr := tx.ExecContext(ctx, `UPDATE transactions SET exit_date = NULL WHERE id = $1`, linkedDepositID); updateErr != nil {
+			return fmt.Errorf("failed to clear exit_date: %w", updateErr)
+		}
+	}
+	// If no link found or error, continue with deletion anyway
+
 	query := `DELETE FROM transactions WHERE id = $1`
 
-	result, err := s.db.ExecContext(ctx, query, id)
+	result, err := tx.ExecContext(ctx, query, id)
 	if err != nil {
 		return fmt.Errorf("failed to delete transaction: %w", err)
 	}
@@ -643,6 +712,11 @@ func (s *transactionService) DeleteTransaction(ctx context.Context, id string) e
 
 	if rowsAffected == 0 {
 		return fmt.Errorf("transaction not found: %s", id)
+	}
+
+	// Commit the transaction
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
 	return nil
@@ -854,6 +928,20 @@ func (s *transactionService) populateFXRates(ctx context.Context, tx *models.Tra
 
 	asset := tx.Asset
 	date := tx.Date
+
+	// Skip FX rate population for cryptocurrencies
+	// Cryptocurrencies don't have FX rates - they have prices in other currencies
+	if models.IsCryptocurrency(asset) {
+		// For cryptocurrencies, set FX rates to 1.0 to avoid errors
+		// The actual valuation should be done via price providers, not FX rates
+		if needsUSD {
+			tx.FXToUSD = decimal.NewFromInt(1)
+		}
+		if needsVND {
+			tx.FXToVND = decimal.NewFromInt(1)
+		}
+		return nil
+	}
 
 	// Determine which rates we need
 	targets := []string{}

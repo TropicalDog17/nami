@@ -31,6 +31,11 @@ func NewActionServiceWithPrices(database *db.DB, txService TransactionService, p
 	return &actionService{db: database, transactionService: txService, priceService: priceService}
 }
 
+// NewActionServiceFull allows passing all optional services
+func NewActionServiceFull(database *db.DB, txService TransactionService, linkService LinkService, priceService AssetPriceService) ActionService {
+	return &actionService{db: database, transactionService: txService, linkService: linkService, priceService: priceService}
+}
+
 func (s *actionService) Perform(ctx context.Context, req *models.ActionRequest) (*models.ActionResponse, error) {
 	if req == nil || req.Action == "" {
 		return nil, fmt.Errorf("action is required")
@@ -628,7 +633,10 @@ func (s *actionService) performStake(ctx context.Context, req *models.ActionRequ
 }
 
 // Unstake reverses a prior stake
-// Params: date, investment_account, destination_account, asset, amount, stake_deposit_tx_id (link), note(optional)
+// Params: date, investment_account, destination_account, asset, amount (REQUIRED),
+//
+//	stake_deposit_tx_id (link), close_all (optional flag to mark position closed),
+//	exit_price_usd (optional), note(optional)
 func (s *actionService) performUnstake(ctx context.Context, req *models.ActionRequest) (*models.ActionResponse, error) {
 	p := req.Params
 	date, _ := getDate(p, "date")
@@ -639,31 +647,48 @@ func (s *actionService) performUnstake(ctx context.Context, req *models.ActionRe
 	closeAll, _ := getBool(p, "close_all")
 	stakeID, _ := getString(p, "stake_deposit_tx_id")
 	note, _ := getString(p, "note")
-	if !(ok1 && ok2 && ok3) {
-		return nil, fmt.Errorf("missing required params for unstake")
+	exitPriceUSD, hasExitPrice := getDecimal(p, "exit_price_usd")
+	exitAmountUSD, hasExitAmount := getDecimal(p, "exit_amount_usd")
+
+	if !(ok1 && ok2 && ok3 && ok4) {
+		return nil, fmt.Errorf("missing required params for unstake: investment_account, destination_account, asset, amount are all required")
 	}
 
-	// If close_all is requested, compute remaining quantity in investment account for the asset as of the date
-	if closeAll && (!ok4 || amount.IsZero()) {
-		var remainingStr string
-		// Sum delta_qty up to the specified date
-		q := `SELECT COALESCE(TO_CHAR(SUM(delta_qty), 'FM999999999999999D999999999999999'), '0') FROM transactions WHERE account = $1 AND asset = $2 AND date <= $3`
-		if err := s.db.QueryRowContext(ctx, q, invest, asset, date).Scan(&remainingStr); err != nil {
-			return nil, fmt.Errorf("failed to compute remaining position: %w", err)
-		}
-		rem, err := decimal.NewFromString(remainingStr)
-		if err != nil {
-			return nil, fmt.Errorf("invalid remaining position: %w", err)
-		}
-		if rem.IsNegative() || rem.IsZero() {
-			return nil, fmt.Errorf("no remaining position to close for %s in %s", asset, invest)
-		}
-		amount = rem
-		ok4 = true
+	if amount.IsZero() || amount.IsNegative() {
+		return nil, fmt.Errorf("amount must be positive")
 	}
 
-	if !ok4 || amount.IsZero() {
-		return nil, fmt.Errorf("amount is required for unstake unless close_all=true and position exists")
+	// Get the original stake deposit to retrieve entry date for PnL calculation
+	var entryDatePtr *time.Time
+	var originalStakeAmount decimal.Decimal
+	if stakeID != "" {
+		if orig, err := s.transactionService.GetTransaction(ctx, stakeID); err == nil && orig != nil {
+			entryDatePtr = orig.EntryDate
+			originalStakeAmount = orig.Quantity
+		}
+	}
+
+	// Determine exit price in USD per unit
+	// Priority:
+	// 1) explicit exit_price_usd
+	// 2) exit_amount_usd (derive price = exit_amount / stake_amount)
+	// 3) fetch daily price via AssetPriceService
+	// 4) fallback 1:1
+	var finalExitPriceUSD decimal.Decimal
+	if hasExitPrice && !exitPriceUSD.IsZero() {
+		finalExitPriceUSD = exitPriceUSD
+	} else if hasExitAmount && !exitAmountUSD.IsZero() && !originalStakeAmount.IsZero() {
+		// Derive price from exit_amount_usd and original stake amount
+		finalExitPriceUSD = exitAmountUSD.Div(originalStakeAmount)
+	} else if s.priceService != nil {
+		if ap, err := s.priceService.GetDaily(ctx, asset, "USD", date); err == nil && ap != nil {
+			finalExitPriceUSD = ap.Price
+		} else {
+			finalExitPriceUSD = decimal.NewFromInt(1)
+		}
+	} else {
+		// Default: assume 1:1 (no gain/loss)
+		finalExitPriceUSD = decimal.NewFromInt(1)
 	}
 
 	// 1) withdraw from investment
@@ -673,10 +698,11 @@ func (s *actionService) performUnstake(ctx context.Context, req *models.ActionRe
 		Asset:        asset,
 		Account:      invest,
 		Quantity:     amount,
-		PriceLocal:   decimal.NewFromInt(1),
+		PriceLocal:   finalExitPriceUSD,
 		FXToUSD:      decimal.NewFromFloat(1.0),
 		FXToVND:      decimal.NewFromInt(1),
 		InternalFlow: func() *bool { b := true; return &b }(),
+		EntryDate:    entryDatePtr, // Set entry date for PnL calculation
 	}
 	if note != "" {
 		outTx.Note = &note
@@ -692,7 +718,7 @@ func (s *actionService) performUnstake(ctx context.Context, req *models.ActionRe
 		Asset:        asset,
 		Account:      dest,
 		Quantity:     amount,
-		PriceLocal:   decimal.NewFromInt(1),
+		PriceLocal:   finalExitPriceUSD,
 		FXToUSD:      decimal.NewFromFloat(1.0),
 		FXToVND:      decimal.NewFromInt(1),
 		InternalFlow: func() *bool { b := true; return &b }(),
@@ -705,11 +731,12 @@ func (s *actionService) performUnstake(ctx context.Context, req *models.ActionRe
 		return nil, err
 	}
 
+	// Create link between stake deposit and unstake withdraw for PnL tracking
 	if stakeID != "" && s.linkService != nil {
 		_ = s.linkService.CreateLink(ctx, &models.TransactionLink{LinkType: "stake_unstake", FromTx: stakeID, ToTx: outTx.ID})
 	}
 
-	// If this is a full close, mark the original stake deposit as ended by setting its ExitDate
+	// Mark the original stake deposit as ended by setting its ExitDate if close_all is true
 	if closeAll && stakeID != "" {
 		if orig, err := s.transactionService.GetTransaction(ctx, stakeID); err == nil && orig != nil {
 			orig.ExitDate = &date
@@ -730,14 +757,32 @@ func (s *actionService) performInitBalance(ctx context.Context, req *models.Acti
 	qty, ok3 := getDecimal(p, "quantity")
 	tag, _ := getString(p, "tag")
 	note, _ := getString(p, "note")
-	priceLocal, _ := getDecimal(p, "price_local")
+	priceLocal, hasPriceLocal := getDecimal(p, "price_local")
 	fxUSD, hasUSD := getDecimal(p, "fx_to_usd")
 	fxVND, hasVND := getDecimal(p, "fx_to_vnd")
 	if !(ok1 && ok2 && ok3) {
 		return nil, fmt.Errorf("missing required params: account, asset, quantity")
 	}
 
-	if priceLocal.IsZero() {
+	// For cryptocurrencies, fetch the price if not provided
+	if models.IsCryptocurrency(asset) && !hasPriceLocal {
+		if s.priceService != nil {
+			// Fetch price in USD
+			ap, err := s.priceService.GetDaily(ctx, asset, "USD", date)
+			if err == nil && ap != nil && !ap.Price.IsZero() {
+				priceLocal = ap.Price
+				// For crypto, price_local is in USD, so fx_to_usd should be 1
+				if !hasUSD {
+					fxUSD = decimal.NewFromInt(1)
+					hasUSD = true
+				}
+			} else {
+				return nil, fmt.Errorf("failed to fetch price for %s on %s: %v", asset, date.Format("2006-01-02"), err)
+			}
+		} else {
+			return nil, fmt.Errorf("price service not available for cryptocurrency %s", asset)
+		}
+	} else if priceLocal.IsZero() {
 		priceLocal = decimal.NewFromInt(1)
 	}
 

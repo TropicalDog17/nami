@@ -417,16 +417,10 @@ func (s *reportingService) GetPnL(ctx context.Context, period models.Period) (*m
 	// For now, we'll calculate a simplified P&L based on realized gains/losses
 	// This is a basic implementation - in a real system you'd want more sophisticated P&L calculation
 
-	// Get realized P&L from sales/disposals and stake-unstake pairs (linked deposit->withdraw)
+	// Get realized P&L from stake-unstake pairs (linked deposit->withdraw) and sell transactions
+	// Note: This includes gains/losses from both staking and regular trading
 	realizedQuery := `
-        WITH sell_disposal AS (
-            SELECT 
-                COALESCE(SUM(CASE WHEN type IN ('sell', 'disposal') THEN amount_usd ELSE 0 END), 0) as usd,
-                COALESCE(SUM(CASE WHEN type IN ('sell', 'disposal') THEN amount_vnd ELSE 0 END), 0) as vnd
-            FROM transactions 
-            WHERE date >= $1 AND date <= $2
-        ),
-        stake_pairs AS (
+        WITH stake_pairs AS (
             SELECT l.from_tx AS deposit_id, l.to_tx AS withdraw_id
             FROM transaction_links l
             WHERE l.link_type = 'stake_unstake'
@@ -439,56 +433,158 @@ func (s *reportingService) GetPnL(ctx context.Context, period models.Period) (*m
             SELECT id, date, amount_usd, amount_vnd, quantity
             FROM transactions
         ),
-        stake_unstake AS (
-            SELECT 
+        stake_unstake_pnl AS (
+            SELECT
                 COALESCE(SUM(
-                    -- USD realized PnL = withdraw USD - withdraw_qty * entry_unit_usd
-                    w.amount_usd - (w.quantity * (d.amount_usd / NULLIF(d.quantity, 0)))
+                    -- PnL is only recognized when position is fully closed (deposit has exit_date)
+                    -- PnL = withdraw value - proportional cost basis
+                    w.amount_usd - ((w.quantity / NULLIF(d.quantity, 0)) * d.amount_usd)
                 ), 0) AS usd,
                 COALESCE(SUM(
-                    -- VND realized PnL = withdraw VND - withdraw_qty * entry_unit_vnd
-                    w.amount_vnd - (w.quantity * (d.amount_vnd / NULLIF(d.quantity, 0)))
+                    -- Same logic for VND
+                    w.amount_vnd - ((w.quantity / NULLIF(d.quantity, 0)) * d.amount_vnd)
                 ), 0) AS vnd
             FROM stake_pairs p
-            JOIN dep d ON d.id = p.deposit_id
-            JOIN wit w ON w.id = p.withdraw_id
+            JOIN transactions d ON d.id = p.deposit_id
+            JOIN transactions w ON w.id = p.withdraw_id
             WHERE w.date >= $1 AND w.date <= $2
+            AND d.exit_date IS NOT NULL
+        ),
+        sell_pnl AS (
+            SELECT
+                COALESCE(SUM(
+                    -- For sell transactions, we calculate PnL as:
+                    -- Since we don't have proper cost basis tracking yet,
+                    -- we'll use cashflow as a proxy for realized PnL
+                    -- Positive cashflow from sell = realized gain
+                    CASE
+                        WHEN t.cashflow_usd > 0 THEN t.cashflow_usd
+                        ELSE 0
+                    END
+                ), 0) AS usd,
+                COALESCE(SUM(
+                    CASE
+                        WHEN t.cashflow_vnd > 0 THEN t.cashflow_vnd
+                        ELSE 0
+                    END
+                ), 0) AS vnd
+            FROM transactions t
+            WHERE t.type = 'sell'
+            AND t.date >= $1 AND t.date <= $2
         )
-        SELECT 
-            COALESCE(sd.usd, 0) + COALESCE(su.usd, 0) AS realized_pnl_usd,
-            COALESCE(sd.vnd, 0) + COALESCE(su.vnd, 0) AS realized_pnl_vnd
-        FROM sell_disposal sd
-        CROSS JOIN stake_unstake su`
+        SELECT
+            COALESCE(su.usd, 0) + COALESCE(sp.usd, 0) AS realized_pnl_usd,
+            COALESCE(su.vnd, 0) + COALESCE(sp.vnd, 0) AS realized_pnl_vnd
+        FROM stake_unstake_pnl su, sell_pnl sp`
 
-	err := s.db.QueryRowContext(ctx, realizedQuery, period.StartDate, period.EndDate).Scan(
+	// DEBUG: First, let's see what transactions we're working with
+	debugQuery := `
+		SELECT 'All Transactions' as type, COUNT(*) as count,
+			   COALESCE(SUM(amount_usd), 0) as total_usd,
+			   COALESCE(SUM(quantity), 0) as total_quantity
+		FROM transactions
+		WHERE date >= $1 AND date <= $2
+		UNION ALL
+		SELECT 'Stake Unstake Pairs', COUNT(*), 0, 0
+		FROM transaction_links l
+		WHERE l.link_type = 'stake_unstake'
+		AND EXISTS (SELECT 1 FROM transactions w WHERE w.id = l.to_tx AND w.date >= $1 AND w.date <= $2)
+		UNION ALL
+		SELECT 'Fully Closed Positions' as type, COUNT(*) as count, 0, 0
+		FROM transaction_links l
+		JOIN transactions d ON d.id = l.from_tx
+		WHERE l.link_type = 'stake_unstake'
+		AND d.exit_date IS NOT NULL
+		AND EXISTS (SELECT 1 FROM transactions w WHERE w.id = l.to_tx AND w.date >= $1 AND w.date <= $2)
+		UNION ALL
+		SELECT 'Sell Transactions', COUNT(*),
+			   COALESCE(SUM(amount_usd), 0), COALESCE(SUM(quantity), 0)
+		FROM transactions
+		WHERE type = 'sell' AND date >= $1 AND date <= $2`
+
+	debugRows, err := s.db.QueryContext(ctx, debugQuery, period.StartDate, period.EndDate)
+	if err == nil {
+		defer debugRows.Close()
+		for debugRows.Next() {
+			var dr struct {
+				Type          string
+				Count         int
+				TotalUSD      decimal.Decimal
+				TotalQuantity decimal.Decimal
+			}
+			debugRows.Scan(&dr.Type, &dr.Count, &dr.TotalUSD, &dr.TotalQuantity)
+			fmt.Printf("DEBUG: %s - Count: %d, Total USD: %s, Total Qty: %s\n",
+				dr.Type, dr.Count, dr.TotalUSD.String(), dr.TotalQuantity.String())
+		}
+	}
+
+	err = s.db.QueryRowContext(ctx, realizedQuery, period.StartDate, period.EndDate).Scan(
 		&report.RealizedPnLUSD, &report.RealizedPnLVND,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get realized P&L: %w", err)
 	}
 
-	// For unrealized P&L, we'd need current market prices which we don't have yet
-	// So we'll set it to zero for now
+	// Calculate unrealized P&L based on current holdings vs average cost basis
+	// For now, we'll set it to zero since we don't have reliable current market prices
 	report.UnrealizedPnLUSD = decimal.Zero
 	report.UnrealizedPnLVND = decimal.Zero
 
 	report.TotalPnLUSD = report.RealizedPnLUSD.Add(report.UnrealizedPnLUSD)
 	report.TotalPnLVND = report.RealizedPnLVND.Add(report.UnrealizedPnLVND)
 
-	// Calculate simple ROI based on total invested vs current value
-	totalInvestedQuery := `
-		SELECT COALESCE(SUM(ABS(amount_usd)), 1) 
-		FROM transactions 
-		WHERE date >= $1 AND date <= $2 AND type IN ('buy', 'purchase')`
+	// DEBUG: Add logging to understand the PnL calculation
+	// Log the raw values to help debug small PnL issues
+	fmt.Printf("DEBUG: PnL Calculation for period %s to %s\n", period.StartDate.Format("2006-01-02"), period.EndDate.Format("2006-01-02"))
+	fmt.Printf("DEBUG: Realized PnL USD: %s, VND: %s\n", report.RealizedPnLUSD.String(), report.RealizedPnLVND.String())
+	fmt.Printf("DEBUG: Unrealized PnL USD: %s, VND: %s\n", report.UnrealizedPnLUSD.String(), report.UnrealizedPnLVND.String())
+	fmt.Printf("DEBUG: Total PnL USD: %s, VND: %s\n", report.TotalPnLUSD.String(), report.TotalPnLVND.String())
 
-	var totalInvested decimal.Decimal
-	err = s.db.QueryRowContext(ctx, totalInvestedQuery, period.StartDate, period.EndDate).Scan(&totalInvested)
+	// Calculate ROI based on total cost basis for all realized PnL in the period
+	// ROI = Total PnL / Total Cost Basis × 100%
+	// This includes both stake-unstake and sell transactions
+	totalCostBasisQuery := `
+		WITH stake_pairs AS (
+			SELECT l.from_tx AS deposit_id, l.to_tx AS withdraw_id
+			FROM transaction_links l
+			WHERE l.link_type = 'stake_unstake'
+		),
+		stake_cost_basis AS (
+			SELECT COALESCE(SUM(
+				-- Cost basis is only included when position is fully closed (deposit has exit_date)
+				-- Cost basis = proportional amount of the original deposit
+				(w.quantity / NULLIF(d.quantity, 0)) * d.amount_usd
+			), 0) as usd
+			FROM stake_pairs p
+			JOIN transactions d ON d.id = p.deposit_id
+			JOIN transactions w ON w.id = p.withdraw_id
+			WHERE w.date >= $1 AND w.date <= $2
+			AND d.exit_date IS NOT NULL
+		),
+		sell_cost_basis AS (
+			SELECT COALESCE(SUM(
+				-- For sell transactions, cost basis is negative cashflow (what we originally paid)
+				-- Positive cashflow = revenue, Negative cashflow = cost
+				CASE
+					WHEN t.cashflow_usd < 0 THEN ABS(t.cashflow_usd)  -- We paid this amount
+					ELSE 0
+				END
+			), 0) as usd
+			FROM transactions t
+			WHERE t.type = 'sell'
+			AND t.date >= $1 AND t.date <= $2
+		)
+		SELECT COALESCE(scb.usd, 0) + COALESCE(sellb.usd, 0)
+		FROM stake_cost_basis scb, sell_cost_basis sellb`
+
+	var totalCostBasis decimal.Decimal
+	err = s.db.QueryRowContext(ctx, totalCostBasisQuery, period.StartDate, period.EndDate).Scan(&totalCostBasis)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get total invested: %w", err)
+		return nil, fmt.Errorf("failed to get total cost basis: %w", err)
 	}
 
-	if !totalInvested.IsZero() {
-		report.ROIPercent = report.TotalPnLUSD.Div(totalInvested).Mul(decimal.NewFromInt(100))
+	if !totalCostBasis.IsZero() {
+		report.ROIPercent = report.TotalPnLUSD.Div(totalCostBasis).Mul(decimal.NewFromInt(100))
 	}
 
 	return report, nil

@@ -63,12 +63,11 @@ func main() {
 	priceMappingResolver := services.NewPriceMappingResolver(database)
 
 	// Initialize services
-	transactionService := services.NewTransactionServiceWithFX(database, httpFXProvider)
+	transactionService := services.NewTransactionServiceWithFXAndPrices(database, httpFXProvider, assetPriceService)
 	adminService := services.NewAdminService(database)
 	reportingService := services.NewReportingService(database)
 	linkService := services.NewLinkService(database)
-	_ = linkService
-	actionService := services.NewActionServiceWithPrices(database, transactionService, assetPriceService)
+	actionService := services.NewActionServiceFull(database, transactionService, linkService, assetPriceService)
 
 	// Initialize handlers
 	transactionHandler := handlers.NewTransactionHandler(transactionService)

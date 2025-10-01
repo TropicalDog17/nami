@@ -9,128 +9,327 @@ import (
 	"github.com/tropicaldog17/nami/internal/models"
 )
 
-// Covers regression: stake/unstake should mark internal transfers and yield zero cash flow
-func TestActionService_Stake_InternalTransfersZeroCashflow(t *testing.T) {
-	tdb := setupTestDB(t)
-	defer tdb.cleanup(t)
+type stakeTestCase struct {
+	name            string
+	params          map[string]interface{}
+	expectedTxCount int
+	validations     func(t *testing.T, resp *models.ActionResponse, svc ActionService, txService TransactionService)
+}
 
-	ctx := context.Background()
-	txService := NewTransactionService(tdb.database)
-	svc := NewActionService(tdb.database, txService)
+type unstakeTestCase struct {
+	name            string
+	params          map[string]interface{}
+	expectedTxCount int
+	setupStake      bool
+	stakeAmount     float64
+	validations     func(t *testing.T, resp *models.ActionResponse, svc ActionService, txService TransactionService, stakeResp *models.ActionResponse)
+}
 
-	req := &models.ActionRequest{
-		Action: models.ActionStake,
-		Params: map[string]interface{}{
-			"date":               time.Now().Format("2006-01-02"),
-			"source_account":     "Binance Spot",
-			"investment_account": "Binance Earn",
-			"asset":              "USDT",
-			"amount":             1000.0,
-			"fee_percent":        0.8, // expect deposit of 992 and separate fee
+func TestActionService_Stake_TableDriven(t *testing.T) {
+	testCases := []stakeTestCase{
+		{
+			name: "internal transfers zero cashflow",
+			params: map[string]interface{}{
+				"date":               time.Now().Format("2006-01-02"),
+				"source_account":     "Binance Spot",
+				"investment_account": "Binance Earn",
+				"asset":              "USDT",
+				"amount":             1000.0,
+				"fee_percent":        0.8,
+			},
+			expectedTxCount: 3,
+			validations: func(t *testing.T, resp *models.ActionResponse, svc ActionService, txService TransactionService) {
+				var transferOut, deposit, fee *models.Transaction
+				for _, tx := range resp.Transactions {
+					switch tx.Type {
+					case "transfer_out":
+						transferOut = tx
+					case "deposit":
+						deposit = tx
+					case "fee":
+						fee = tx
+					}
+				}
+
+				if transferOut == nil || deposit == nil {
+					t.Fatalf("missing transfer_out or deposit in stake action result")
+				}
+
+				if transferOut.InternalFlow == nil || !*transferOut.InternalFlow {
+					t.Fatalf("expected transfer_out to be marked internal")
+				}
+				if !transferOut.CashFlowUSD.Equal(decimal.Zero) || !transferOut.CashFlowVND.Equal(decimal.Zero) {
+					t.Fatalf("expected transfer_out cashflow to be zero, got USD=%s VND=%s", transferOut.CashFlowUSD.String(), transferOut.CashFlowVND.String())
+				}
+
+				if deposit.InternalFlow == nil || !*deposit.InternalFlow {
+					t.Fatalf("expected deposit to be marked internal")
+				}
+				if !deposit.CashFlowUSD.Equal(decimal.Zero) || !deposit.CashFlowVND.Equal(decimal.Zero) {
+					t.Fatalf("expected deposit cashflow to be zero, got USD=%s VND=%s", deposit.CashFlowUSD.String(), deposit.CashFlowVND.String())
+				}
+
+				if fee == nil {
+					t.Fatalf("expected a fee transaction to be created")
+				}
+				if !fee.CashFlowUSD.IsNegative() || !fee.CashFlowVND.IsNegative() {
+					t.Fatalf("expected fee cashflow negative, got USD=%s VND=%s", fee.CashFlowUSD.String(), fee.CashFlowVND.String())
+				}
+			},
 		},
 	}
 
-	resp, err := svc.Perform(ctx, req)
-	if err != nil {
-		t.Fatalf("stake action failed: %v", err)
-	}
-	if resp == nil || len(resp.Transactions) < 2 {
-		t.Fatalf("expected at least 2 transactions from stake, got %d", len(resp.Transactions))
-	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			tdb := setupTestDB(t)
+			defer tdb.cleanup(t)
 
-	var transferOut *models.Transaction
-	var deposit *models.Transaction
-	var fee *models.Transaction
-	for _, tx := range resp.Transactions {
-		switch tx.Type {
-		case "transfer_out":
-			transferOut = tx
-		case "deposit":
-			deposit = tx
-		case "fee":
-			fee = tx
-		}
-	}
+			ctx := context.Background()
+			txService := NewTransactionService(tdb.database)
+			svc := NewActionService(tdb.database, txService)
 
-	if transferOut == nil || deposit == nil {
-		t.Fatalf("missing transfer_out or deposit in stake action result")
-	}
+			req := &models.ActionRequest{
+				Action: models.ActionStake,
+				Params: tc.params,
+			}
 
-	// Transfer out should be internal and have zero cash flow
-	if transferOut.InternalFlow == nil || !*transferOut.InternalFlow {
-		t.Fatalf("expected transfer_out to be marked internal")
-	}
-	if !transferOut.CashFlowUSD.Equal(decimal.Zero) || !transferOut.CashFlowVND.Equal(decimal.Zero) {
-		t.Fatalf("expected transfer_out cashflow to be zero, got USD=%s VND=%s", transferOut.CashFlowUSD.String(), transferOut.CashFlowVND.String())
-	}
+			resp, err := svc.Perform(ctx, req)
+			if err != nil {
+				t.Fatalf("stake action failed: %v", err)
+			}
+			if resp == nil || len(resp.Transactions) < tc.expectedTxCount {
+				t.Fatalf("expected at least %d transactions from stake, got %d", tc.expectedTxCount, len(resp.Transactions))
+			}
 
-	// Deposit should be internal and also zero cash flow
-	if deposit.InternalFlow == nil || !*deposit.InternalFlow {
-		t.Fatalf("expected deposit to be marked internal")
-	}
-	if !deposit.CashFlowUSD.Equal(decimal.Zero) || !deposit.CashFlowVND.Equal(decimal.Zero) {
-		t.Fatalf("expected deposit cashflow to be zero, got USD=%s VND=%s", deposit.CashFlowUSD.String(), deposit.CashFlowVND.String())
-	}
-
-	// Optional fee should be present and negative cash flow
-	if fee == nil {
-		t.Fatalf("expected a fee transaction to be created")
-	}
-	if !fee.CashFlowUSD.IsNegative() || !fee.CashFlowVND.IsNegative() {
-		t.Fatalf("expected fee cashflow negative, got USD=%s VND=%s", fee.CashFlowUSD.String(), fee.CashFlowVND.String())
+			if tc.validations != nil {
+				tc.validations(t, resp, svc, txService)
+			}
+		})
 	}
 }
 
-func TestActionService_Unstake_InternalTransfersZeroCashflow(t *testing.T) {
-	tdb := setupTestDB(t)
-	defer tdb.cleanup(t)
+func TestActionService_Unstake_TableDriven(t *testing.T) {
+	testCases := []unstakeTestCase{
+		{
+			name: "internal transfers zero cashflow",
+			params: map[string]interface{}{
+				"date":                time.Now().Format("2006-01-02"),
+				"investment_account":  "Binance Earn",
+				"destination_account": "Binance Spot",
+				"asset":               "USDT",
+				"amount":              500.0,
+			},
+			expectedTxCount: 2,
+			setupStake:      false,
+			validations: func(t *testing.T, resp *models.ActionResponse, svc ActionService, txService TransactionService, stakeResp *models.ActionResponse) {
+				var withdraw, transferIn *models.Transaction
+				for _, tx := range resp.Transactions {
+					if tx.Type == "withdraw" {
+						withdraw = tx
+					}
+					if tx.Type == "transfer_in" {
+						transferIn = tx
+					}
+				}
+				if withdraw == nil || transferIn == nil {
+					t.Fatalf("missing withdraw or transfer_in in unstake action result")
+				}
 
-	ctx := context.Background()
-	txService := NewTransactionService(tdb.database)
-	svc := NewActionService(tdb.database, txService)
+				if withdraw.InternalFlow == nil || !*withdraw.InternalFlow {
+					t.Fatalf("expected withdraw to be marked internal")
+				}
+				if transferIn.InternalFlow == nil || !*transferIn.InternalFlow {
+					t.Fatalf("expected transfer_in to be marked internal")
+				}
+				if !transferIn.CashFlowUSD.Equal(decimal.Zero) || !transferIn.CashFlowVND.Equal(decimal.Zero) {
+					t.Fatalf("expected transfer_in cashflow to be zero, got USD=%s VND=%s", transferIn.CashFlowUSD.String(), transferIn.CashFlowVND.String())
+				}
+			},
+		},
+		{
+			name: "with explicit amount and close_all",
+			params: map[string]interface{}{
+				"date":                time.Now().Format("2006-01-02"),
+				"investment_account":  "Futures",
+				"destination_account": "Binance Earn",
+				"asset":               "USDT",
+				"amount":              275.0,
+				"close_all":           true,
+				"stake_deposit_tx_id": "", // placeholder to be filled in during setup
+			},
+			expectedTxCount: 2,
+			setupStake:      true,
+			stakeAmount:     500.0,
+			validations: func(t *testing.T, resp *models.ActionResponse, svc ActionService, txService TransactionService, stakeResp *models.ActionResponse) {
+				var withdraw, transferIn *models.Transaction
+				for _, tx := range resp.Transactions {
+					if tx.Type == "withdraw" {
+						withdraw = tx
+					}
+					if tx.Type == "transfer_in" {
+						transferIn = tx
+					}
+				}
 
-	req := &models.ActionRequest{
-		Action: models.ActionUnstake,
-		Params: map[string]interface{}{
-			"date":                time.Now().Format("2006-01-02"),
-			"investment_account":  "Binance Earn",
-			"destination_account": "Binance Spot",
-			"asset":               "USDT",
-			"amount":              500.0,
+				if withdraw == nil || transferIn == nil {
+					t.Fatal("expected both withdraw and transfer_in transactions")
+				}
+
+				expectedQty := "275"
+				if withdraw.Quantity.String() != expectedQty {
+					t.Errorf("expected withdraw quantity %s, got %s", expectedQty, withdraw.Quantity.String())
+				}
+				if transferIn.Quantity.String() != expectedQty {
+					t.Errorf("expected transfer_in quantity %s, got %s", expectedQty, transferIn.Quantity.String())
+				}
+
+				expectedPrice := "1"
+				if withdraw.PriceLocal.String() != expectedPrice {
+					t.Errorf("expected withdraw price %s, got %s", expectedPrice, withdraw.PriceLocal.String())
+				}
+				if transferIn.PriceLocal.String() != expectedPrice {
+					t.Errorf("expected transfer_in price %s, got %s", expectedPrice, transferIn.PriceLocal.String())
+				}
+
+				expectedAmountUSD := "275"
+				if withdraw.AmountUSD.String() != expectedAmountUSD {
+					t.Errorf("expected withdraw amount_usd %s, got %s", expectedAmountUSD, withdraw.AmountUSD.String())
+				}
+				if transferIn.AmountUSD.String() != expectedAmountUSD {
+					t.Errorf("expected transfer_in amount_usd %s, got %s", expectedAmountUSD, transferIn.AmountUSD.String())
+				}
+
+				if withdraw.EntryDate == nil {
+					t.Error("expected withdraw to have entry_date set for PnL calculation")
+				}
+
+				if transferIn.ExitDate == nil {
+					t.Error("expected transfer_in to have exit_date set")
+				}
+
+				originalDeposit, err := txService.GetTransaction(context.Background(), stakeResp.Transactions[1].ID)
+				if err != nil {
+					t.Fatalf("failed to get original deposit: %v", err)
+				}
+				if originalDeposit.ExitDate == nil {
+					t.Error("expected original deposit to have exit_date set when close_all is true")
+				}
+			},
+		},
+		{
+			name: "PnL calculation",
+			params: map[string]interface{}{
+				"date":                "2025-02-01",
+				"investment_account":  "Futures",
+				"destination_account": "Binance Earn",
+				"asset":               "USDT",
+				"amount":              275.0,
+				"exit_price_usd":      1.1,
+				"stake_deposit_tx_id": "", // placeholder to be filled in during setup
+			},
+			expectedTxCount: 2,
+			setupStake:      true,
+			stakeAmount:     500.0,
+			validations: func(t *testing.T, resp *models.ActionResponse, svc ActionService, txService TransactionService, stakeResp *models.ActionResponse) {
+				var withdraw *models.Transaction
+				for _, tx := range resp.Transactions {
+					if tx.Type == "withdraw" {
+						withdraw = tx
+						break
+					}
+				}
+
+				if withdraw == nil {
+					t.Fatal("expected withdraw transaction")
+				}
+
+				if withdraw.EntryDate == nil {
+					t.Error("withdraw should have entry_date for PnL calculation")
+				}
+
+				expectedExitAmount := decimal.NewFromFloat(302.5)
+				if !withdraw.AmountUSD.Equal(expectedExitAmount) {
+					t.Errorf("expected withdraw amount_usd %s, got %s", expectedExitAmount.String(), withdraw.AmountUSD.String())
+				}
+
+				depositTxID := stakeResp.Transactions[1].ID
+				depositTx, err := txService.GetTransaction(context.Background(), depositTxID)
+				if err != nil {
+					t.Fatalf("failed to get deposit transaction: %v", err)
+				}
+
+				expectedDepositAmount := decimal.NewFromFloat(500)
+				if !depositTx.AmountUSD.Equal(expectedDepositAmount) {
+					t.Errorf("expected deposit amount_usd %s, got %s", expectedDepositAmount.String(), depositTx.AmountUSD.String())
+				}
+
+				expectedPnL := decimal.NewFromFloat(27.5)
+				depositUnitPrice := depositTx.AmountUSD.Div(depositTx.Quantity)
+				withdrawUnitPrice := withdraw.AmountUSD.Div(withdraw.Quantity)
+				calculatedPnL := withdraw.Quantity.Mul(withdrawUnitPrice.Sub(depositUnitPrice))
+
+				if !calculatedPnL.Equal(expectedPnL) {
+					t.Errorf("expected PnL %s, got %s", expectedPnL.String(), calculatedPnL.String())
+				}
+			},
 		},
 	}
 
-	resp, err := svc.Perform(ctx, req)
-	if err != nil {
-		t.Fatalf("unstake action failed: %v", err)
-	}
-	if resp == nil || len(resp.Transactions) != 2 {
-		t.Fatalf("expected 2 transactions from unstake, got %d", len(resp.Transactions))
-	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			tdb := setupTestDB(t)
+			defer tdb.cleanup(t)
 
-	var withdraw *models.Transaction
-	var transferIn *models.Transaction
-	for _, tx := range resp.Transactions {
-		if tx.Type == "withdraw" {
-			withdraw = tx
-		}
-		if tx.Type == "transfer_in" {
-			transferIn = tx
-		}
-	}
-	if withdraw == nil || transferIn == nil {
-		t.Fatalf("missing withdraw or transfer_in in unstake action result")
-	}
+			ctx := context.Background()
+			txService := NewTransactionService(tdb.database)
+			var svc ActionService
 
-	// Both should be marked internal
-	if withdraw.InternalFlow == nil || !*withdraw.InternalFlow {
-		t.Fatalf("expected withdraw to be marked internal")
-	}
-	if transferIn.InternalFlow == nil || !*transferIn.InternalFlow {
-		t.Fatalf("expected transfer_in to be marked internal")
-	}
-	// transfer_in should have zero cash flow due to internal flag
-	if !transferIn.CashFlowUSD.Equal(decimal.Zero) || !transferIn.CashFlowVND.Equal(decimal.Zero) {
-		t.Fatalf("expected transfer_in cashflow to be zero, got USD=%s VND=%s", transferIn.CashFlowUSD.String(), transferIn.CashFlowVND.String())
+			if tc.name == "PnL calculation" {
+				linkService := NewLinkService(tdb.database)
+				svc = NewActionServiceFull(tdb.database, txService, linkService, nil)
+			} else {
+				svc = NewActionService(tdb.database, txService)
+			}
+
+			var stakeResp *models.ActionResponse
+			if tc.setupStake {
+				stakeReq := &models.ActionRequest{
+					Action: models.ActionStake,
+					Params: map[string]interface{}{
+						"date":               "2025-01-01",
+						"source_account":     "Binance Spot",
+						"investment_account": "Futures",
+						"asset":              "USDT",
+						"amount":             tc.stakeAmount,
+					},
+				}
+				var err error
+				stakeResp, err = svc.Perform(ctx, stakeReq)
+				if err != nil {
+					t.Fatalf("stake action failed: %v", err)
+				}
+
+				if _, ok := tc.params["stake_deposit_tx_id"]; ok {
+					tc.params["stake_deposit_tx_id"] = stakeResp.Transactions[1].ID
+				}
+			}
+
+			req := &models.ActionRequest{
+				Action: models.ActionUnstake,
+				Params: tc.params,
+			}
+
+			resp, err := svc.Perform(ctx, req)
+			if err != nil {
+				t.Fatalf("unstake action failed: %v", err)
+			}
+			if resp == nil || len(resp.Transactions) != tc.expectedTxCount {
+				t.Fatalf("expected %d transactions from unstake, got %d", tc.expectedTxCount, len(resp.Transactions))
+			}
+
+			if tc.validations != nil {
+				tc.validations(t, resp, svc, txService, stakeResp)
+			}
+		})
 	}
 }

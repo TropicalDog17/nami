@@ -101,7 +101,20 @@ func (fx *FXRate) GetInverseRate() decimal.Decimal {
 
 // IsCryptocurrency checks if a currency is a cryptocurrency
 func IsCryptocurrency(currency string) bool {
-	cryptos := []string{"BTC", "ETH", "USDT", "USDC", "BNB", "ADA", "DOT", "SOL"}
+	cryptos := []string{
+		// Major Cryptocurrencies
+		"BTC", "ETH",
+		// Stablecoins
+		"USDT", "USDC", "DAI", "BUSD",
+		// Commodity-backed Tokens
+		"PAXG", "XAU",
+		// Layer 1 Blockchains
+		"SOL", "ADA", "AVAX", "DOT", "MATIC", "ATOM", "NEAR", "ALGO",
+		// DeFi & Exchange Tokens
+		"BNB", "UNI", "LINK", "AAVE", "CRV", "SUSHI",
+		// Other Popular Tokens
+		"XRP", "LTC", "DOGE", "SHIB", "APT", "ARB", "OP",
+	}
 	for _, crypto := range cryptos {
 		if currency == crypto {
 			return true
