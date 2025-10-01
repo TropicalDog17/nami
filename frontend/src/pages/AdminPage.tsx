@@ -3,6 +3,7 @@ import React, { useState, useEffect } from 'react';
 import DataTable from '../components/ui/DataTable';
 import { useApp } from '../context/AppContext';
 import { adminApi } from '../services/api';
+import { AdminAssetsTab } from '../components/AdminAssetsTab';
 
 const AdminPage = () => {
   const { actions, error, success } = useApp();
@@ -72,13 +73,21 @@ const AdminPage = () => {
   const getFilteredData = () => {
     switch (activeTab) {
       case 'types':
-        return showInactive ? (transactionTypes || []) : (transactionTypes || []).filter(t => t.is_active);
+        return showInactive
+          ? transactionTypes || []
+          : (transactionTypes || []).filter((t) => t.is_active);
       case 'accounts':
-        return showInactive ? (accounts || []) : (accounts || []).filter(a => a.is_active !== false);
+        return showInactive
+          ? accounts || []
+          : (accounts || []).filter((a) => a.is_active !== false);
       case 'assets':
-        return showInactive ? (assets || []) : (assets || []).filter(a => a.is_active !== false);
+        return showInactive
+          ? assets || []
+          : (assets || []).filter((a) => a.is_active !== false);
       case 'tags':
-        return showInactive ? (tags || []) : (tags || []).filter(t => t.is_active !== false);
+        return showInactive
+          ? tags || []
+          : (tags || []).filter((t) => t.is_active !== false);
       default:
         return [];
     }
@@ -313,7 +322,7 @@ const AdminPage = () => {
             <span>Show Inactive</span>
           </label>
         </div>
-        
+
         <DataTable
           key={`${activeTab}-${showInactive}`}
           data={data}
@@ -338,7 +347,8 @@ const AdminPage = () => {
           Admin Panel
         </h1>
         <p className="mt-1 text-sm text-gray-500">
-          Configure transaction types, accounts, assets, and tags for your financial tracking system.
+          Configure transaction types, accounts, assets, and tags for your
+          financial tracking system.
         </p>
       </div>
 
@@ -364,36 +374,40 @@ const AdminPage = () => {
       </div>
 
       {/* Content */}
-      <div className="bg-white shadow rounded-lg">
-        <div className="px-4 py-5 sm:p-6">
-          <div className="flex justify-between items-center mb-4">
-            <h2
-              className="text-lg font-medium text-gray-900"
-              data-testid={`admin-section-title-${activeTab}`}
-            >
-              {tabs.find((t) => t.id === activeTab)?.name}
-            </h2>
-            <button
-              onClick={handleCreate}
-              className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 flex items-center space-x-2"
-              data-testid="add-new-button"
-            >
-              <span>+</span>
-              <span>Add New</span>
-            </button>
-          </div>
+      {activeTab === 'assets' ? (
+        <AdminAssetsTab />
+      ) : (
+        <div className="bg-white shadow rounded-lg">
+          <div className="px-4 py-5 sm:p-6">
+            <div className="flex justify-between items-center mb-4">
+              <h2
+                className="text-lg font-medium text-gray-900"
+                data-testid={`admin-section-title-${activeTab}`}
+              >
+                {tabs.find((t) => t.id === activeTab)?.name}
+              </h2>
+              <button
+                onClick={handleCreate}
+                className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 flex items-center space-x-2"
+                data-testid="add-new-button"
+              >
+                <span>+</span>
+                <span>Add New</span>
+              </button>
+            </div>
 
-          {renderForm()}
-          {renderTable()}
+            {renderForm()}
+            {renderTable()}
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Notifications */}
       {error && (
         <div className="mb-4 p-4 bg-red-100 border border-red-400 text-red-700 rounded flex justify-between items-center">
           <span>{error}</span>
-          <button 
-            onClick={() => actions.clearError()} 
+          <button
+            onClick={() => actions.clearError()}
             className="ml-2 text-red-700 hover:text-red-900 font-bold"
           >
             ×
@@ -403,8 +417,8 @@ const AdminPage = () => {
       {success && (
         <div className="mb-4 p-4 bg-green-100 border border-green-400 text-green-700 rounded flex justify-between items-center">
           <span>{success}</span>
-          <button 
-            onClick={() => actions.clearSuccess()} 
+          <button
+            onClick={() => actions.clearSuccess()}
             className="ml-2 text-green-700 hover:text-green-900 font-bold"
           >
             ×

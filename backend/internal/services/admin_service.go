@@ -61,7 +61,6 @@ func (s *adminService) GetTransactionType(ctx context.Context, id int) (*models.
 	tt := &models.TransactionType{}
 	err := s.db.QueryRowContext(ctx, query, id).Scan(
 		&tt.ID, &tt.Name, &tt.Description, &tt.IsActive, &tt.CreatedAt, &tt.UpdatedAt)
-
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, fmt.Errorf("transaction type not found: %d", id)
@@ -326,7 +325,6 @@ func (s *adminService) GetAccount(ctx context.Context, id int) (*models.Account,
 	account := &models.Account{}
 	err := s.db.QueryRowContext(ctx, query, id).Scan(
 		&account.ID, &account.Name, &account.Type, &account.IsActive, &account.CreatedAt)
-
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, fmt.Errorf("account not found: %d", id)
@@ -447,7 +445,6 @@ func (s *adminService) GetAsset(ctx context.Context, id int) (*models.Asset, err
 	asset := &models.Asset{}
 	err := s.db.QueryRowContext(ctx, query, id).Scan(
 		&asset.ID, &asset.Symbol, &asset.Name, &asset.Decimals, &asset.IsActive, &asset.CreatedAt)
-
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, fmt.Errorf("asset not found: %d", id)
@@ -544,12 +541,34 @@ func (s *adminService) CreateAssetPriceMapping(ctx context.Context, mapping *mod
 
 	mapping.CreatedAt = time.Now()
 
+	// Set default values
+	if !mapping.IsActive {
+		mapping.IsActive = true
+	}
+
 	query := `
-        INSERT INTO asset_price_mappings (asset_id, provider, provider_id, quote_currency, is_popular, created_at)
-        VALUES ($1, $2, $3, $4, $5, $6)
+        INSERT INTO asset_price_mappings (
+            asset_id, provider, provider_id, quote_currency, is_popular,
+            api_endpoint, api_config, response_path, auto_populate,
+            populate_from_date, is_active, created_at
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
         RETURNING id`
 
-	err := s.db.QueryRowContext(ctx, query, mapping.AssetID, mapping.Provider, mapping.ProviderID, mapping.QuoteCurrency, mapping.IsPopular, mapping.CreatedAt).Scan(&mapping.ID)
+	err := s.db.QueryRowContext(ctx, query,
+		mapping.AssetID,
+		mapping.Provider,
+		mapping.ProviderID,
+		mapping.QuoteCurrency,
+		mapping.IsPopular,
+		mapping.APIEndpoint,
+		mapping.APIConfig,
+		mapping.ResponsePath,
+		mapping.AutoPopulate,
+		mapping.PopulateFromDate,
+		mapping.IsActive,
+		mapping.CreatedAt,
+	).Scan(&mapping.ID)
 	if err != nil {
 		return fmt.Errorf("failed to create asset price mapping: %w", err)
 	}
@@ -594,7 +613,6 @@ func (s *adminService) GetTag(ctx context.Context, id int) (*models.Tag, error) 
 	tag := &models.Tag{}
 	err := s.db.QueryRowContext(ctx, query, id).Scan(
 		&tag.ID, &tag.Name, &tag.Category, &tag.IsActive, &tag.CreatedAt)
-
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, fmt.Errorf("tag not found: %d", id)

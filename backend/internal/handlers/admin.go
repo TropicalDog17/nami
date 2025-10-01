@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"io"
 	"net/http"
 	"strconv"
 	"strings"
@@ -277,8 +278,50 @@ func (h *AdminHandler) listAssets(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *AdminHandler) createAsset(w http.ResponseWriter, r *http.Request) {
+	// Read the body once
+	bodyBytes, err := io.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, "Failed to read request body: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	defer r.Body.Close()
+
+	// Try to decode as nested format first (with optional mapping)
+	var payload struct {
+		Asset   *models.Asset             `json:"asset"`
+		Mapping *models.AssetPriceMapping `json:"mapping"`
+	}
+
+	// Try nested format first: {asset: {...}, mapping: {...}}
+	if err := json.Unmarshal(bodyBytes, &payload); err == nil && payload.Asset != nil {
+		// Create asset
+		if err := h.service.CreateAsset(r.Context(), payload.Asset); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		// Optionally create mapping
+		var mapping *models.AssetPriceMapping
+		if payload.Mapping != nil {
+			payload.Mapping.AssetID = payload.Asset.ID
+			if err := h.service.CreateAssetPriceMapping(r.Context(), payload.Mapping); err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			mapping = payload.Mapping
+		}
+
+		w.WriteHeader(http.StatusCreated)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"asset":   payload.Asset,
+			"mapping": mapping,
+		})
+		return
+	}
+
+	// Fall back to direct format: {symbol: "...", name: "...", ...}
 	var asset models.Asset
-	if err := json.NewDecoder(r.Body).Decode(&asset); err != nil {
+	if err := json.Unmarshal(bodyBytes, &asset); err != nil {
 		http.Error(w, "Invalid JSON: "+err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -441,7 +484,7 @@ func (h *AdminHandler) HandleCryptoTokens(w http.ResponseWriter, r *http.Request
 
 	// Expected payload: {
 	//   asset: { symbol, name, decimals, is_active },
-	//   mapping: { provider, provider_id, quote_currency, is_popular }
+	//   mapping: { provider, provider_id, quote_currency, is_popular, api_endpoint, api_config, response_path, auto_populate, populate_from_date }
 	// }
 	var payload struct {
 		Asset   models.Asset              `json:"asset"`

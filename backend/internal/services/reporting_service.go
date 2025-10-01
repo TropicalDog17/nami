@@ -23,13 +23,13 @@ func NewReportingService(database *db.DB) ReportingService {
 func (s *reportingService) GetHoldings(ctx context.Context, asOf time.Time) ([]*models.Holding, error) {
 	query := `
 		WITH latest_positions AS (
-			SELECT 
+			SELECT
 				asset,
 				account,
 				SUM(delta_qty) as total_quantity,
 				MAX(date) as last_transaction_date
-			FROM transactions 
-			WHERE date <= $1 
+			FROM transactions
+			WHERE date <= $1
 			GROUP BY asset, account
 			HAVING SUM(delta_qty) != 0
 		),
@@ -40,16 +40,24 @@ func (s *reportingService) GetHoldings(ctx context.Context, asOf time.Time) ([]*
 				amount_usd / NULLIF(quantity, 0) as price_usd,
 				fx_to_usd,
 				fx_to_vnd
-			FROM transactions 
+			FROM transactions
 			WHERE date <= $1 AND quantity > 0
 			ORDER BY asset, date DESC
+		),
+		usd_to_vnd_rate AS (
+			SELECT rate
+			FROM fx_rates
+			WHERE from_currency = 'USD' AND to_currency = 'VND'
+			AND date <= $1
+			ORDER BY date DESC
+			LIMIT 1
 		)
-		SELECT 
+		SELECT
 			lp.asset,
 			lp.account,
 			lp.total_quantity,
 			COALESCE(pr.price_usd * lp.total_quantity, 0) as value_usd,
-			COALESCE(pr.price_usd * lp.total_quantity * pr.fx_to_vnd, 0) as value_vnd,
+			COALESCE(pr.price_usd * lp.total_quantity * (SELECT COALESCE(rate, 25000) FROM usd_to_vnd_rate), 0) as value_vnd,
 			lp.last_transaction_date
 		FROM latest_positions lp
 		LEFT JOIN latest_prices pr ON lp.asset = pr.asset

@@ -4,6 +4,7 @@ import DateInput from '../components/ui/DateInput';
 import DataTable from '../components/ui/DataTable';
 import { useBackendStatus } from '../context/BackendStatusContext';
 import { reportsApi } from '../services/api';
+import { HoldingsChart } from '../components/reports/Charts';
 
 const ReportsPage = () => {
   const [activeTab, setActiveTab] = useState('holdings');
@@ -30,6 +31,7 @@ const ReportsPage = () => {
 
   const tabs = [
     { id: 'holdings', name: 'Holdings', icon: '📊' },
+    { id: 'allocation', name: 'Asset Allocation', icon: '🥧' },
     { id: 'cashflow', name: 'Cash Flow', icon: '💸' },
     { id: 'spending', name: 'Spending', icon: '🛒' },
     { id: 'pnl', name: 'P&L', icon: '📈' },
@@ -51,6 +53,9 @@ const ReportsPage = () => {
       switch (activeTab) {
         case 'holdings':
           result = await reportsApi.holdings({ as_of: filters.asOf });
+          break;
+        case 'allocation':
+          result = await reportsApi.holdingsSummary({ as_of: filters.asOf });
           break;
         case 'cashflow':
           result = await reportsApi.cashFlow({
@@ -74,9 +79,10 @@ const ReportsPage = () => {
 
       setData((prev: any) => ({ ...prev, [activeTab]: result }));
     } catch (err) {
-      const message = err && typeof err === 'object' && 'message' in (err as any)
-        ? String((err as any).message)
-        : String(err);
+      const message =
+        err && typeof err === 'object' && 'message' in (err as any)
+          ? String((err as any).message)
+          : String(err);
       setError(`Failed to load ${activeTab}: ${message}`);
       console.error('Reports fetch error:', err);
     } finally {
@@ -139,14 +145,22 @@ const ReportsPage = () => {
             activeTab === 'pnl') && (
             <>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Start Date</label>
-                <DateInput value={filters.startDate} onChange={(v) => handleFilterChange('startDate', v)} />
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Start Date
+                </label>
+                <DateInput
+                  value={filters.startDate}
+                  onChange={(v) => handleFilterChange('startDate', v)}
+                />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   End Date
                 </label>
-                <DateInput value={filters.endDate} onChange={(v) => handleFilterChange('endDate', v)} />
+                <DateInput
+                  value={filters.endDate}
+                  onChange={(v) => handleFilterChange('endDate', v)}
+                />
               </div>
             </>
           )}
@@ -154,8 +168,13 @@ const ReportsPage = () => {
           {/* As Of Date for Holdings */}
           {activeTab === 'holdings' && (
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">As Of Date</label>
-              <DateInput value={filters.asOf} onChange={(v) => handleFilterChange('asOf', v)} />
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                As Of Date
+              </label>
+              <DateInput
+                value={filters.asOf}
+                onChange={(v) => handleFilterChange('asOf', v)}
+              />
             </div>
           )}
 
@@ -196,12 +215,8 @@ const ReportsPage = () => {
   const renderHoldingsTable = () => {
     const holdings = (data as any).holdings || [];
 
-    // Filter holdings to only show the chosen currency
-    // - If USD is selected, hide pure VND rows
-    // - If VND is selected, only show VND rows
-    const filteredHoldings = Array.isArray(holdings)
-      ? holdings.filter((h: any) => (currency === 'USD' ? h?.asset !== 'VND' : h?.asset === 'VND'))
-      : holdings;
+    // Display all holdings and convert values to the selected currency
+    const displayHoldings = Array.isArray(holdings) ? holdings : [];
 
     const columns = [
       { key: 'asset', title: 'Asset' },
@@ -234,7 +249,7 @@ const ReportsPage = () => {
 
     return (
       <DataTable
-        data={filteredHoldings}
+        data={displayHoldings}
         columns={columns}
         loading={loading}
         emptyMessage="No holdings found"
@@ -242,6 +257,119 @@ const ReportsPage = () => {
         sortable={true}
         pagination={true}
       />
+    );
+  };
+
+  const renderAssetAllocation = () => {
+    const allocationData = (data as any).allocation || {};
+
+    if (
+      !allocationData.by_asset ||
+      Object.keys(allocationData.by_asset).length === 0
+    ) {
+      return (
+        <div className="text-center py-8 text-gray-500">
+          No asset allocation data available
+        </div>
+      );
+    }
+
+    // Calculate total value and prepare data for table
+    const totalValue =
+      currency === 'USD'
+        ? parseFloat(allocationData.total_value_usd || 0)
+        : parseFloat(allocationData.total_value_vnd || 0);
+
+    const assetData = Object.entries(allocationData.by_asset || {})
+      .map(([asset, holding]: [string, any]) => {
+        const value =
+          currency === 'USD'
+            ? parseFloat(holding.value_usd || 0)
+            : parseFloat(holding.value_vnd || 0);
+        const percentage = totalValue > 0 ? (value / totalValue) * 100 : 0;
+
+        return {
+          asset,
+          quantity: parseFloat(holding.quantity || 0),
+          value,
+          percentage,
+        };
+      })
+      .sort((a, b) => Math.abs(b.value) - Math.abs(a.value)); // Sort by value descending
+
+    const columns = [
+      { key: 'asset', title: 'Asset' },
+      {
+        key: 'quantity',
+        title: 'Quantity',
+        type: 'number',
+        render: (value: any) => parseFloat(value || 0).toLocaleString(),
+      },
+      {
+        key: 'value',
+        title: `Value (${currency})`,
+        type: 'currency',
+        render: (value: any) => {
+          const num = parseFloat(value || 0);
+          return currency === 'USD'
+            ? `$${num.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+            : `₫${num.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
+        },
+      },
+      {
+        key: 'percentage',
+        title: 'Allocation %',
+        type: 'number',
+        render: (value: any) => `${parseFloat(value || 0).toFixed(2)}%`,
+      },
+    ];
+
+    return (
+      <div className="space-y-6">
+        {/* Summary Card */}
+        <div className="bg-gradient-to-r from-blue-50 to-indigo-50 p-6 rounded-lg border border-blue-200">
+          <h3 className="text-lg font-medium text-gray-900 mb-2">
+            Total Portfolio Value
+          </h3>
+          <p className="text-4xl font-bold text-blue-900">
+            {currency === 'USD'
+              ? `$${totalValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+              : `₫${totalValue.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`}
+          </p>
+          <p className="text-sm text-gray-600 mt-1">
+            As of {new Date(filters.asOf).toLocaleDateString()}
+          </p>
+        </div>
+
+        {/* Chart and Table Grid */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Pie Chart */}
+          <div className="bg-white p-6 rounded-lg border border-gray-200">
+            <h3 className="text-lg font-medium text-gray-900 mb-4">
+              Asset Distribution
+            </h3>
+            <div style={{ height: '400px' }}>
+              <HoldingsChart data={allocationData} currency={currency} />
+            </div>
+          </div>
+
+          {/* Allocation Table */}
+          <div className="bg-white p-6 rounded-lg border border-gray-200">
+            <h3 className="text-lg font-medium text-gray-900 mb-4">
+              Breakdown by Asset
+            </h3>
+            <DataTable
+              data={assetData}
+              columns={columns}
+              loading={loading}
+              emptyMessage="No allocation data found"
+              filterable={false}
+              sortable={true}
+              pagination={false}
+            />
+          </div>
+        </div>
+      </div>
     );
   };
 
@@ -265,8 +393,12 @@ const ReportsPage = () => {
     // For borrow, inflow is tracked in amount fields not cashflow; override so the row reflects real inflow
     allRows = allRows.map((row) => {
       if (row.type === 'borrow') {
-        const inflowUSD = parseFloat(String((cashFlow as any).financing_in_usd ?? 0));
-        const inflowVND = parseFloat(String((cashFlow as any).financing_in_vnd ?? 0));
+        const inflowUSD = parseFloat(
+          String((cashFlow as any).financing_in_usd ?? 0)
+        );
+        const inflowVND = parseFloat(
+          String((cashFlow as any).financing_in_vnd ?? 0)
+        );
         return {
           ...row,
           inflow_usd: inflowUSD,
@@ -278,9 +410,17 @@ const ReportsPage = () => {
     });
 
     // Split into Operating vs Financing rows
-    const financingTypes = new Set(['borrow', 'repay_borrow', 'interest_expense']);
-    const financingRows: CashRow[] = allRows.filter((r: CashRow) => financingTypes.has(r.type));
-    const operatingRows: CashRow[] = allRows.filter((r: CashRow) => !financingTypes.has(r.type));
+    const financingTypes = new Set([
+      'borrow',
+      'repay_borrow',
+      'interest_expense',
+    ]);
+    const financingRows: CashRow[] = allRows.filter((r: CashRow) =>
+      financingTypes.has(r.type)
+    );
+    const operatingRows: CashRow[] = allRows.filter(
+      (r: CashRow) => !financingTypes.has(r.type)
+    );
 
     // Helper to compute section subtotals based on current currency
     const computeTotals = (rows: CashRow[]) => {
@@ -288,7 +428,10 @@ const ReportsPage = () => {
       const keyOut = currency === 'USD' ? 'outflow_usd' : 'outflow_vnd';
       const keyNet = currency === 'USD' ? 'net_usd' : 'net_vnd';
       const totals = rows.reduce(
-        (acc: { inflow: number; outflow: number; net: number; count: number }, r: CashRow) => ({
+        (
+          acc: { inflow: number; outflow: number; net: number; count: number },
+          r: CashRow
+        ) => ({
           inflow: acc.inflow + parseFloat(String(r[keyIn] ?? 0)),
           outflow: acc.outflow + parseFloat(String(r[keyOut] ?? 0)),
           net: acc.net + parseFloat(String(r[keyNet] ?? 0)),
@@ -369,7 +512,9 @@ const ReportsPage = () => {
               </p>
             </div>
             <div className="bg-blue-50 p-4 rounded-lg">
-              <h4 className="text-sm font-medium text-blue-800">Combined Net</h4>
+              <h4 className="text-sm font-medium text-blue-800">
+                Combined Net
+              </h4>
               <p className="text-2xl font-bold text-blue-900">
                 {currency === 'USD'
                   ? `$${parseFloat((cashFlow.combined_net_usd ?? cashFlow.net_usd) || 0).toLocaleString()}`
@@ -383,7 +528,9 @@ const ReportsPage = () => {
         {cashFlow.operating_in_usd !== undefined && (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
             <div className="bg-gray-50 p-4 rounded-lg">
-              <h4 className="text-sm font-medium text-gray-800 mb-2">Operating</h4>
+              <h4 className="text-sm font-medium text-gray-800 mb-2">
+                Operating
+              </h4>
               <div className="flex items-center justify-between text-sm">
                 <span>Inflow</span>
                 <span>
@@ -411,7 +558,9 @@ const ReportsPage = () => {
             </div>
 
             <div className="bg-gray-50 p-4 rounded-lg">
-              <h4 className="text-sm font-medium text-gray-800 mb-2">Financing</h4>
+              <h4 className="text-sm font-medium text-gray-800 mb-2">
+                Financing
+              </h4>
               <div className="flex items-center justify-between text-sm">
                 <span>Inflow (Borrow)</span>
                 <span>
@@ -443,8 +592,10 @@ const ReportsPage = () => {
         {/* Operating section */}
         <div className="space-y-2 mb-8">
           <div className="flex items-center justify-between">
-            <h4 className="text-md font-semibold text-gray-900">Operating Cash Flows</h4>
-            {operatingRows.length > 0 && (
+            <h4 className="text-md font-semibold text-gray-900">
+              Operating Cash Flows
+            </h4>
+            {operatingRows.length > 0 &&
               (() => {
                 const t = computeTotals(operatingRows);
                 const fmt = (n: number) =>
@@ -456,13 +607,13 @@ const ReportsPage = () => {
                     <span>In: {fmt(t.inflow)}</span>
                     <span>Out: {fmt(t.outflow)}</span>
                     <span>
-                      Net: {t.net >= 0 ? '+' : '-'}{fmt(t.net)}
+                      Net: {t.net >= 0 ? '+' : '-'}
+                      {fmt(t.net)}
                     </span>
                     <span>Tx: {t.count}</span>
                   </div>
                 );
-              })()
-            )}
+              })()}
           </div>
           <DataTable
             data={operatingRows}
@@ -478,8 +629,10 @@ const ReportsPage = () => {
         {/* Financing section */}
         <div className="space-y-2">
           <div className="flex items-center justify-between">
-            <h4 className="text-md font-semibold text-gray-900">Financing Cash Flows</h4>
-            {financingRows.length > 0 && (
+            <h4 className="text-md font-semibold text-gray-900">
+              Financing Cash Flows
+            </h4>
+            {financingRows.length > 0 &&
               (() => {
                 const t = computeTotals(financingRows);
                 const fmt = (n: number) =>
@@ -491,13 +644,13 @@ const ReportsPage = () => {
                     <span>In: {fmt(t.inflow)}</span>
                     <span>Out: {fmt(t.outflow)}</span>
                     <span>
-                      Net: {t.net >= 0 ? '+' : '-'}{fmt(t.net)}
+                      Net: {t.net >= 0 ? '+' : '-'}
+                      {fmt(t.net)}
                     </span>
                     <span>Tx: {t.count}</span>
                   </div>
                 );
-              })()
-            )}
+              })()}
           </div>
           <DataTable
             data={financingRows}
@@ -515,10 +668,12 @@ const ReportsPage = () => {
 
   const renderSpendingTable = () => {
     const spending: any = (data as any).spending || {};
-    const byTag = Object.entries(spending.by_tag || {}).map(([tag, data]: [string, any]) => ({
-      tag,
-      ...data,
-    }));
+    const byTag = Object.entries(spending.by_tag || {}).map(
+      ([tag, data]: [string, any]) => ({
+        tag,
+        ...data,
+      })
+    );
 
     const columns = [
       { key: 'tag', title: 'Tag' },
@@ -641,6 +796,8 @@ const ReportsPage = () => {
     switch (activeTab) {
       case 'holdings':
         return renderHoldingsTable();
+      case 'allocation':
+        return renderAssetAllocation();
       case 'cashflow':
         return renderCashFlowTable();
       case 'spending':
@@ -662,7 +819,8 @@ const ReportsPage = () => {
           Reports & Analytics
         </h1>
         <p className="mt-1 text-sm text-gray-500">
-          View comprehensive financial reports including holdings, cash flow analysis, and profit & loss statements.
+          View comprehensive financial reports including holdings, cash flow
+          analysis, and profit & loss statements.
         </p>
       </div>
 
