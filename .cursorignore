@@ -2,3 +2,4 @@
 .specify/
 test_results/
 *.png
+specs/
