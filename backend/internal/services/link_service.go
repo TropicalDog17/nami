@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 
 	"github.com/tropicaldog17/nami/internal/db"
@@ -16,17 +17,30 @@ func NewLinkService(database *db.DB) LinkService {
 	return &linkService{db: database}
 }
 
+// getSQLDB returns the underlying *sql.DB for complex queries
+func (s *linkService) getSQLDB() (*sql.DB, error) {
+	return s.db.GetSQLDB()
+}
+
 func (s *linkService) CreateLink(ctx context.Context, link *models.TransactionLink) error {
 	if link == nil || link.LinkType == "" || link.FromTx == "" || link.ToTx == "" {
 		return fmt.Errorf("invalid link payload")
 	}
+	sqlDB, err := s.getSQLDB()
+	if err != nil {
+		return fmt.Errorf("failed to get SQL DB: %w", err)
+	}
 	query := `INSERT INTO transaction_links (link_type, from_tx, to_tx) VALUES ($1, $2, $3) RETURNING id`
-	return s.db.QueryRowContext(ctx, query, link.LinkType, link.FromTx, link.ToTx).Scan(&link.ID)
+	return sqlDB.QueryRowContext(ctx, query, link.LinkType, link.FromTx, link.ToTx).Scan(&link.ID)
 }
 
 func (s *linkService) GetLinked(ctx context.Context, txID string) ([]*models.TransactionLink, error) {
+	sqlDB, err := s.getSQLDB()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get SQL DB: %w", err)
+	}
 	query := `SELECT id, link_type, from_tx, to_tx, created_at FROM transaction_links WHERE from_tx = $1 OR to_tx = $1`
-	rows, err := s.db.QueryContext(ctx, query, txID)
+	rows, err := sqlDB.QueryContext(ctx, query, txID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query links: %w", err)
 	}

@@ -8,31 +8,48 @@ import (
 
 	"github.com/tropicaldog17/nami/internal/db"
 	"github.com/tropicaldog17/nami/internal/models"
+	"github.com/tropicaldog17/nami/internal/repositories"
 )
 
 // adminService implements the AdminService interface
 type adminService struct {
-	db *db.DB
+	transactionRepo repositories.TransactionRepository
+	investmentRepo  repositories.InvestmentRepository
+	reportingRepo   repositories.ReportingRepository
+	db              *db.DB
 }
 
 // NewAdminService creates a new admin service
-func NewAdminService(database *db.DB) AdminService {
+func NewAdminService(database *db.DB, transactionRepo repositories.TransactionRepository, investmentRepo repositories.InvestmentRepository, reportingRepo repositories.ReportingRepository) AdminService {
 	return &adminService{
-		db: database,
+		transactionRepo: transactionRepo,
+		investmentRepo:  investmentRepo,
+		reportingRepo:   reportingRepo,
+		db:              database,
 	}
+}
+
+// getSQLDB returns the underlying *sql.DB for complex queries
+func (s *adminService) getSQLDB() (*sql.DB, error) {
+	return s.db.GetSQLDB()
 }
 
 // Transaction Types methods
 
 // ListTransactionTypes retrieves all transaction types (active and inactive for admin)
 func (s *adminService) ListTransactionTypes(ctx context.Context) ([]*models.TransactionType, error) {
+	sqlDB, err := s.getSQLDB()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get SQL DB: %w", err)
+	}
+
 	query := `
         SELECT id, name, description, is_active, created_at, updated_at
         FROM transaction_types
         WHERE is_active = true
         ORDER BY name`
 
-	rows, err := s.db.QueryContext(ctx, query)
+	rows, err := sqlDB.QueryContext(ctx, query)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list transaction types: %w", err)
 	}
@@ -53,13 +70,18 @@ func (s *adminService) ListTransactionTypes(ctx context.Context) ([]*models.Tran
 
 // GetTransactionType retrieves a transaction type by ID
 func (s *adminService) GetTransactionType(ctx context.Context, id int) (*models.TransactionType, error) {
+	sqlDB, err := s.getSQLDB()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get SQL DB: %w", err)
+	}
+
 	query := `
 		SELECT id, name, description, is_active, created_at, updated_at
 		FROM transaction_types
 		WHERE id = $1`
 
 	tt := &models.TransactionType{}
-	err := s.db.QueryRowContext(ctx, query, id).Scan(
+	err = sqlDB.QueryRowContext(ctx, query, id).Scan(
 		&tt.ID, &tt.Name, &tt.Description, &tt.IsActive, &tt.CreatedAt, &tt.UpdatedAt)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -77,7 +99,12 @@ func (s *adminService) CreateTransactionType(ctx context.Context, tt *models.Tra
 		return fmt.Errorf("transaction type validation failed: %w", err)
 	}
 
-	tx, err := s.db.BeginTx(ctx, nil)
+	sqlDB, err := s.getSQLDB()
+	if err != nil {
+		return fmt.Errorf("failed to get SQL DB: %w", err)
+	}
+
+	tx, err := sqlDB.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
@@ -137,7 +164,12 @@ func (s *adminService) UpdateTransactionType(ctx context.Context, tt *models.Tra
 		return err
 	}
 
-	tx, err := s.db.BeginTx(ctx, nil)
+	sqlDB, err := s.getSQLDB()
+	if err != nil {
+		return fmt.Errorf("failed to get SQL DB: %w", err)
+	}
+
+	tx, err := sqlDB.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
@@ -205,7 +237,12 @@ func (s *adminService) DeleteTransactionType(ctx context.Context, id int, change
 		return fmt.Errorf("transaction type is already inactive: %d", id)
 	}
 
-	tx, err := s.db.BeginTx(ctx, nil)
+	sqlDB, err := s.getSQLDB()
+	if err != nil {
+		return fmt.Errorf("failed to get SQL DB: %w", err)
+	}
+
+	tx, err := sqlDB.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
@@ -259,6 +296,11 @@ func (s *adminService) DeleteTransactionType(ctx context.Context, id int, change
 
 // GetTypeAuditTrail retrieves the audit trail for a transaction type
 func (s *adminService) GetTypeAuditTrail(ctx context.Context, typeID int) ([]*models.TransactionTypeAudit, error) {
+	sqlDB, err := s.getSQLDB()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get SQL DB: %w", err)
+	}
+
 	query := `
         SELECT id, type_id, action,
                COALESCE(old_values, '{}'::jsonb) AS old_values,
@@ -268,7 +310,7 @@ func (s *adminService) GetTypeAuditTrail(ctx context.Context, typeID int) ([]*mo
 		WHERE type_id = $1
 		ORDER BY changed_at DESC`
 
-	rows, err := s.db.QueryContext(ctx, query, typeID)
+	rows, err := sqlDB.QueryContext(ctx, query, typeID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get audit trail: %w", err)
 	}
@@ -291,12 +333,17 @@ func (s *adminService) GetTypeAuditTrail(ctx context.Context, typeID int) ([]*mo
 
 // ListAccounts retrieves all accounts (active and inactive for admin)
 func (s *adminService) ListAccounts(ctx context.Context) ([]*models.Account, error) {
+	sqlDB, err := s.getSQLDB()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get SQL DB: %w", err)
+	}
+
 	query := `
 		SELECT id, name, type, is_active, created_at
 		FROM accounts
 		ORDER BY name`
 
-	rows, err := s.db.QueryContext(ctx, query)
+	rows, err := sqlDB.QueryContext(ctx, query)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list accounts: %w", err)
 	}
@@ -317,13 +364,18 @@ func (s *adminService) ListAccounts(ctx context.Context) ([]*models.Account, err
 
 // GetAccount retrieves an account by ID
 func (s *adminService) GetAccount(ctx context.Context, id int) (*models.Account, error) {
+	sqlDB, err := s.getSQLDB()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get SQL DB: %w", err)
+	}
+
 	query := `
 		SELECT id, name, type, is_active, created_at
 		FROM accounts
 		WHERE id = $1`
 
 	account := &models.Account{}
-	err := s.db.QueryRowContext(ctx, query, id).Scan(
+	err = sqlDB.QueryRowContext(ctx, query, id).Scan(
 		&account.ID, &account.Name, &account.Type, &account.IsActive, &account.CreatedAt)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -341,6 +393,11 @@ func (s *adminService) CreateAccount(ctx context.Context, account *models.Accoun
 		return fmt.Errorf("account validation failed: %w", err)
 	}
 
+	sqlDB, err := s.getSQLDB()
+	if err != nil {
+		return fmt.Errorf("failed to get SQL DB: %w", err)
+	}
+
 	account.CreatedAt = time.Now()
 
 	query := `
@@ -348,7 +405,7 @@ func (s *adminService) CreateAccount(ctx context.Context, account *models.Accoun
 		VALUES ($1, $2, $3, $4)
 		RETURNING id`
 
-	err := s.db.QueryRowContext(ctx, query, account.Name, account.Type, account.IsActive, account.CreatedAt).Scan(&account.ID)
+	err = sqlDB.QueryRowContext(ctx, query, account.Name, account.Type, account.IsActive, account.CreatedAt).Scan(&account.ID)
 	if err != nil {
 		return fmt.Errorf("failed to create account: %w", err)
 	}
@@ -362,12 +419,17 @@ func (s *adminService) UpdateAccount(ctx context.Context, account *models.Accoun
 		return fmt.Errorf("account validation failed: %w", err)
 	}
 
+	sqlDB, err := s.getSQLDB()
+	if err != nil {
+		return fmt.Errorf("failed to get SQL DB: %w", err)
+	}
+
 	query := `
 		UPDATE accounts SET
 			name = $2, type = $3, is_active = $4
 		WHERE id = $1`
 
-	result, err := s.db.ExecContext(ctx, query, account.ID, account.Name, account.Type, account.IsActive)
+	result, err := sqlDB.ExecContext(ctx, query, account.ID, account.Name, account.Type, account.IsActive)
 	if err != nil {
 		return fmt.Errorf("failed to update account: %w", err)
 	}
@@ -386,11 +448,16 @@ func (s *adminService) UpdateAccount(ctx context.Context, account *models.Accoun
 
 // DeleteAccount soft deletes an account
 func (s *adminService) DeleteAccount(ctx context.Context, id int) error {
+	sqlDB, err := s.getSQLDB()
+	if err != nil {
+		return fmt.Errorf("failed to get SQL DB: %w", err)
+	}
+
 	query := `
 		UPDATE accounts SET is_active = false
 		WHERE id = $1`
 
-	result, err := s.db.ExecContext(ctx, query, id)
+	result, err := sqlDB.ExecContext(ctx, query, id)
 	if err != nil {
 		return fmt.Errorf("failed to delete account: %w", err)
 	}
@@ -411,12 +478,17 @@ func (s *adminService) DeleteAccount(ctx context.Context, id int) error {
 
 // ListAssets retrieves all assets (active and inactive for admin)
 func (s *adminService) ListAssets(ctx context.Context) ([]*models.Asset, error) {
+	sqlDB, err := s.getSQLDB()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get SQL DB: %w", err)
+	}
+
 	query := `
 		SELECT id, symbol, name, decimals, is_active, created_at
 		FROM assets
 		ORDER BY symbol`
 
-	rows, err := s.db.QueryContext(ctx, query)
+	rows, err := sqlDB.QueryContext(ctx, query)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list assets: %w", err)
 	}
@@ -437,13 +509,18 @@ func (s *adminService) ListAssets(ctx context.Context) ([]*models.Asset, error) 
 
 // GetAsset retrieves an asset by ID
 func (s *adminService) GetAsset(ctx context.Context, id int) (*models.Asset, error) {
+	sqlDB, err := s.getSQLDB()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get SQL DB: %w", err)
+	}
+
 	query := `
 		SELECT id, symbol, name, decimals, is_active, created_at
 		FROM assets
 		WHERE id = $1`
 
 	asset := &models.Asset{}
-	err := s.db.QueryRowContext(ctx, query, id).Scan(
+	err = sqlDB.QueryRowContext(ctx, query, id).Scan(
 		&asset.ID, &asset.Symbol, &asset.Name, &asset.Decimals, &asset.IsActive, &asset.CreatedAt)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -463,12 +540,17 @@ func (s *adminService) CreateAsset(ctx context.Context, asset *models.Asset) err
 
 	asset.CreatedAt = time.Now()
 
+	sqlDB, err := s.getSQLDB()
+	if err != nil {
+		return fmt.Errorf("failed to get SQL DB: %w", err)
+	}
+
 	query := `
 		INSERT INTO assets (symbol, name, decimals, is_active, created_at)
 		VALUES ($1, $2, $3, $4, $5)
 		RETURNING id`
 
-	err := s.db.QueryRowContext(ctx, query, asset.Symbol, asset.Name, asset.Decimals, asset.IsActive, asset.CreatedAt).Scan(&asset.ID)
+	err = sqlDB.QueryRowContext(ctx, query, asset.Symbol, asset.Name, asset.Decimals, asset.IsActive, asset.CreatedAt).Scan(&asset.ID)
 	if err != nil {
 		return fmt.Errorf("failed to create asset: %w", err)
 	}
@@ -482,12 +564,17 @@ func (s *adminService) UpdateAsset(ctx context.Context, asset *models.Asset) err
 		return fmt.Errorf("asset validation failed: %w", err)
 	}
 
+	sqlDB, err := s.getSQLDB()
+	if err != nil {
+		return fmt.Errorf("failed to get SQL DB: %w", err)
+	}
+
 	query := `
 		UPDATE assets SET
 			symbol = $2, name = $3, decimals = $4, is_active = $5
 		WHERE id = $1`
 
-	result, err := s.db.ExecContext(ctx, query, asset.ID, asset.Symbol, asset.Name, asset.Decimals, asset.IsActive)
+	result, err := sqlDB.ExecContext(ctx, query, asset.ID, asset.Symbol, asset.Name, asset.Decimals, asset.IsActive)
 	if err != nil {
 		return fmt.Errorf("failed to update asset: %w", err)
 	}
@@ -506,11 +593,16 @@ func (s *adminService) UpdateAsset(ctx context.Context, asset *models.Asset) err
 
 // DeleteAsset soft deletes an asset
 func (s *adminService) DeleteAsset(ctx context.Context, id int) error {
+	sqlDB, err := s.getSQLDB()
+	if err != nil {
+		return fmt.Errorf("failed to get SQL DB: %w", err)
+	}
+
 	query := `
 		UPDATE assets SET is_active = false
 		WHERE id = $1`
 
-	result, err := s.db.ExecContext(ctx, query, id)
+	result, err := sqlDB.ExecContext(ctx, query, id)
 	if err != nil {
 		return fmt.Errorf("failed to delete asset: %w", err)
 	}
@@ -546,6 +638,11 @@ func (s *adminService) CreateAssetPriceMapping(ctx context.Context, mapping *mod
 		mapping.IsActive = true
 	}
 
+	sqlDB, err := s.getSQLDB()
+	if err != nil {
+		return fmt.Errorf("failed to get SQL DB: %w", err)
+	}
+
 	query := `
         INSERT INTO asset_price_mappings (
             asset_id, provider, provider_id, quote_currency, is_popular,
@@ -555,7 +652,7 @@ func (s *adminService) CreateAssetPriceMapping(ctx context.Context, mapping *mod
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
         RETURNING id`
 
-	err := s.db.QueryRowContext(ctx, query,
+	err = sqlDB.QueryRowContext(ctx, query,
 		mapping.AssetID,
 		mapping.Provider,
 		mapping.ProviderID,
@@ -579,12 +676,17 @@ func (s *adminService) CreateAssetPriceMapping(ctx context.Context, mapping *mod
 
 // ListTags retrieves all tags (active and inactive for admin)
 func (s *adminService) ListTags(ctx context.Context) ([]*models.Tag, error) {
+	sqlDB, err := s.getSQLDB()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get SQL DB: %w", err)
+	}
+
 	query := `
 		SELECT id, name, category, is_active, created_at
 		FROM tags
 		ORDER BY category, name`
 
-	rows, err := s.db.QueryContext(ctx, query)
+	rows, err := sqlDB.QueryContext(ctx, query)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list tags: %w", err)
 	}
@@ -605,13 +707,18 @@ func (s *adminService) ListTags(ctx context.Context) ([]*models.Tag, error) {
 
 // GetTag retrieves a tag by ID
 func (s *adminService) GetTag(ctx context.Context, id int) (*models.Tag, error) {
+	sqlDB, err := s.getSQLDB()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get SQL DB: %w", err)
+	}
+
 	query := `
 		SELECT id, name, category, is_active, created_at
 		FROM tags
 		WHERE id = $1`
 
 	tag := &models.Tag{}
-	err := s.db.QueryRowContext(ctx, query, id).Scan(
+	err = sqlDB.QueryRowContext(ctx, query, id).Scan(
 		&tag.ID, &tag.Name, &tag.Category, &tag.IsActive, &tag.CreatedAt)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -631,12 +738,17 @@ func (s *adminService) CreateTag(ctx context.Context, tag *models.Tag) error {
 
 	tag.CreatedAt = time.Now()
 
+	sqlDB, err := s.getSQLDB()
+	if err != nil {
+		return fmt.Errorf("failed to get SQL DB: %w", err)
+	}
+
 	query := `
 		INSERT INTO tags (name, category, is_active, created_at)
 		VALUES ($1, $2, $3, $4)
 		RETURNING id`
 
-	err := s.db.QueryRowContext(ctx, query, tag.Name, tag.Category, tag.IsActive, tag.CreatedAt).Scan(&tag.ID)
+	err = sqlDB.QueryRowContext(ctx, query, tag.Name, tag.Category, tag.IsActive, tag.CreatedAt).Scan(&tag.ID)
 	if err != nil {
 		return fmt.Errorf("failed to create tag: %w", err)
 	}
@@ -650,12 +762,17 @@ func (s *adminService) UpdateTag(ctx context.Context, tag *models.Tag) error {
 		return fmt.Errorf("tag validation failed: %w", err)
 	}
 
+	sqlDB, err := s.getSQLDB()
+	if err != nil {
+		return fmt.Errorf("failed to get SQL DB: %w", err)
+	}
+
 	query := `
 		UPDATE tags SET
 			name = $2, category = $3, is_active = $4
 		WHERE id = $1`
 
-	result, err := s.db.ExecContext(ctx, query, tag.ID, tag.Name, tag.Category, tag.IsActive)
+	result, err := sqlDB.ExecContext(ctx, query, tag.ID, tag.Name, tag.Category, tag.IsActive)
 	if err != nil {
 		return fmt.Errorf("failed to update tag: %w", err)
 	}
@@ -674,11 +791,16 @@ func (s *adminService) UpdateTag(ctx context.Context, tag *models.Tag) error {
 
 // DeleteTag soft deletes a tag
 func (s *adminService) DeleteTag(ctx context.Context, id int) error {
+	sqlDB, err := s.getSQLDB()
+	if err != nil {
+		return fmt.Errorf("failed to get SQL DB: %w", err)
+	}
+
 	query := `
 		UPDATE tags SET is_active = false
 		WHERE id = $1`
 
-	result, err := s.db.ExecContext(ctx, query, id)
+	result, err := sqlDB.ExecContext(ctx, query, id)
 	if err != nil {
 		return fmt.Errorf("failed to delete tag: %w", err)
 	}

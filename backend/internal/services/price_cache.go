@@ -18,6 +18,11 @@ func NewPriceCacheService(database *db.DB) PriceCacheService {
     return &PriceCacheServiceImpl{db: database}
 }
 
+// getSQLDB returns the underlying *sql.DB for complex queries
+func (s *PriceCacheServiceImpl) getSQLDB() (*sql.DB, error) {
+    return s.db.GetSQLDB()
+}
+
 func (s *PriceCacheServiceImpl) GetCachedPrice(ctx context.Context, symbol, currency string, date time.Time) (*models.AssetPrice, error) {
     query := `
         SELECT id, symbol, currency, price, date, source, created_at
@@ -26,8 +31,12 @@ func (s *PriceCacheServiceImpl) GetCachedPrice(ctx context.Context, symbol, curr
         ORDER BY created_at DESC
         LIMIT 1`
 
+    sqlDB, err := s.getSQLDB()
+    if err != nil {
+        return nil, fmt.Errorf("failed to get SQL DB: %w", err)
+    }
     p := &models.AssetPrice{}
-    err := s.db.QueryRowContext(ctx, query, symbol, currency, date).Scan(
+    err = sqlDB.QueryRowContext(ctx, query, symbol, currency, date).Scan(
         &p.ID, &p.Symbol, &p.Currency, &p.Price, &p.Date, &p.Source, &p.CreatedAt,
     )
     if err == sql.ErrNoRows {
@@ -46,7 +55,11 @@ func (s *PriceCacheServiceImpl) CachePrice(ctx context.Context, price *models.As
         ON CONFLICT (symbol, currency, date, source)
         DO UPDATE SET price = EXCLUDED.price, created_at = NOW()`
 
-    _, err := s.db.ExecContext(ctx, query, price.Symbol, price.Currency, price.Price, price.Date, price.Source)
+    sqlDB, err := s.getSQLDB()
+    if err != nil {
+        return fmt.Errorf("failed to get SQL DB: %w", err)
+    }
+    _, err = sqlDB.ExecContext(ctx, query, price.Symbol, price.Currency, price.Price, price.Date, price.Source)
     if err != nil {
         return fmt.Errorf("failed to cache price: %w", err)
     }

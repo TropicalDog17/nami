@@ -66,10 +66,11 @@ func main() {
 	// Initialize repositories
 	investmentRepo := repositories.NewInvestmentRepository(database)
 	transactionRepo := repositories.NewTransactionRepository(database)
+	reportingRepo := repositories.NewReportingRepository(database)
 
 	// Initialize services
 	transactionService := services.NewTransactionServiceWithFXAndPrices(database, httpFXProvider, assetPriceService)
-	adminService := services.NewAdminService(database)
+	adminService := services.NewAdminService(database, transactionRepo, investmentRepo, reportingRepo)
 	reportingService := services.NewReportingService(database)
 	linkService := services.NewLinkService(database)
 	investmentService := services.NewInvestmentService(investmentRepo, transactionRepo)

@@ -18,37 +18,42 @@ const (
 
 // Investment represents a specific investment position that can have multiple deposits
 type Investment struct {
-	ID           string          `json:"id" db:"id"`
-	Asset        string          `json:"asset" db:"asset"`
-	Account      string          `json:"account" db:"account"`
-	Horizon      *string         `json:"horizon,omitempty" db:"horizon"`
+	ID           string          `json:"id" gorm:"primaryKey;column:id;type:varchar(255)"`
+	Asset        string          `json:"asset" gorm:"column:asset;type:varchar(50);not null;index"`
+	Account      string          `json:"account" gorm:"column:account;type:varchar(100);not null;index"`
+	Horizon      *string         `json:"horizon,omitempty" gorm:"column:horizon;type:varchar(20);index"`
 
 	// Aggregated deposit information
-	DepositDate      time.Time       `json:"deposit_date" db:"deposit_date"`      // First deposit date
-	DepositQty       decimal.Decimal `json:"deposit_qty" db:"deposit_qty"`        // Total quantity deposited
-	DepositCost      decimal.Decimal `json:"deposit_cost" db:"deposit_cost"`      // Total cost in USD
-	DepositUnitCost  decimal.Decimal `json:"deposit_unit_cost" db:"deposit_unit_cost"` // Weighted average unit cost
+	DepositDate      time.Time       `json:"deposit_date" gorm:"column:deposit_date;type:timestamptz;not null;index"`      // First deposit date
+	DepositQty       decimal.Decimal `json:"deposit_qty" gorm:"column:deposit_qty;type:decimal(30,18);not null"`        // Total quantity deposited
+	DepositCost      decimal.Decimal `json:"deposit_cost" gorm:"column:deposit_cost;type:decimal(30,18);not null"`      // Total cost in USD
+	DepositUnitCost  decimal.Decimal `json:"deposit_unit_cost" gorm:"column:deposit_unit_cost;type:decimal(30,18);not null"` // Weighted average unit cost
 
 	// Withdrawal information (if closed)
-	WithdrawalDate     *time.Time     `json:"withdrawal_date,omitempty" db:"withdrawal_date"`
-	WithdrawalQty      decimal.Decimal `json:"withdrawal_qty" db:"withdrawal_qty"`
-	WithdrawalValue    decimal.Decimal `json:"withdrawal_value" db:"withdrawal_value"`
-	WithdrawalUnitPrice decimal.Decimal `json:"withdrawal_unit_price" db:"withdrawal_unit_price"`
+	WithdrawalDate     *time.Time     `json:"withdrawal_date,omitempty" gorm:"column:withdrawal_date;type:timestamptz;index"`
+	WithdrawalQty      decimal.Decimal `json:"withdrawal_qty" gorm:"column:withdrawal_qty;type:decimal(30,18);not null;default:0"`
+	WithdrawalValue    decimal.Decimal `json:"withdrawal_value" gorm:"column:withdrawal_value;type:decimal(30,18);not null;default:0"`
+	WithdrawalUnitPrice decimal.Decimal `json:"withdrawal_unit_price" gorm:"column:withdrawal_unit_price;type:decimal(30,18);not null;default:0"`
 
 	// P&L calculation
-	PnL        decimal.Decimal `json:"pnl" db:"pnl"`
-	PnLPercent decimal.Decimal `json:"pnl_percent" db:"pnl_percent"`
+	PnL        decimal.Decimal `json:"pnl" gorm:"column:pnl;type:decimal(30,18);not null;default:0"`
+	PnLPercent decimal.Decimal `json:"pnl_percent" gorm:"column:pnl_percent;type:decimal(30,18);not null;default:0"`
 
 	// Status and quantities
-	IsOpen       bool            `json:"is_open" db:"is_open"`
-	RemainingQty decimal.Decimal `json:"remaining_qty" db:"remaining_qty"`
+	IsOpen       bool            `json:"is_open" gorm:"column:is_open;type:boolean;not null;default:true"`
+	RemainingQty decimal.Decimal `json:"remaining_qty" gorm:"column:remaining_qty;type:decimal(30,18);not null;default:0"`
 
 	// Configuration
-	CostBasisMethod CostBasisMethod `json:"cost_basis_method" db:"cost_basis_method"`
+	CostBasisMethod CostBasisMethod `json:"cost_basis_method" gorm:"column:cost_basis_method;type:varchar(20);not null;default:'fifo'"`
 
 	// Metadata
-	CreatedAt time.Time `json:"created_at" db:"created_at"`
-	UpdatedAt time.Time `json:"updated_at" db:"updated_at"`
+	CreatedAt time.Time `json:"created_at" gorm:"column:created_at;type:timestamptz;autoCreateTime"`
+	UpdatedAt time.Time `json:"updated_at" gorm:"column:updated_at;type:timestamptz;autoUpdateTime"`
+}
+
+// TableName returns the table name for the Investment model
+func (Investment) TableName() string {
+	return "investments"
 }
 
 // InvestmentFilter represents filters for querying investments

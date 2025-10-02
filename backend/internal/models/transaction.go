@@ -9,60 +9,65 @@ import (
 
 // Transaction represents a single financial transaction
 type Transaction struct {
-	ID           string    `json:"id" db:"id"`
-	Date         time.Time `json:"date" db:"date"`
-	Type         string    `json:"type" db:"type"`
-	Asset        string    `json:"asset" db:"asset"`
-	Account      string    `json:"account" db:"account"`
-	Counterparty *string   `json:"counterparty" db:"counterparty"`
-	Tag          *string   `json:"tag" db:"tag"`
-	Note         *string   `json:"note" db:"note"`
+	ID           string    `json:"id" gorm:"primaryKey;column:id;type:varchar(255);default:gen_random_uuid()"`
+	Date         time.Time `json:"date" gorm:"column:date;type:timestamptz;not null;index"`
+	Type         string    `json:"type" gorm:"column:type;type:varchar(50);not null;index"`
+	Asset        string    `json:"asset" gorm:"column:asset;type:varchar(50);not null;index"`
+	Account      string    `json:"account" gorm:"column:account;type:varchar(100);not null;index"`
+	Counterparty *string   `json:"counterparty" gorm:"column:counterparty;type:varchar(255)"`
+	Tag          *string   `json:"tag" gorm:"column:tag;type:varchar(255);index"`
+	Note         *string   `json:"note" gorm:"column:note;type:text"`
 
 	// Amount fields
-	Quantity    decimal.Decimal `json:"quantity" db:"quantity"`
-	PriceLocal  decimal.Decimal `json:"price_local" db:"price_local"`
-	AmountLocal decimal.Decimal `json:"amount_local" db:"amount_local"`
+	Quantity    decimal.Decimal `json:"quantity" gorm:"column:quantity;type:decimal(30,18);not null"`
+	PriceLocal  decimal.Decimal `json:"price_local" gorm:"column:price_local;type:decimal(30,18);not null"`
+	AmountLocal decimal.Decimal `json:"amount_local" gorm:"column:amount_local;type:decimal(30,18);not null"`
 
 	// FX and dual currency
-	FXToUSD   decimal.Decimal `json:"fx_to_usd" db:"fx_to_usd"`
-	FXToVND   decimal.Decimal `json:"fx_to_vnd" db:"fx_to_vnd"`
-	AmountUSD decimal.Decimal `json:"amount_usd" db:"amount_usd"`
-	AmountVND decimal.Decimal `json:"amount_vnd" db:"amount_vnd"`
+	FXToUSD   decimal.Decimal `json:"fx_to_usd" gorm:"column:fx_to_usd;type:decimal(30,18);not null"`
+	FXToVND   decimal.Decimal `json:"fx_to_vnd" gorm:"column:fx_to_vnd;type:decimal(30,18);not null"`
+	AmountUSD decimal.Decimal `json:"amount_usd" gorm:"column:amount_usd;type:decimal(30,18);not null"`
+	AmountVND decimal.Decimal `json:"amount_vnd" gorm:"column:amount_vnd;type:decimal(30,18);not null"`
 
 	// Fees
-	FeeUSD decimal.Decimal `json:"fee_usd" db:"fee_usd"`
-	FeeVND decimal.Decimal `json:"fee_vnd" db:"fee_vnd"`
+	FeeUSD decimal.Decimal `json:"fee_usd" gorm:"column:fee_usd;type:decimal(30,18);not null;default:0"`
+	FeeVND decimal.Decimal `json:"fee_vnd" gorm:"column:fee_vnd;type:decimal(30,18);not null;default:0"`
 
 	// Derived metrics
-	DeltaQty    decimal.Decimal `json:"delta_qty" db:"delta_qty"`
-	CashFlowUSD decimal.Decimal `json:"cashflow_usd" db:"cashflow_usd"`
-	CashFlowVND decimal.Decimal `json:"cashflow_vnd" db:"cashflow_vnd"`
+	DeltaQty    decimal.Decimal `json:"delta_qty" gorm:"column:delta_qty;type:decimal(30,18);not null"`
+	CashFlowUSD decimal.Decimal `json:"cashflow_usd" gorm:"column:cashflow_usd;type:decimal(30,18);not null"`
+	CashFlowVND decimal.Decimal `json:"cashflow_vnd" gorm:"column:cashflow_vnd;type:decimal(30,18);not null"`
 
 	// Flow flags
-	InternalFlow *bool `json:"internal_flow" db:"internal_flow"`
+	InternalFlow *bool `json:"internal_flow" gorm:"column:internal_flow;type:boolean;default:false"`
 
 	// Investment tracking - links withdrawal to its deposit
-	DepositID *string `json:"deposit_id" db:"deposit_id"`
+	DepositID *string `json:"deposit_id" gorm:"column:deposit_id;type:varchar(255);index"`
 
 	// Enhanced investment tracking - links transaction to investment position
-	InvestmentID *string `json:"investment_id" db:"investment_id"`
+	InvestmentID *string `json:"investment_id" gorm:"column:investment_id;type:varchar(255);index"`
 
 	// Optional tracking
-	Horizon   *string          `json:"horizon" db:"horizon"`
-	EntryDate *time.Time       `json:"entry_date" db:"entry_date"`
-	ExitDate  *time.Time       `json:"exit_date" db:"exit_date"`
-	FXImpact  *decimal.Decimal `json:"fx_impact" db:"fx_impact"`
+	Horizon   *string          `json:"horizon" gorm:"column:horizon;type:varchar(20);index"`
+	EntryDate *time.Time       `json:"entry_date" gorm:"column:entry_date;type:timestamptz;index"`
+	ExitDate  *time.Time       `json:"exit_date" gorm:"column:exit_date;type:timestamptz;index"`
+	FXImpact  *decimal.Decimal `json:"fx_impact" gorm:"column:fx_impact;type:decimal(30,18)"`
 
 	// Borrow metadata (for type = 'borrow')
-	BorrowAPR      *decimal.Decimal `json:"borrow_apr" db:"borrow_apr"`
-	BorrowTermDays *int             `json:"borrow_term_days" db:"borrow_term_days"`
-	BorrowActive   *bool            `json:"borrow_active" db:"borrow_active"`
+	BorrowAPR      *decimal.Decimal `json:"borrow_apr" gorm:"column:borrow_apr;type:decimal(10,8)"`
+	BorrowTermDays *int             `json:"borrow_term_days" gorm:"column:borrow_term_days;type:integer"`
+	BorrowActive   *bool            `json:"borrow_active" gorm:"column:borrow_active;type:boolean;default:true"`
 
 	// Audit fields
-	FXSource    *string    `json:"fx_source" db:"fx_source"`
-	FXTimestamp *time.Time `json:"fx_timestamp" db:"fx_timestamp"`
-	CreatedAt   time.Time  `json:"created_at" db:"created_at"`
-	UpdatedAt   time.Time  `json:"updated_at" db:"updated_at"`
+	FXSource    *string    `json:"fx_source" gorm:"column:fx_source;type:varchar(50)"`
+	FXTimestamp *time.Time `json:"fx_timestamp" gorm:"column:fx_timestamp;type:timestamptz"`
+	CreatedAt   time.Time  `json:"created_at" gorm:"column:created_at;type:timestamptz;autoCreateTime"`
+	UpdatedAt   time.Time  `json:"updated_at" gorm:"column:updated_at;type:timestamptz;autoUpdateTime"`
+}
+
+// TableName returns the table name for the Transaction model
+func (Transaction) TableName() string {
+	return "transactions"
 }
 
 // TransactionFilter represents filters for querying transactions

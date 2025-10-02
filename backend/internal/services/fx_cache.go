@@ -20,6 +20,11 @@ func NewFXCacheService(database *db.DB) FXCacheService {
 	return &FXCacheServiceImpl{db: database}
 }
 
+// getSQLDB returns the underlying *sql.DB for complex queries
+func (s *FXCacheServiceImpl) getSQLDB() (*sql.DB, error) {
+	return s.db.GetSQLDB()
+}
+
 // GetCachedRate retrieves a cached exchange rate
 func (s *FXCacheServiceImpl) GetCachedRate(ctx context.Context, from, to string, date time.Time) (*models.FXRate, error) {
 	query := `
@@ -29,8 +34,13 @@ func (s *FXCacheServiceImpl) GetCachedRate(ctx context.Context, from, to string,
 		ORDER BY created_at DESC
 		LIMIT 1`
 
+	sqlDB, err := s.getSQLDB()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get SQL DB: %w", err)
+	}
+
 	rate := &models.FXRate{}
-	err := s.db.QueryRowContext(ctx, query, from, to, date).Scan(
+	err = sqlDB.QueryRowContext(ctx, query, from, to, date).Scan(
 		&rate.ID, &rate.FromCurrency, &rate.ToCurrency,
 		&rate.Rate, &rate.Date, &rate.Source, &rate.CreatedAt,
 	)
@@ -56,8 +66,13 @@ func (s *FXCacheServiceImpl) CacheRate(ctx context.Context, rate *models.FXRate)
             created_at = NOW()
         RETURNING id, created_at, rate`
 
+	sqlDB, err := s.getSQLDB()
+	if err != nil {
+		return fmt.Errorf("failed to get SQL DB: %w", err)
+	}
+
 	// Use QueryRowContext to capture the assigned/updated id and timestamps
-	err := s.db.QueryRowContext(ctx, query,
+	err = sqlDB.QueryRowContext(ctx, query,
 		rate.FromCurrency, rate.ToCurrency, rate.Rate, rate.Date, rate.Source,
 	).Scan(&rate.ID, &rate.CreatedAt, &rate.Rate)
 
@@ -82,8 +97,13 @@ func (s *FXCacheServiceImpl) GetCachedRates(ctx context.Context, from string, ta
 		WHERE from_currency = $1 AND date = $2 AND to_currency = ANY($3)
 		ORDER BY to_currency, created_at DESC`
 
+	sqlDB, err := s.getSQLDB()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get SQL DB: %w", err)
+	}
+
 	// Convert targets to PostgreSQL array format
-	rows, err := s.db.QueryContext(ctx, query, from, date, fmt.Sprintf("{%s}", joinStrings(targets, ",")))
+	rows, err := sqlDB.QueryContext(ctx, query, from, date, fmt.Sprintf("{%s}", joinStrings(targets, ",")))
 	if err != nil {
 		return nil, fmt.Errorf("failed to get cached rates: %w", err)
 	}
@@ -109,7 +129,12 @@ func (s *FXCacheServiceImpl) GetCachedRates(ctx context.Context, from string, ta
 func (s *FXCacheServiceImpl) InvalidateCache(ctx context.Context, from, to string, date time.Time) error {
 	query := `DELETE FROM fx_rates WHERE from_currency = $1 AND to_currency = $2 AND date = $3`
 
-	_, err := s.db.ExecContext(ctx, query, from, to, date)
+	sqlDB, err := s.getSQLDB()
+	if err != nil {
+		return fmt.Errorf("failed to get SQL DB: %w", err)
+	}
+
+	_, err = sqlDB.ExecContext(ctx, query, from, to, date)
 	if err != nil {
 		return fmt.Errorf("failed to invalidate cache: %w", err)
 	}
@@ -125,7 +150,12 @@ func (s *FXCacheServiceImpl) ListRatesRange(ctx context.Context, from, to string
         WHERE from_currency = $1 AND to_currency = $2 AND date >= $3 AND date <= $4
         ORDER BY date ASC, created_at DESC`
 
-	rows, err := s.db.QueryContext(ctx, query, from, to, start, end)
+	sqlDB, err := s.getSQLDB()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get SQL DB: %w", err)
+	}
+
+	rows, err := sqlDB.QueryContext(ctx, query, from, to, start, end)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list rates range: %w", err)
 	}

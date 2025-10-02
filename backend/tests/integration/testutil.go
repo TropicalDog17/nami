@@ -2,7 +2,6 @@ package integration
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -15,6 +14,8 @@ import (
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
 	"github.com/testcontainers/testcontainers-go/wait"
 	"github.com/tropicaldog17/nami/internal/db"
+	gormPostgres "gorm.io/driver/postgres"
+	"gorm.io/gorm"
 )
 
 type testDB struct {
@@ -49,23 +50,25 @@ func setupTestDB(t *testing.T) *testDB {
 		t.Fatalf("Failed to get connection string: %v", err)
 	}
 
-	// Connect to database
-	sqlDB, err := sql.Open("postgres", connStr)
+	// Create database wrapper using GORM
+	database, err := gorm.Open(gormPostgres.New(gormPostgres.Config{
+		DSN:                  connStr,
+		PreferSimpleProtocol: true, // disables implicit prepared statement usage
+	}), &gorm.Config{})
 	if err != nil {
 		t.Fatalf("Failed to connect to database: %v", err)
 	}
 
-	// Create database wrapper
-	database := &db.DB{DB: sqlDB}
-
 	// Create tables
-	if err := setupTestTables(database); err != nil {
+	if err := setupTestTables(&db.DB{
+		DB: database,
+	}); err != nil {
 		t.Fatalf("Failed to setup test tables: %v", err)
 	}
 
 	return &testDB{
 		container: pgContainer,
-		database:  database,
+		database:  &db.DB{DB: database},
 	}
 }
 
@@ -125,8 +128,13 @@ func setupTestTables(database *db.DB) error {
 			return rerr
 		}
 		sqlText := string(b)
+		// Get underlying SQL DB for migration execution
+		sqlDB, err := database.GetSQLDB()
+		if err != nil {
+			return fmt.Errorf("failed to get SQL DB: %w", err)
+		}
 		// Execute the entire file content at once to preserve dollar-quoted blocks
-		if _, exErr := database.Exec(sqlText); exErr != nil {
+		if _, exErr := sqlDB.Exec(sqlText); exErr != nil {
 			return exErr
 		}
 	}

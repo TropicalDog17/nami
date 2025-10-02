@@ -2,6 +2,7 @@ package repositories
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"time"
 
@@ -19,7 +20,17 @@ func NewReportingRepository(database *db.DB) ReportingRepository {
 	return &reportingRepository{db: database}
 }
 
+// getSQLDB returns the underlying SQL database for complex queries
+func (r *reportingRepository) getSQLDB() (*sql.DB, error) {
+	return r.db.GetSQLDB()
+}
+
 func (r *reportingRepository) GetHoldings(ctx context.Context, asOf time.Time) ([]*models.Holding, error) {
+	sqlDB, err := r.getSQLDB()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get SQL DB: %w", err)
+	}
+
 	query := `
 		WITH latest_positions AS (
 			SELECT
@@ -63,7 +74,7 @@ func (r *reportingRepository) GetHoldings(ctx context.Context, asOf time.Time) (
 		WHERE lp.total_quantity != 0
 		ORDER BY lp.asset, lp.account`
 
-	rows, err := r.db.QueryContext(ctx, query, asOf)
+	rows, err := sqlDB.QueryContext(ctx, query, asOf)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get holdings: %w", err)
 	}
@@ -97,6 +108,11 @@ func (r *reportingRepository) GetHoldings(ctx context.Context, asOf time.Time) (
 }
 
 func (r *reportingRepository) GetCashFlow(ctx context.Context, period models.Period) (*models.CashFlowReport, error) {
+	sqlDB, err := r.getSQLDB()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get SQL DB: %w", err)
+	}
+
 	query := `
 		SELECT
 			COALESCE(SUM(CASE WHEN cashflow_usd > 0 THEN cashflow_usd ELSE 0 END), 0) as total_in_usd,
@@ -114,7 +130,7 @@ func (r *reportingRepository) GetCashFlow(ctx context.Context, period models.Per
 		ByTag:  make(map[string]*models.CashFlowByType),
 	}
 
-	err := r.db.QueryRowContext(ctx, query, period.StartDate, period.EndDate).Scan(
+	err = sqlDB.QueryRowContext(ctx, query, period.StartDate, period.EndDate).Scan(
 		&report.TotalInUSD, &report.TotalOutUSD, &report.NetUSD,
 		&report.TotalInVND, &report.TotalOutVND, &report.NetVND,
 	)
@@ -136,7 +152,7 @@ func (r *reportingRepository) GetCashFlow(ctx context.Context, period models.Per
 			WHERE date >= $1 AND date <= $2 AND (internal_flow IS DISTINCT FROM TRUE)
 		GROUP BY type`
 
-	rows, err := r.db.QueryContext(ctx, typeQuery, period.StartDate, period.EndDate)
+	rows, err := sqlDB.QueryContext(ctx, typeQuery, period.StartDate, period.EndDate)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get cash flow by type: %w", err)
 	}
@@ -184,7 +200,7 @@ func (r *reportingRepository) GetCashFlow(ctx context.Context, period models.Per
 		WHERE date >= $1 AND date <= $2 AND type = 'borrow'`
 
 	var finInUSD, finInVND decimal.Decimal
-	if err := r.db.QueryRowContext(ctx, finBorrowQuery, period.StartDate, period.EndDate).Scan(&finInUSD, &finInVND); err != nil {
+	if err := sqlDB.QueryRowContext(ctx, finBorrowQuery, period.StartDate, period.EndDate).Scan(&finInUSD, &finInVND); err != nil {
 		return nil, fmt.Errorf("failed to get financing borrow inflow: %w", err)
 	}
 
@@ -196,7 +212,7 @@ func (r *reportingRepository) GetCashFlow(ctx context.Context, period models.Per
 			WHERE date >= $1 AND date <= $2 AND type IN ('repay_borrow','interest_expense') AND (internal_flow IS DISTINCT FROM TRUE)`
 
 	var finOutUSD, finOutVND decimal.Decimal
-	if err := r.db.QueryRowContext(ctx, finOutQuery, period.StartDate, period.EndDate).Scan(&finOutUSD, &finOutVND); err != nil {
+	if err := sqlDB.QueryRowContext(ctx, finOutQuery, period.StartDate, period.EndDate).Scan(&finOutUSD, &finOutVND); err != nil {
 		return nil, fmt.Errorf("failed to get financing outflows: %w", err)
 	}
 
@@ -228,7 +244,7 @@ func (r *reportingRepository) GetCashFlow(ctx context.Context, period models.Per
 			WHERE date >= $1 AND date <= $2 AND (internal_flow IS DISTINCT FROM TRUE)
 		GROUP BY tag`
 
-	tagRows, err := r.db.QueryContext(ctx, tagQuery, period.StartDate, period.EndDate)
+	tagRows, err := sqlDB.QueryContext(ctx, tagQuery, period.StartDate, period.EndDate)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get cash flow by tag: %w", err)
 	}
@@ -251,6 +267,11 @@ func (r *reportingRepository) GetCashFlow(ctx context.Context, period models.Per
 }
 
 func (r *reportingRepository) GetSpending(ctx context.Context, period models.Period) (*models.SpendingReport, error) {
+	sqlDB, err := r.getSQLDB()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get SQL DB: %w", err)
+	}
+
 	query := `
 		SELECT
 			COALESCE(SUM(CASE WHEN cashflow_usd < 0 THEN ABS(cashflow_usd) ELSE 0 END), 0) as total_usd,
@@ -264,7 +285,7 @@ func (r *reportingRepository) GetSpending(ctx context.Context, period models.Per
 		ByCounterparty: make(map[string]*models.SpendingByTag),
 	}
 
-	err := r.db.QueryRowContext(ctx, query, period.StartDate, period.EndDate).Scan(
+	err = sqlDB.QueryRowContext(ctx, query, period.StartDate, period.EndDate).Scan(
 		&report.TotalUSD, &report.TotalVND,
 	)
 	if err != nil {
@@ -282,7 +303,7 @@ func (r *reportingRepository) GetSpending(ctx context.Context, period models.Per
 		GROUP BY tag
 		ORDER BY amount_usd DESC`
 
-	rows, err := r.db.QueryContext(ctx, tagQuery, period.StartDate, period.EndDate)
+	rows, err := sqlDB.QueryContext(ctx, tagQuery, period.StartDate, period.EndDate)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get spending by tag: %w", err)
 	}
@@ -314,7 +335,7 @@ func (r *reportingRepository) GetSpending(ctx context.Context, period models.Per
 		GROUP BY counterparty
 		ORDER BY amount_usd DESC`
 
-	cpRows, err := r.db.QueryContext(ctx, counterpartyQuery, period.StartDate, period.EndDate)
+	cpRows, err := sqlDB.QueryContext(ctx, counterpartyQuery, period.StartDate, period.EndDate)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get spending by counterparty: %w", err)
 	}
@@ -343,7 +364,7 @@ func (r *reportingRepository) GetSpending(ctx context.Context, period models.Per
 		ORDER BY ABS(amount_usd) DESC
 		LIMIT 10`
 
-	expRows, err := r.db.QueryContext(ctx, expenseQuery, period.StartDate, period.EndDate)
+	expRows, err := sqlDB.QueryContext(ctx, expenseQuery, period.StartDate, period.EndDate)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get top expenses: %w", err)
 	}
@@ -365,6 +386,11 @@ func (r *reportingRepository) GetSpending(ctx context.Context, period models.Per
 }
 
 func (r *reportingRepository) GetOutstandingBorrows(ctx context.Context, asOf time.Time) (map[string]map[string]decimal.Decimal, error) {
+	sqlDB, err := r.getSQLDB()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get SQL DB: %w", err)
+	}
+
 	query := `
         WITH sums AS (
             SELECT account, asset,
@@ -378,7 +404,7 @@ func (r *reportingRepository) GetOutstandingBorrows(ctx context.Context, asOf ti
         FROM sums
         WHERE (borrowed - repaid) > 0`
 
-	rows, err := r.db.QueryContext(ctx, query, asOf)
+	rows, err := sqlDB.QueryContext(ctx, query, asOf)
 	if err != nil {
 		return nil, err
 	}
@@ -400,6 +426,11 @@ func (r *reportingRepository) GetOutstandingBorrows(ctx context.Context, asOf ti
 }
 
 func (r *reportingRepository) GetPnL(ctx context.Context, period models.Period) (*models.PnLReport, error) {
+	sqlDB, err := r.getSQLDB()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get SQL DB: %w", err)
+	}
+
 	report := &models.PnLReport{
 		Period:    period,
 		ByAsset:   make(map[string]*models.AssetPnL),
@@ -439,7 +470,7 @@ func (r *reportingRepository) GetPnL(ctx context.Context, period models.Period) 
         FROM investment_pnl`
 
 	var totalCostBasis decimal.Decimal
-	err := r.db.QueryRowContext(ctx, realizedQuery, period.StartDate, period.EndDate).Scan(
+	err = sqlDB.QueryRowContext(ctx, realizedQuery, period.StartDate, period.EndDate).Scan(
 		&report.RealizedPnLUSD, &report.RealizedPnLVND, &totalCostBasis,
 	)
 	if err != nil {
@@ -479,7 +510,7 @@ func (r *reportingRepository) GetPnL(ctx context.Context, period models.Period) 
             ), 0) as unrealized_pnl_vnd
         FROM open_investments oi`
 
-	err = r.db.QueryRowContext(ctx, unrealizedQuery, period.EndDate).Scan(
+	err = sqlDB.QueryRowContext(ctx, unrealizedQuery, period.EndDate).Scan(
 		&report.UnrealizedPnLUSD, &report.UnrealizedPnLVND,
 	)
 	if err != nil {
@@ -496,7 +527,7 @@ func (r *reportingRepository) GetPnL(ctx context.Context, period models.Period) 
         WHERE deposit_date <= $1`
 
 	var totalInvested decimal.Decimal
-	err = r.db.QueryRowContext(ctx, totalInvestedQuery, period.EndDate).Scan(&totalInvested)
+	err = sqlDB.QueryRowContext(ctx, totalInvestedQuery, period.EndDate).Scan(&totalInvested)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get total invested: %w", err)
 	}
@@ -530,7 +561,7 @@ func (r *reportingRepository) GetPnL(ctx context.Context, period models.Period) 
         LEFT JOIN latest_prices p ON i.asset = p.asset
         GROUP BY i.asset`
 
-	assetRows, err := r.db.QueryContext(ctx, assetQuery, period.StartDate, period.EndDate)
+	assetRows, err := sqlDB.QueryContext(ctx, assetQuery, period.StartDate, period.EndDate)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get asset breakdown: %w", err)
 	}
@@ -558,6 +589,11 @@ func (r *reportingRepository) GetPnL(ctx context.Context, period models.Period) 
 }
 
 func (r *reportingRepository) GetExpectedBorrowOutflows(ctx context.Context, asOf time.Time) ([]*models.OutflowProjection, error) {
+	sqlDB, err := r.getSQLDB()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get SQL DB: %w", err)
+	}
+
 	query := `
         WITH borrows AS (
             SELECT id, account, asset, date, quantity AS principal,
@@ -582,7 +618,7 @@ func (r *reportingRepository) GetExpectedBorrowOutflows(ctx context.Context, asO
         SELECT id, account, asset, date, principal, apr, term_days, repaid
         FROM agg`
 
-	rows, err := r.db.QueryContext(ctx, query)
+	rows, err := sqlDB.QueryContext(ctx, query)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get expected borrow outflows: %w", err)
 	}
