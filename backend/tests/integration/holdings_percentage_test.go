@@ -24,7 +24,6 @@ func TestReportingService_GetHoldings_WithPercentages(t *testing.T) {
 	// Add some holdings with different values
 	transactions := []*models.Transaction{
 		{
-			ID:          "1",
 			Date:        asOf.AddDate(0, 0, -5),
 			Type:        "buy",
 			Asset:       "BTC",
@@ -41,7 +40,6 @@ func TestReportingService_GetHoldings_WithPercentages(t *testing.T) {
 			CashFlowVND: decimal.NewFromFloat(-125000000),
 		},
 		{
-			ID:          "2",
 			Date:        asOf.AddDate(0, 0, -3),
 			Type:        "buy",
 			Asset:       "ETH",
@@ -58,7 +56,6 @@ func TestReportingService_GetHoldings_WithPercentages(t *testing.T) {
 			CashFlowVND: decimal.NewFromFloat(-75000000),
 		},
 		{
-			ID:          "3",
 			Date:        asOf.AddDate(0, 0, -1),
 			Type:        "buy",
 			Asset:       "USDT",
@@ -135,7 +132,6 @@ func TestReportingService_GetHoldingsByAsset_WithPercentages(t *testing.T) {
 	// Add multiple transactions for the same asset to test aggregation
 	transactions := []*models.Transaction{
 		{
-			ID:          "1",
 			Date:        asOf.AddDate(0, 0, -5),
 			Type:        "buy",
 			Asset:       "BTC",
@@ -149,7 +145,6 @@ func TestReportingService_GetHoldingsByAsset_WithPercentages(t *testing.T) {
 			CashFlowUSD: decimal.NewFromFloat(-5000),
 		},
 		{
-			ID:          "2",
 			Date:        asOf.AddDate(0, 0, -3),
 			Type:        "buy",
 			Asset:       "BTC",
@@ -163,7 +158,6 @@ func TestReportingService_GetHoldingsByAsset_WithPercentages(t *testing.T) {
 			CashFlowUSD: decimal.NewFromFloat(-2500),
 		},
 		{
-			ID:          "3",
 			Date:        asOf.AddDate(0, 0, -1),
 			Type:        "buy",
 			Asset:       "ETH",

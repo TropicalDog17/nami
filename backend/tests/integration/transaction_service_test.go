@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/shopspring/decimal"
 
 	"github.com/tropicaldog17/nami/internal/models"
@@ -221,8 +222,9 @@ func TestTransactionService_UpdateTransactionNotFound(t *testing.T) {
 	service := services.NewTransactionService(tdb.database)
 
 	// Try to update non-existent transaction
+	nonExistentUuid := uuid.New().String()
 	updateData := &models.Transaction{
-		ID:   "non-existent",
+		ID:   nonExistentUuid,
 		Type: "income",
 	}
 
@@ -231,7 +233,7 @@ func TestTransactionService_UpdateTransactionNotFound(t *testing.T) {
 		t.Error("Expected error when updating non-existent transaction")
 	}
 
-	expectedMsg := "no transaction found with id non-existent"
+	expectedMsg := "no transaction found with id " + nonExistentUuid
 	if err.Error() != expectedMsg {
 		t.Errorf("Expected error message '%s', got '%s'", expectedMsg, err.Error())
 	}
