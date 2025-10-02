@@ -406,107 +406,152 @@ func (r *reportingRepository) GetPnL(ctx context.Context, period models.Period) 
 		ByAccount: make(map[string]*models.AccountPnL),
 	}
 
-	// Using explicit deposit-withdrawal linking via deposit_id
+	// Enhanced PnL calculation using the investments table for better accuracy
+	// This handles multiple deposits per investment and proper cost basis tracking
 	realizedQuery := `
-        WITH deposits AS (
+        WITH investment_pnl AS (
             SELECT
-                id as deposit_id,
-                asset,
-                account,
-                amount_usd as deposit_amount_usd,
-                amount_vnd as deposit_amount_vnd,
-                quantity as deposit_quantity
-            FROM transactions
-            WHERE type IN ('deposit', 'stake', 'buy')
-        ),
-        withdrawals AS (
-            SELECT
-                deposit_id,
-                asset,
-                account,
-                amount_usd as withdrawal_amount_usd,
-                amount_vnd as withdrawal_amount_vnd,
-                quantity as withdrawal_quantity,
-                date
-            FROM transactions
-            WHERE type IN ('withdraw', 'unstake', 'sell')
-            AND deposit_id IS NOT NULL
-        ),
-        realized_pnl AS (
-            SELECT
-                COALESCE(SUM(
-                    w.withdrawal_amount_usd - (w.withdrawal_quantity / NULLIF(d.deposit_quantity, 0)) * d.deposit_amount_usd
-                ), 0) AS realized_pnl_usd,
-                COALESCE(SUM(
-                    w.withdrawal_amount_vnd - (w.withdrawal_quantity / NULLIF(d.deposit_quantity, 0)) * d.deposit_amount_vnd
-                ), 0) AS realized_pnl_vnd
-            FROM withdrawals w
-            JOIN deposits d ON w.deposit_id = d.deposit_id
-            WHERE w.date >= $1 AND w.date <= $2
-            GROUP BY w.asset, w.account
+                i.asset,
+                i.account,
+                i.pnl as realized_pnl_usd,
+                i.pnl * fx.fx_to_vnd as realized_pnl_vnd,
+                i.deposit_cost as total_cost_basis,
+                i.withdrawal_value as total_withdrawal_value,
+                CASE
+                    WHEN i.withdrawal_date >= $1 AND i.withdrawal_date <= $2 THEN 1
+                    ELSE 0
+                END as is_in_period
+            FROM investments i
+            LEFT JOIN (
+                SELECT DISTINCT ON (asset, date)
+                    asset, fx_to_vnd, date
+                FROM transactions
+                WHERE date <= $2
+                ORDER BY asset, date DESC
+            ) fx ON i.asset = fx.asset AND i.withdrawal_date = fx.date
+            WHERE i.is_open = false  -- Only closed investments have realized P&L
+            AND i.withdrawal_date IS NOT NULL
         )
         SELECT
-            COALESCE(SUM(realized_pnl_usd), 0) AS total_realized_pnl_usd,
-            COALESCE(SUM(realized_pnl_vnd), 0) AS total_realized_pnl_vnd
-        FROM realized_pnl`
+            COALESCE(SUM(CASE WHEN is_in_period = 1 THEN realized_pnl_usd ELSE 0 END), 0) as realized_pnl_usd,
+            COALESCE(SUM(CASE WHEN is_in_period = 1 THEN realized_pnl_vnd ELSE 0 END), 0) as realized_pnl_vnd,
+            COALESCE(SUM(CASE WHEN is_in_period = 1 THEN total_cost_basis ELSE 0 END), 0) as total_cost_basis
+        FROM investment_pnl`
 
+	var totalCostBasis decimal.Decimal
 	err := r.db.QueryRowContext(ctx, realizedQuery, period.StartDate, period.EndDate).Scan(
-		&report.RealizedPnLUSD, &report.RealizedPnLVND,
+		&report.RealizedPnLUSD, &report.RealizedPnLVND, &totalCostBasis,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get realized P&L: %w", err)
 	}
 
-	report.UnrealizedPnLUSD = decimal.Zero
-	report.UnrealizedPnLVND = decimal.Zero
+	// Calculate unrealized P&L from open investments
+	unrealizedQuery := `
+        WITH latest_prices AS (
+            SELECT DISTINCT ON (asset)
+                asset,
+                amount_usd / NULLIF(quantity, 0) as current_price_usd,
+                fx_to_vnd
+            FROM transactions
+            WHERE quantity > 0 AND date <= $1
+            ORDER BY asset, date DESC
+        ),
+        open_investments AS (
+            SELECT
+                i.asset,
+                i.account,
+                i.remaining_qty,
+                i.deposit_unit_cost,
+                COALESCE(p.current_price_usd, i.deposit_unit_cost) as current_price_usd,
+                COALESCE(p.fx_to_vnd, 25000) as fx_to_vnd
+            FROM investments i
+            LEFT JOIN latest_prices p ON i.asset = p.asset
+            WHERE i.is_open = true
+            AND i.remaining_qty > 0
+        )
+        SELECT
+            COALESCE(SUM(
+                (oi.current_price_usd - oi.deposit_unit_cost) * oi.remaining_qty
+            ), 0) as unrealized_pnl_usd,
+            COALESCE(SUM(
+                (oi.current_price_usd - oi.deposit_unit_cost) * oi.remaining_qty * oi.fx_to_vnd
+            ), 0) as unrealized_pnl_vnd
+        FROM open_investments oi`
+
+	err = r.db.QueryRowContext(ctx, unrealizedQuery, period.EndDate).Scan(
+		&report.UnrealizedPnLUSD, &report.UnrealizedPnLVND,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get unrealized P&L: %w", err)
+	}
 
 	report.TotalPnLUSD = report.RealizedPnLUSD.Add(report.UnrealizedPnLUSD)
 	report.TotalPnLVND = report.RealizedPnLVND.Add(report.UnrealizedPnLVND)
 
-	// Calculate cost basis using explicit deposit-withdrawal linking
-	costBasisQuery := `
-        WITH deposits AS (
-            SELECT
-                id as deposit_id,
-                asset,
-                account,
-                amount_usd as deposit_amount_usd,
-                quantity as deposit_quantity
-            FROM transactions
-            WHERE type IN ('deposit', 'stake', 'buy')
-        ),
-        withdrawals AS (
-            SELECT
-                deposit_id,
-                asset,
-                account,
-                amount_usd as withdrawal_amount_usd,
-                quantity as withdrawal_quantity,
-                date
-            FROM transactions
-            WHERE type IN ('withdraw', 'unstake', 'sell')
-            AND deposit_id IS NOT NULL
-        ),
-        cost_basis AS (
-            SELECT
-                COALESCE(SUM(
-                    (w.withdrawal_quantity / NULLIF(d.deposit_quantity, 0)) * d.deposit_amount_usd
-                ), 0) AS cost_basis_usd
-            FROM withdrawals w
-            JOIN deposits d ON w.deposit_id = d.deposit_id
-            WHERE w.date >= $1 AND w.date <= $2
-        )
-        SELECT COALESCE(SUM(cost_basis_usd), 0) AS total_cost_basis
-        FROM cost_basis`
+	// Calculate ROI using total cost basis from all investments (including those still open)
+	totalInvestedQuery := `
+        SELECT COALESCE(SUM(deposit_cost), 0) as total_invested
+        FROM investments
+        WHERE deposit_date <= $1`
 
-	var totalCostBasis decimal.Decimal
-	err = r.db.QueryRowContext(ctx, costBasisQuery, period.StartDate, period.EndDate).Scan(&totalCostBasis)
+	var totalInvested decimal.Decimal
+	err = r.db.QueryRowContext(ctx, totalInvestedQuery, period.EndDate).Scan(&totalInvested)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get total cost basis: %w", err)
+		return nil, fmt.Errorf("failed to get total invested: %w", err)
 	}
 
-	if !totalCostBasis.IsZero() {
-		report.ROIPercent = report.TotalPnLUSD.Div(totalCostBasis).Mul(decimal.NewFromInt(100))
+	// Use the larger of total_cost_basis or total_invested for ROI calculation
+	roiBasis := totalCostBasis
+	if totalInvested.GreaterThan(totalCostBasis) {
+		roiBasis = totalInvested
+	}
+
+	if !roiBasis.IsZero() {
+		report.ROIPercent = report.TotalPnLUSD.Div(roiBasis).Mul(decimal.NewFromInt(100))
+	}
+
+	// Get detailed breakdown by asset
+	assetQuery := `
+        WITH latest_prices AS (
+            SELECT DISTINCT ON (asset)
+                asset,
+                amount_usd / NULLIF(quantity, 0) as current_price_usd
+            FROM transactions
+            WHERE quantity > 0 AND date <= $2
+            ORDER BY asset, date DESC
+        )
+        SELECT
+            i.asset,
+            COALESCE(SUM(CASE WHEN i.is_open = false AND i.withdrawal_date >= $1 AND i.withdrawal_date <= $2 THEN i.pnl ELSE 0 END), 0) as realized_pnl_usd,
+            COALESCE(SUM(CASE WHEN i.is_open = true THEN (COALESCE(p.current_price_usd, i.deposit_unit_cost) - i.deposit_unit_cost) * i.remaining_qty ELSE 0 END), 0) as unrealized_pnl_usd,
+            COALESCE(SUM(i.deposit_cost), 0) as total_cost
+        FROM investments i
+        LEFT JOIN latest_prices p ON i.asset = p.asset
+        GROUP BY i.asset`
+
+	assetRows, err := r.db.QueryContext(ctx, assetQuery, period.StartDate, period.EndDate)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get asset breakdown: %w", err)
+	}
+	defer assetRows.Close()
+
+	for assetRows.Next() {
+		var asset string
+		var realizedPnL, unrealizedPnL, totalCost decimal.Decimal
+		err := assetRows.Scan(&asset, &realizedPnL, &unrealizedPnL, &totalCost)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan asset breakdown: %w", err)
+		}
+
+		totalPnL := realizedPnL.Add(unrealizedPnL)
+
+		report.ByAsset[asset] = &models.AssetPnL{
+			Asset:            asset,
+			RealizedPnLUSD:   realizedPnL,
+			UnrealizedPnLUSD: unrealizedPnL,
+			TotalPnLUSD:      totalPnL,
+		}
 	}
 
 	return report, nil

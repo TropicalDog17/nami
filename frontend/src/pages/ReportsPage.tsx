@@ -3,8 +3,8 @@ import DateInput from '../components/ui/DateInput';
 
 import DataTable from '../components/ui/DataTable';
 import { useBackendStatus } from '../context/BackendStatusContext';
-import { reportsApi } from '../services/api';
-import { HoldingsChart } from '../components/reports/Charts';
+import { reportsApi, investmentsApi } from '../services/api';
+import { HoldingsChart, PnLChart } from '../components/reports/Charts';
 
 const ReportsPage = () => {
   const [activeTab, setActiveTab] = useState('holdings');
@@ -32,6 +32,7 @@ const ReportsPage = () => {
   const tabs = [
     { id: 'holdings', name: 'Holdings', icon: '📊' },
     { id: 'allocation', name: 'Asset Allocation', icon: '🥧' },
+    { id: 'investments', name: 'Investments', icon: '💼' },
     { id: 'cashflow', name: 'Cash Flow', icon: '💸' },
     { id: 'spending', name: 'Spending', icon: '🛒' },
     { id: 'pnl', name: 'P&L', icon: '📈' },
@@ -56,6 +57,9 @@ const ReportsPage = () => {
           break;
         case 'allocation':
           result = await reportsApi.holdingsSummary({ as_of: filters.asOf });
+          break;
+        case 'investments':
+          result = await investmentsApi.list({ is_open: true });
           break;
         case 'cashflow':
           result = await reportsApi.cashFlow({
@@ -376,6 +380,156 @@ const ReportsPage = () => {
             />
           </div>
         </div>
+      </div>
+    );
+  };
+
+  const renderInvestmentsTable = () => {
+    const investments = (data as any).investments || [];
+    const displayInvestments = Array.isArray(investments) ? investments : [];
+
+    const columns = [
+      { key: 'asset', title: 'Asset' },
+      { key: 'account', title: 'Account' },
+      { key: 'horizon', title: 'Horizon', render: (value: any) => value || 'N/A' },
+      {
+        key: 'deposit_date',
+        title: 'Deposit Date',
+        type: 'date',
+        render: (value: any) => new Date(value).toLocaleDateString(),
+      },
+      {
+        key: 'deposit_qty',
+        title: 'Deposit Qty',
+        type: 'number',
+        render: (value: any) => parseFloat(value || 0).toLocaleString(),
+      },
+      {
+        key: 'remaining_qty',
+        title: 'Remaining Qty',
+        type: 'number',
+        render: (value: any) => parseFloat(value || 0).toLocaleString(),
+      },
+      {
+        key: 'deposit_cost',
+        title: `Deposit Cost (${currency})`,
+        type: 'currency',
+        render: (value: any) => {
+          const num = parseFloat(value || 0);
+          return currency === 'USD'
+            ? `$${num.toLocaleString()}`
+            : `₫${num.toLocaleString()}`;
+        },
+      },
+      {
+        key: 'current_value',
+        title: `Current Value (${currency})`,
+        type: 'currency',
+        render: (value: any, row: any) => {
+          const currentPrice = row.current_price || row.deposit_unit_cost || 1;
+          const remainingQty = parseFloat(row.remaining_qty || 0);
+          const currentValue = remainingQty * parseFloat(currentPrice);
+          return currency === 'USD'
+            ? `$${currentValue.toLocaleString()}`
+            : `₫${currentValue.toLocaleString()}`;
+        },
+      },
+      {
+        key: 'unrealized_pnl',
+        title: `Unrealized P&L (${currency})`,
+        type: 'currency',
+        render: (value: any, row: any) => {
+          const currentPrice = row.current_price || row.deposit_unit_cost || 1;
+          const remainingQty = parseFloat(row.remaining_qty || 0);
+          const depositUnitCost = parseFloat(row.deposit_unit_cost || 0);
+          const currentValue = remainingQty * parseFloat(currentPrice);
+          const costBasis = remainingQty * depositUnitCost;
+          const unrealizedPnL = currentValue - costBasis;
+          const formattedValue = currency === 'USD'
+            ? `$${Math.abs(unrealizedPnL).toLocaleString()}`
+            : `₫${Math.abs(unrealizedPnL).toLocaleString()}`;
+          return unrealizedPnL >= 0 ? `+${formattedValue}` : `-${formattedValue}`;
+        },
+      },
+      {
+        key: 'pnl_percent',
+        title: 'P&L %',
+        type: 'percentage',
+        render: (value: any, row: any) => {
+          const currentPrice = row.current_price || row.deposit_unit_cost || 1;
+          const depositUnitCost = parseFloat(row.deposit_unit_cost || 0);
+          if (depositUnitCost === 0) return '0.00%';
+          const pnlPercent = ((parseFloat(currentPrice) - depositUnitCost) / depositUnitCost) * 100;
+          const sign = pnlPercent >= 0 ? '+' : '';
+          return `${sign}${pnlPercent.toFixed(2)}%`;
+        },
+      },
+      {
+        key: 'is_open',
+        title: 'Status',
+        render: (value: any) => (
+          <span className={`px-2 py-1 text-xs rounded-full ${
+            value ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
+          }`}>
+            {value ? 'Open' : 'Closed'}
+          </span>
+        ),
+      },
+    ];
+
+    // Calculate summary stats
+    const totalDepositCost = displayInvestments.reduce(
+      (sum: number, inv: any) => sum + parseFloat(inv.deposit_cost || 0), 0
+    );
+    const totalRemainingValue = displayInvestments.reduce((sum: number, inv: any) => {
+      const currentPrice = inv.current_price || inv.deposit_unit_cost || 1;
+      const remainingQty = parseFloat(inv.remaining_qty || 0);
+      return sum + (remainingQty * parseFloat(currentPrice));
+    }, 0);
+    const totalUnrealizedPnL = totalRemainingValue - totalDepositCost;
+
+    return (
+      <div>
+        {/* Summary Stats */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+          <div className="bg-blue-50 p-4 rounded-lg">
+            <h4 className="text-sm font-medium text-blue-800">Total Invested</h4>
+            <p className="text-2xl font-bold text-blue-900">
+              {currency === 'USD'
+                ? `$${totalDepositCost.toLocaleString()}`
+                : `₫${totalDepositCost.toLocaleString()}`}
+            </p>
+          </div>
+          <div className={`p-4 rounded-lg ${totalUnrealizedPnL >= 0 ? 'bg-green-50' : 'bg-red-50'}`}>
+            <h4 className={`text-sm font-medium ${totalUnrealizedPnL >= 0 ? 'text-green-800' : 'text-red-800'}`}>
+              Unrealized P&L
+            </h4>
+            <p className={`text-2xl font-bold ${totalUnrealizedPnL >= 0 ? 'text-green-900' : 'text-red-900'}`}>
+              {currency === 'USD'
+                ? `${totalUnrealizedPnL >= 0 ? '+' : '-'}$${Math.abs(totalUnrealizedPnL).toLocaleString()}`
+                : `${totalUnrealizedPnL >= 0 ? '+' : '-'}₫${Math.abs(totalUnrealizedPnL).toLocaleString()}`}
+            </p>
+          </div>
+          <div className="bg-purple-50 p-4 rounded-lg">
+            <h4 className="text-sm font-medium text-purple-800">Current Value</h4>
+            <p className="text-2xl font-bold text-purple-900">
+              {currency === 'USD'
+                ? `$${totalRemainingValue.toLocaleString()}`
+                : `₫${totalRemainingValue.toLocaleString()}`}
+            </p>
+          </div>
+        </div>
+
+        {/* Investments Table */}
+        <DataTable
+          data={displayInvestments}
+          columns={columns}
+          loading={loading}
+          emptyMessage="No investments found"
+          filterable={true}
+          sortable={true}
+          pagination={true}
+        />
       </div>
     );
   };
@@ -738,39 +892,119 @@ const ReportsPage = () => {
 
   const renderPnLTable = () => {
     const pnl: any = (data as any).pnl || {};
+    const realizedPnL = parseFloat(currency === 'USD' ? (pnl.realized_pnl_usd || 0) : (pnl.realized_pnl_vnd || 0));
+    const unrealizedPnL = parseFloat(currency === 'USD' ? (pnl.unrealized_pnl_usd || 0) : (pnl.unrealized_pnl_vnd || 0));
+    const totalPnL = parseFloat(currency === 'USD' ? (pnl.total_pnl_usd || 0) : (pnl.total_pnl_vnd || 0));
 
     return (
       <div>
-        {/* P&L Summary */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-          <div className="bg-blue-50 p-4 rounded-lg">
-            <h4 className="text-sm font-medium text-blue-800">Realized P&L</h4>
-            <p className="text-2xl font-bold text-blue-900">
+        {/* P&L Summary Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+          <div className={`p-4 rounded-lg ${realizedPnL >= 0 ? 'bg-green-50' : 'bg-red-50'}`}>
+            <h4 className={`text-sm font-medium ${realizedPnL >= 0 ? 'text-green-800' : 'text-red-800'}`}>
+              Realized P&L
+            </h4>
+            <p className={`text-2xl font-bold ${realizedPnL >= 0 ? 'text-green-900' : 'text-red-900'}`}>
               {currency === 'USD'
-                ? `$${parseFloat(pnl.realized_pnl_usd || 0).toLocaleString()}`
-                : `₫${parseFloat(pnl.realized_pnl_vnd || 0).toLocaleString()}`}
+                ? `$${Math.abs(realizedPnL).toLocaleString()}`
+                : `₫${Math.abs(unrealizedPnL).toLocaleString()}`}
+            </p>
+            <p className="text-xs text-gray-600 mt-1">
+              Gains/losses from closed positions
             </p>
           </div>
-          <div className="bg-purple-50 p-4 rounded-lg">
-            <h4 className="text-sm font-medium text-purple-800">Total P&L</h4>
-            <p className="text-2xl font-bold text-purple-900">
+          <div className={`p-4 rounded-lg ${unrealizedPnL >= 0 ? 'bg-blue-50' : 'bg-orange-50'}`}>
+            <h4 className={`text-sm font-medium ${unrealizedPnL >= 0 ? 'text-blue-800' : 'text-orange-800'}`}>
+              Unrealized P&L
+            </h4>
+            <p className={`text-2xl font-bold ${unrealizedPnL >= 0 ? 'text-blue-900' : 'text-orange-900'}`}>
               {currency === 'USD'
-                ? `$${parseFloat(pnl.total_pnl_usd || 0).toLocaleString()}`
-                : `₫${parseFloat(pnl.total_pnl_vnd || 0).toLocaleString()}`}
+                ? `$${Math.abs(unrealizedPnL).toLocaleString()}`
+                : `₫${Math.abs(unrealizedPnL).toLocaleString()}`}
+            </p>
+            <p className="text-xs text-gray-600 mt-1">
+              Gains/losses from open positions
+            </p>
+          </div>
+          <div className={`p-4 rounded-lg ${totalPnL >= 0 ? 'bg-purple-50' : 'bg-red-100'}`}>
+            <h4 className={`text-sm font-medium ${totalPnL >= 0 ? 'text-purple-800' : 'text-red-800'}`}>
+              Total P&L
+            </h4>
+            <p className={`text-2xl font-bold ${totalPnL >= 0 ? 'text-purple-900' : 'text-red-900'}`}>
+              {currency === 'USD'
+                ? `$${Math.abs(totalPnL).toLocaleString()}`
+                : `₫${Math.abs(totalPnL).toLocaleString()}`}
+            </p>
+            <p className="text-xs text-gray-600 mt-1">
+              Total investment performance
             </p>
           </div>
         </div>
 
-        {pnl.roi_percent !== undefined && (
-          <div className="bg-gray-50 p-4 rounded-lg">
-            <h4 className="text-sm font-medium text-gray-800">
-              Return on Investment (ROI)
+        {/* P&L Chart and Additional Metrics */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+          {/* P&L Chart */}
+          <div className="bg-white p-6 rounded-lg border border-gray-200">
+            <h4 className="text-lg font-medium text-gray-900 mb-4">
+              P&L Breakdown
             </h4>
-            <p className="text-xl font-bold text-gray-900">
-              {parseFloat(pnl.roi_percent || 0).toFixed(2)}%
-            </p>
+            <div style={{ height: '300px' }}>
+              <PnLChart data={pnl} currency={currency} />
+            </div>
           </div>
-        )}
+
+          {/* Detailed Metrics */}
+          <div className="space-y-4">
+            {pnl.roi_percent !== undefined && (
+              <div className="bg-gray-50 p-4 rounded-lg">
+                <h4 className="text-sm font-medium text-gray-800">
+                  Return on Investment (ROI)
+                </h4>
+                <p className={`text-xl font-bold ${parseFloat(pnl.roi_percent || 0) >= 0 ? 'text-green-900' : 'text-red-900'}`}>
+                  {parseFloat(pnl.roi_percent || 0).toFixed(2)}%
+                </p>
+                <p className="text-xs text-gray-600 mt-1">
+                  Percentage return on invested capital
+                </p>
+              </div>
+            )}
+
+            {/* P&L Breakdown Summary */}
+            <div className="bg-white p-4 rounded-lg border border-gray-200">
+              <h4 className="text-sm font-medium text-gray-800 mb-2">
+                P&L Summary
+              </h4>
+              <div className="space-y-2">
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-gray-600">Realized</span>
+                  <span className={`text-sm font-medium ${realizedPnL >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                    {currency === 'USD'
+                      ? `$${Math.abs(realizedPnL).toLocaleString()}`
+                      : `₫${Math.abs(realizedPnL).toLocaleString()}`}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-gray-600">Unrealized</span>
+                  <span className={`text-sm font-medium ${unrealizedPnL >= 0 ? 'text-blue-600' : 'text-orange-600'}`}>
+                    {currency === 'USD'
+                      ? `$${Math.abs(unrealizedPnL).toLocaleString()}`
+                      : `₫${Math.abs(unrealizedPnL).toLocaleString()}`}
+                  </span>
+                </div>
+                <div className="pt-2 mt-2 border-t border-gray-200">
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm font-medium text-gray-900">Total</span>
+                    <span className={`text-sm font-bold ${totalPnL >= 0 ? 'text-purple-600' : 'text-red-700'}`}>
+                      {currency === 'USD'
+                        ? `$${Math.abs(totalPnL).toLocaleString()}`
+                        : `₫${Math.abs(totalPnL).toLocaleString()}`}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     );
   };
@@ -805,6 +1039,8 @@ const ReportsPage = () => {
         return renderHoldingsTable();
       case 'allocation':
         return renderAssetAllocation();
+      case 'investments':
+        return renderInvestmentsTable();
       case 'cashflow':
         return renderCashFlowTable();
       case 'spending':

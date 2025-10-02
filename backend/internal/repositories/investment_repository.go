@@ -2,23 +2,14 @@ package repositories
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
+	"time"
 
 	"github.com/shopspring/decimal"
 	"github.com/tropicaldog17/nami/internal/db"
 	"github.com/tropicaldog17/nami/internal/models"
 )
-
-// InvestmentRepository defines the interface for investment tracking operations
-type InvestmentRepository interface {
-	GetInvestments(ctx context.Context, filter *models.InvestmentFilter) ([]*models.Investment, error)
-	GetInvestmentByID(ctx context.Context, depositID string) (*models.Investment, error)
-	GetInvestmentSummary(ctx context.Context, filter *models.InvestmentFilter) (*models.InvestmentSummary, error)
-	CreateInvestment(ctx context.Context, deposit *models.Transaction) (*models.Investment, error)
-	CloseInvestment(ctx context.Context, withdrawal *models.Transaction) (*models.Investment, error)
-	GetAvailableDeposits(ctx context.Context, asset, account string) ([]*models.Investment, error)
-	GetWithdrawalsForDeposit(ctx context.Context, depositID string) ([]*models.Transaction, error)
-}
 
 type investmentRepository struct {
 	db *db.DB
@@ -29,93 +20,111 @@ func NewInvestmentRepository(database *db.DB) InvestmentRepository {
 	return &investmentRepository{db: database}
 }
 
-func (r *investmentRepository) GetInvestments(ctx context.Context, filter *models.InvestmentFilter) ([]*models.Investment, error) {
+// Create creates a new investment record
+func (r *investmentRepository) Create(ctx context.Context, investment *models.Investment) error {
 	query := `
-		WITH deposits AS (
-			SELECT
-				id as deposit_id,
-				date as deposit_date,
-				asset,
-				account,
-				horizon,
-				quantity as deposit_qty,
-				amount_usd as deposit_cost,
-				amount_usd / quantity as deposit_unit_cost,
-				created_at,
-				updated_at
-			FROM transactions
-			WHERE type IN ('deposit', 'stake', 'buy')
-		),
-		withdrawal_summary AS (
-			SELECT
-				deposit_id,
-				COUNT(*) as withdrawal_count,
-				SUM(quantity) as total_withdrawn_qty,
-				SUM(amount_usd) as total_withdrawn_value,
-				MAX(id) as latest_withdrawal_id,
-				MAX(date) as latest_withdrawal_date,
-				SUM(amount_usd) / SUM(quantity) as avg_withdrawal_unit_price
-			FROM transactions
-			WHERE deposit_id IS NOT NULL
-			GROUP BY deposit_id
-		),
-		investments AS (
-			SELECT
-				d.deposit_id,
-				d.asset,
-				d.account,
-				d.horizon,
-				d.deposit_date,
-				d.deposit_qty,
-				d.deposit_cost,
-				d.deposit_unit_cost,
-				d.created_at,
-				d.updated_at,
-				COALESCE(ws.withdrawal_count, 0) as withdrawal_count,
-				COALESCE(ws.total_withdrawn_qty, 0) as total_withdrawn_qty,
-				COALESCE(ws.total_withdrawn_value, 0) as total_withdrawn_value,
-				ws.latest_withdrawal_id,
-				ws.latest_withdrawal_date,
-				COALESCE(ws.avg_withdrawal_unit_price, 0) as avg_withdrawal_unit_price,
-				-- Calculate remaining quantity
-				d.deposit_qty - COALESCE(ws.total_withdrawn_qty, 0) as remaining_qty,
-				-- Check if fully closed
-				CASE
-					WHEN d.deposit_qty <= COALESCE(ws.total_withdrawn_qty, 0) THEN true
-					ELSE false
-				END as is_closed
-			FROM deposits d
-			LEFT JOIN withdrawal_summary ws ON d.deposit_id = ws.deposit_id
+		INSERT INTO investments (
+			id, asset, account, horizon, deposit_date, deposit_qty, deposit_cost, deposit_unit_cost,
+			withdrawal_date, withdrawal_qty, withdrawal_value, withdrawal_unit_price,
+			pnl, pnl_percent, is_open, remaining_qty, cost_basis_method, created_at, updated_at
+		) VALUES (
+			uuid_generate_v4(), $1, $2, $3, $4, $5, $6, $7,
+			$8, $9, $10, $11,
+			$12, $13, $14, $15, $16, $17, $18
+		) RETURNING id`
+
+	err := r.db.QueryRowContext(ctx, query,
+		investment.Asset, investment.Account, investment.Horizon, investment.DepositDate,
+		investment.DepositQty, investment.DepositCost, investment.DepositUnitCost,
+		investment.WithdrawalDate, investment.WithdrawalQty, investment.WithdrawalValue, investment.WithdrawalUnitPrice,
+		investment.PnL, investment.PnLPercent, investment.IsOpen, investment.RemainingQty,
+		investment.CostBasisMethod, investment.CreatedAt, investment.UpdatedAt,
+	).Scan(&investment.ID)
+
+	if err != nil {
+		return fmt.Errorf("failed to create investment: %w", err)
+	}
+
+	return nil
+}
+
+// GetByID retrieves an investment by ID
+func (r *investmentRepository) GetByID(ctx context.Context, id string) (*models.Investment, error) {
+	query := `
+		SELECT id, asset, account, horizon, deposit_date, deposit_qty, deposit_cost, deposit_unit_cost,
+			   withdrawal_date, withdrawal_qty, withdrawal_value, withdrawal_unit_price,
+			   pnl, pnl_percent, is_open, remaining_qty, cost_basis_method, created_at, updated_at
+		FROM investments
+		WHERE id = $1`
+
+	investment := &models.Investment{}
+	err := r.db.QueryRowContext(ctx, query, id).Scan(
+		&investment.ID, &investment.Asset, &investment.Account, &investment.Horizon,
+		&investment.DepositDate, &investment.DepositQty, &investment.DepositCost, &investment.DepositUnitCost,
+		&investment.WithdrawalDate, &investment.WithdrawalQty, &investment.WithdrawalValue, &investment.WithdrawalUnitPrice,
+		&investment.PnL, &investment.PnLPercent, &investment.IsOpen, &investment.RemainingQty,
+		&investment.CostBasisMethod, &investment.CreatedAt, &investment.UpdatedAt,
+	)
+
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, fmt.Errorf("investment not found: %s", id)
+		}
+		return nil, fmt.Errorf("failed to get investment: %w", err)
+	}
+
+	return investment, nil
+}
+
+// GetByAssetAccount retrieves investments by asset and account
+func (r *investmentRepository) GetByAssetAccount(ctx context.Context, asset, account string, isOpen *bool) ([]*models.Investment, error) {
+	query := `
+		SELECT id, asset, account, horizon, deposit_date, deposit_qty, deposit_cost, deposit_unit_cost,
+			   withdrawal_date, withdrawal_qty, withdrawal_value, withdrawal_unit_price,
+			   pnl, pnl_percent, is_open, remaining_qty, cost_basis_method, created_at, updated_at
+		FROM investments
+		WHERE asset = $1 AND account = $2`
+
+	args := []interface{}{asset, account}
+
+	if isOpen != nil {
+		query += " AND is_open = $3"
+		args = append(args, *isOpen)
+	}
+
+	query += " ORDER BY deposit_date DESC"
+
+	rows, err := r.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get investments by asset/account: %w", err)
+	}
+	defer rows.Close()
+
+	var investments []*models.Investment
+	for rows.Next() {
+		investment := &models.Investment{}
+		err := rows.Scan(
+			&investment.ID, &investment.Asset, &investment.Account, &investment.Horizon,
+			&investment.DepositDate, &investment.DepositQty, &investment.DepositCost, &investment.DepositUnitCost,
+			&investment.WithdrawalDate, &investment.WithdrawalQty, &investment.WithdrawalValue, &investment.WithdrawalUnitPrice,
+			&investment.PnL, &investment.PnLPercent, &investment.IsOpen, &investment.RemainingQty,
+			&investment.CostBasisMethod, &investment.CreatedAt, &investment.UpdatedAt,
 		)
-		SELECT
-			deposit_id,
-			CASE WHEN is_closed THEN latest_withdrawal_id ELSE NULL END as withdrawal_id,
-			asset,
-			account,
-			horizon,
-			deposit_date,
-			deposit_qty,
-			deposit_cost,
-			deposit_unit_cost,
-			CASE WHEN is_closed THEN latest_withdrawal_date ELSE NULL END as withdrawal_date,
-			CASE WHEN is_closed THEN total_withdrawn_qty ELSE decimal.Zero END as withdrawal_qty,
-			CASE WHEN is_closed THEN total_withdrawn_value ELSE decimal.Zero END as withdrawal_value,
-			CASE WHEN is_closed THEN avg_withdrawal_unit_price ELSE decimal.Zero END as withdrawal_unit_price,
-			-- Calculate realized P&L (only if closed)
-			CASE
-				WHEN is_closed THEN total_withdrawn_value - (total_withdrawn_qty * deposit_unit_cost)
-				ELSE decimal.Zero
-			END as pnl,
-			-- Calculate P&L percentage (only if closed)
-			CASE
-				WHEN is_closed AND deposit_unit_cost > 0 THEN
-					((total_withdrawn_value - (total_withdrawn_qty * deposit_unit_cost)) / (total_withdrawn_qty * deposit_unit_cost)) * 100
-				ELSE decimal.Zero
-			END as pnl_percent,
-			is_closed,
-			remaining_qty,
-			created_at,
-			updated_at
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan investment: %w", err)
+		}
+		investments = append(investments, investment)
+	}
+
+	return investments, nil
+}
+
+// List retrieves investments based on filter criteria
+func (r *investmentRepository) List(ctx context.Context, filter *models.InvestmentFilter) ([]*models.Investment, error) {
+	query := `
+		SELECT id, asset, account, horizon, deposit_date, deposit_qty, deposit_cost, deposit_unit_cost,
+			   withdrawal_date, withdrawal_qty, withdrawal_value, withdrawal_unit_price,
+			   pnl, pnl_percent, is_open, remaining_qty, cost_basis_method, created_at, updated_at
 		FROM investments
 		WHERE 1=1`
 
@@ -142,16 +151,14 @@ func (r *investmentRepository) GetInvestments(ctx context.Context, filter *model
 		}
 
 		if filter.IsOpen != nil {
-			if *filter.IsOpen {
-				query += " AND is_closed = false AND remaining_qty > 0"
-			} else {
-				query += " AND is_closed = true"
-			}
+			query += fmt.Sprintf(" AND is_open = $%d", argIndex)
+			args = append(args, *filter.IsOpen)
+			argIndex++
 		}
 
-		if filter.DepositID != "" {
-			query += fmt.Sprintf(" AND deposit_id = $%d", argIndex)
-			args = append(args, filter.DepositID)
+		if filter.CostBasisMethod != "" {
+			query += fmt.Sprintf(" AND cost_basis_method = $%d", argIndex)
+			args = append(args, filter.CostBasisMethod)
 			argIndex++
 		}
 
@@ -183,120 +190,165 @@ func (r *investmentRepository) GetInvestments(ctx context.Context, filter *model
 
 	rows, err := r.db.QueryContext(ctx, query, args...)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get investments: %w", err)
+		return nil, fmt.Errorf("failed to list investments: %w", err)
 	}
 	defer rows.Close()
 
 	var investments []*models.Investment
 	for rows.Next() {
-		inv := &models.Investment{}
+		investment := &models.Investment{}
 		err := rows.Scan(
-			&inv.DepositID,
-			&inv.WithdrawalID,
-			&inv.Asset,
-			&inv.Account,
-			&inv.Horizon,
-			&inv.DepositDate,
-			&inv.DepositQty,
-			&inv.DepositCost,
-			&inv.DepositUnitCost,
-			&inv.WithdrawalDate,
-			&inv.WithdrawalQty,
-			&inv.WithdrawalValue,
-			&inv.WithdrawalUnitPrice,
-			&inv.PnL,
-			&inv.PnLPercent,
-			&inv.IsOpen,
-			&inv.RemainingQty,
-			&inv.CreatedAt,
-			&inv.UpdatedAt,
+			&investment.ID, &investment.Asset, &investment.Account, &investment.Horizon,
+			&investment.DepositDate, &investment.DepositQty, &investment.DepositCost, &investment.DepositUnitCost,
+			&investment.WithdrawalDate, &investment.WithdrawalQty, &investment.WithdrawalValue, &investment.WithdrawalUnitPrice,
+			&investment.PnL, &investment.PnLPercent, &investment.IsOpen, &investment.RemainingQty,
+			&investment.CostBasisMethod, &investment.CreatedAt, &investment.UpdatedAt,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan investment: %w", err)
 		}
-
-		// Calculate is_open based on remaining_qty
-		inv.IsOpen = inv.RemainingQty.GreaterThan(decimal.Zero) && inv.WithdrawalID == nil
-
-		investments = append(investments, inv)
+		investments = append(investments, investment)
 	}
 
 	return investments, nil
 }
 
-func (r *investmentRepository) GetInvestmentByID(ctx context.Context, depositID string) (*models.Investment, error) {
-	filter := &models.InvestmentFilter{DepositID: depositID}
-	investments, err := r.GetInvestments(ctx, filter)
-	if err != nil {
-		return nil, err
-	}
-
-	if len(investments) == 0 {
-		return nil, fmt.Errorf("investment not found: %s", depositID)
-	}
-
-	return investments[0], nil
-}
-
-func (r *investmentRepository) GetInvestmentSummary(ctx context.Context, filter *models.InvestmentFilter) (*models.InvestmentSummary, error) {
-	query := `
-		WITH deposits AS (
-			SELECT
-				id as deposit_id,
-				asset,
-				account,
-				horizon,
-				quantity as deposit_qty,
-				amount_usd as deposit_cost,
-				date as deposit_date
-			FROM transactions
-			WHERE type IN ('deposit', 'stake', 'buy')
-		),
-		withdrawals AS (
-			SELECT
-				deposit_id,
-				quantity as withdrawal_qty,
-				amount_usd as withdrawal_value
-			FROM transactions
-			WHERE deposit_id IS NOT NULL
-		),
-		investments AS (
-			SELECT
-				d.*,
-				COALESCE(SUM(w.withdrawal_qty), 0) as total_withdrawn_qty,
-				COALESCE(SUM(w.withdrawal_value), 0) as total_withdrawn_value,
-				COUNT(w.withdrawal_qty) as withdrawal_count
-			FROM deposits d
-			LEFT JOIN withdrawals w ON d.deposit_id = w.deposit_id
-			GROUP BY d.deposit_id, d.asset, d.account, d.horizon, d.deposit_qty, d.deposit_cost, d.deposit_date
-		)
-		SELECT
-			COUNT(*) as total_investments,
-			COUNT(CASE WHEN withdrawal_count = 0 OR (deposit_qty - total_withdrawn_qty) > 0 THEN 1 END) as open_investments,
-			COUNT(CASE WHEN withdrawal_count > 0 AND (deposit_qty - total_withdrawn_qty) = 0 THEN 1 END) as closed_investments,
-			COALESCE(SUM(deposit_cost), 0) as total_deposits,
-			COALESCE(SUM(total_withdrawn_value), 0) as total_withdrawals,
-			COALESCE(SUM(total_withdrawn_value - (total_withdrawn_qty * (deposit_cost / deposit_qty))), 0) as realized_pnl
-		FROM investments`
+// GetCount returns the count of investments matching the filter
+func (r *investmentRepository) GetCount(ctx context.Context, filter *models.InvestmentFilter) (int, error) {
+	query := "SELECT COUNT(*) FROM investments WHERE 1=1"
 
 	args := []interface{}{}
 	argIndex := 1
 
 	if filter != nil {
 		if filter.Asset != "" {
-			query += fmt.Sprintf(" WHERE asset = $%d", argIndex)
+			query += fmt.Sprintf(" AND asset = $%d", argIndex)
 			args = append(args, filter.Asset)
 			argIndex++
 		}
 
 		if filter.Account != "" {
-			if argIndex == 1 {
-				query += " WHERE"
-			} else {
-				query += " AND"
-			}
-			query += fmt.Sprintf(" account = $%d", argIndex)
+			query += fmt.Sprintf(" AND account = $%d", argIndex)
 			args = append(args, filter.Account)
+			argIndex++
+		}
+
+		if filter.Horizon != "" {
+			query += fmt.Sprintf(" AND horizon = $%d", argIndex)
+			args = append(args, filter.Horizon)
+			argIndex++
+		}
+
+		if filter.IsOpen != nil {
+			query += fmt.Sprintf(" AND is_open = $%d", argIndex)
+			args = append(args, *filter.IsOpen)
+			argIndex++
+		}
+
+		if filter.CostBasisMethod != "" {
+			query += fmt.Sprintf(" AND cost_basis_method = $%d", argIndex)
+			args = append(args, filter.CostBasisMethod)
+			argIndex++
+		}
+
+		if filter.StartDate != nil {
+			query += fmt.Sprintf(" AND deposit_date >= $%d", argIndex)
+			args = append(args, *filter.StartDate)
+			argIndex++
+		}
+
+		if filter.EndDate != nil {
+			query += fmt.Sprintf(" AND deposit_date <= $%d", argIndex)
+			args = append(args, *filter.EndDate)
+			argIndex++
+		}
+	}
+
+	var count int
+	err := r.db.QueryRowContext(ctx, query, args...).Scan(&count)
+	if err != nil {
+		return 0, fmt.Errorf("failed to get investment count: %w", err)
+	}
+
+	return count, nil
+}
+
+// Update updates an investment record
+func (r *investmentRepository) Update(ctx context.Context, investment *models.Investment) error {
+	query := `
+		UPDATE investments SET
+			asset = $2, account = $3, horizon = $4, deposit_date = $5,
+			deposit_qty = $6, deposit_cost = $7, deposit_unit_cost = $8,
+			withdrawal_date = $9, withdrawal_qty = $10, withdrawal_value = $11, withdrawal_unit_price = $12,
+			pnl = $13, pnl_percent = $14, is_open = $15, remaining_qty = $16,
+			cost_basis_method = $17, updated_at = $18
+		WHERE id = $1`
+
+	_, err := r.db.ExecContext(ctx, query,
+		investment.ID, investment.Asset, investment.Account, investment.Horizon, investment.DepositDate,
+		investment.DepositQty, investment.DepositCost, investment.DepositUnitCost,
+		investment.WithdrawalDate, investment.WithdrawalQty, investment.WithdrawalValue, investment.WithdrawalUnitPrice,
+		investment.PnL, investment.PnLPercent, investment.IsOpen, investment.RemainingQty,
+		investment.CostBasisMethod, time.Now(),
+	)
+
+	if err != nil {
+		return fmt.Errorf("failed to update investment: %w", err)
+	}
+
+	return nil
+}
+
+// Delete deletes an investment record
+func (r *investmentRepository) Delete(ctx context.Context, id string) error {
+	query := "DELETE FROM investments WHERE id = $1"
+
+	_, err := r.db.ExecContext(ctx, query, id)
+	if err != nil {
+		return fmt.Errorf("failed to delete investment: %w", err)
+	}
+
+	return nil
+}
+
+// GetSummary returns investment summary statistics
+func (r *investmentRepository) GetSummary(ctx context.Context, filter *models.InvestmentFilter) (*models.InvestmentSummary, error) {
+	query := `
+		SELECT
+			COUNT(*) as total_investments,
+			COUNT(CASE WHEN is_open THEN 1 END) as open_investments,
+			COUNT(CASE WHEN NOT is_open THEN 1 END) as closed_investments,
+			COALESCE(SUM(deposit_cost), 0) as total_deposits,
+			COALESCE(SUM(withdrawal_value), 0) as total_withdrawals,
+			COALESCE(SUM(pnl), 0) as realized_pnl
+		FROM investments
+		WHERE 1=1`
+
+	args := []interface{}{}
+	argIndex := 1
+
+	if filter != nil {
+		if filter.Asset != "" {
+			query += fmt.Sprintf(" AND asset = $%d", argIndex)
+			args = append(args, filter.Asset)
+			argIndex++
+		}
+
+		if filter.Account != "" {
+			query += fmt.Sprintf(" AND account = $%d", argIndex)
+			args = append(args, filter.Account)
+			argIndex++
+		}
+
+		if filter.Horizon != "" {
+			query += fmt.Sprintf(" AND horizon = $%d", argIndex)
+			args = append(args, filter.Horizon)
+			argIndex++
+		}
+
+		if filter.IsOpen != nil {
+			query += fmt.Sprintf(" AND is_open = $%d", argIndex)
+			args = append(args, *filter.IsOpen)
 			argIndex++
 		}
 	}
@@ -324,70 +376,195 @@ func (r *investmentRepository) GetInvestmentSummary(ctx context.Context, filter 
 	return summary, nil
 }
 
-func (r *investmentRepository) CreateInvestment(ctx context.Context, deposit *models.Transaction) (*models.Investment, error) {
-	// This is mainly for creating the investment view after a deposit transaction
-	// The actual deposit creation is handled by the transaction repository
-	return r.GetInvestmentByID(ctx, deposit.ID)
-}
-
-func (r *investmentRepository) CloseInvestment(ctx context.Context, withdrawal *models.Transaction) (*models.Investment, error) {
-	// This is mainly for updating the investment view after a withdrawal transaction
-	// The actual withdrawal creation is handled by the transaction repository
-	if withdrawal.DepositID == nil {
-		return nil, fmt.Errorf("withdrawal must have deposit_id")
-	}
-	return r.GetInvestmentByID(ctx, *withdrawal.DepositID)
-}
-
-func (r *investmentRepository) GetAvailableDeposits(ctx context.Context, asset, account string) ([]*models.Investment, error) {
-	filter := &models.InvestmentFilter{
-		Asset:   asset,
-		Account: account,
-		IsOpen:  &[]bool{true}[0], // pointer to true
-	}
-	return r.GetInvestments(ctx, filter)
-}
-
-func (r *investmentRepository) GetWithdrawalsForDeposit(ctx context.Context, depositID string) ([]*models.Transaction, error) {
+// FindByDepositID finds an investment by the associated deposit transaction ID
+func (r *investmentRepository) FindByDepositID(ctx context.Context, depositID string) (*models.Investment, error) {
+	// For backward compatibility, we need to find the investment that corresponds to a deposit
+	// This looks for investments that have a matching deposit_date and asset/account combination
 	query := `
-		SELECT id, date, type, asset, account, counterparty, tag, note,
-			   quantity, price_local, amount_local,
-			   fx_to_usd, fx_to_vnd, amount_usd, amount_vnd,
-			   fee_usd, fee_vnd,
-			   delta_qty, cashflow_usd, cashflow_vnd,
-			   horizon, entry_date, exit_date, fx_impact,
-		       borrow_apr, borrow_term_days, borrow_active, internal_flow,
-			   fx_source, fx_timestamp, created_at, updated_at,
-			   deposit_id
-		FROM transactions
-		WHERE deposit_id = $1
-		ORDER BY date ASC`
+		SELECT i.id, i.asset, i.account, i.horizon, i.deposit_date, i.deposit_qty, i.deposit_cost, i.deposit_unit_cost,
+			   i.withdrawal_date, i.withdrawal_qty, i.withdrawal_value, i.withdrawal_unit_price,
+			   i.pnl, i.pnl_percent, i.is_open, i.remaining_qty, i.cost_basis_method, i.created_at, i.updated_at
+		FROM investments i
+		JOIN transactions t ON i.asset = t.asset AND i.account = t.account AND i.deposit_date = t.date
+		WHERE t.id = $1 AND t.type IN ('deposit', 'stake', 'buy')`
 
-	rows, err := r.db.QueryContext(ctx, query, depositID)
+	investment := &models.Investment{}
+	err := r.db.QueryRowContext(ctx, query, depositID).Scan(
+		&investment.ID, &investment.Asset, &investment.Account, &investment.Horizon,
+		&investment.DepositDate, &investment.DepositQty, &investment.DepositCost, &investment.DepositUnitCost,
+		&investment.WithdrawalDate, &investment.WithdrawalQty, &investment.WithdrawalValue, &investment.WithdrawalUnitPrice,
+		&investment.PnL, &investment.PnLPercent, &investment.IsOpen, &investment.RemainingQty,
+		&investment.CostBasisMethod, &investment.CreatedAt, &investment.UpdatedAt,
+	)
+
 	if err != nil {
-		return nil, fmt.Errorf("failed to get withdrawals for deposit: %w", err)
-	}
-	defer rows.Close()
-
-	var withdrawals []*models.Transaction
-	for rows.Next() {
-		tx := &models.Transaction{}
-		err := rows.Scan(
-			&tx.ID, &tx.Date, &tx.Type, &tx.Asset, &tx.Account, &tx.Counterparty, &tx.Tag, &tx.Note,
-			&tx.Quantity, &tx.PriceLocal, &tx.AmountLocal,
-			&tx.FXToUSD, &tx.FXToVND, &tx.AmountUSD, &tx.AmountVND,
-			&tx.FeeUSD, &tx.FeeVND,
-			&tx.DeltaQty, &tx.CashFlowUSD, &tx.CashFlowVND,
-			&tx.Horizon, &tx.EntryDate, &tx.ExitDate, &tx.FXImpact,
-			&tx.BorrowAPR, &tx.BorrowTermDays, &tx.BorrowActive, &tx.InternalFlow,
-			&tx.FXSource, &tx.FXTimestamp, &tx.CreatedAt, &tx.UpdatedAt,
-			&tx.DepositID,
-		)
-		if err != nil {
-			return nil, fmt.Errorf("failed to scan withdrawal: %w", err)
+		if err == sql.ErrNoRows {
+			return nil, fmt.Errorf("investment not found for deposit ID: %s", depositID)
 		}
-		withdrawals = append(withdrawals, tx)
+		return nil, fmt.Errorf("failed to find investment by deposit ID: %w", err)
 	}
 
-	return withdrawals, nil
+	return investment, nil
+}
+
+// CreateFromStake creates a new investment from a stake transaction
+func (r *investmentRepository) CreateFromStake(ctx context.Context, stakeTx *models.Transaction) (*models.Investment, error) {
+	if stakeTx.Type != "stake" {
+		return nil, fmt.Errorf("transaction type must be 'stake', got %s", stakeTx.Type)
+	}
+
+	// Calculate unit cost from AmountUSD / Quantity
+	var depositUnitCost decimal.Decimal
+	if stakeTx.Quantity.GreaterThan(decimal.Zero) {
+		depositUnitCost = stakeTx.AmountUSD.Div(stakeTx.Quantity)
+	} else {
+		depositUnitCost = decimal.Zero
+	}
+
+	investment := &models.Investment{
+		Asset:            stakeTx.Asset,
+		Account:          stakeTx.Account,
+		Horizon:          stakeTx.Horizon,
+		DepositDate:      stakeTx.Date,
+		DepositQty:       stakeTx.Quantity,
+		DepositCost:      stakeTx.AmountUSD,
+		DepositUnitCost:  depositUnitCost,
+		WithdrawalQty:    decimal.Zero,
+		WithdrawalValue:  decimal.Zero,
+		WithdrawalUnitPrice: decimal.Zero,
+		PnL:              decimal.Zero,
+		PnLPercent:       decimal.Zero,
+		IsOpen:           true,
+		RemainingQty:     stakeTx.Quantity,
+		CostBasisMethod:  "fifo",
+		CreatedAt:        time.Now(),
+		UpdatedAt:        time.Now(),
+	}
+
+	err := r.Create(ctx, investment)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create investment from stake: %w", err)
+	}
+
+	return investment, nil
+}
+
+// FindOpenInvestmentForStake finds an open investment for a stake transaction
+func (r *investmentRepository) FindOpenInvestmentForStake(ctx context.Context, asset, account, horizon string) (*models.Investment, error) {
+	query := `
+		SELECT id, asset, account, horizon, deposit_date, deposit_qty, deposit_cost, deposit_unit_cost,
+			   withdrawal_date, withdrawal_qty, withdrawal_value, withdrawal_unit_price,
+			   pnl, pnl_percent, is_open, remaining_qty, cost_basis_method, created_at, updated_at
+		FROM investments
+		WHERE asset = $1 AND account = $2 AND is_open = true`
+
+	args := []interface{}{asset, account}
+
+	// Handle horizon comparison (both could be null)
+	if horizon != "" {
+		query += " AND (horizon = $3 OR horizon IS NULL)"
+		args = append(args, horizon)
+	}
+
+	query += " ORDER BY deposit_date ASC LIMIT 1"
+
+	investment := &models.Investment{}
+	var horizonValue sql.NullString
+
+	err := r.db.QueryRowContext(ctx, query, args...).Scan(
+		&investment.ID, &investment.Asset, &investment.Account, &horizonValue,
+		&investment.DepositDate, &investment.DepositQty, &investment.DepositCost, &investment.DepositUnitCost,
+		&investment.WithdrawalDate, &investment.WithdrawalQty, &investment.WithdrawalValue, &investment.WithdrawalUnitPrice,
+		&investment.PnL, &investment.PnLPercent, &investment.IsOpen, &investment.RemainingQty,
+		&investment.CostBasisMethod, &investment.CreatedAt, &investment.UpdatedAt,
+	)
+
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil // No open investment found
+		}
+		return nil, fmt.Errorf("failed to find open investment for stake: %w", err)
+	}
+
+	if horizonValue.Valid {
+		investment.Horizon = &horizonValue.String
+	}
+
+	return investment, nil
+}
+
+// UpdateWithStake updates an investment with additional stake transaction
+func (r *investmentRepository) UpdateWithStake(ctx context.Context, investment *models.Investment, stakeTx *models.Transaction) error {
+	if stakeTx.Type != "stake" {
+		return fmt.Errorf("transaction type must be 'stake', got %s", stakeTx.Type)
+	}
+
+	// Calculate new weighted average cost
+	newTotalQty := investment.DepositQty.Add(stakeTx.Quantity)
+	newTotalCost := investment.DepositCost.Add(stakeTx.AmountUSD)
+	newUnitCost := newTotalCost.Div(newTotalQty)
+
+	// Update investment with additional stake
+	investment.DepositQty = newTotalQty
+	investment.DepositCost = newTotalCost
+	investment.DepositUnitCost = newUnitCost
+	investment.RemainingQty = investment.RemainingQty.Add(stakeTx.Quantity)
+	investment.UpdatedAt = time.Now()
+
+	return r.Update(ctx, investment)
+}
+
+// UpdateWithUnstake updates an investment with an unstake transaction
+func (r *investmentRepository) UpdateWithUnstake(ctx context.Context, investment *models.Investment, unstakeTx *models.Transaction) error {
+	if unstakeTx.Type != "unstake" {
+		return fmt.Errorf("transaction type must be 'unstake', got %s", unstakeTx.Type)
+	}
+
+	// Calculate withdrawal values
+	withdrawalQty := unstakeTx.Quantity
+	withdrawalValue := unstakeTx.AmountUSD
+
+	// Update withdrawal information
+	totalWithdrawalQty := investment.WithdrawalQty.Add(withdrawalQty)
+	totalWithdrawalValue := investment.WithdrawalValue.Add(withdrawalValue)
+
+	// Calculate average withdrawal unit price
+	var avgWithdrawalPrice decimal.Decimal
+	if totalWithdrawalQty.GreaterThan(decimal.Zero) {
+		avgWithdrawalPrice = totalWithdrawalValue.Div(totalWithdrawalQty)
+	} else {
+		avgWithdrawalPrice = decimal.Zero
+	}
+
+	// Update remaining quantity
+	newRemainingQty := investment.RemainingQty.Sub(withdrawalQty)
+	if newRemainingQty.LessThan(decimal.Zero) {
+		newRemainingQty = decimal.Zero // Shouldn't happen in practice, but safeguard
+	}
+
+	// Calculate realized P&L for this unstake
+	costOfWithdrawnQty := withdrawalQty.Mul(investment.DepositUnitCost)
+	realizedPnL := withdrawalValue.Sub(costOfWithdrawnQty)
+	totalRealizedPnL := investment.PnL.Add(realizedPnL)
+
+	// Calculate P&L percentage
+	var pnlPercent decimal.Decimal
+	if investment.DepositCost.GreaterThan(decimal.Zero) {
+		pnlPercent = totalRealizedPnL.Div(investment.DepositCost).Mul(decimal.NewFromInt(100))
+	} else {
+		pnlPercent = decimal.Zero
+	}
+
+	// Update investment
+	investment.WithdrawalQty = totalWithdrawalQty
+	investment.WithdrawalValue = totalWithdrawalValue
+	investment.WithdrawalUnitPrice = avgWithdrawalPrice
+	investment.WithdrawalDate = &unstakeTx.Date
+	investment.RemainingQty = newRemainingQty
+	investment.PnL = totalRealizedPnL
+	investment.PnLPercent = pnlPercent
+	investment.IsOpen = newRemainingQty.GreaterThan(decimal.Zero)
+	investment.UpdatedAt = time.Now()
+
+	return r.Update(ctx, investment)
 }

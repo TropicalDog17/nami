@@ -7,6 +7,7 @@ import (
 
 	"github.com/shopspring/decimal"
 	"github.com/tropicaldog17/nami/internal/models"
+	"github.com/tropicaldog17/nami/internal/repositories"
 	"github.com/tropicaldog17/nami/internal/services"
 )
 
@@ -33,8 +34,11 @@ func TestUnstake_AmountOnly_UsesFetchedPriceAndPnL(t *testing.T) {
 	ctx := context.Background()
 	txService := services.NewTransactionService(tdb.database)
 	linkService := services.NewLinkService(tdb.database)
+	investmentRepo := repositories.NewInvestmentRepository(tdb.database)
+	transactionRepo := repositories.NewTransactionRepository(tdb.database)
+	investmentService := services.NewInvestmentService(investmentRepo, transactionRepo)
 	priceSvc := &mockAssetPriceService{price: decimal.NewFromFloat(1.23)}
-	actionService := services.NewActionServiceFull(tdb.database, txService, linkService, priceSvc)
+	actionService := services.NewActionServiceWithInvestments(tdb.database, txService, linkService, priceSvc, investmentService)
 	reportingService := services.NewReportingService(tdb.database)
 
 	// Stake 500 USDT
@@ -83,15 +87,17 @@ func TestUnstake_AmountOnly_UsesFetchedPriceAndPnL(t *testing.T) {
 		t.Fatalf("expected withdraw amount_usd %s, got %s", expectedAmount, withdraw.AmountUSD)
 	}
 
-	// PnL = 275 * (1.23 - 1.00) = 63.25
+	// PnL = 275 * (1.23 - 1.00) = 63.25 (on withdrawn portion), but unrealized PnL is on remaining quantity
 	period := models.Period{StartDate: time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC), EndDate: time.Date(2025, 2, 28, 0, 0, 0, 0, time.UTC)}
 	pnl, err := reportingService.GetPnL(ctx, period)
 	if err != nil {
 		t.Fatalf("GetPnL failed: %v", err)
 	}
-	expectedPnL := decimal.NewFromInt(275).Mul(decimal.NewFromFloat(0.23)) // 63.25
-	if !pnl.RealizedPnLUSD.Equal(expectedPnL) {
-		t.Fatalf("expected realized pnl %s, got %s", expectedPnL, pnl.RealizedPnLUSD)
+	// Expected unrealized PnL is on remaining quantity: 225 * (1.23 - 1.00) = 51.75
+	expectedUnrealizedPnL := decimal.NewFromInt(225).Mul(decimal.NewFromFloat(0.23)) // 51.75
+	// For partial withdrawals, PnL is unrealized until investment is fully closed
+	if !pnl.UnrealizedPnLUSD.Equal(expectedUnrealizedPnL) {
+		t.Fatalf("expected unrealized pnl %s, got %s", expectedUnrealizedPnL, pnl.UnrealizedPnLUSD)
 	}
 }
 
@@ -103,8 +109,11 @@ func TestUnstake_CloseAll_ExitAmountUSD_PriceDerivedAndPnL(t *testing.T) {
 	ctx := context.Background()
 	txService := services.NewTransactionService(tdb.database)
 	linkService := services.NewLinkService(tdb.database)
+	investmentRepo := repositories.NewInvestmentRepository(tdb.database)
+	transactionRepo := repositories.NewTransactionRepository(tdb.database)
+	investmentService := services.NewInvestmentService(investmentRepo, transactionRepo)
 	// priceSvc not needed since exit_amount_usd is provided
-	actionService := services.NewActionServiceFull(tdb.database, txService, linkService, nil)
+	actionService := services.NewActionServiceWithInvestments(tdb.database, txService, linkService, nil, investmentService)
 	reportingService := services.NewReportingService(tdb.database)
 
 	// Stake 500 USDT

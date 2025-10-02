@@ -13,8 +13,7 @@ import (
 func TestInvestmentModelValidation(t *testing.T) {
 	// Test that the Investment model can be created and has expected fields
 	investment := &models.Investment{
-		DepositID:           "test-deposit-id",
-		WithdrawalID:        stringPtr("test-withdrawal-id"),
+		ID:                  "test-investment-id",
 		Asset:               "BTC",
 		Account:             "binance",
 		Horizon:             stringPtr("long-term"),
@@ -35,8 +34,7 @@ func TestInvestmentModelValidation(t *testing.T) {
 	}
 
 	// Basic validation
-	assert.Equal(t, "test-deposit-id", investment.DepositID)
-	assert.Equal(t, "test-withdrawal-id", *investment.WithdrawalID)
+	assert.Equal(t, "test-investment-id", investment.ID)
 	assert.Equal(t, "BTC", investment.Asset)
 	assert.Equal(t, "binance", investment.Account)
 	assert.Equal(t, "long-term", *investment.Horizon)
@@ -58,7 +56,6 @@ func TestInvestmentFilterValidation(t *testing.T) {
 		Account:   "binance",
 		Horizon:   "long-term",
 		IsOpen:    &isOpen,
-		DepositID: "test-deposit-id",
 		StartDate: &startDate,
 		EndDate:   &endDate,
 		Limit:     10,
@@ -69,7 +66,6 @@ func TestInvestmentFilterValidation(t *testing.T) {
 	assert.Equal(t, "binance", filter.Account)
 	assert.Equal(t, "long-term", filter.Horizon)
 	assert.True(t, *filter.IsOpen)
-	assert.Equal(t, "test-deposit-id", filter.DepositID)
 	assert.NotNil(t, filter.StartDate)
 	assert.NotNil(t, filter.EndDate)
 	assert.Equal(t, 10, filter.Limit)

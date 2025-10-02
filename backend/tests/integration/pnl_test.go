@@ -7,6 +7,7 @@ import (
 
 	"github.com/shopspring/decimal"
 	"github.com/tropicaldog17/nami/internal/models"
+	"github.com/tropicaldog17/nami/internal/repositories"
 	"github.com/tropicaldog17/nami/internal/services"
 )
 
@@ -18,7 +19,10 @@ func TestPnL_StakeUnstake_FullClose(t *testing.T) {
 	ctx := context.Background()
 	txService := services.NewTransactionService(tdb.database)
 	linkService := services.NewLinkService(tdb.database)
-	actionService := services.NewActionServiceFull(tdb.database, txService, linkService, nil)
+	investmentRepo := repositories.NewInvestmentRepository(tdb.database)
+	transactionRepo := repositories.NewTransactionRepository(tdb.database)
+	investmentService := services.NewInvestmentService(investmentRepo, transactionRepo)
+	actionService := services.NewActionServiceWithInvestments(tdb.database, txService, linkService, nil, investmentService)
 	reportingService := services.NewReportingService(tdb.database)
 
 	// Stake 500 USDT at $1.00 per USDT
@@ -30,6 +34,7 @@ func TestPnL_StakeUnstake_FullClose(t *testing.T) {
 			"investment_account": "Futures",
 			"asset":              "USDT",
 			"amount":             500.0,
+			"entry_price_usd":    1.0,
 		},
 	}
 	stakeResp, err := actionService.Perform(ctx, stakeReq)
@@ -38,7 +43,7 @@ func TestPnL_StakeUnstake_FullClose(t *testing.T) {
 	}
 	depositTxID := stakeResp.Transactions[1].ID // The deposit transaction
 
-	// Unstake entire position (500 USDT) at $1.10 per USDT (10% gain)
+	// Unstake full position (500 USDT) but only receive 275 USDT back (45% loss)
 	unstakeReq := &models.ActionRequest{
 		Action: models.ActionUnstake,
 		Params: map[string]interface{}{
@@ -46,8 +51,9 @@ func TestPnL_StakeUnstake_FullClose(t *testing.T) {
 			"investment_account":  "Futures",
 			"destination_account": "Binance Spot",
 			"asset":               "USDT",
-			"amount":              500.0,
-			"exit_price_usd":      1.1,
+			"amount":              500,
+			"exit_price_usd":      0.55, // 275/500 = 0.55 USD per unit (45% loss)
+			"close_all":           true,
 			"stake_deposit_tx_id": depositTxID,
 		},
 	}
@@ -57,6 +63,7 @@ func TestPnL_StakeUnstake_FullClose(t *testing.T) {
 		t.Fatalf("unstake action failed: %v", err)
 	}
 
+	
 	// Get PnL report
 	period := models.Period{
 		StartDate: time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC),
@@ -67,14 +74,15 @@ func TestPnL_StakeUnstake_FullClose(t *testing.T) {
 		t.Fatalf("failed to get PnL: %v", err)
 	}
 
-	// Expected PnL: (500 × $1.10) - (500 × $1.00) = $550 - $500 = $50
-	expectedPnL := decimal.NewFromInt(50)
+	// Expected PnL: We originally staked 500 USDT ($500 value), now only getting 275 USDT back
+	// Loss = $275 (received) - $500 (original cost) = -$225
+	expectedPnL := decimal.NewFromInt(-225)
 	if !pnlReport.RealizedPnLUSD.Equal(expectedPnL) {
 		t.Errorf("Expected realized PnL USD = %s, got %s", expectedPnL, pnlReport.RealizedPnLUSD)
 	}
 
-	// Expected ROI: $50 / $500 × 100% = 10%
-	expectedROI := decimal.NewFromInt(10)
+	// Expected ROI: -$225 / $500 × 100% = -45%
+	expectedROI := decimal.NewFromInt(-45)
 	if !pnlReport.ROIPercent.Equal(expectedROI) {
 		t.Errorf("Expected ROI = %s%%, got %s%%", expectedROI, pnlReport.ROIPercent)
 	}
@@ -88,7 +96,10 @@ func TestPnL_StakeUnstake_PartialClose(t *testing.T) {
 	ctx := context.Background()
 	txService := services.NewTransactionService(tdb.database)
 	linkService := services.NewLinkService(tdb.database)
-	actionService := services.NewActionServiceFull(tdb.database, txService, linkService, nil)
+	investmentRepo := repositories.NewInvestmentRepository(tdb.database)
+	transactionRepo := repositories.NewTransactionRepository(tdb.database)
+	investmentService := services.NewInvestmentService(investmentRepo, transactionRepo)
+	actionService := services.NewActionServiceWithInvestments(tdb.database, txService, linkService, nil, investmentService)
 	reportingService := services.NewReportingService(tdb.database)
 
 	// Stake 500 USDT at $1.00 per USDT
@@ -127,6 +138,7 @@ func TestPnL_StakeUnstake_PartialClose(t *testing.T) {
 		t.Fatalf("unstake action failed: %v", err)
 	}
 
+	
 	// Get PnL report
 	period := models.Period{
 		StartDate: time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC),
@@ -161,7 +173,10 @@ func TestPnL_StakeUnstake_GradualClose(t *testing.T) {
 	ctx := context.Background()
 	txService := services.NewTransactionService(tdb.database)
 	linkService := services.NewLinkService(tdb.database)
-	actionService := services.NewActionServiceFull(tdb.database, txService, linkService, nil)
+	investmentRepo := repositories.NewInvestmentRepository(tdb.database)
+	transactionRepo := repositories.NewTransactionRepository(tdb.database)
+	investmentService := services.NewInvestmentService(investmentRepo, transactionRepo)
+	actionService := services.NewActionServiceWithInvestments(tdb.database, txService, linkService, nil, investmentService)
 	reportingService := services.NewReportingService(tdb.database)
 
 	// Stake 1000 USDT at $1.00 per USDT

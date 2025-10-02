@@ -15,7 +15,11 @@
       "Bash(mv:*)",
       "Bash(mkdir:*)",
       "Bash(find:*)",
-      "Bash(psql:*)"
+      "Bash(psql:*)",
+      "Bash(grep:*)",
+      "Bash(PGPASSWORD=nami_password psql -h localhost -p 5433 -U nami_user -d nami -c \"SELECT DISTINCT horizon FROM transactions WHERE horizon IS NOT NULL;\")",
+      "Bash(PGPASSWORD=nami_password psql:*)",
+      "Bash(go get:*)"
     ],
     "deny": [],
     "ask": []

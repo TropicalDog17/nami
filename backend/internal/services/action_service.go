@@ -20,6 +20,7 @@ type actionService struct {
 	transactionService TransactionService
 	linkService        LinkService
 	priceService       AssetPriceService
+	investmentService  InvestmentService
 }
 
 func NewActionService(database *db.DB, txService TransactionService) ActionService {
@@ -34,6 +35,17 @@ func NewActionServiceWithPrices(database *db.DB, txService TransactionService, p
 // NewActionServiceFull allows passing all optional services
 func NewActionServiceFull(database *db.DB, txService TransactionService, linkService LinkService, priceService AssetPriceService) ActionService {
 	return &actionService{db: database, transactionService: txService, linkService: linkService, priceService: priceService}
+}
+
+// NewActionServiceWithInvestments includes the investment service for enhanced investment tracking
+func NewActionServiceWithInvestments(database *db.DB, txService TransactionService, linkService LinkService, priceService AssetPriceService, investmentService InvestmentService) ActionService {
+	return &actionService{
+		db:                 database,
+		transactionService: txService,
+		linkService:        linkService,
+		priceService:       priceService,
+		investmentService:  investmentService,
+	}
 }
 
 func (s *actionService) Perform(ctx context.Context, req *models.ActionRequest) (*models.ActionResponse, error) {
@@ -603,8 +615,27 @@ func (s *actionService) performStake(ctx context.Context, req *models.ActionRequ
 	if note != "" {
 		inTx.Note = &note
 	}
-	if err := s.transactionService.CreateTransaction(ctx, inTx); err != nil {
-		return nil, err
+	// Enhanced: Use InvestmentService if available for better investment tracking
+	if s.investmentService != nil {
+		// For investments, we need to set the correct entry price (default to 1.0 for USDT-like assets)
+		entryPrice := decimal.NewFromInt(1.0)
+		if entryPriceUSD, hasEntryPrice := getDecimal(p, "entry_price_usd"); hasEntryPrice && !entryPriceUSD.IsZero() {
+			entryPrice = entryPriceUSD
+		}
+		inTx.Type = "stake" // Use stake type for investment tracking
+		inTx.PriceLocal = entryPrice
+		inTx.PreSave() // Calculate derived fields including AmountUSD
+
+		// Process stake using investment service which handles investment creation/updates properly
+		_, err := s.investmentService.ProcessStake(ctx, inTx)
+		if err != nil {
+			return nil, fmt.Errorf("failed to process stake investment: %w", err)
+		}
+	} else {
+		// Fallback to original behavior
+		if err := s.transactionService.CreateTransaction(ctx, inTx); err != nil {
+			return nil, err
+		}
 	}
 
 	created := []*models.Transaction{outTx, inTx}
@@ -648,7 +679,6 @@ func (s *actionService) performUnstake(ctx context.Context, req *models.ActionRe
 	stakeID, _ := getString(p, "stake_deposit_tx_id")
 	note, _ := getString(p, "note")
 	exitPriceUSD, hasExitPrice := getDecimal(p, "exit_price_usd")
-	exitAmountUSD, hasExitAmount := getDecimal(p, "exit_amount_usd")
 
 	if !(ok1 && ok2 && ok3 && ok4) {
 		return nil, fmt.Errorf("missing required params for unstake: investment_account, destination_account, asset, amount are all required")
@@ -660,9 +690,11 @@ func (s *actionService) performUnstake(ctx context.Context, req *models.ActionRe
 
 	// Get the original stake deposit to retrieve entry date for PnL calculation
 	var entryDatePtr *time.Time
+	var entryPriceUSD decimal.Decimal
 	if stakeID != "" {
 		if orig, err := s.transactionService.GetTransaction(ctx, stakeID); err == nil && orig != nil {
 			entryDatePtr = orig.EntryDate
+			entryPriceUSD = orig.PriceLocal
 		}
 	}
 
@@ -675,18 +707,16 @@ func (s *actionService) performUnstake(ctx context.Context, req *models.ActionRe
 	var finalExitPriceUSD decimal.Decimal
 	if hasExitPrice && !exitPriceUSD.IsZero() {
 		finalExitPriceUSD = exitPriceUSD
-	} else if hasExitAmount && !exitAmountUSD.IsZero() && !amount.IsZero() {
-		// Derive price from exit_amount_usd and actual unstake amount
-		finalExitPriceUSD = exitAmountUSD.Div(amount)
 	} else if s.priceService != nil {
 		if ap, err := s.priceService.GetDaily(ctx, asset, "USD", date); err == nil && ap != nil {
 			finalExitPriceUSD = ap.Price
 		} else {
-			finalExitPriceUSD = decimal.NewFromInt(1)
+			// Fallback
+			finalExitPriceUSD = entryPriceUSD
 		}
 	} else {
 		// Default: assume 1:1 (no gain/loss)
-		finalExitPriceUSD = decimal.NewFromInt(1)
+		finalExitPriceUSD = entryPriceUSD
 	}
 
 	// 1) withdraw from investment
@@ -708,8 +738,21 @@ func (s *actionService) performUnstake(ctx context.Context, req *models.ActionRe
 	if note != "" {
 		outTx.Note = &note
 	}
-	if err := s.transactionService.CreateTransaction(ctx, outTx); err != nil {
-		return nil, err
+	// Enhanced: Use InvestmentService if available for better investment tracking
+	if s.investmentService != nil {
+		outTx.Type = "unstake" // Use unstake type for investment tracking
+		outTx.PreSave() // Calculate derived fields including AmountUSD
+
+		// Process unstake using investment service which handles cost basis properly
+		_, err := s.investmentService.ProcessUnstake(ctx, outTx)
+		if err != nil {
+			return nil, fmt.Errorf("failed to process unstake investment: %w", err)
+		}
+	} else {
+		// Fallback to original behavior
+		if err := s.transactionService.CreateTransaction(ctx, outTx); err != nil {
+			return nil, err
+		}
 	}
 
 	// 2) transfer_in to destination

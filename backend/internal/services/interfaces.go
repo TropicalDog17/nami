@@ -145,4 +145,9 @@ type InvestmentService interface {
 	GetAvailableDeposits(ctx context.Context, asset, account string) ([]*models.Investment, error)
 	CreateDeposit(ctx context.Context, tx *models.Transaction) (*models.Investment, error)
 	CreateWithdrawal(ctx context.Context, tx *models.Transaction) (*models.Investment, error)
+
+	// Stake-specific methods
+	ProcessStake(ctx context.Context, stakeTx *models.Transaction) (*models.Investment, error)
+	ProcessUnstake(ctx context.Context, unstakeTx *models.Transaction) (*models.Investment, error)
+	GetOpenInvestmentsForStake(ctx context.Context, asset, account, horizon string) ([]*models.Investment, error)
 }

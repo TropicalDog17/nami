@@ -12,6 +12,7 @@ import {
   adminApi,
   actionsApi,
   pricesApi,
+  investmentsApi,
 } from '../services/api';
 
 type IdType = string | number;
@@ -211,16 +212,52 @@ const TransactionPage: React.FC = () => {
     }
     try {
       setPerforming(true);
-      const resp: any = await actionsApi.perform(
-        actionForm.action,
-        actionForm.params
-      );
-      const created: Transaction[] = (resp?.transactions ||
-        []) as Transaction[];
-      if (created.length > 0) {
-        setTransactions((prev) => [...created, ...prev]);
-      } else {
+      let created: Transaction[] = [];
+
+      // Use investment API for stake and unstake operations
+      if (actionForm.action === 'stake') {
+        const stakeData = {
+          date: actionForm.params.date || new Date().toISOString().split('T')[0],
+          type: 'stake',
+          asset: actionForm.params.asset,
+          account: actionForm.params.investment_account,
+          quantity: parseFloat(actionForm.params.amount) || 0,
+          price_local: parseFloat(actionForm.params.entry_price_usd) || 1.0,
+          counterparty: actionForm.params.counterparty || null,
+          note: actionForm.params.note || null,
+          horizon: actionForm.params.horizon || null,
+        };
+
+        const investment = await investmentsApi.stake(stakeData);
+        // Reload transactions to get the created stake transaction
         await loadTransactions();
+      } else if (actionForm.action === 'unstake') {
+        const unstakeData = {
+          date: actionForm.params.date || new Date().toISOString().split('T')[0],
+          type: 'unstake',
+          asset: actionForm.params.asset,
+          account: actionForm.params.investment_account,
+          quantity: parseFloat(actionForm.params.amount) || 0,
+          price_local: parseFloat(actionForm.params.exit_price_usd) || 1.0,
+          deposit_id: actionForm.params.stake_deposit_tx_id || null,
+          note: actionForm.params.note || null,
+        };
+
+        const investment = await investmentsApi.unstake(unstakeData);
+        // Reload transactions to get the created unstake transaction
+        await loadTransactions();
+      } else {
+        // Use general actions API for other actions
+        const resp: any = await actionsApi.perform(
+          actionForm.action,
+          actionForm.params
+        );
+        created = (resp?.transactions || []) as Transaction[];
+        if (created.length > 0) {
+          setTransactions((prev) => [...created, ...prev]);
+        } else {
+          await loadTransactions();
+        }
       }
 
       // Reload active stakes list if we just performed a stake or unstake action

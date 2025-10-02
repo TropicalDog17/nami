@@ -18,7 +18,9 @@ INSERT INTO transaction_types (name, description) VALUES
 ('interest', 'Interest income'),
 ('borrow', 'Borrowing transaction'),
 ('repay_borrow', 'Loan repayment made'),
-('interest_expense', 'Interest expense paid')
+('interest_expense', 'Interest expense paid'),
+('stake', 'Staking transaction'),
+('unstake', 'Unstaking transaction')
 ON CONFLICT (name) DO NOTHING;
 
 -- Seed common accounts

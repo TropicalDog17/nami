@@ -19,25 +19,16 @@ func TestInvestment_IsOpen(t *testing.T) {
 		{
 			name:           "open investment with remaining quantity",
 			remainingQty:   decimal.NewFromFloat(100.0),
-			withdrawalID:   nil,
 			expectedIsOpen: true,
-		},
-		{
-			name:           "closed investment with withdrawal",
-			remainingQty:   decimal.Zero,
-			withdrawalID:   StringPtr("withdrawal-123"),
-			expectedIsOpen: false,
 		},
 		{
 			name:           "closed investment with zero remaining quantity",
 			remainingQty:   decimal.Zero,
-			withdrawalID:   nil,
 			expectedIsOpen: false,
 		},
 		{
 			name:           "partially closed investment",
 			remainingQty:   decimal.NewFromFloat(50.0),
-			withdrawalID:   nil,
 			expectedIsOpen: true,
 		},
 	}
@@ -46,10 +37,9 @@ func TestInvestment_IsOpen(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			investment := &Investment{
 				RemainingQty: tt.remainingQty,
-				WithdrawalID: tt.withdrawalID,
 			}
 
-			isOpen := investment.RemainingQty.GreaterThan(decimal.Zero) && investment.WithdrawalID == nil
+			isOpen := investment.RemainingQty.GreaterThan(decimal.Zero)
 			assert.Equal(t, tt.expectedIsOpen, isOpen)
 		})
 	}
@@ -253,7 +243,7 @@ func TestInvestment_Validation(t *testing.T) {
 		{
 			name: "valid investment",
 			investment: &Investment{
-				DepositID:       "deposit-123",
+				ID:              "investment-123",
 				Asset:           "BTC",
 				Account:         "binance",
 				DepositDate:     time.Now(),
@@ -263,32 +253,17 @@ func TestInvestment_Validation(t *testing.T) {
 				RemainingQty:    decimal.NewFromFloat(1.5),
 				IsOpen:          true,
 				CreatedAt:       time.Now(),
-				UpdatedAt:       time.Now(),
 			},
 			expectError: false,
 		},
 		{
-			name: "investment with empty deposit ID",
-			investment: &Investment{
-				DepositID:   "",
-				Asset:       "BTC",
-				Account:     "binance",
-				DepositDate: time.Now(),
-				CreatedAt:   time.Now(),
-				UpdatedAt:   time.Now(),
-			},
-			expectError: true,
-			errorMsg:    "deposit ID cannot be empty",
-		},
-		{
 			name: "investment with empty asset",
 			investment: &Investment{
-				DepositID:   "deposit-123",
+				ID:          "investment-123",
 				Asset:       "",
 				Account:     "binance",
 				DepositDate: time.Now(),
 				CreatedAt:   time.Now(),
-				UpdatedAt:   time.Now(),
 			},
 			expectError: true,
 			errorMsg:    "asset cannot be empty",
@@ -296,13 +271,12 @@ func TestInvestment_Validation(t *testing.T) {
 		{
 			name: "investment with zero deposit quantity",
 			investment: &Investment{
-				DepositID:   "deposit-123",
+				ID:          "investment-123",
 				Asset:       "BTC",
 				Account:     "binance",
 				DepositDate: time.Now(),
 				DepositQty:  decimal.Zero,
 				CreatedAt:   time.Now(),
-				UpdatedAt:   time.Now(),
 			},
 			expectError: true,
 			errorMsg:    "deposit quantity must be greater than zero",
@@ -313,9 +287,6 @@ func TestInvestment_Validation(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			var err error
 
-			if tt.investment.DepositID == "" {
-				err = assert.AnError
-			}
 			if tt.investment.Asset == "" {
 				err = assert.AnError
 			}
@@ -385,8 +356,7 @@ func TestInvestment_CalculateRemainingQuantity(t *testing.T) {
 
 func TestInvestment_Copy(t *testing.T) {
 	original := &Investment{
-		DepositID:           "deposit-123",
-		WithdrawalID:        StringPtr("withdrawal-456"),
+		ID:                  "investment-123",
 		Asset:               "BTC",
 		Account:             "binance",
 		Horizon:             StringPtr("long-term"),
@@ -403,12 +373,10 @@ func TestInvestment_Copy(t *testing.T) {
 		IsOpen:              false,
 		RemainingQty:        decimal.Zero,
 		CreatedAt:           time.Date(2023, 1, 1, 0, 0, 0, 0, time.UTC),
-		UpdatedAt:           time.Date(2023, 6, 1, 0, 0, 0, 0, time.UTC),
 	}
 
 	// Test that all fields are properly set
-	require.NotEmpty(t, original.DepositID)
-	require.Equal(t, "withdrawal-456", *original.WithdrawalID)
+	require.NotEmpty(t, original.ID)
 	require.Equal(t, "BTC", original.Asset)
 	require.Equal(t, "binance", original.Account)
 	require.Equal(t, "long-term", *original.Horizon)

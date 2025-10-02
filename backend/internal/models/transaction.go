@@ -44,6 +44,9 @@ type Transaction struct {
 	// Investment tracking - links withdrawal to its deposit
 	DepositID *string `json:"deposit_id" db:"deposit_id"`
 
+	// Enhanced investment tracking - links transaction to investment position
+	InvestmentID *string `json:"investment_id" db:"investment_id"`
+
 	// Optional tracking
 	Horizon   *string          `json:"horizon" db:"horizon"`
 	EntryDate *time.Time       `json:"entry_date" db:"entry_date"`

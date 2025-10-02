@@ -237,3 +237,22 @@ export const pricesApi = {
   daily: (symbol: string, currency: string, start: string, end: string) =>
     api.get('/api/prices/daily', { symbol, currency, start, end }),
 };
+
+// Investments API
+export const investmentsApi = {
+  list: (filters: Record<string, unknown> = {}) =>
+    api.get('/api/investments', filters),
+  get: (id: string) => api.get(`/api/investments/${id}`),
+  create: (investment: unknown) => api.post('/api/investments', investment),
+  update: (id: string, investment: unknown) =>
+    api.put(`/api/investments/${id}`, investment),
+  delete: (id: string) => api.delete(`/api/investments/${id}`),
+  summary: (filters: Record<string, unknown> = {}) =>
+    api.get('/api/investments/summary', filters),
+
+  // Stake-specific endpoints
+  stake: (stakeData: unknown) => api.post('/api/investments/stake', stakeData),
+  unstake: (unstakeData: unknown) => api.post('/api/investments/unstake', unstakeData),
+  available: (asset: string, account: string, horizon?: string) =>
+    api.get('/api/investments/available', { asset, account, horizon }),
+};

@@ -16,6 +16,7 @@ import (
 	"github.com/tropicaldog17/nami/internal/db"
 	"github.com/tropicaldog17/nami/internal/handlers"
 	"github.com/tropicaldog17/nami/internal/logger"
+	"github.com/tropicaldog17/nami/internal/repositories"
 	"github.com/tropicaldog17/nami/internal/services"
 
 	// swagger docs and ui
@@ -62,12 +63,17 @@ func main() {
 	assetPriceService := services.NewAssetPriceService(coinGeckoProvider, priceCacheService)
 	priceMappingResolver := services.NewPriceMappingResolver(database)
 
+	// Initialize repositories
+	investmentRepo := repositories.NewInvestmentRepository(database)
+	transactionRepo := repositories.NewTransactionRepository(database)
+
 	// Initialize services
 	transactionService := services.NewTransactionServiceWithFXAndPrices(database, httpFXProvider, assetPriceService)
 	adminService := services.NewAdminService(database)
 	reportingService := services.NewReportingService(database)
 	linkService := services.NewLinkService(database)
-	actionService := services.NewActionServiceFull(database, transactionService, linkService, assetPriceService)
+	investmentService := services.NewInvestmentService(investmentRepo, transactionRepo)
+	actionService := services.NewActionServiceWithInvestments(database, transactionService, linkService, assetPriceService, investmentService)
 
 	// Initialize handlers
 	transactionHandler := handlers.NewTransactionHandler(transactionService)
@@ -76,6 +82,7 @@ func main() {
 	actionHandler := handlers.NewActionHandler(actionService)
 	fxHandler := handlers.NewFXHandler(fxHistoryService)
 	priceHandler := handlers.NewPriceHandler(assetPriceService, priceMappingResolver, fxHistoryService)
+	investmentHandler := handlers.NewInvestmentHandler(investmentService)
 
 	// Setup HTTP server
 	mux := http.NewServeMux()
@@ -104,6 +111,28 @@ func main() {
 			transactionHandler.HandleTransactions(w, r)
 		}
 	})
+
+	// Investment endpoints
+	mux.HandleFunc("/api/investments", investmentHandler.HandleInvestments)
+	mux.HandleFunc("/api/investments/", func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/api/investments/") && len(strings.TrimPrefix(r.URL.Path, "/api/investments/")) > 0 {
+			// Handle individual investment (GET), stake (POST), unstake (POST)
+			path := strings.TrimPrefix(r.URL.Path, "/api/investments/")
+			if strings.HasSuffix(path, "/stake") {
+				investmentHandler.HandleStake(w, r)
+			} else if strings.HasSuffix(path, "/unstake") {
+				investmentHandler.HandleUnstake(w, r)
+			} else {
+				investmentHandler.HandleInvestmentByID(w, r)
+			}
+		} else {
+			investmentHandler.HandleInvestments(w, r)
+		}
+	})
+	mux.HandleFunc("/api/investments/stake", investmentHandler.HandleStake)
+	mux.HandleFunc("/api/investments/unstake", investmentHandler.HandleUnstake)
+	mux.HandleFunc("/api/investments/available", investmentHandler.HandleAvailableInvestments)
+	mux.HandleFunc("/api/investments/summary", investmentHandler.HandleInvestmentSummary)
 
 	// Actions endpoint
 	mux.HandleFunc("/api/actions", actionHandler.HandleActions)

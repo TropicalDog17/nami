@@ -22,6 +22,25 @@ type TransactionRepository interface {
 	RecalculateOneFX(ctx context.Context, id string, onlyMissing bool) (*models.Transaction, error)
 }
 
+// InvestmentRepository defines the interface for investment data operations
+type InvestmentRepository interface {
+	Create(ctx context.Context, investment *models.Investment) error
+	GetByID(ctx context.Context, id string) (*models.Investment, error)
+	GetByAssetAccount(ctx context.Context, asset, account string, isOpen *bool) ([]*models.Investment, error)
+	List(ctx context.Context, filter *models.InvestmentFilter) ([]*models.Investment, error)
+	GetCount(ctx context.Context, filter *models.InvestmentFilter) (int, error)
+	Update(ctx context.Context, investment *models.Investment) error
+	Delete(ctx context.Context, id string) error
+	GetSummary(ctx context.Context, filter *models.InvestmentFilter) (*models.InvestmentSummary, error)
+	FindByDepositID(ctx context.Context, depositID string) (*models.Investment, error)
+
+	// Stake-specific methods
+	CreateFromStake(ctx context.Context, stakeTx *models.Transaction) (*models.Investment, error)
+	FindOpenInvestmentForStake(ctx context.Context, asset, account, horizon string) (*models.Investment, error)
+	UpdateWithStake(ctx context.Context, investment *models.Investment, stakeTx *models.Transaction) error
+	UpdateWithUnstake(ctx context.Context, investment *models.Investment, unstakeTx *models.Transaction) error
+}
+
 // ReportingRepository defines the interface for reporting data operations
 type ReportingRepository interface {
 	GetHoldings(ctx context.Context, asOf time.Time) ([]*models.Holding, error)
