@@ -11,7 +11,7 @@ import (
 )
 
 type investmentService struct {
-	investmentRepo repositories.InvestmentRepository
+	investmentRepo  repositories.InvestmentRepository
 	transactionRepo repositories.TransactionRepository
 }
 
@@ -206,30 +206,49 @@ func (s *investmentService) ProcessStake(ctx context.Context, stakeTx *models.Tr
 		return nil, fmt.Errorf("transaction type must be 'stake', got %s", stakeTx.Type)
 	}
 
-	// Try to find an existing open investment for this asset/account/horizon
-	var horizonStr string
-	if stakeTx.Horizon != nil {
-		horizonStr = *stakeTx.Horizon
-	}
-	existingInvestment, err := s.investmentRepo.FindOpenInvestmentForStake(ctx, stakeTx.Asset, stakeTx.Account, horizonStr)
-	if err != nil {
-		return nil, fmt.Errorf("failed to find existing investment: %w", err)
-	}
-
 	var investment *models.Investment
+	var err error
 
-	if existingInvestment != nil {
-		// Update existing investment with additional stake
-		err = s.investmentRepo.UpdateWithStake(ctx, existingInvestment, stakeTx)
+	// If an explicit investment_id is provided, stake into that investment
+	if stakeTx.InvestmentID != nil && *stakeTx.InvestmentID != "" {
+		investment, err = s.investmentRepo.GetByID(ctx, *stakeTx.InvestmentID)
 		if err != nil {
+			return nil, fmt.Errorf("failed to find investment by ID: %w", err)
+		}
+		// Basic sanity checks to avoid cross-asset/account mistakes
+		if investment.Asset != stakeTx.Asset || investment.Account != stakeTx.Account {
+			return nil, fmt.Errorf("stake transaction asset/account must match target investment (%s/%s)", investment.Asset, investment.Account)
+		}
+		if !investment.IsOpen {
+			return nil, fmt.Errorf("cannot stake into a closed investment: %s", investment.ID)
+		}
+
+		if err := s.investmentRepo.UpdateWithStake(ctx, investment, stakeTx); err != nil {
 			return nil, fmt.Errorf("failed to update investment with stake: %w", err)
 		}
-		investment = existingInvestment
 	} else {
-		// Create new investment from stake
-		investment, err = s.investmentRepo.CreateFromStake(ctx, stakeTx)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create investment from stake: %w", err)
+		// Try to find an existing open investment for this asset/account/horizon
+		var horizonStr string
+		if stakeTx.Horizon != nil {
+			horizonStr = *stakeTx.Horizon
+		}
+		existingInvestment, ferr := s.investmentRepo.FindOpenInvestmentForStake(ctx, stakeTx.Asset, stakeTx.Account, horizonStr)
+		if ferr != nil {
+			return nil, fmt.Errorf("failed to find existing investment: %w", ferr)
+		}
+
+		if existingInvestment != nil {
+			// Update existing investment with additional stake
+			if err := s.investmentRepo.UpdateWithStake(ctx, existingInvestment, stakeTx); err != nil {
+				return nil, fmt.Errorf("failed to update investment with stake: %w", err)
+			}
+			investment = existingInvestment
+		} else {
+			// Create new investment from stake
+			investment, err = s.investmentRepo.CreateFromStake(ctx, stakeTx)
+			if err != nil {
+				return nil, fmt.Errorf("failed to create investment from stake: %w", err)
+			}
 		}
 	}
 

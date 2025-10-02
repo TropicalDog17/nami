@@ -65,6 +65,8 @@ const TransactionPage: React.FC = () => {
   });
   const [activeStakeOptions, setActiveStakeOptions] = useState<Option[]>([]);
   const [stakeIdToInfo, setStakeIdToInfo] = useState<Record<string, any>>({});
+  const [openInvestmentsForStake, setOpenInvestmentsForStake] = useState<Option[]>([]);
+  const [invIdToInfoForStake, setInvIdToInfoForStake] = useState<Record<string, any>>({});
 
   const todayStr = useMemo(() => new Date().toISOString().split('T')[0], []);
 
@@ -117,30 +119,20 @@ const TransactionPage: React.FC = () => {
   // Load active stakes when switching to Unstake action
   const loadActiveStakes = async (): Promise<void> => {
     try {
-      // Fetch accounts to filter investment accounts
-      const accounts = (await adminApi.listAccounts()) as any[];
-      const investmentAccounts = (accounts || []).filter(
-        (a: any) => (a?.type || '').toLowerCase() === 'investment'
-      );
-      const investNames = investmentAccounts.map((a: any) => a.name);
-
-      // Fetch deposit transactions for those accounts
-      const deposits = (await transactionApi.list({
-        types: ['deposit'],
-        accounts: investNames,
-      })) as any[];
-      const openDeposits = (deposits || []).filter((t: any) => !t.exit_date);
-
+      // Fetch open investments from the investments table
+      const openInvestments = (await investmentsApi.list({ is_open: true })) as any[];
+      
       const idToInfo: Record<string, any> = {};
-      const options: Option[] = openDeposits.map((t: any) => {
-        idToInfo[String(t.id)] = t;
-        const d = new Date(t.date);
+      const options: Option[] = (openInvestments || []).map((inv: any) => {
+        idToInfo[String(inv.id)] = inv;
+        const d = new Date(inv.deposit_date);
         const dStr = isNaN(d.getTime())
-          ? String(t.date)
+          ? String(inv.deposit_date)
           : d.toISOString().split('T')[0];
+        const horizonStr = inv.horizon ? ` [${inv.horizon}]` : '';
         return {
-          value: String(t.id),
-          label: `${t.asset} @ ${t.account} — ${dStr} — ${t.id}`,
+          value: String(inv.id),
+          label: `${inv.asset} @ ${inv.account}${horizonStr} — ${dStr} — ${inv.remaining_qty} remaining`,
         } as Option;
       });
 
@@ -156,6 +148,40 @@ const TransactionPage: React.FC = () => {
       loadActiveStakes();
     }
   }, [actionForm.action]);
+
+  // Load open investments for stake (to add to an existing investment)
+  const loadOpenInvestmentsForStake = async (): Promise<void> => {
+    try {
+      // If asset/account selected, filter by them; otherwise list all open
+      const filters: Record<string, any> = { is_open: true };
+      if (actionForm.params.asset) filters.asset = actionForm.params.asset;
+      if (actionForm.params.investment_account) filters.account = actionForm.params.investment_account;
+      const openInvestments = (await investmentsApi.list(filters)) as any[];
+
+      const idToInfo: Record<string, any> = {};
+      const options: Option[] = (openInvestments || []).map((inv: any) => {
+        idToInfo[String(inv.id)] = inv;
+        const d = new Date(inv.deposit_date);
+        const dStr = isNaN(d.getTime()) ? String(inv.deposit_date) : d.toISOString().split('T')[0];
+        const horizonStr = inv.horizon ? ` [${inv.horizon}]` : '';
+        return {
+          value: String(inv.id),
+          label: `${inv.asset} @ ${inv.account}${horizonStr} — ${dStr} — ${inv.remaining_qty} remaining`,
+        } as Option;
+      });
+
+      setInvIdToInfoForStake(idToInfo);
+      setOpenInvestmentsForStake(options);
+    } catch (e) {
+      // silent
+    }
+  };
+
+  useEffect(() => {
+    if (actionForm.action === 'stake') {
+      loadOpenInvestmentsForStake();
+    }
+  }, [actionForm.action, actionForm.params.asset, actionForm.params.investment_account]);
 
   const loadMasterData = async (): Promise<void> => {
     try {
@@ -216,34 +242,41 @@ const TransactionPage: React.FC = () => {
 
       // Use investment API for stake and unstake operations
       if (actionForm.action === 'stake') {
-        const stakeData = {
+        const stakeTransaction = {
           date: actionForm.params.date || new Date().toISOString().split('T')[0],
           type: 'stake',
           asset: actionForm.params.asset,
           account: actionForm.params.investment_account,
           quantity: parseFloat(actionForm.params.amount) || 0,
           price_local: parseFloat(actionForm.params.entry_price_usd) || 1.0,
+          amount_usd: (parseFloat(actionForm.params.amount) || 0) * (parseFloat(actionForm.params.entry_price_usd) || 1.0),
+          amount_vnd: (parseFloat(actionForm.params.amount) || 0) * (parseFloat(actionForm.params.entry_price_usd) || 1.0) * 23000, // approximate FX rate
+          investment_id: actionForm.params.investment_id || null,
           counterparty: actionForm.params.counterparty || null,
           note: actionForm.params.note || null,
           horizon: actionForm.params.horizon || null,
         };
 
-        const investment = await investmentsApi.stake(stakeData);
+        const investment = await investmentsApi.stake(stakeTransaction);
         // Reload transactions to get the created stake transaction
         await loadTransactions();
       } else if (actionForm.action === 'unstake') {
-        const unstakeData = {
+        const unstakeTransaction = {
           date: actionForm.params.date || new Date().toISOString().split('T')[0],
           type: 'unstake',
           asset: actionForm.params.asset,
           account: actionForm.params.investment_account,
           quantity: parseFloat(actionForm.params.amount) || 0,
           price_local: parseFloat(actionForm.params.exit_price_usd) || 1.0,
-          deposit_id: actionForm.params.stake_deposit_tx_id || null,
+          amount_usd: (parseFloat(actionForm.params.amount) || 0) * (parseFloat(actionForm.params.exit_price_usd) || 1.0),
+          amount_vnd: (parseFloat(actionForm.params.amount) || 0) * (parseFloat(actionForm.params.exit_price_usd) || 1.0) * 23000, // approximate FX rate
+          investment_id: actionForm.params.investment_id || null,
+          counterparty: actionForm.params.counterparty || null,
           note: actionForm.params.note || null,
+          horizon: actionForm.params.horizon || null,
         };
 
-        const investment = await investmentsApi.unstake(unstakeData);
+        const investment = await investmentsApi.unstake(unstakeTransaction);
         // Reload transactions to get the created unstake transaction
         await loadTransactions();
       } else {
@@ -1487,6 +1520,25 @@ const TransactionPage: React.FC = () => {
                   }));
                 }}
               />
+              {/* Optional: add to existing open investment */}
+              <ComboBox
+                options={openInvestmentsForStake as any}
+                value={actionForm.params.investment_id || ''}
+                onChange={(id) => {
+                  const info = invIdToInfoForStake[String(id)] || {};
+                  setActionForm((s) => ({
+                    ...s,
+                    params: {
+                      ...s.params,
+                      investment_id: id,
+                      investment_account: info.account || s.params.investment_account,
+                      asset: info.asset || s.params.asset,
+                      horizon: info.horizon || s.params.horizon,
+                    },
+                  }));
+                }}
+                placeholder="Existing Investment (optional)"
+              />
               <ComboBox
                 options={(masterData.asset || []) as any}
                 value={actionForm.params.asset || ''}
@@ -1592,21 +1644,23 @@ const TransactionPage: React.FC = () => {
               />
               <ComboBox
                 options={activeStakeOptions as any}
-                value={actionForm.params.stake_deposit_tx_id || ''}
+                value={actionForm.params.investment_id || ''}
                 onChange={(id) => {
                   const info = stakeIdToInfo[String(id)] || {};
                   setActionForm((s) => ({
                     ...s,
                     params: {
                       ...s.params,
-                      stake_deposit_tx_id: id,
+                      investment_id: id,
                       investment_account:
                         info.account || s.params.investment_account,
                       asset: info.asset || s.params.asset,
+                      // if close_all already toggled, auto-fill amount to remaining
+                      amount: s.params.close_all ? String(info.remaining_qty || '') : s.params.amount,
                     },
                   }));
                 }}
-                placeholder="Active Investment (optional)"
+                placeholder="Active Investment (required)"
               />
               <ComboBox
                 options={(masterData.account || []) as any}
@@ -1724,7 +1778,13 @@ const TransactionPage: React.FC = () => {
                   onChange={(e) =>
                     setActionForm((s) => ({
                       ...s,
-                      params: { ...s.params, close_all: e.target.checked },
+                      params: {
+                        ...s.params,
+                        close_all: e.target.checked,
+                        amount: e.target.checked
+                          ? String((stakeIdToInfo[String(s.params.investment_id || '')] || {}).remaining_qty || '')
+                          : s.params.amount,
+                      },
                     }))
                   }
                 />
@@ -1736,21 +1796,7 @@ const TransactionPage: React.FC = () => {
                   Close Position
                 </label>
               </div>
-              <input
-                className="px-3 py-2 border rounded"
-                placeholder="Stake Deposit Tx ID (optional)"
-                value={actionForm.params.stake_deposit_tx_id || ''}
-                onChange={(e) =>
-                  setActionForm((s) => ({
-                    ...s,
-                    params: {
-                      ...s.params,
-                      stake_deposit_tx_id: e.target.value,
-                    },
-                  }))
-                }
-              />
-              <input
+                            <input
                 className="px-3 py-2 border rounded"
                 placeholder="Note (optional)"
                 onChange={(e) =>

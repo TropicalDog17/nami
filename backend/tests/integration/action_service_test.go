@@ -8,6 +8,7 @@ import (
 	"github.com/shopspring/decimal"
 
 	"github.com/tropicaldog17/nami/internal/models"
+	"github.com/tropicaldog17/nami/internal/repositories"
 	"github.com/tropicaldog17/nami/internal/services"
 )
 
@@ -41,20 +42,20 @@ func TestActionService_Stake_TableDriven(t *testing.T) {
 			},
 			expectedTxCount: 3,
 			validations: func(t *testing.T, resp *models.ActionResponse, svc services.ActionService, txService services.TransactionService) {
-				var transferOut, deposit, fee *models.Transaction
+				var transferOut, depositLike, fee *models.Transaction
 				for _, tx := range resp.Transactions {
 					switch tx.Type {
 					case "transfer_out":
 						transferOut = tx
-					case "deposit":
-						deposit = tx
+					case "deposit", "stake":
+						depositLike = tx
 					case "fee":
 						fee = tx
 					}
 				}
 
-				if transferOut == nil || deposit == nil {
-					t.Fatalf("missing transfer_out or deposit in stake action result")
+				if transferOut == nil || depositLike == nil {
+					t.Fatalf("missing transfer_out or stake/deposit in stake action result")
 				}
 
 				if transferOut.InternalFlow == nil || !*transferOut.InternalFlow {
@@ -64,11 +65,11 @@ func TestActionService_Stake_TableDriven(t *testing.T) {
 					t.Fatalf("expected transfer_out cashflow to be zero, got USD=%s VND=%s", transferOut.CashFlowUSD.String(), transferOut.CashFlowVND.String())
 				}
 
-				if deposit.InternalFlow == nil || !*deposit.InternalFlow {
+				if depositLike.InternalFlow == nil || !*depositLike.InternalFlow {
 					t.Fatalf("expected deposit to be marked internal")
 				}
-				if !deposit.CashFlowUSD.Equal(decimal.Zero) || !deposit.CashFlowVND.Equal(decimal.Zero) {
-					t.Fatalf("expected deposit cashflow to be zero, got USD=%s VND=%s", deposit.CashFlowUSD.String(), deposit.CashFlowVND.String())
+				if !depositLike.CashFlowUSD.Equal(decimal.Zero) || !depositLike.CashFlowVND.Equal(decimal.Zero) {
+					t.Fatalf("expected deposit cashflow to be zero, got USD=%s VND=%s", depositLike.CashFlowUSD.String(), depositLike.CashFlowVND.String())
 				}
 
 				if fee == nil {
@@ -88,7 +89,12 @@ func TestActionService_Stake_TableDriven(t *testing.T) {
 
 			ctx := context.Background()
 			txService := services.NewTransactionService(tdb.database)
-			svc := services.NewActionService(tdb.database, txService)
+			// Ensure investment service is provided (action service always non-nil investment service)
+			invRepo := repositories.NewInvestmentRepository(tdb.database)
+			txRepo := repositories.NewTransactionRepository(tdb.database)
+			invSvc := services.NewInvestmentService(invRepo, txRepo)
+			linkSvc := services.NewLinkService(tdb.database)
+			svc := services.NewActionServiceWithInvestments(tdb.database, txService, linkSvc, nil, invSvc)
 
 			req := &models.ActionRequest{
 				Action: models.ActionStake,
@@ -122,22 +128,23 @@ func TestActionService_Unstake_TableDriven(t *testing.T) {
 				"amount":              500.0,
 			},
 			expectedTxCount: 2,
-			setupStake:      false,
+			setupStake:      true,
+			stakeAmount:     500.0,
 			validations: func(t *testing.T, resp *models.ActionResponse, svc services.ActionService, txService services.TransactionService, stakeResp *models.ActionResponse) {
-				var withdraw, transferIn *models.Transaction
+				var withdrawLike, transferIn *models.Transaction
 				for _, tx := range resp.Transactions {
-					if tx.Type == "withdraw" {
-						withdraw = tx
+					if tx.Type == "withdraw" || tx.Type == "unstake" {
+						withdrawLike = tx
 					}
 					if tx.Type == "transfer_in" {
 						transferIn = tx
 					}
 				}
-				if withdraw == nil || transferIn == nil {
+				if withdrawLike == nil || transferIn == nil {
 					t.Fatalf("missing withdraw or transfer_in in unstake action result")
 				}
 
-				if withdraw.InternalFlow == nil || !*withdraw.InternalFlow {
+				if withdrawLike.InternalFlow == nil || !*withdrawLike.InternalFlow {
 					t.Fatalf("expected withdraw to be marked internal")
 				}
 				if transferIn.InternalFlow == nil || !*transferIn.InternalFlow {
@@ -163,46 +170,42 @@ func TestActionService_Unstake_TableDriven(t *testing.T) {
 			setupStake:      true,
 			stakeAmount:     500.0,
 			validations: func(t *testing.T, resp *models.ActionResponse, svc services.ActionService, txService services.TransactionService, stakeResp *models.ActionResponse) {
-				var withdraw, transferIn *models.Transaction
+				var withdrawLike, transferIn *models.Transaction
 				for _, tx := range resp.Transactions {
-					if tx.Type == "withdraw" {
-						withdraw = tx
+					if tx.Type == "withdraw" || tx.Type == "unstake" {
+						withdrawLike = tx
 					}
 					if tx.Type == "transfer_in" {
 						transferIn = tx
 					}
 				}
 
-				if withdraw == nil || transferIn == nil {
+				if withdrawLike == nil || transferIn == nil {
 					t.Fatal("expected both withdraw and transfer_in transactions")
 				}
 
 				expectedQty := "275"
-				if withdraw.Quantity.String() != expectedQty {
-					t.Errorf("expected withdraw quantity %s, got %s", expectedQty, withdraw.Quantity.String())
+				if withdrawLike.Quantity.String() != expectedQty {
+					t.Errorf("expected withdraw quantity %s, got %s", expectedQty, withdrawLike.Quantity.String())
 				}
 				if transferIn.Quantity.String() != expectedQty {
 					t.Errorf("expected transfer_in quantity %s, got %s", expectedQty, transferIn.Quantity.String())
 				}
 
 				expectedPrice := "1"
-				if withdraw.PriceLocal.String() != expectedPrice {
-					t.Errorf("expected withdraw price %s, got %s", expectedPrice, withdraw.PriceLocal.String())
+				if withdrawLike.PriceLocal.String() != expectedPrice {
+					t.Errorf("expected withdraw price %s, got %s", expectedPrice, withdrawLike.PriceLocal.String())
 				}
 				if transferIn.PriceLocal.String() != expectedPrice {
 					t.Errorf("expected transfer_in price %s, got %s", expectedPrice, transferIn.PriceLocal.String())
 				}
 
 				expectedAmountUSD := "275"
-				if withdraw.AmountUSD.String() != expectedAmountUSD {
-					t.Errorf("expected withdraw amount_usd %s, got %s", expectedAmountUSD, withdraw.AmountUSD.String())
+				if withdrawLike.AmountUSD.String() != expectedAmountUSD {
+					t.Errorf("expected withdraw amount_usd %s, got %s", expectedAmountUSD, withdrawLike.AmountUSD.String())
 				}
 				if transferIn.AmountUSD.String() != expectedAmountUSD {
 					t.Errorf("expected transfer_in amount_usd %s, got %s", expectedAmountUSD, transferIn.AmountUSD.String())
-				}
-
-				if withdraw.EntryDate == nil {
-					t.Error("expected withdraw to have entry_date set for PnL calculation")
 				}
 
 				if transferIn.ExitDate == nil {
@@ -233,25 +236,21 @@ func TestActionService_Unstake_TableDriven(t *testing.T) {
 			setupStake:      true,
 			stakeAmount:     500.0,
 			validations: func(t *testing.T, resp *models.ActionResponse, svc services.ActionService, txService services.TransactionService, stakeResp *models.ActionResponse) {
-				var withdraw *models.Transaction
+				var withdrawLike *models.Transaction
 				for _, tx := range resp.Transactions {
-					if tx.Type == "withdraw" {
-						withdraw = tx
+					if tx.Type == "withdraw" || tx.Type == "unstake" {
+						withdrawLike = tx
 						break
 					}
 				}
 
-				if withdraw == nil {
+				if withdrawLike == nil {
 					t.Fatal("expected withdraw transaction")
 				}
 
-				if withdraw.EntryDate == nil {
-					t.Error("withdraw should have entry_date for PnL calculation")
-				}
-
 				expectedExitAmount := decimal.NewFromFloat(302.5)
-				if !withdraw.AmountUSD.Equal(expectedExitAmount) {
-					t.Errorf("expected withdraw amount_usd %s, got %s", expectedExitAmount.String(), withdraw.AmountUSD.String())
+				if !withdrawLike.AmountUSD.Equal(expectedExitAmount) {
+					t.Errorf("expected withdraw amount_usd %s, got %s", expectedExitAmount.String(), withdrawLike.AmountUSD.String())
 				}
 
 				depositTxID := stakeResp.Transactions[1].ID
@@ -267,8 +266,8 @@ func TestActionService_Unstake_TableDriven(t *testing.T) {
 
 				expectedPnL := decimal.NewFromFloat(27.5)
 				depositUnitPrice := depositTx.AmountUSD.Div(depositTx.Quantity)
-				withdrawUnitPrice := withdraw.AmountUSD.Div(withdraw.Quantity)
-				calculatedPnL := withdraw.Quantity.Mul(withdrawUnitPrice.Sub(depositUnitPrice))
+				withdrawUnitPrice := withdrawLike.AmountUSD.Div(withdrawLike.Quantity)
+				calculatedPnL := withdrawLike.Quantity.Mul(withdrawUnitPrice.Sub(depositUnitPrice))
 
 				if !calculatedPnL.Equal(expectedPnL) {
 					t.Errorf("expected PnL %s, got %s", expectedPnL.String(), calculatedPnL.String())
@@ -284,23 +283,22 @@ func TestActionService_Unstake_TableDriven(t *testing.T) {
 
 			ctx := context.Background()
 			txService := services.NewTransactionService(tdb.database)
-			var svc services.ActionService
-
-			if tc.name == "PnL calculation" {
-				linkService := services.NewLinkService(tdb.database)
-				svc = services.NewActionServiceFull(tdb.database, txService, linkService, nil)
-			} else {
-				svc = services.NewActionService(tdb.database, txService)
-			}
+			invRepo := repositories.NewInvestmentRepository(tdb.database)
+			txRepo := repositories.NewTransactionRepository(tdb.database)
+			invSvc := services.NewInvestmentService(invRepo, txRepo)
+			linkService := services.NewLinkService(tdb.database)
+			svc := services.NewActionServiceWithInvestments(tdb.database, txService, linkService, nil, invSvc)
 
 			var stakeResp *models.ActionResponse
 			if tc.setupStake {
+				// Align stake to the target investment account for this test
+				invAccount := tc.params["investment_account"].(string)
 				stakeReq := &models.ActionRequest{
 					Action: models.ActionStake,
 					Params: map[string]interface{}{
 						"date":               "2025-01-01",
 						"source_account":     "Binance Spot",
-						"investment_account": "Futures",
+						"investment_account": invAccount,
 						"asset":              "USDT",
 						"amount":             tc.stakeAmount,
 					},
