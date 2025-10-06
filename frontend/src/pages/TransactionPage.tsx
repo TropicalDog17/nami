@@ -16,7 +16,7 @@ import {
 } from '../services/api';
 
 type IdType = string | number;
-type Transaction = { id: IdType; [key: string]: any };
+type Transaction = { id: IdType;[key: string]: any };
 type Option = { value: string; label: string };
 type MasterData = Record<string, Option[]>;
 type Column = {
@@ -130,7 +130,7 @@ const TransactionPage: React.FC = () => {
     try {
       // Fetch open investments from the investments table
       const openInvestments = (await investmentsApi.list({ is_open: true })) as any[];
-      
+
       const idToInfo: Record<string, any> = {};
       const options: Option[] = (openInvestments || []).map((inv: any) => {
         idToInfo[String(inv.id)] = inv;
@@ -270,6 +270,11 @@ const TransactionPage: React.FC = () => {
         // Reload transactions to get the created stake transaction
         await loadTransactions();
       } else if (actionForm.action === 'unstake') {
+        // Enforce required investment_id in UI before calling API
+        if (!actionForm.params.investment_id) {
+          showErrorToast('Please select an active investment');
+          return;
+        }
         const unstakeTransaction = {
           date: toISODateTime(actionForm.params.date),
           type: 'unstake',
@@ -716,21 +721,19 @@ const TransactionPage: React.FC = () => {
         <div className="inline-flex rounded-md shadow-sm">
           <button
             onClick={() => actions.setCurrency('USD')}
-            className={`px-4 py-2 text-sm font-medium border rounded-l-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
-              currency === 'USD'
+            className={`px-4 py-2 text-sm font-medium border rounded-l-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${currency === 'USD'
                 ? 'bg-blue-600 text-white border-blue-600'
                 : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
-            }`}
+              }`}
           >
             USD View
           </button>
           <button
             onClick={() => actions.setCurrency('VND')}
-            className={`px-4 py-2 text-sm font-medium border-t border-b border-r rounded-r-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
-              currency === 'VND'
+            className={`px-4 py-2 text-sm font-medium border-t border-b border-r rounded-r-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${currency === 'VND'
                 ? 'bg-blue-600 text-white border-blue-600'
                 : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
-            }`}
+              }`}
           >
             VND View
           </button>
@@ -771,7 +774,7 @@ const TransactionPage: React.FC = () => {
 
           {/* Dynamic params */}
           {actionForm.action === 'p2p_buy_usdt' ||
-          actionForm.action === 'p2p_sell_usdt' ? (
+            actionForm.action === 'p2p_sell_usdt' ? (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
               <DateInput
                 className="w-full"
@@ -881,7 +884,7 @@ const TransactionPage: React.FC = () => {
           ) : null}
 
           {actionForm.action === 'spend_vnd' ||
-          actionForm.action === 'credit_spend_vnd' ? (
+            actionForm.action === 'credit_spend_vnd' ? (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
               <DateInput
                 className="w-full"
@@ -1351,7 +1354,7 @@ const TransactionPage: React.FC = () => {
           )}
 
           {actionForm.action === 'borrow' ||
-          actionForm.action === 'repay_borrow' ? (
+            actionForm.action === 'repay_borrow' ? (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
               <DateInput
                 className="w-full"
@@ -1805,7 +1808,7 @@ const TransactionPage: React.FC = () => {
                   Close Position
                 </label>
               </div>
-                            <input
+              <input
                 className="px-3 py-2 border rounded"
                 placeholder="Note (optional)"
                 onChange={(e) =>

@@ -152,6 +152,327 @@ const docTemplate = `{
                 }
             }
         },
+        "/investments": {
+            "get": {
+                "description": "Retrieve investments based on filter criteria",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "investments"
+                ],
+                "summary": "Get investments",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Filter by asset",
+                        "name": "asset",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by account",
+                        "name": "account",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by horizon",
+                        "name": "horizon",
+                        "in": "query"
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "Filter by open status",
+                        "name": "is_open",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Limit results",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Offset results",
+                        "name": "offset",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/github_com_tropicaldog17_nami_internal_models.Investment"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/investments/available": {
+            "get": {
+                "description": "Retrieve open investments available for stake operations",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "investments"
+                ],
+                "summary": "Get available investments for stake",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Asset",
+                        "name": "asset",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Account",
+                        "name": "account",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Horizon",
+                        "name": "horizon",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/github_com_tropicaldog17_nami_internal_models.Investment"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad request",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/investments/stake": {
+            "post": {
+                "description": "Process a stake transaction and create/update investment",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "investments"
+                ],
+                "summary": "Create stake investment",
+                "parameters": [
+                    {
+                        "description": "Stake transaction",
+                        "name": "stake",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/github_com_tropicaldog17_nami_internal_models.Transaction"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_tropicaldog17_nami_internal_models.Investment"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad request",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/investments/summary": {
+            "get": {
+                "description": "Retrieve investment summary statistics",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "investments"
+                ],
+                "summary": "Get investment summary",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Filter by asset",
+                        "name": "asset",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by account",
+                        "name": "account",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by horizon",
+                        "name": "horizon",
+                        "in": "query"
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "Filter by open status",
+                        "name": "is_open",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_tropicaldog17_nami_internal_models.InvestmentSummary"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/investments/unstake": {
+            "post": {
+                "description": "Process an unstake transaction and update investment. The field ` + "`" + `investment_id` + "`" + ` is required and must reference an existing open investment.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "investments"
+                ],
+                "summary": "Create unstake investment",
+                "parameters": [
+                    {
+                        "description": "Unstake transaction (requires investment_id)",
+                        "name": "unstake",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/github_com_tropicaldog17_nami_internal_models.Transaction"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_tropicaldog17_nami_internal_models.Investment"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad request",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/investments/{id}": {
+            "get": {
+                "description": "Retrieve a specific investment by ID",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "investments"
+                ],
+                "summary": "Get investment by ID",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Investment ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_tropicaldog17_nami_internal_models.Investment"
+                        }
+                    },
+                    "404": {
+                        "description": "Investment not found",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/prices/daily": {
             "get": {
                 "description": "Get daily prices for a symbol or asset ID in a currency",
@@ -348,7 +669,7 @@ const docTemplate = `{
         },
         "/reports/holdings": {
             "get": {
-                "description": "Get current holdings as of a date",
+                "description": "Get current holdings as of a date with portfolio percentages",
                 "produces": [
                     "application/json"
                 ],
@@ -385,7 +706,7 @@ const docTemplate = `{
         },
         "/reports/holdings/summary": {
             "get": {
-                "description": "Get aggregated holdings summary as of a date",
+                "description": "Get aggregated holdings summary as of a date with portfolio percentages",
                 "produces": [
                     "application/json"
                 ],
@@ -1075,6 +1396,19 @@ const docTemplate = `{
                 }
             }
         },
+        "github_com_tropicaldog17_nami_internal_models.CostBasisMethod": {
+            "type": "string",
+            "enum": [
+                "fifo",
+                "lifo",
+                "average"
+            ],
+            "x-enum-varnames": [
+                "CostBasisFIFO",
+                "CostBasisLIFO",
+                "CostBasisAverage"
+            ]
+        },
         "github_com_tropicaldog17_nami_internal_models.Holding": {
             "type": "object",
             "properties": {
@@ -1086,6 +1420,10 @@ const docTemplate = `{
                 },
                 "last_updated": {
                     "type": "string"
+                },
+                "percentage": {
+                    "description": "Percentage of total portfolio value",
+                    "type": "number"
                 },
                 "quantity": {
                     "type": "number"
@@ -1123,6 +1461,113 @@ const docTemplate = `{
                     "type": "number"
                 },
                 "total_value_vnd": {
+                    "type": "number"
+                }
+            }
+        },
+        "github_com_tropicaldog17_nami_internal_models.Investment": {
+            "type": "object",
+            "properties": {
+                "account": {
+                    "type": "string"
+                },
+                "asset": {
+                    "type": "string"
+                },
+                "cost_basis_method": {
+                    "description": "Configuration",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/github_com_tropicaldog17_nami_internal_models.CostBasisMethod"
+                        }
+                    ]
+                },
+                "created_at": {
+                    "description": "Metadata",
+                    "type": "string"
+                },
+                "deposit_cost": {
+                    "description": "Total cost in USD",
+                    "type": "number"
+                },
+                "deposit_date": {
+                    "description": "Aggregated deposit information",
+                    "type": "string"
+                },
+                "deposit_qty": {
+                    "description": "Total quantity deposited",
+                    "type": "number"
+                },
+                "deposit_unit_cost": {
+                    "description": "Weighted average unit cost",
+                    "type": "number"
+                },
+                "horizon": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "is_open": {
+                    "description": "Status and quantities",
+                    "type": "boolean"
+                },
+                "pnl": {
+                    "description": "P\u0026L calculation",
+                    "type": "number"
+                },
+                "pnl_percent": {
+                    "type": "number"
+                },
+                "updated_at": {
+                    "type": "string"
+                },
+                "withdrawal_date": {
+                    "description": "Withdrawal information (if closed)",
+                    "type": "string"
+                },
+                "withdrawal_qty": {
+                    "type": "number"
+                },
+                "withdrawal_unit_price": {
+                    "type": "number"
+                },
+                "withdrawal_value": {
+                    "type": "number"
+                }
+            }
+        },
+        "github_com_tropicaldog17_nami_internal_models.InvestmentSummary": {
+            "type": "object",
+            "properties": {
+                "closed_investments": {
+                    "type": "integer"
+                },
+                "open_investments": {
+                    "type": "integer"
+                },
+                "open_market_value": {
+                    "type": "number"
+                },
+                "realized_pnl": {
+                    "type": "number"
+                },
+                "roi_percent": {
+                    "type": "number"
+                },
+                "total_deposits": {
+                    "type": "number"
+                },
+                "total_investments": {
+                    "type": "integer"
+                },
+                "total_pnl": {
+                    "type": "number"
+                },
+                "total_withdrawals": {
+                    "type": "number"
+                },
+                "unrealized_pnl": {
                     "type": "number"
                 }
             }
@@ -1275,6 +1720,7 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "amount_local": {
+                    "description": "FX and dual currency",
                     "type": "number"
                 },
                 "amount_usd": {
@@ -1339,7 +1785,6 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "fx_to_usd": {
-                    "description": "FX and dual currency",
                     "type": "number"
                 },
                 "fx_to_vnd": {
@@ -1355,6 +1800,10 @@ const docTemplate = `{
                 "internal_flow": {
                     "description": "Flow flags",
                     "type": "boolean"
+                },
+                "investment_id": {
+                    "description": "Enhanced investment tracking - links transaction to investment position",
+                    "type": "string"
                 },
                 "note": {
                     "type": "string"

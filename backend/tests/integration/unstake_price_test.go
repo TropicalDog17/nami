@@ -56,10 +56,12 @@ func TestUnstake_AmountOnly_UsesFetchedPriceAndPnL(t *testing.T) {
 	if err != nil {
 		t.Fatalf("stake action failed: %v", err)
 	}
-	depositTxID := stakeResp.Transactions[1].ID
+    depositTxID := stakeResp.Transactions[1].ID
+    // Also capture the investment ID created by the stake to use for unstake routing
+    investmentID := *stakeResp.Transactions[1].InvestmentID
 
 	// Unstake 275 with only amount (no exit price or exit amount) -> should fetch price 1.23
-	unstakeReq := &models.ActionRequest{
+    unstakeReq := &models.ActionRequest{
 		Action: models.ActionUnstake,
 		Params: map[string]interface{}{
 			"date":                "2025-02-01",
@@ -68,6 +70,7 @@ func TestUnstake_AmountOnly_UsesFetchedPriceAndPnL(t *testing.T) {
 			"asset":               "USDT",
 			"amount":              275.0,
 			"stake_deposit_tx_id": depositTxID,
+            "investment_id":       investmentID,
 		},
 	}
 	unstakeResp, err := actionService.Perform(ctx, unstakeReq)
@@ -131,11 +134,13 @@ func TestUnstake_CloseAll_ExitAmountUSD_PriceDerivedAndPnL(t *testing.T) {
 	if err != nil {
 		t.Fatalf("stake action failed: %v", err)
 	}
-	depositTxID := stakeResp.Transactions[1].ID
+    depositTxID := stakeResp.Transactions[1].ID
+    // Capture investment ID for explicit unstake routing
+    investmentID := *stakeResp.Transactions[1].InvestmentID
 
 	// Close all with total exit USD 275 (derive price = 275/500 = 0.55)
 	// Since close_all=true, it will mark the original stake as closed but unstake only 275
-	unstakeReq := &models.ActionRequest{
+    unstakeReq := &models.ActionRequest{
 		Action: models.ActionUnstake,
 		Params: map[string]interface{}{
 			"date":                "2025-02-01",
@@ -146,6 +151,7 @@ func TestUnstake_CloseAll_ExitAmountUSD_PriceDerivedAndPnL(t *testing.T) {
 			"close_all":           true,  // Just mark original as closed
 			"exit_amount_usd":     "275",
 			"stake_deposit_tx_id": depositTxID,
+            "investment_id":       investmentID,
 		},
 	}
 	unstakeResp, err := actionService.Perform(ctx, unstakeReq)

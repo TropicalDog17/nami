@@ -215,11 +215,11 @@ func (h *InvestmentHandler) HandleStake(w http.ResponseWriter, r *http.Request) 
 
 // HandleUnstake handles POST /api/investments/unstake
 // @Summary Create unstake investment
-// @Description Process an unstake transaction and update investment
+// @Description Process an unstake transaction and update investment. The field `investment_id` is required and must reference an existing open investment.
 // @Tags investments
 // @Accept json
 // @Produce json
-// @Param unstake body models.Transaction true "Unstake transaction"
+// @Param unstake body models.Transaction true "Unstake transaction (requires investment_id)"
 // @Success 201 {object} models.Investment
 // @Failure 400 {string} string "Bad request"
 // @Failure 500 {string} string "Internal server error"
@@ -241,6 +241,10 @@ func (h *InvestmentHandler) HandleUnstake(w http.ResponseWriter, r *http.Request
 	// Validate unstake transaction
 	if unstakeTx.Asset == "" || unstakeTx.Account == "" || unstakeTx.Quantity.IsZero() || unstakeTx.Quantity.IsNegative() {
 		http.Error(w, "Invalid unstake transaction: asset, account, and positive quantity are required", http.StatusBadRequest)
+		return
+	}
+	if unstakeTx.InvestmentID == nil || *unstakeTx.InvestmentID == "" {
+		http.Error(w, "Invalid unstake transaction: investment_id is required", http.StatusBadRequest)
 		return
 	}
 

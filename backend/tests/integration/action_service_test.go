@@ -312,6 +312,10 @@ func TestActionService_Unstake_TableDriven(t *testing.T) {
 				if _, ok := tc.params["stake_deposit_tx_id"]; ok {
 					tc.params["stake_deposit_tx_id"] = stakeResp.Transactions[1].ID
 				}
+				// Always provide explicit investment_id for unstake routing
+				if stakeResp.Transactions[1].InvestmentID != nil {
+					tc.params["investment_id"] = *stakeResp.Transactions[1].InvestmentID
+				}
 			}
 
 			req := &models.ActionRequest{

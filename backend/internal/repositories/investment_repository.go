@@ -290,6 +290,12 @@ func (r *investmentRepository) UpdateWithUnstake(ctx context.Context, investment
 		// Set withdrawal date
 		investment.WithdrawalDate = &unstakeTx.Date
 
+		// If fully withdrawn or over-withdrawn, mark as closed
+		remaining := investment.DepositQty.Sub(investment.WithdrawalQty)
+		if !remaining.IsPositive() {
+			investment.IsOpen = false
+		}
+
 		// Save the updated investment
 		if err := tx.Save(investment).Error; err != nil {
 			return fmt.Errorf("failed to update investment: %w", err)

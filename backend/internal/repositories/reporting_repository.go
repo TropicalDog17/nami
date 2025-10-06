@@ -492,14 +492,14 @@ func (r *reportingRepository) GetPnL(ctx context.Context, period models.Period) 
             SELECT
                 i.asset,
                 i.account,
-                i.remaining_qty,
+                (i.deposit_qty - i.withdrawal_qty) as remaining_qty,
                 i.deposit_unit_cost,
                 COALESCE(p.current_price_usd, i.deposit_unit_cost) as current_price_usd,
                 COALESCE(p.fx_to_vnd, 25000) as fx_to_vnd
             FROM investments i
             LEFT JOIN latest_prices p ON i.asset = p.asset
             WHERE i.is_open = true
-            AND i.remaining_qty > 0
+            AND (i.deposit_qty - i.withdrawal_qty) > 0
         )
         SELECT
             COALESCE(SUM(
@@ -555,7 +555,7 @@ func (r *reportingRepository) GetPnL(ctx context.Context, period models.Period) 
         SELECT
             i.asset,
             COALESCE(SUM(CASE WHEN i.is_open = false AND i.withdrawal_date >= $1 AND i.withdrawal_date <= $2 THEN i.pnl ELSE 0 END), 0) as realized_pnl_usd,
-            COALESCE(SUM(CASE WHEN i.is_open = true THEN (COALESCE(p.current_price_usd, i.deposit_unit_cost) - i.deposit_unit_cost) * i.remaining_qty ELSE 0 END), 0) as unrealized_pnl_usd,
+            COALESCE(SUM(CASE WHEN i.is_open = true THEN (COALESCE(p.current_price_usd, i.deposit_unit_cost) - i.deposit_unit_cost) * (i.deposit_qty - i.withdrawal_qty) ELSE 0 END), 0) as unrealized_pnl_usd,
             COALESCE(SUM(i.deposit_cost), 0) as total_cost
         FROM investments i
         LEFT JOIN latest_prices p ON i.asset = p.asset

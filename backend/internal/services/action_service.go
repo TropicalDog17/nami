@@ -619,10 +619,10 @@ func (s *actionService) performUnstake(ctx context.Context, req *models.ActionRe
 	stakeID, _ := getString(p, "stake_deposit_tx_id")
 	horizon, _ := getString(p, "horizon")
 	// Optional explicit investment identifier to route the unstake
-	investmentIDStr, _ := getString(p, "investment_id")
+	investmentIDStr, ok5 := getString(p, "investment_id")
 
-	if !(ok1 && ok2 && ok3 && ok4) {
-		return nil, fmt.Errorf("missing required params for unstake")
+	if !(ok1 && ok2 && ok3 && ok4 && ok5 && investmentIDStr != "") {
+		return nil, fmt.Errorf("missing required params for unstake: investment_id is required")
 	}
 
 	// Determine exit price in USD per unit
@@ -668,22 +668,8 @@ func (s *actionService) performUnstake(ctx context.Context, req *models.ActionRe
 	if err := outTx.PreSave(); err != nil {
 		return nil, err
 	}
-	// If provided, attach the explicit investment ID to the unstake transaction
-	if investmentIDStr != "" {
-		outTx.InvestmentID = &investmentIDStr
-	} else {
-		// Try to find an open investment for this asset/account as a fallback
-		if s.investmentService != nil {
-			if open, err := s.investmentService.GetOpenInvestmentsForStake(ctx, asset, invest, func() string {
-				if horizon == "" {
-					return "short-term"
-				}
-				return horizon
-			}()); err == nil && len(open) > 0 {
-				outTx.InvestmentID = &open[0].ID
-			}
-		}
-	}
+	// Attach the explicit (required) investment ID to the unstake transaction
+	outTx.InvestmentID = &investmentIDStr
 
 	inv, err := s.investmentService.ProcessUnstake(ctx, outTx)
 	if err != nil {
@@ -712,28 +698,31 @@ func (s *actionService) performUnstake(ctx context.Context, req *models.ActionRe
 	}
 
 	// When close_all=true and no explicit exit_amount_usd provided, fully close remaining by writing off leftover quantity at zero value
-	// This realizes total PnL equal to (received proceeds - original cost)
-	if closeAll && stakeID != "" && !hasExitAmount && inv != nil {
-		writeOffTx := &models.Transaction{
-			Date:         date,
-			Type:         "unstake",
-			Asset:        asset,
-			Account:      invest,
-			Quantity:     inv.DepositQty,
-			PriceLocal:   decimal.Zero,
-			FXToUSD:      decimal.NewFromFloat(1.0),
-			FXToVND:      decimal.NewFromInt(1),
-			InternalFlow: func() *bool { b := true; return &b }(),
-			Horizon:      horizonPtr,
+	// This realizes total PnL equal to (received proceeds - original cost). Use remaining qty based on current investment state.
+	if closeAll && !hasExitAmount && inv != nil {
+		remaining := inv.DepositQty.Sub(inv.WithdrawalQty)
+		if remaining.IsPositive() {
+			writeOffTx := &models.Transaction{
+				Date:         date,
+				Type:         "unstake",
+				Asset:        asset,
+				Account:      invest,
+				Quantity:     remaining,
+				PriceLocal:   decimal.Zero,
+				FXToUSD:      decimal.NewFromFloat(1.0),
+				FXToVND:      decimal.NewFromInt(1),
+				InternalFlow: func() *bool { b := true; return &b }(),
+				Horizon:      horizonPtr,
+				InvestmentID: outTx.InvestmentID,
+			}
+			if note != "" {
+				writeOffTx.Note = &note
+			}
+			if err := writeOffTx.PreSave(); err == nil {
+				// Best-effort write-off; ignore error to avoid blocking main unstake flow
+				_, _ = s.investmentService.ProcessUnstake(ctx, writeOffTx)
+			}
 		}
-		if note != "" {
-			writeOffTx.Note = &note
-		}
-		if err := writeOffTx.PreSave(); err == nil {
-			// Best-effort write-off; ignore error to avoid blocking main unstake flow
-			_, _ = s.investmentService.ProcessUnstake(ctx, writeOffTx)
-		}
-
 	}
 
 	// Create link between stake deposit and unstake withdraw for PnL tracking
