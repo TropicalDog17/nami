@@ -140,3 +140,9 @@ func setupTestTables(database *db.DB) error {
 	}
 	return nil
 }
+
+// Shared pointer helpers for tests
+func stringPtr(s string) *string     { return &s }
+func boolPtr(b bool) *bool           { return &b }
+func timePtr(t time.Time) *time.Time { return &t }
+func floatPtr(f float64) *float64    { return &f }

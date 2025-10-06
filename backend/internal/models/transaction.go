@@ -19,15 +19,15 @@ type Transaction struct {
 	Note         *string   `json:"note" gorm:"column:note;type:text"`
 
 	// Amount fields
-	Quantity    decimal.Decimal `json:"quantity" gorm:"column:quantity;type:decimal(30,18);not null"`
-	PriceLocal  decimal.Decimal `json:"price_local" gorm:"column:price_local;type:decimal(30,18);not null"`
-	AmountLocal decimal.Decimal `json:"amount_local" gorm:"column:amount_local;type:decimal(30,18);not null"`
+	Quantity   decimal.Decimal `json:"quantity" gorm:"column:quantity;type:decimal(30,18);not null"`
+	PriceLocal decimal.Decimal `json:"price_local" gorm:"column:price_local;type:decimal(30,18);not null"`
 
 	// FX and dual currency
-	FXToUSD   decimal.Decimal `json:"fx_to_usd" gorm:"column:fx_to_usd;type:decimal(30,18);not null"`
-	FXToVND   decimal.Decimal `json:"fx_to_vnd" gorm:"column:fx_to_vnd;type:decimal(30,18);not null"`
-	AmountUSD decimal.Decimal `json:"amount_usd" gorm:"column:amount_usd;type:decimal(30,18);not null"`
-	AmountVND decimal.Decimal `json:"amount_vnd" gorm:"column:amount_vnd;type:decimal(30,18);not null"`
+	AmountLocal decimal.Decimal `json:"amount_local" gorm:"column:amount_local;type:decimal(30,18);not null"`
+	FXToUSD     decimal.Decimal `json:"fx_to_usd" gorm:"column:fx_to_usd;type:decimal(30,18);not null"`
+	FXToVND     decimal.Decimal `json:"fx_to_vnd" gorm:"column:fx_to_vnd;type:decimal(30,18);not null"`
+	AmountUSD   decimal.Decimal `json:"amount_usd" gorm:"column:amount_usd;type:decimal(30,18);not null"`
+	AmountVND   decimal.Decimal `json:"amount_vnd" gorm:"column:amount_vnd;type:decimal(30,18);not null"`
 
 	// Fees
 	FeeUSD decimal.Decimal `json:"fee_usd" gorm:"column:fee_usd;type:decimal(30,18);not null;default:0"`
@@ -40,9 +40,6 @@ type Transaction struct {
 
 	// Flow flags
 	InternalFlow *bool `json:"internal_flow" gorm:"column:internal_flow;type:boolean;default:false"`
-
-	// Investment tracking - links withdrawal to its deposit
-	DepositID *string `json:"deposit_id" gorm:"column:deposit_id;type:varchar(255);index"`
 
 	// Enhanced investment tracking - links transaction to investment position
 	InvestmentID *string `json:"investment_id" gorm:"column:investment_id;type:varchar(255);index"`
@@ -125,21 +122,14 @@ func (t *Transaction) Validate() error {
 		return errors.New("horizon must be 'short-term' or 'long-term'")
 	}
 
-	// Validate deposit_id - only withdrawal types can have deposit_id
-	isWithdrawalType := t.Type == "withdraw" || t.Type == "unstake" || t.Type == "sell"
-	if !isWithdrawalType && t.DepositID != nil && *t.DepositID != "" {
-		return errors.New("deposit_id should only be set for withdrawal/unstake/sell transactions")
-	}
-
 	return nil
 }
 
 // CalculateDerivedFields calculates and sets the derived fields
 func (t *Transaction) CalculateDerivedFields() {
-	// Calculate AmountLocal
-	t.AmountLocal = t.Quantity.Mul(t.PriceLocal)
-
 	// Calculate USD/VND amounts
+	// First compute amount in local currency so downstream fields can rely on it
+	t.AmountLocal = t.Quantity.Mul(t.PriceLocal)
 	t.AmountUSD = t.AmountLocal.Mul(t.FXToUSD)
 	t.AmountVND = t.AmountLocal.Mul(t.FXToVND)
 

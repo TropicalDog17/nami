@@ -18,21 +18,21 @@ const (
 
 // Investment represents a specific investment position that can have multiple deposits
 type Investment struct {
-	ID           string          `json:"id" gorm:"primaryKey;column:id;type:varchar(255)"`
-	Asset        string          `json:"asset" gorm:"column:asset;type:varchar(50);not null;index"`
-	Account      string          `json:"account" gorm:"column:account;type:varchar(100);not null;index"`
-	Horizon      *string         `json:"horizon,omitempty" gorm:"column:horizon;type:varchar(20);index"`
+	ID      string  `json:"id" gorm:"primaryKey;column:id;type:varchar(255)"`
+	Asset   string  `json:"asset" gorm:"column:asset;type:varchar(50);not null;index"`
+	Account string  `json:"account" gorm:"column:account;type:varchar(100);not null;index"`
+	Horizon *string `json:"horizon,omitempty" gorm:"column:horizon;type:varchar(20);index"`
 
 	// Aggregated deposit information
-	DepositDate      time.Time       `json:"deposit_date" gorm:"column:deposit_date;type:timestamptz;not null;index"`      // First deposit date
-	DepositQty       decimal.Decimal `json:"deposit_qty" gorm:"column:deposit_qty;type:decimal(30,18);not null"`        // Total quantity deposited
-	DepositCost      decimal.Decimal `json:"deposit_cost" gorm:"column:deposit_cost;type:decimal(30,18);not null"`      // Total cost in USD
-	DepositUnitCost  decimal.Decimal `json:"deposit_unit_cost" gorm:"column:deposit_unit_cost;type:decimal(30,18);not null"` // Weighted average unit cost
+	DepositDate     time.Time       `json:"deposit_date" gorm:"column:deposit_date;type:timestamptz;not null;index"`        // First deposit date
+	DepositQty      decimal.Decimal `json:"deposit_qty" gorm:"column:deposit_qty;type:decimal(30,18);not null"`             // Total quantity deposited
+	DepositCost     decimal.Decimal `json:"deposit_cost" gorm:"column:deposit_cost;type:decimal(30,18);not null"`           // Total cost in USD
+	DepositUnitCost decimal.Decimal `json:"deposit_unit_cost" gorm:"column:deposit_unit_cost;type:decimal(30,18);not null"` // Weighted average unit cost
 
 	// Withdrawal information (if closed)
-	WithdrawalDate     *time.Time     `json:"withdrawal_date,omitempty" gorm:"column:withdrawal_date;type:timestamptz;index"`
-	WithdrawalQty      decimal.Decimal `json:"withdrawal_qty" gorm:"column:withdrawal_qty;type:decimal(30,18);not null;default:0"`
-	WithdrawalValue    decimal.Decimal `json:"withdrawal_value" gorm:"column:withdrawal_value;type:decimal(30,18);not null;default:0"`
+	WithdrawalDate      *time.Time      `json:"withdrawal_date,omitempty" gorm:"column:withdrawal_date;type:timestamptz;index"`
+	WithdrawalQty       decimal.Decimal `json:"withdrawal_qty" gorm:"column:withdrawal_qty;type:decimal(30,18);not null;default:0"`
+	WithdrawalValue     decimal.Decimal `json:"withdrawal_value" gorm:"column:withdrawal_value;type:decimal(30,18);not null;default:0"`
 	WithdrawalUnitPrice decimal.Decimal `json:"withdrawal_unit_price" gorm:"column:withdrawal_unit_price;type:decimal(30,18);not null;default:0"`
 
 	// P&L calculation
@@ -40,8 +40,7 @@ type Investment struct {
 	PnLPercent decimal.Decimal `json:"pnl_percent" gorm:"column:pnl_percent;type:decimal(30,18);not null;default:0"`
 
 	// Status and quantities
-	IsOpen       bool            `json:"is_open" gorm:"column:is_open;type:boolean;not null;default:true"`
-	RemainingQty decimal.Decimal `json:"remaining_qty" gorm:"column:remaining_qty;type:decimal(30,18);not null;default:0"`
+	IsOpen bool `json:"is_open" gorm:"column:is_open;type:boolean;not null;default:true"`
 
 	// Configuration
 	CostBasisMethod CostBasisMethod `json:"cost_basis_method" gorm:"column:cost_basis_method;type:varchar(20);not null;default:'fifo'"`
@@ -71,19 +70,19 @@ type InvestmentFilter struct {
 
 // InvestmentSummary provides aggregated investment statistics
 type InvestmentSummary struct {
-	TotalInvestments  int             `json:"total_investments"`
-	OpenInvestments   int             `json:"open_investments"`
-	ClosedInvestments int             `json:"closed_investments"`
+	TotalInvestments  int `json:"total_investments"`
+	OpenInvestments   int `json:"open_investments"`
+	ClosedInvestments int `json:"closed_investments"`
 
-	TotalDeposits     decimal.Decimal `json:"total_deposits"`
-	TotalWithdrawals  decimal.Decimal `json:"total_withdrawals"`
-	RealizedPnL       decimal.Decimal `json:"realized_pnl"`
+	TotalDeposits    decimal.Decimal `json:"total_deposits"`
+	TotalWithdrawals decimal.Decimal `json:"total_withdrawals"`
+	RealizedPnL      decimal.Decimal `json:"realized_pnl"`
 
-	OpenMarketValue   decimal.Decimal `json:"open_market_value"`
-	UnrealizedPnL     decimal.Decimal `json:"unrealized_pnl"`
-	TotalPnL          decimal.Decimal `json:"total_pnl"`
+	OpenMarketValue decimal.Decimal `json:"open_market_value"`
+	UnrealizedPnL   decimal.Decimal `json:"unrealized_pnl"`
+	TotalPnL        decimal.Decimal `json:"total_pnl"`
 
-	ROI               decimal.Decimal `json:"roi_percent"`
+	ROI decimal.Decimal `json:"roi_percent"`
 }
 
 // Validate validates the investment data
@@ -112,16 +111,6 @@ func (i *Investment) Validate() error {
 	return nil
 }
 
-// IsFullyWithdrawn checks if the investment has been completely closed
-func (i *Investment) IsFullyWithdrawn() bool {
-	return !i.IsOpen && i.RemainingQty.IsZero()
-}
-
-// CalculateRemainingQuantity calculates the remaining quantity after withdrawals
-func (i *Investment) CalculateRemainingQuantity() decimal.Decimal {
-	return i.DepositQty.Sub(i.WithdrawalQty)
-}
-
 // UpdatePnL recalculates the P&L based on current values
 func (i *Investment) UpdatePnL() {
 	if i.DepositCost.IsZero() {
@@ -130,14 +119,19 @@ func (i *Investment) UpdatePnL() {
 		return
 	}
 
-	totalValue := i.WithdrawalValue
-	if i.IsOpen && !i.RemainingQty.IsZero() {
-		// Add current market value of remaining position
-		currentValue := i.RemainingQty.Mul(i.DepositUnitCost)
-		totalValue = totalValue.Add(currentValue)
+	// Calculate realized P&L from withdrawals
+	realizedPnL := i.WithdrawalValue.Sub(i.DepositCost)
+
+	// If position is fully closed, only use realized P&L
+	if !i.IsOpen {
+		i.PnL = realizedPnL
+		i.PnLPercent = i.PnL.Div(i.DepositCost).Mul(decimal.NewFromInt(100))
+		return
 	}
 
-	i.PnL = totalValue.Sub(i.DepositCost)
+	// For open positions, we can't calculate unrealized P&L without current market value
+	// So we only show realized P&L from partial withdrawals
+	i.PnL = realizedPnL
 	i.PnLPercent = i.PnL.Div(i.DepositCost).Mul(decimal.NewFromInt(100))
 }
 
@@ -155,8 +149,6 @@ func (i *Investment) AddDeposit(qty, cost decimal.Decimal) {
 	i.DepositCost = totalCost
 	i.DepositUnitCost = totalCost.Div(totalQty)
 
-	// Update remaining quantity
-	i.RemainingQty = i.CalculateRemainingQuantity()
 	i.UpdatedAt = time.Now()
 }
 
@@ -166,22 +158,10 @@ func (i *Investment) AddWithdrawal(qty, value decimal.Decimal) error {
 		return errors.New("withdrawal quantity must be positive")
 	}
 
-	if qty.GreaterThan(i.RemainingQty) {
-		return errors.New("withdrawal quantity exceeds remaining quantity")
-	}
-
 	i.WithdrawalQty = i.WithdrawalQty.Add(qty)
 	i.WithdrawalValue = i.WithdrawalValue.Add(value)
 	if i.WithdrawalQty.IsPositive() {
 		i.WithdrawalUnitPrice = i.WithdrawalValue.Div(i.WithdrawalQty)
-	}
-
-	// Update remaining quantity
-	i.RemainingQty = i.CalculateRemainingQuantity()
-
-	// Check if investment is fully closed
-	if i.RemainingQty.IsZero() {
-		i.IsOpen = false
 	}
 
 	i.UpdatePnL()

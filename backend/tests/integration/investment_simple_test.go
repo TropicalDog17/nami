@@ -21,14 +21,13 @@ func TestInvestmentModelValidation(t *testing.T) {
 		DepositQty:          decimal.NewFromFloat(1.5),
 		DepositCost:         decimal.NewFromFloat(15000.0),
 		DepositUnitCost:     decimal.NewFromFloat(10000.0),
-		WithdrawalDate:      investmentTimePtr(time.Now()),
+		WithdrawalDate:      timePtr(time.Now()),
 		WithdrawalQty:       decimal.NewFromFloat(1.5),
 		WithdrawalValue:     decimal.NewFromFloat(18000.0),
 		WithdrawalUnitPrice: decimal.NewFromFloat(12000.0),
 		PnL:                 decimal.NewFromFloat(3000.0),
 		PnLPercent:          decimal.NewFromFloat(20.0),
 		IsOpen:              false,
-		RemainingQty:        decimal.Zero,
 		CreatedAt:           time.Now(),
 		UpdatedAt:           time.Now(),
 	}
@@ -42,7 +41,6 @@ func TestInvestmentModelValidation(t *testing.T) {
 	assert.True(t, investment.DepositCost.Equal(decimal.NewFromFloat(15000.0)))
 	assert.True(t, investment.DepositUnitCost.Equal(decimal.NewFromFloat(10000.0)))
 	assert.False(t, investment.IsOpen)
-	assert.True(t, investment.RemainingQty.IsZero())
 }
 
 func TestInvestmentFilterValidation(t *testing.T) {
@@ -101,7 +99,6 @@ func TestInvestmentSummaryValidation(t *testing.T) {
 
 func TestTransactionModelWithInvestmentFields(t *testing.T) {
 	// Test that the Transaction model includes investment tracking fields
-	depositID := "test-deposit-id"
 	horizon := "long-term"
 	entryDate := time.Now()
 
@@ -113,12 +110,10 @@ func TestTransactionModelWithInvestmentFields(t *testing.T) {
 		Account:     "binance",
 		Quantity:    decimal.NewFromFloat(1.0),
 		PriceLocal:  decimal.NewFromFloat(10000.0),
-		AmountLocal: decimal.NewFromFloat(10000.0),
 		FXToUSD:     decimal.NewFromInt(1),
 		AmountUSD:   decimal.NewFromFloat(10000.0),
 		DeltaQty:    decimal.NewFromFloat(1.0),
 		CashFlowUSD: decimal.NewFromFloat(-10000.0),
-		DepositID:   &depositID,
 		Horizon:     &horizon,
 		EntryDate:   &entryDate,
 		CreatedAt:   time.Now(),
@@ -129,7 +124,6 @@ func TestTransactionModelWithInvestmentFields(t *testing.T) {
 	assert.Equal(t, "deposit", tx.Type)
 	assert.Equal(t, "BTC", tx.Asset)
 	assert.Equal(t, "binance", tx.Account)
-	assert.Equal(t, depositID, *tx.DepositID)
 	assert.Equal(t, horizon, *tx.Horizon)
 	assert.NotNil(t, tx.EntryDate)
 }
@@ -211,14 +205,4 @@ func TestInvestmentRemainingQuantityCalculation(t *testing.T) {
 }
 
 // Helper functions for investment tests
-func investmentStringPtr(s string) *string {
-	return &s
-}
-
-func investmentBoolPtr(b bool) *bool {
-	return &b
-}
-
-func investmentTimePtr(t time.Time) *time.Time {
-	return &t
-}
+// local pointer helpers removed; using shared helpers from testutil.go

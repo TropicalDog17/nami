@@ -8,6 +8,7 @@ import (
 	"github.com/shopspring/decimal"
 	"github.com/tropicaldog17/nami/internal/models"
 	"github.com/tropicaldog17/nami/internal/repositories"
+	"gorm.io/gorm"
 )
 
 type investmentService struct {
@@ -36,14 +37,6 @@ func (s *investmentService) GetInvestmentByID(ctx context.Context, id string) (*
 // GetInvestmentSummary retrieves investment summary statistics
 func (s *investmentService) GetInvestmentSummary(ctx context.Context, filter *models.InvestmentFilter) (*models.InvestmentSummary, error) {
 	return s.investmentRepo.GetSummary(ctx, filter)
-}
-
-// GetWithdrawalsForDeposit retrieves all withdrawal transactions for a deposit
-func (s *investmentService) GetWithdrawalsForDeposit(ctx context.Context, depositID string) ([]*models.Transaction, error) {
-	// For backward compatibility, we need to find transactions linked to this deposit
-	// This would need to be implemented in the transaction repository
-	// For now, return empty slice as placeholder
-	return []*models.Transaction{}, nil
 }
 
 // GetAvailableDeposits retrieves open investment positions for an asset/account
@@ -95,7 +88,6 @@ func (s *investmentService) CreateDeposit(ctx context.Context, tx *models.Transa
 			PnL:             decimal.Zero,
 			PnLPercent:      decimal.Zero,
 			IsOpen:          true,
-			RemainingQty:    tx.Quantity,
 			CostBasisMethod: models.CostBasisFIFO, // Default to FIFO
 			CreatedAt:       time.Now(),
 			UpdatedAt:       time.Now(),
@@ -147,12 +139,6 @@ func (s *investmentService) CreateWithdrawal(ctx context.Context, tx *models.Tra
 		if err != nil {
 			return nil, fmt.Errorf("failed to find investment by ID: %w", err)
 		}
-	} else if tx.DepositID != nil {
-		// Fallback to finding by deposit ID for backward compatibility
-		targetInvestment, err = s.investmentRepo.FindByDepositID(ctx, *tx.DepositID)
-		if err != nil {
-			return nil, fmt.Errorf("failed to find investment by deposit ID: %w", err)
-		}
 	} else {
 		// Find an open investment for this asset/account
 		openInvestments, err := s.GetAvailableDeposits(ctx, tx.Asset, tx.Account)
@@ -167,13 +153,6 @@ func (s *investmentService) CreateWithdrawal(ctx context.Context, tx *models.Tra
 		// Use the first available investment (could be enhanced to use specific cost basis method)
 		targetInvestment = openInvestments[0]
 		tx.InvestmentID = &targetInvestment.ID
-		tx.DepositID = nil // Clear deposit ID as we're using investment ID
-	}
-
-	// Check if enough quantity is available
-	if tx.Quantity.GreaterThan(targetInvestment.RemainingQty) {
-		return nil, fmt.Errorf("insufficient quantity: available %s, requested %s",
-			targetInvestment.RemainingQty, tx.Quantity)
 	}
 
 	// Process the withdrawal using the investment's cost basis method
@@ -202,53 +181,43 @@ func (s *investmentService) CreateWithdrawal(ctx context.Context, tx *models.Tra
 
 // ProcessStake processes a stake transaction and updates or creates an investment
 func (s *investmentService) ProcessStake(ctx context.Context, stakeTx *models.Transaction) (*models.Investment, error) {
-	if stakeTx.Type != "stake" {
-		return nil, fmt.Errorf("transaction type must be 'stake', got %s", stakeTx.Type)
+	if stakeTx.Type != models.ActionStake {
+		return nil, fmt.Errorf("transaction type must be '%s', got %s", models.ActionStake, stakeTx.Type)
+	}
+
+	// Validate required fields
+	if stakeTx.Horizon == nil {
+		return nil, fmt.Errorf("horizon is required for stake transactions")
 	}
 
 	var investment *models.Investment
 	var err error
 
-	// If an explicit investment_id is provided, stake into that investment
-	if stakeTx.InvestmentID != nil && *stakeTx.InvestmentID != "" {
+	if stakeTx.InvestmentID != nil {
+		// Try to find investment by InvestmentID first
 		investment, err = s.investmentRepo.GetByID(ctx, *stakeTx.InvestmentID)
 		if err != nil {
 			return nil, fmt.Errorf("failed to find investment by ID: %w", err)
 		}
-		// Basic sanity checks to avoid cross-asset/account mistakes
-		if investment.Asset != stakeTx.Asset || investment.Account != stakeTx.Account {
-			return nil, fmt.Errorf("stake transaction asset/account must match target investment (%s/%s)", investment.Asset, investment.Account)
+	} else {
+		// Find open investment for this asset/account/horizon
+		investment, err = s.investmentRepo.FindOpenInvestmentForStake(ctx, stakeTx.Asset, stakeTx.Account, *stakeTx.Horizon)
+		if err != nil && err != gorm.ErrRecordNotFound {
+			return nil, fmt.Errorf("failed to find investment for stake: %w", err)
 		}
-		if !investment.IsOpen {
-			return nil, fmt.Errorf("cannot stake into a closed investment: %s", investment.ID)
-		}
+	}
 
-		if err := s.investmentRepo.UpdateWithStake(ctx, investment, stakeTx); err != nil {
-			return nil, fmt.Errorf("failed to update investment with stake: %w", err)
+	if investment == nil {
+		// Create a new investment
+		investment, err = s.investmentRepo.CreateFromStake(ctx, stakeTx)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create investment from stake: %w", err)
 		}
 	} else {
-		// Try to find an existing open investment for this asset/account/horizon
-		var horizonStr string
-		if stakeTx.Horizon != nil {
-			horizonStr = *stakeTx.Horizon
-		}
-		existingInvestment, ferr := s.investmentRepo.FindOpenInvestmentForStake(ctx, stakeTx.Asset, stakeTx.Account, horizonStr)
-		if ferr != nil {
-			return nil, fmt.Errorf("failed to find existing investment: %w", ferr)
-		}
-
-		if existingInvestment != nil {
-			// Update existing investment with additional stake
-			if err := s.investmentRepo.UpdateWithStake(ctx, existingInvestment, stakeTx); err != nil {
-				return nil, fmt.Errorf("failed to update investment with stake: %w", err)
-			}
-			investment = existingInvestment
-		} else {
-			// Create new investment from stake
-			investment, err = s.investmentRepo.CreateFromStake(ctx, stakeTx)
-			if err != nil {
-				return nil, fmt.Errorf("failed to create investment from stake: %w", err)
-			}
+		// Update the existing investment
+		err = s.investmentRepo.UpdateWithStake(ctx, investment, stakeTx)
+		if err != nil {
+			return nil, fmt.Errorf("failed to update investment with stake: %w", err)
 		}
 	}
 
@@ -271,35 +240,13 @@ func (s *investmentService) ProcessUnstake(ctx context.Context, unstakeTx *model
 	var investment *models.Investment
 	var err error
 
-	// Try to find investment by InvestmentID first
-	if unstakeTx.InvestmentID != nil {
-		investment, err = s.investmentRepo.GetByID(ctx, *unstakeTx.InvestmentID)
-		if err != nil {
-			return nil, fmt.Errorf("failed to find investment by ID: %w", err)
-		}
-	} else {
-		// Find open investment for this asset/account/horizon
-		var horizonStr string
-		if unstakeTx.Horizon != nil {
-			horizonStr = *unstakeTx.Horizon
-		}
-		investment, err = s.investmentRepo.FindOpenInvestmentForStake(ctx, unstakeTx.Asset, unstakeTx.Account, horizonStr)
-		if err != nil {
-			return nil, fmt.Errorf("failed to find investment for unstake: %w", err)
-		}
-
-		if investment == nil {
-			return nil, fmt.Errorf("no open investment found for unstake: %s/%s", unstakeTx.Asset, unstakeTx.Account)
-		}
-
-		// Link the unstake transaction to the investment
-		unstakeTx.InvestmentID = &investment.ID
+	if unstakeTx.InvestmentID == nil {
+		return nil, fmt.Errorf("investment ID is required for unstake transactions")
 	}
-
-	// Check if enough quantity is available
-	if unstakeTx.Quantity.GreaterThan(investment.RemainingQty) {
-		return nil, fmt.Errorf("insufficient quantity for unstake: available %s, requested %s",
-			investment.RemainingQty, unstakeTx.Quantity)
+	// Try to find investment by InvestmentID first
+	investment, err = s.investmentRepo.GetByID(ctx, *unstakeTx.InvestmentID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to find investment by ID: %w", err)
 	}
 
 	// Update investment with unstake

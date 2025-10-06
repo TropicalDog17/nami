@@ -141,7 +141,6 @@ type InvestmentService interface {
 	GetInvestments(ctx context.Context, filter *models.InvestmentFilter) ([]*models.Investment, error)
 	GetInvestmentByID(ctx context.Context, depositID string) (*models.Investment, error)
 	GetInvestmentSummary(ctx context.Context, filter *models.InvestmentFilter) (*models.InvestmentSummary, error)
-	GetWithdrawalsForDeposit(ctx context.Context, depositID string) ([]*models.Transaction, error)
 	GetAvailableDeposits(ctx context.Context, asset, account string) ([]*models.Investment, error)
 	CreateDeposit(ctx context.Context, tx *models.Transaction) (*models.Investment, error)
 	CreateWithdrawal(ctx context.Context, tx *models.Transaction) (*models.Investment, error)

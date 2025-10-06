@@ -70,6 +70,15 @@ const TransactionPage: React.FC = () => {
 
   const todayStr = useMemo(() => new Date().toISOString().split('T')[0], []);
 
+  // Ensure any date string includes time (RFC 3339). If only YYYY-MM-DD provided, append current time.
+  const toISODateTime = (value?: string): string => {
+    if (!value) return new Date().toISOString();
+    const s = String(value);
+    if (s.includes('T')) return s;
+    const timePart = new Date().toISOString().split('T')[1];
+    return `${s}T${timePart}`;
+  };
+
   // Load transactions and master data on mount
   useEffect(() => {
     loadTransactions();
@@ -243,7 +252,7 @@ const TransactionPage: React.FC = () => {
       // Use investment API for stake and unstake operations
       if (actionForm.action === 'stake') {
         const stakeTransaction = {
-          date: actionForm.params.date || new Date().toISOString().split('T')[0],
+          date: toISODateTime(actionForm.params.date),
           type: 'stake',
           asset: actionForm.params.asset,
           account: actionForm.params.investment_account,
@@ -262,7 +271,7 @@ const TransactionPage: React.FC = () => {
         await loadTransactions();
       } else if (actionForm.action === 'unstake') {
         const unstakeTransaction = {
-          date: actionForm.params.date || new Date().toISOString().split('T')[0],
+          date: toISODateTime(actionForm.params.date),
           type: 'unstake',
           asset: actionForm.params.asset,
           account: actionForm.params.investment_account,
@@ -283,7 +292,7 @@ const TransactionPage: React.FC = () => {
         // Use general actions API for other actions
         const resp: any = await actionsApi.perform(
           actionForm.action,
-          actionForm.params
+          { ...actionForm.params, date: toISODateTime(actionForm.params.date) }
         );
         created = (resp?.transactions || []) as Transaction[];
         if (created.length > 0) {

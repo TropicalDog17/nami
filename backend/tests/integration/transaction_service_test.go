@@ -30,7 +30,6 @@ func TestTransactionService_UpdateTransaction(t *testing.T) {
 		Note:         stringPtr("Test transaction"),
 		Quantity:     decimal.NewFromFloat(10),
 		PriceLocal:   decimal.NewFromFloat(1),
-		AmountLocal:  decimal.NewFromFloat(10),
 		FXToUSD:      decimal.NewFromFloat(1),
 		FXToVND:      decimal.NewFromFloat(24000),
 		AmountUSD:    decimal.NewFromFloat(10),
@@ -107,7 +106,6 @@ func TestTransactionService_UpdateTransactionMultipleFields(t *testing.T) {
 		Note:         stringPtr("Old transaction"),
 		Quantity:     decimal.NewFromFloat(5),
 		PriceLocal:   decimal.NewFromFloat(2),
-		AmountLocal:  decimal.NewFromFloat(10),
 		FXToUSD:      decimal.NewFromFloat(1),
 		FXToVND:      decimal.NewFromFloat(24000),
 		AmountUSD:    decimal.NewFromFloat(10),
@@ -239,9 +237,7 @@ func TestTransactionService_UpdateTransactionNotFound(t *testing.T) {
 	}
 }
 
-func stringPtr(s string) *string {
-	return &s
-}
+// local stringPtr removed; using shared helper from testutil.go
 
 func TestTransactionService_ExportTransactions(t *testing.T) {
 	tdb := setupTestDB(t)
@@ -263,7 +259,6 @@ func TestTransactionService_ExportTransactions(t *testing.T) {
 		Note:         stringPtr("Lunch"),
 		Quantity:     decimal.NewFromFloat(1),
 		PriceLocal:   decimal.NewFromFloat(10),
-		AmountLocal:  decimal.NewFromFloat(10),
 		FXToUSD:      decimal.NewFromFloat(1),
 		FXToVND:      decimal.NewFromFloat(24000),
 		AmountUSD:    decimal.NewFromFloat(10),
@@ -293,7 +288,6 @@ func TestTransactionService_ExportTransactions(t *testing.T) {
 		Note:         stringPtr("September"),
 		Quantity:     decimal.NewFromFloat(1),
 		PriceLocal:   decimal.NewFromFloat(1000),
-		AmountLocal:  decimal.NewFromFloat(1000),
 		FXToUSD:      decimal.NewFromFloat(1),
 		FXToVND:      decimal.NewFromFloat(24000),
 		AmountUSD:    decimal.NewFromFloat(1000),
@@ -342,7 +336,6 @@ func TestTransactionService_ImportTransactions_CreateAndUpsert(t *testing.T) {
 			Account:     "Cash",
 			Quantity:    decimal.NewFromFloat(2),
 			PriceLocal:  decimal.NewFromFloat(5),
-			AmountLocal: decimal.NewFromFloat(10),
 			FXToUSD:     decimal.NewFromFloat(1),
 			FXToVND:     decimal.NewFromFloat(24000),
 			AmountUSD:   decimal.NewFromFloat(10),
@@ -362,7 +355,6 @@ func TestTransactionService_ImportTransactions_CreateAndUpsert(t *testing.T) {
 			Account:     "Bank",
 			Quantity:    decimal.NewFromFloat(1),
 			PriceLocal:  decimal.NewFromFloat(100),
-			AmountLocal: decimal.NewFromFloat(100),
 			FXToUSD:     decimal.NewFromFloat(1),
 			FXToVND:     decimal.NewFromFloat(24000),
 			AmountUSD:   decimal.NewFromFloat(100),
@@ -393,7 +385,6 @@ func TestTransactionService_ImportTransactions_CreateAndUpsert(t *testing.T) {
 		Counterparty: stringPtr("Store B"),
 		Quantity:     decimal.NewFromFloat(3),
 		PriceLocal:   decimal.NewFromFloat(7),
-		AmountLocal:  decimal.NewFromFloat(21),
 		FXToUSD:      decimal.NewFromFloat(1),
 		FXToVND:      decimal.NewFromFloat(24000),
 		AmountUSD:    decimal.NewFromFloat(21),
@@ -422,7 +413,6 @@ func TestTransactionService_ImportTransactions_CreateAndUpsert(t *testing.T) {
 			Account:     existing.Account,
 			Quantity:    existing.Quantity,
 			PriceLocal:  existing.PriceLocal,
-			AmountLocal: existing.AmountLocal,
 			FXToUSD:     existing.FXToUSD,
 			FXToVND:     existing.FXToVND,
 			AmountUSD:   existing.AmountUSD,

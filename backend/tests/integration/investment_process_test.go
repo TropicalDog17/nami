@@ -80,11 +80,6 @@ func TestInvestmentService_StakeIntoExisting_ThenUnstake_PartialAndFull(t *testi
 		t.Fatalf("ProcessStake (existing) failed: %v", err)
 	}
 
-	// After two stakes, remaining qty should be 500
-	if !inv.RemainingQty.Equal(decimal.NewFromInt(500)) {
-		t.Fatalf("expected remaining 500, got %s", inv.RemainingQty)
-	}
-
 	// Partial unstake 275 at price 1.10
 	unstake1 := buildUnstakeTx(date2, "Futures", "USDT", 275, 1.10, &invID, nil)
 	inv, err = invSvc.ProcessUnstake(ctx, unstake1)
@@ -93,9 +88,6 @@ func TestInvestmentService_StakeIntoExisting_ThenUnstake_PartialAndFull(t *testi
 	}
 	if !inv.IsOpen {
 		t.Fatalf("expected investment to remain open after partial unstake")
-	}
-	if !inv.RemainingQty.Equal(decimal.NewFromInt(225)) {
-		t.Fatalf("expected remaining 225, got %s", inv.RemainingQty)
 	}
 
 	// Full close remaining at price 0.90
@@ -106,9 +98,6 @@ func TestInvestmentService_StakeIntoExisting_ThenUnstake_PartialAndFull(t *testi
 	}
 	if inv.IsOpen {
 		t.Fatalf("expected investment to be closed after full unstake")
-	}
-	if !inv.RemainingQty.Equal(decimal.Zero) {
-		t.Fatalf("expected remaining 0, got %s", inv.RemainingQty)
 	}
 
 	// Validate realized PnL: cost basis = 500 * 1.00 = 500

@@ -193,66 +193,65 @@ func (r *investmentRepository) GetSummary(ctx context.Context, filter *models.In
 // FindByDepositID finds an investment by deposit ID
 func (r *investmentRepository) FindByDepositID(ctx context.Context, depositID string) (*models.Investment, error) {
 	var investment models.Investment
-	
+
 	// Find investment that has a transaction with this deposit ID
 	err := r.db.WithContext(ctx).
 		Joins("JOIN transactions ON investments.id = transactions.investment_id").
 		Where("transactions.deposit_id = ?", depositID).
 		First(&investment).Error
-	
+
 	if err != nil {
 		if err == gorm.ErrRecordNotFound {
 			return nil, fmt.Errorf("investment not found for deposit ID: %s", depositID)
 		}
 		return nil, fmt.Errorf("failed to find investment by deposit ID: %w", err)
 	}
-	
+
 	return &investment, nil
 }
 
 // CreateFromStake creates an investment from a stake transaction
 func (r *investmentRepository) CreateFromStake(ctx context.Context, stakeTx *models.Transaction) (*models.Investment, error) {
 	investment := &models.Investment{
-		ID:               uuid.New().String(),
-		Asset:            stakeTx.Asset,
-		Account:          stakeTx.Account,
-		Horizon:          stakeTx.Horizon,
-		DepositDate:      stakeTx.Date,
-		DepositQty:       stakeTx.Quantity,
-		DepositCost:      stakeTx.AmountUSD,
-		DepositUnitCost:  stakeTx.AmountUSD.Div(stakeTx.Quantity),
-		WithdrawalQty:    decimal.Zero,
-		WithdrawalValue:  decimal.Zero,
+		ID:                  uuid.New().String(),
+		Asset:               stakeTx.Asset,
+		Account:             stakeTx.Account,
+		Horizon:             stakeTx.Horizon,
+		DepositDate:         stakeTx.Date,
+		DepositQty:          stakeTx.Quantity,
+		DepositCost:         stakeTx.AmountUSD,
+		DepositUnitCost:     stakeTx.AmountUSD.Div(stakeTx.Quantity),
+		WithdrawalQty:       decimal.Zero,
+		WithdrawalValue:     decimal.Zero,
 		WithdrawalUnitPrice: decimal.Zero,
-		PnL:              decimal.Zero,
-		PnLPercent:       decimal.Zero,
-		IsOpen:           true,
-		RemainingQty:     stakeTx.Quantity,
-		CostBasisMethod:  models.CostBasisFIFO,
-		CreatedAt:        time.Now(),
-		UpdatedAt:        time.Now(),
+		PnL:                 decimal.Zero,
+		PnLPercent:          decimal.Zero,
+		IsOpen:              true,
+		CostBasisMethod:     models.CostBasisFIFO,
+		CreatedAt:           time.Now(),
+		UpdatedAt:           time.Now(),
 	}
-	
+
 	err := r.db.WithContext(ctx).Create(investment).Error
 	if err != nil {
 		return nil, fmt.Errorf("failed to create investment from stake: %w", err)
 	}
-	
+
 	return investment, nil
 }
 
 // FindOpenInvestmentForStake finds an open investment for staking
 func (r *investmentRepository) FindOpenInvestmentForStake(ctx context.Context, asset, account, horizon string) (*models.Investment, error) {
 	var investment models.Investment
-	
+
 	query := r.db.WithContext(ctx).Where("asset = ? AND account = ? AND is_open = ?", asset, account, true)
-	
+
 	if horizon != "" {
 		query = query.Where("horizon = ?", horizon)
 	} else {
 		query = query.Where("horizon IS NULL")
 	}
-	
+
 	err := query.Order("deposit_date ASC").First(&investment).Error
 	if err != nil {
 		if err == gorm.ErrRecordNotFound {
@@ -260,7 +259,7 @@ func (r *investmentRepository) FindOpenInvestmentForStake(ctx context.Context, a
 		}
 		return nil, fmt.Errorf("failed to find open investment for stake: %w", err)
 	}
-	
+
 	return &investment, nil
 }
 
@@ -269,12 +268,12 @@ func (r *investmentRepository) UpdateWithStake(ctx context.Context, investment *
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		// Update investment with additional stake
 		investment.AddDeposit(stakeTx.Quantity, stakeTx.AmountUSD)
-		
+
 		// Save the updated investment
 		if err := tx.Save(investment).Error; err != nil {
 			return fmt.Errorf("failed to update investment: %w", err)
 		}
-		
+
 		return nil
 	})
 }
@@ -287,15 +286,15 @@ func (r *investmentRepository) UpdateWithUnstake(ctx context.Context, investment
 		if err != nil {
 			return fmt.Errorf("failed to process withdrawal: %w", err)
 		}
-		
+
 		// Set withdrawal date
 		investment.WithdrawalDate = &unstakeTx.Date
-		
+
 		// Save the updated investment
 		if err := tx.Save(investment).Error; err != nil {
 			return fmt.Errorf("failed to update investment: %w", err)
 		}
-		
+
 		return nil
 	})
 }

@@ -36,10 +36,10 @@ func TestInvestment_IsOpen(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			investment := &Investment{
-				RemainingQty: tt.remainingQty,
+				WithdrawalQty: tt.remainingQty,
 			}
 
-			isOpen := investment.RemainingQty.GreaterThan(decimal.Zero)
+			isOpen := investment.WithdrawalQty.GreaterThan(decimal.Zero)
 			assert.Equal(t, tt.expectedIsOpen, isOpen)
 		})
 	}
@@ -250,7 +250,7 @@ func TestInvestment_Validation(t *testing.T) {
 				DepositQty:      decimal.NewFromFloat(1.5),
 				DepositCost:     decimal.NewFromFloat(15000.0),
 				DepositUnitCost: decimal.NewFromFloat(10000.0),
-				RemainingQty:    decimal.NewFromFloat(1.5),
+				WithdrawalQty:   decimal.NewFromFloat(1.5),
 				IsOpen:          true,
 				CreatedAt:       time.Now(),
 			},
@@ -371,7 +371,6 @@ func TestInvestment_Copy(t *testing.T) {
 		PnL:                 decimal.NewFromFloat(3000.0),
 		PnLPercent:          decimal.NewFromFloat(20.0),
 		IsOpen:              false,
-		RemainingQty:        decimal.Zero,
 		CreatedAt:           time.Date(2023, 1, 1, 0, 0, 0, 0, time.UTC),
 	}
 
@@ -388,7 +387,7 @@ func TestInvestment_Copy(t *testing.T) {
 	require.True(t, original.WithdrawalValue.GreaterThan(decimal.Zero))
 	require.True(t, original.WithdrawalUnitPrice.GreaterThan(decimal.Zero))
 	require.False(t, original.IsOpen)
-	require.True(t, original.RemainingQty.IsZero())
+	require.True(t, original.WithdrawalQty.IsZero())
 }
 
 // Helper functions

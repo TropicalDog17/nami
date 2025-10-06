@@ -30,7 +30,6 @@ func TestReportingService_GetHoldings_WithPercentages(t *testing.T) {
 			Account:     "Binance",
 			Quantity:    decimal.NewFromFloat(0.1),
 			PriceLocal:  decimal.NewFromFloat(50000),
-			AmountLocal: decimal.NewFromFloat(5000),
 			AmountUSD:   decimal.NewFromFloat(5000),
 			AmountVND:   decimal.NewFromFloat(125000000), // 5000 * 25000
 			FXToUSD:     decimal.NewFromInt(1),
@@ -46,7 +45,6 @@ func TestReportingService_GetHoldings_WithPercentages(t *testing.T) {
 			Account:     "Binance",
 			Quantity:    decimal.NewFromFloat(1.0),
 			PriceLocal:  decimal.NewFromFloat(3000),
-			AmountLocal: decimal.NewFromFloat(3000),
 			AmountUSD:   decimal.NewFromFloat(3000),
 			AmountVND:   decimal.NewFromFloat(75000000), // 3000 * 25000
 			FXToUSD:     decimal.NewFromInt(1),
@@ -62,7 +60,6 @@ func TestReportingService_GetHoldings_WithPercentages(t *testing.T) {
 			Account:     "Binance",
 			Quantity:    decimal.NewFromFloat(2000),
 			PriceLocal:  decimal.NewFromFloat(1),
-			AmountLocal: decimal.NewFromFloat(2000),
 			AmountUSD:   decimal.NewFromFloat(2000),
 			AmountVND:   decimal.NewFromFloat(50000000), // 2000 * 25000
 			FXToUSD:     decimal.NewFromInt(1),

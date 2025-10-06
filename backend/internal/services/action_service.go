@@ -539,94 +539,40 @@ func (s *actionService) performRepayBorrow(ctx context.Context, req *models.Acti
 // Stake into protocol/investment with fee as percentage of amount
 // Params: date, source_account, investment_account, asset, amount, fee_percent(optional), counterparty, tag, horizon(optional), note(optional)
 func (s *actionService) performStake(ctx context.Context, req *models.ActionRequest) (*models.ActionResponse, error) {
-	p := req.Params
-	date, _ := getDate(p, "date")
-	source, ok1 := getString(p, "source_account")
-	invest, ok2 := getString(p, "investment_account")
-	asset, ok3 := getString(p, "asset")
-	amount, ok4 := getDecimal(p, "amount")
-	counterparty, _ := getString(p, "counterparty")
-	tag, _ := getString(p, "tag")
-	note, _ := getString(p, "note")
-	feePct, _ := getDecimal(p, "fee_percent") // e.g., 0.5 means 0.5%
-	horizon, _ := getString(p, "horizon")
-	if !(ok1 && ok2 && ok3 && ok4) {
-		return nil, fmt.Errorf("missing required params for stake")
+	var params models.StakeParams
+	err := params.FromMap(req.Params)
+	if err != nil {
+		return nil, fmt.Errorf("failed to unmarshal params: %w", err)
 	}
 
-	var horizonPtr *string
-	if horizon != "" {
-		horizonPtr = &horizon
+	// Provide a sensible default horizon when not specified to satisfy investment processing
+	if params.Horizon == "" {
+		params.Horizon = "short-term"
 	}
 
 	// 1) transfer_out from source
-	outTx := &models.Transaction{
-		Date:         date,
-		Type:         "transfer_out",
-		Asset:        asset,
-		Account:      source,
-		Quantity:     amount,
-		PriceLocal:   decimal.NewFromInt(1),
-		FXToUSD:      decimal.NewFromFloat(1.0),
-		FXToVND:      decimal.NewFromInt(1),
-		InternalFlow: func() *bool { b := true; return &b }(),
-		Horizon:      horizonPtr,
-	}
-	if counterparty != "" {
-		outTx.Counterparty = &counterparty
-	}
-	if tag != "" {
-		outTx.Tag = &tag
-	}
-	if note != "" {
-		outTx.Note = &note
-	}
+	outTx := params.ToOutgoingTransaction()
 	if err := s.transactionService.CreateTransaction(ctx, outTx); err != nil {
 		return nil, err
 	}
 
 	// 2) deposit into investment (net of fee when provided)
-	netAmount := amount
+	netAmount := decimal.NewFromFloat(params.Amount)
+	feePct := decimal.NewFromFloat(params.FeePercent)
 	if !feePct.IsZero() {
-		feeQty := amount.Mul(feePct).Div(decimal.NewFromInt(100))
+		feeQty := decimal.NewFromFloat(params.Amount).Mul(decimal.NewFromFloat(params.FeePercent)).Div(decimal.NewFromInt(100))
 		if feeQty.IsPositive() {
-			netAmount = amount.Sub(feeQty)
+			netAmount = netAmount.Sub(feeQty)
 		}
 	}
-	inTx := &models.Transaction{
-		Date:         date,
-		Type:         "deposit",
-		Asset:        asset,
-		Account:      invest,
-		Quantity:     netAmount,
-		PriceLocal:   decimal.NewFromInt(1),
-		FXToUSD:      decimal.NewFromFloat(1.0),
-		FXToVND:      decimal.NewFromInt(1),
-		InternalFlow: func() *bool { b := true; return &b }(),
-		Horizon:      horizonPtr,
-		EntryDate:    &date,
+	inTx := params.ToIncomingTransaction()
+	err = inTx.PreSave() // Calculate derived fields including AmountUSD
+	if err != nil {
+		return nil, err
 	}
-	if counterparty != "" {
-		inTx.Counterparty = &counterparty
-	}
-	if tag != "" {
-		inTx.Tag = &tag
-	}
-	if note != "" {
-		inTx.Note = &note
-	}
-	// Enhanced: Use InvestmentService for investment tracking
-	// For investments, we need to set the correct entry price (default to 1.0 for USDT-like assets)
-	entryPrice := decimal.NewFromFloat(1.0)
-	if entryPriceUSD, hasEntryPrice := getDecimal(p, "entry_price_usd"); hasEntryPrice && !entryPriceUSD.IsZero() {
-		entryPrice = entryPriceUSD
-	}
-	inTx.Type = "stake" // Use stake type for investment tracking
-	inTx.PriceLocal = entryPrice
-	inTx.PreSave() // Calculate derived fields including AmountUSD
 
 	// Process stake using investment service which handles investment creation/updates properly (always non-nil)
-	_, err := s.investmentService.ProcessStake(ctx, inTx)
+	_, err = s.investmentService.ProcessStake(ctx, inTx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to process stake investment: %w", err)
 	}
@@ -635,13 +581,13 @@ func (s *actionService) performStake(ctx context.Context, req *models.ActionRequ
 
 	// 3) optional fee in same asset, calculated by percentage of amount
 	if !feePct.IsZero() {
-		feeQty := amount.Mul(feePct).Div(decimal.NewFromInt(100))
+		feeQty := netAmount.Mul(feePct).Div(decimal.NewFromInt(100))
 		if feeQty.IsPositive() {
 			feeTx := &models.Transaction{
-				Date:       date,
+				Date:       params.Date,
 				Type:       "fee",
-				Asset:      asset,
-				Account:    source,
+				Asset:      params.Asset,
+				Account:    params.SourceAccount,
 				Quantity:   feeQty,
 				PriceLocal: decimal.NewFromInt(1),
 				FXToUSD:    decimal.NewFromFloat(1.0),
@@ -672,6 +618,8 @@ func (s *actionService) performUnstake(ctx context.Context, req *models.ActionRe
 	closeAll, _ := getBool(p, "close_all")
 	stakeID, _ := getString(p, "stake_deposit_tx_id")
 	horizon, _ := getString(p, "horizon")
+	// Optional explicit investment identifier to route the unstake
+	investmentIDStr, _ := getString(p, "investment_id")
 
 	if !(ok1 && ok2 && ok3 && ok4) {
 		return nil, fmt.Errorf("missing required params for unstake")
@@ -713,9 +661,6 @@ func (s *actionService) performUnstake(ctx context.Context, req *models.ActionRe
 		InternalFlow: func() *bool { b := true; return &b }(),
 		Horizon:      horizonPtr,
 	}
-	if stakeID != "" {
-		outTx.DepositID = &stakeID
-	}
 	if note != "" {
 		outTx.Note = &note
 	}
@@ -723,7 +668,25 @@ func (s *actionService) performUnstake(ctx context.Context, req *models.ActionRe
 	if err := outTx.PreSave(); err != nil {
 		return nil, err
 	}
-	if _, err := s.investmentService.ProcessUnstake(ctx, outTx); err != nil {
+	// If provided, attach the explicit investment ID to the unstake transaction
+	if investmentIDStr != "" {
+		outTx.InvestmentID = &investmentIDStr
+	} else {
+		// Try to find an open investment for this asset/account as a fallback
+		if s.investmentService != nil {
+			if open, err := s.investmentService.GetOpenInvestmentsForStake(ctx, asset, invest, func() string {
+				if horizon == "" {
+					return "short-term"
+				}
+				return horizon
+			}()); err == nil && len(open) > 0 {
+				outTx.InvestmentID = &open[0].ID
+			}
+		}
+	}
+
+	inv, err := s.investmentService.ProcessUnstake(ctx, outTx)
+	if err != nil {
 		return nil, fmt.Errorf("failed to process unstake investment: %w", err)
 	}
 
@@ -746,6 +709,31 @@ func (s *actionService) performUnstake(ctx context.Context, req *models.ActionRe
 	}
 	if err := s.transactionService.CreateTransaction(ctx, inTx); err != nil {
 		return nil, err
+	}
+
+	// When close_all=true and no explicit exit_amount_usd provided, fully close remaining by writing off leftover quantity at zero value
+	// This realizes total PnL equal to (received proceeds - original cost)
+	if closeAll && stakeID != "" && !hasExitAmount && inv != nil {
+		writeOffTx := &models.Transaction{
+			Date:         date,
+			Type:         "unstake",
+			Asset:        asset,
+			Account:      invest,
+			Quantity:     inv.DepositQty,
+			PriceLocal:   decimal.Zero,
+			FXToUSD:      decimal.NewFromFloat(1.0),
+			FXToVND:      decimal.NewFromInt(1),
+			InternalFlow: func() *bool { b := true; return &b }(),
+			Horizon:      horizonPtr,
+		}
+		if note != "" {
+			writeOffTx.Note = &note
+		}
+		if err := writeOffTx.PreSave(); err == nil {
+			// Best-effort write-off; ignore error to avoid blocking main unstake flow
+			_, _ = s.investmentService.ProcessUnstake(ctx, writeOffTx)
+		}
+
 	}
 
 	// Create link between stake deposit and unstake withdraw for PnL tracking
