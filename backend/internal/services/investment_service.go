@@ -26,12 +26,24 @@ func NewInvestmentService(investmentRepo repositories.InvestmentRepository, tran
 
 // GetInvestments retrieves investments based on filter criteria
 func (s *investmentService) GetInvestments(ctx context.Context, filter *models.InvestmentFilter) ([]*models.Investment, error) {
-	return s.investmentRepo.List(ctx, filter)
+	investments, err := s.investmentRepo.List(ctx, filter)
+	if err != nil {
+		return nil, err
+	}
+	for _, inv := range investments {
+		inv.RealizedPnL = inv.PnL
+	}
+	return investments, nil
 }
 
 // GetInvestmentByID retrieves an investment by ID
 func (s *investmentService) GetInvestmentByID(ctx context.Context, id string) (*models.Investment, error) {
-	return s.investmentRepo.GetByID(ctx, id)
+	inv, err := s.investmentRepo.GetByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	inv.RealizedPnL = inv.PnL
+	return inv, nil
 }
 
 // GetInvestmentSummary retrieves investment summary statistics
@@ -120,6 +132,8 @@ func (s *investmentService) CreateDeposit(ctx context.Context, tx *models.Transa
 		return nil, fmt.Errorf("failed to create deposit transaction: %w", err)
 	}
 
+	// Populate derived realized PnL before returning
+	targetInvestment.RealizedPnL = targetInvestment.PnL
 	return targetInvestment, nil
 }
 
@@ -176,6 +190,8 @@ func (s *investmentService) CreateWithdrawal(ctx context.Context, tx *models.Tra
 		return nil, fmt.Errorf("failed to create withdrawal transaction: %w", err)
 	}
 
+	// Populate derived realized PnL before returning
+	targetInvestment.RealizedPnL = targetInvestment.PnL
 	return targetInvestment, nil
 }
 
@@ -227,6 +243,8 @@ func (s *investmentService) ProcessStake(ctx context.Context, stakeTx *models.Tr
 		return nil, fmt.Errorf("failed to create stake transaction: %w", err)
 	}
 
+	// Populate derived realized PnL before returning
+	investment.RealizedPnL = investment.PnL
 	return investment, nil
 }
 
@@ -260,6 +278,8 @@ func (s *investmentService) ProcessUnstake(ctx context.Context, unstakeTx *model
 		return nil, fmt.Errorf("failed to create unstake transaction: %w", err)
 	}
 
+	// Populate derived realized PnL before returning
+	investment.RealizedPnL = investment.PnL
 	return investment, nil
 }
 

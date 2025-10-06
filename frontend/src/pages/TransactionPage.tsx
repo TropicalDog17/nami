@@ -334,8 +334,9 @@ const TransactionPage: React.FC = () => {
       actions.setError(null);
       showSuccessToast('Transaction created successfully');
     } catch (err: any) {
-      actions.setError(err?.message ?? 'Unknown error');
-      showErrorToast('Failed to create transaction. Please try again.');
+      const msg = err?.message ?? 'Failed to create transaction.';
+      actions.setError(msg);
+      showErrorToast(msg);
     }
   };
 
@@ -360,8 +361,9 @@ const TransactionPage: React.FC = () => {
       actions.setError(null);
       showSuccessToast('Transaction updated successfully');
     } catch (err: any) {
-      actions.setError(err?.message ?? 'Unknown error');
-      showErrorToast('Failed to update transaction. Please try again.');
+      const msg = err?.message ?? 'Failed to update transaction.';
+      actions.setError(msg);
+      showErrorToast(msg);
     }
   };
 
@@ -722,8 +724,8 @@ const TransactionPage: React.FC = () => {
           <button
             onClick={() => actions.setCurrency('USD')}
             className={`px-4 py-2 text-sm font-medium border rounded-l-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${currency === 'USD'
-                ? 'bg-blue-600 text-white border-blue-600'
-                : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+              ? 'bg-blue-600 text-white border-blue-600'
+              : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
               }`}
           >
             USD View
@@ -731,8 +733,8 @@ const TransactionPage: React.FC = () => {
           <button
             onClick={() => actions.setCurrency('VND')}
             className={`px-4 py-2 text-sm font-medium border-t border-b border-r rounded-r-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${currency === 'VND'
-                ? 'bg-blue-600 text-white border-blue-600'
-                : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+              ? 'bg-blue-600 text-white border-blue-600'
+              : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
               }`}
           >
             VND View

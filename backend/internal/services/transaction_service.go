@@ -185,8 +185,10 @@ func (s *transactionService) UpdateTransaction(ctx context.Context, tx *models.T
 	// Merge the update with existing data to ensure we have all required fields
 	merged := s.mergeTransactionUpdate(existing, tx)
 
-	// Recalculate derived fields based on merged data
-	merged.CalculateDerivedFields()
+	// Recalculate derived fields and validate before persisting
+	if err := merged.PreSave(); err != nil {
+		return fmt.Errorf("transaction validation failed: %w", err)
+	}
 
 	// Update timestamp
 	merged.UpdatedAt = time.Now()
@@ -203,7 +205,6 @@ func (s *transactionService) DeleteTransaction(ctx context.Context, id string) e
 func (s *transactionService) GetTransactionCount(ctx context.Context, filter *models.TransactionFilter) (int, error) {
 	return s.txRepo.GetCount(ctx, filter)
 }
-
 
 // mergeTransactionUpdate merges an update transaction with the existing transaction
 // Only non-zero/non-empty fields from the update are applied to the existing transaction

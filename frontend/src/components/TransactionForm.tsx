@@ -6,7 +6,7 @@ import { useApp } from '../context/AppContext'
 
 const TransactionForm = ({ transaction = null, onSubmit, onCancel }) => {
   const { transactionTypes, accounts, assets, tags, currency, actions } = useApp()
-  
+
   const [formData, setFormData] = useState({
     date: new Date().toISOString().split('T')[0],
     type: '',
@@ -70,7 +70,7 @@ const TransactionForm = ({ transaction = null, onSubmit, onCancel }) => {
     if (!formData.quantity || !formData.price_local) return
 
     setIsCalculating(true)
-    
+
     const quantity = parseFloat(formData.quantity) || 0
     const priceLocal = parseFloat(formData.price_local) || 0
     const fxToUsd = parseFloat(formData.fx_to_usd) || 1
@@ -92,7 +92,7 @@ const TransactionForm = ({ transaction = null, onSubmit, onCancel }) => {
 
   const handleInputChange = (field, value) => {
     setFormData(prev => ({ ...prev, [field]: value }))
-    
+
     // Clear error when user starts typing
     if (errors[field]) {
       setErrors(prev => ({ ...prev, [field]: null }))
@@ -144,12 +144,24 @@ const TransactionForm = ({ transaction = null, onSubmit, onCancel }) => {
 
   const handleSubmit = (e) => {
     e.preventDefault()
-    
+
     if (!validateForm()) return
 
     // Convert form data to proper types
+    const toISODateTime = (d) => {
+      if (!d) return null
+      const s = String(d)
+      if (s.includes('T')) return s
+      const timePart = new Date().toISOString().split('T')[1]
+      return `${s}T${timePart}`
+    }
+
     const transactionData = {
       ...formData,
+      // Normalize dates to RFC3339 for backend consistency
+      date: toISODateTime(formData.date),
+      entry_date: formData.entry_date ? toISODateTime(formData.entry_date) : null,
+      exit_date: formData.exit_date ? toISODateTime(formData.exit_date) : null,
       quantity: parseFloat(formData.quantity),
       price_local: parseFloat(formData.price_local),
       amount_local: parseFloat(formData.amount_local),
@@ -163,8 +175,6 @@ const TransactionForm = ({ transaction = null, onSubmit, onCancel }) => {
       tag: formData.tag || null,
       note: formData.note || null,
       horizon: formData.horizon || null,
-      entry_date: formData.entry_date || null,
-      exit_date: formData.exit_date || null,
       internal_flow: !!formData.internal_flow,
     }
 
@@ -182,9 +192,8 @@ const TransactionForm = ({ transaction = null, onSubmit, onCancel }) => {
           id={field}
           value={formData[field]}
           onChange={(e) => handleInputChange(field, e.target.value)}
-          className={`w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
-            errors[field] ? 'border-red-300' : 'border-gray-300'
-          }`}
+          className={`w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${errors[field] ? 'border-red-300' : 'border-gray-300'
+            }`}
           {...props}
         >
           <option value="">Select {label}</option>
@@ -200,9 +209,8 @@ const TransactionForm = ({ transaction = null, onSubmit, onCancel }) => {
           type={type}
           value={formData[field]}
           onChange={(e) => handleInputChange(field, e.target.value)}
-          className={`w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
-            errors[field] ? 'border-red-300' : 'border-gray-300'
-          }`}
+          className={`w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${errors[field] ? 'border-red-300' : 'border-gray-300'
+            }`}
           {...props}
         />
       )}
@@ -239,24 +247,24 @@ const TransactionForm = ({ transaction = null, onSubmit, onCancel }) => {
               <p className="mt-1 text-sm text-red-600">{errors.date}</p>
             )}
           </div>
-          
+
           <InputField
             label="Transaction Type"
             field="type"
             required
-            options={transactionTypes.filter(t => t.is_active).map(t => ({ 
-              value: t.name, 
-              label: `${t.name} - ${t.description || ''}` 
+            options={transactionTypes.filter(t => t.is_active).map(t => ({
+              value: t.name,
+              label: `${t.name} - ${t.description || ''}`
             }))}
           />
-          
+
           <InputField
             label="Asset"
             field="asset"
             required
-            options={assets.filter(a => a.is_active).map(a => ({ 
-              value: a.symbol, 
-              label: `${a.symbol} - ${a.name || ''}` 
+            options={assets.filter(a => a.is_active).map(a => ({
+              value: a.symbol,
+              label: `${a.symbol} - ${a.name || ''}`
             }))}
           />
         </div>
@@ -279,19 +287,19 @@ const TransactionForm = ({ transaction = null, onSubmit, onCancel }) => {
               <p className="mt-1 text-sm text-red-600">{errors.account}</p>
             )}
           </div>
-          
+
           <InputField
             label="Counterparty"
             field="counterparty"
             placeholder="e.g., Binance, Starbucks, John Doe"
           />
-          
+
           <InputField
             label="Tag"
             field="tag"
-            options={tags.filter(t => t.is_active).map(t => ({ 
-              value: t.name, 
-              label: `${t.name} (${t.category || 'General'})` 
+            options={tags.filter(t => t.is_active).map(t => ({
+              value: t.name,
+              label: `${t.name} (${t.category || 'General'})`
             }))}
           />
         </div>
@@ -308,7 +316,7 @@ const TransactionForm = ({ transaction = null, onSubmit, onCancel }) => {
               required
               placeholder="0.00000000"
             />
-            
+
             <InputField
               label="Price (Local Currency)"
               field="price_local"
@@ -317,7 +325,7 @@ const TransactionForm = ({ transaction = null, onSubmit, onCancel }) => {
               required
               placeholder="0.00000000"
             />
-            
+
             <InputField
               label="Amount (Local)"
               field="amount_local"
@@ -358,7 +366,7 @@ const TransactionForm = ({ transaction = null, onSubmit, onCancel }) => {
               step="any"
               placeholder="1.0"
             />
-            
+
             <InputField
               label="FX to VND"
               field="fx_to_vnd"
@@ -366,7 +374,7 @@ const TransactionForm = ({ transaction = null, onSubmit, onCancel }) => {
               step="any"
               placeholder="24000.0"
             />
-            
+
             <InputField
               label="Amount (USD)"
               field="amount_usd"
@@ -376,7 +384,7 @@ const TransactionForm = ({ transaction = null, onSubmit, onCancel }) => {
               placeholder="Auto-calculated"
               className="bg-gray-50"
             />
-            
+
             <InputField
               label="Amount (VND)"
               field="amount_vnd"
@@ -400,7 +408,7 @@ const TransactionForm = ({ transaction = null, onSubmit, onCancel }) => {
               step="0.01"
               placeholder="0.00"
             />
-            
+
             <InputField
               label="Fee (VND)"
               field="fee_vnd"
@@ -423,12 +431,12 @@ const TransactionForm = ({ transaction = null, onSubmit, onCancel }) => {
                 { value: 'long-term', label: 'Long-term' }
               ]}
             />
-            
+
             <div>
               <label htmlFor="entry_date" className="block text-sm font-medium text-gray-700 mb-1">Entry Date</label>
               <DateInput id="entry_date" value={formData.entry_date} onChange={(v) => handleInputChange('entry_date', v)} />
             </div>
-            
+
             <div>
               <label htmlFor="exit_date" className="block text-sm font-medium text-gray-700 mb-1">Exit Date</label>
               <DateInput id="exit_date" value={formData.exit_date} onChange={(v) => handleInputChange('exit_date', v)} />
@@ -456,7 +464,7 @@ const TransactionForm = ({ transaction = null, onSubmit, onCancel }) => {
               Cancel
             </button>
           )}
-          
+
           <button
             type="submit"
             disabled={isCalculating}

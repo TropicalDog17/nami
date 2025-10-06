@@ -31,7 +31,7 @@ export const HoldingsChart = ({ data, currency = 'USD' }) => {
 
   const assets = Object.entries(data.by_asset)
   const labels = assets.map(([asset]) => asset)
-  const values = assets.map(([, holding]) => 
+  const values = assets.map(([, holding]) =>
     Math.abs(parseFloat(currency === 'USD' ? holding.value_usd : holding.value_vnd))
   )
 
@@ -81,7 +81,7 @@ export const HoldingsChart = ({ data, currency = 'USD' }) => {
       },
       tooltip: {
         callbacks: {
-          label: function(context) {
+          label: function (context) {
             const label = context.label || ''
             const value = context.parsed
             const total = context.dataset.data.reduce((a, b) => a + b, 0)
@@ -102,10 +102,10 @@ export const CashFlowChart = ({ data, currency = 'USD' }) => {
 
   const types = Object.entries(data.by_type)
   const labels = types.map(([type]) => type)
-  const inflows = types.map(([, flow]) => 
+  const inflows = types.map(([, flow]) =>
     parseFloat(currency === 'USD' ? flow.inflow_usd : flow.inflow_vnd)
   )
-  const outflows = types.map(([, flow]) => 
+  const outflows = types.map(([, flow]) =>
     -parseFloat(currency === 'USD' ? flow.outflow_usd : flow.outflow_vnd)
   )
 
@@ -146,7 +146,7 @@ export const CashFlowChart = ({ data, currency = 'USD' }) => {
       },
       tooltip: {
         callbacks: {
-          label: function(context) {
+          label: function (context) {
             const value = Math.abs(context.parsed.y)
             return `${context.dataset.label}: ${value.toLocaleString()} ${currency}`
           }
@@ -158,7 +158,7 @@ export const CashFlowChart = ({ data, currency = 'USD' }) => {
         beginAtZero: true,
         ticks: {
           fontSize: 10,
-          callback: function(value) {
+          callback: function (value) {
             return Math.abs(value).toLocaleString()
           }
         }
@@ -179,11 +179,11 @@ export const SpendingChart = ({ data, currency = 'USD' }) => {
   if (!data || !data.by_tag) return null
 
   const tags = Object.entries(data.by_tag)
-    .sort(([,a], [,b]) => parseFloat(b.amount_usd) - parseFloat(a.amount_usd))
+    .sort(([, a], [, b]) => parseFloat(b.amount_usd) - parseFloat(a.amount_usd))
     .slice(0, 10) // Top 10 spending categories
 
   const labels = tags.map(([tag]) => tag)
-  const amounts = tags.map(([, spending]) => 
+  const amounts = tags.map(([, spending]) =>
     parseFloat(currency === 'USD' ? spending.amount_usd : spending.amount_vnd)
   )
 
@@ -217,7 +217,7 @@ export const SpendingChart = ({ data, currency = 'USD' }) => {
       },
       tooltip: {
         callbacks: {
-          label: function(context) {
+          label: function (context) {
             const label = context.label || ''
             const value = context.parsed
             const percentage = parseFloat(tags[context.dataIndex][1].percentage).toFixed(1)
@@ -236,23 +236,20 @@ export const PnLChart = ({ data, currency = 'USD' }) => {
   if (!data) return null
 
   const realizedPnL = parseFloat(currency === 'USD' ? data.realized_pnl_usd : data.realized_pnl_vnd)
-  const unrealizedPnL = parseFloat(currency === 'USD' ? data.unrealized_pnl_usd : data.unrealized_pnl_vnd)
   const totalPnL = parseFloat(currency === 'USD' ? data.total_pnl_usd : data.total_pnl_vnd)
 
   const chartData = {
-    labels: ['Realized P&L', 'Unrealized P&L', 'Total P&L'],
+    labels: ['Realized P&L', 'Total P&L'],
     datasets: [
       {
         label: `P&L (${currency})`,
-        data: [realizedPnL, unrealizedPnL, totalPnL],
+        data: [realizedPnL, totalPnL],
         backgroundColor: [
           realizedPnL >= 0 ? '#4CAF50' : '#F44336',
-          unrealizedPnL >= 0 ? '#4CAF50' : '#F44336',
           totalPnL >= 0 ? '#4CAF50' : '#F44336',
         ],
         borderColor: [
           realizedPnL >= 0 ? '#4CAF50' : '#F44336',
-          unrealizedPnL >= 0 ? '#4CAF50' : '#F44336',
           totalPnL >= 0 ? '#4CAF50' : '#F44336',
         ],
         borderWidth: 1,
@@ -272,7 +269,7 @@ export const PnLChart = ({ data, currency = 'USD' }) => {
       },
       tooltip: {
         callbacks: {
-          label: function(context) {
+          label: function (context) {
             const value = context.parsed.y
             return `${context.label}: ${value.toLocaleString()} ${currency}`
           }
@@ -284,7 +281,7 @@ export const PnLChart = ({ data, currency = 'USD' }) => {
         beginAtZero: true,
         ticks: {
           fontSize: 10,
-          callback: function(value) {
+          callback: function (value) {
             return value.toLocaleString()
           }
         }
@@ -309,10 +306,9 @@ export const SummaryStats = ({ title, stats, currency = 'USD' }) => {
         {stats.map((stat, index) => (
           <div key={index} className="flex justify-between items-center">
             <span className="text-sm text-gray-500">{stat.label}</span>
-            <span className={`text-sm font-medium ${
-              stat.value >= 0 ? 'text-green-600' : 'text-red-600'
-            }`}>
-              {typeof stat.value === 'number' 
+            <span className={`text-sm font-medium ${stat.value >= 0 ? 'text-green-600' : 'text-red-600'
+              }`}>
+              {typeof stat.value === 'number'
                 ? `${stat.value.toLocaleString()} ${currency}`
                 : stat.value
               }

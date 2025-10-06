@@ -1199,12 +1199,6 @@ const docTemplate = `{
                 },
                 "total_value_vnd": {
                     "type": "number"
-                },
-                "unrealized_pnl_usd": {
-                    "type": "number"
-                },
-                "unrealized_pnl_vnd": {
-                    "type": "number"
                 }
             }
         },
@@ -1265,12 +1259,6 @@ const docTemplate = `{
                     "type": "number"
                 },
                 "total_pnl_vnd": {
-                    "type": "number"
-                },
-                "unrealized_pnl_usd": {
-                    "type": "number"
-                },
-                "unrealized_pnl_vnd": {
                     "type": "number"
                 }
             }
@@ -1519,6 +1507,10 @@ const docTemplate = `{
                 "pnl_percent": {
                     "type": "number"
                 },
+                "realized_pnl": {
+                    "description": "Derived fields (not persisted)",
+                    "type": "number"
+                },
                 "updated_at": {
                     "type": "string"
                 },
@@ -1654,12 +1646,6 @@ const docTemplate = `{
                     "type": "number"
                 },
                 "total_pnl_vnd": {
-                    "type": "number"
-                },
-                "unrealized_pnl_usd": {
-                    "type": "number"
-                },
-                "unrealized_pnl_vnd": {
                     "type": "number"
                 }
             }

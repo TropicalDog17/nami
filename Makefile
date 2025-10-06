@@ -72,11 +72,11 @@ run-dev: ## Run both backend and frontend simultaneously (requires database)
 
 run-backend: ## Run only the backend server (requires database)
 	@echo "🚀 Starting backend..."
-	@./demo.sh backend
+	@cd backend && go run cmd/server/main.go
 
 run-frontend: ## Run only the frontend (requires backend)
 	@echo "🚀 Starting frontend..."
-	@./demo.sh frontend
+	@cd frontend && npm run dev
 
 backend: run-backend ## Alias for run-backend
 frontend: run-frontend ## Alias for run-frontend

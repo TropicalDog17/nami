@@ -120,22 +120,20 @@ const ReportsPage = () => {
             <div className="flex space-x-2">
               <button
                 onClick={() => setCurrency('USD')}
-                className={`px-3 py-2 rounded text-sm font-medium ${
-                  currency === 'USD'
+                className={`px-3 py-2 rounded text-sm font-medium ${currency === 'USD'
                     ? 'bg-blue-600 text-white'
                     : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                }`}
+                  }`}
                 data-testid="currency-usd-button"
               >
                 USD
               </button>
               <button
                 onClick={() => setCurrency('VND')}
-                className={`px-3 py-2 rounded text-sm font-medium ${
-                  currency === 'VND'
+                className={`px-3 py-2 rounded text-sm font-medium ${currency === 'VND'
                     ? 'bg-blue-600 text-white'
                     : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                }`}
+                  }`}
                 data-testid="currency-vnd-button"
               >
                 VND
@@ -147,27 +145,27 @@ const ReportsPage = () => {
           {(activeTab === 'cashflow' ||
             activeTab === 'spending' ||
             activeTab === 'pnl') && (
-            <>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Start Date
-                </label>
-                <DateInput
-                  value={filters.startDate}
-                  onChange={(v) => handleFilterChange('startDate', v)}
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  End Date
-                </label>
-                <DateInput
-                  value={filters.endDate}
-                  onChange={(v) => handleFilterChange('endDate', v)}
-                />
-              </div>
-            </>
-          )}
+              <>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Start Date
+                  </label>
+                  <DateInput
+                    value={filters.startDate}
+                    onChange={(v) => handleFilterChange('startDate', v)}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    End Date
+                  </label>
+                  <DateInput
+                    value={filters.endDate}
+                    onChange={(v) => handleFilterChange('endDate', v)}
+                  />
+                </div>
+              </>
+            )}
 
           {/* As Of Date for Holdings */}
           {activeTab === 'holdings' && (
@@ -186,31 +184,31 @@ const ReportsPage = () => {
           {(activeTab === 'cashflow' ||
             activeTab === 'spending' ||
             activeTab === 'pnl') && (
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Quick Presets
-              </label>
-              <select
-                onChange={(e) => {
-                  const days = parseInt(e.target.value);
-                  const endDate = new Date().toISOString().split('T')[0];
-                  const startDate = new Date(
-                    Date.now() - days * 24 * 60 * 60 * 1000
-                  )
-                    .toISOString()
-                    .split('T')[0];
-                  setFilters((prev) => ({ ...prev, startDate, endDate }));
-                }}
-                className="w-full border border-gray-300 rounded px-3 py-2 text-sm"
-              >
-                <option value="">Custom Range</option>
-                <option value="7">Last 7 Days</option>
-                <option value="30">Last 30 Days</option>
-                <option value="90">Last 90 Days</option>
-                <option value="365">Last Year</option>
-              </select>
-            </div>
-          )}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Quick Presets
+                </label>
+                <select
+                  onChange={(e) => {
+                    const days = parseInt(e.target.value);
+                    const endDate = new Date().toISOString().split('T')[0];
+                    const startDate = new Date(
+                      Date.now() - days * 24 * 60 * 60 * 1000
+                    )
+                      .toISOString()
+                      .split('T')[0];
+                    setFilters((prev) => ({ ...prev, startDate, endDate }));
+                  }}
+                  className="w-full border border-gray-300 rounded px-3 py-2 text-sm"
+                >
+                  <option value="">Custom Range</option>
+                  <option value="7">Last 7 Days</option>
+                  <option value="30">Last 30 Days</option>
+                  <option value="90">Last 90 Days</option>
+                  <option value="365">Last Year</option>
+                </select>
+              </div>
+            )}
         </div>
       </div>
     );
@@ -434,23 +432,7 @@ const ReportsPage = () => {
             : `₫${currentValue.toLocaleString()}`;
         },
       },
-      {
-        key: 'unrealized_pnl',
-        title: `Unrealized P&L (${currency})`,
-        type: 'currency',
-        render: (value: any, row: any) => {
-          const currentPrice = row.current_price || row.deposit_unit_cost || 1;
-          const remainingQty = parseFloat(row.remaining_qty || 0);
-          const depositUnitCost = parseFloat(row.deposit_unit_cost || 0);
-          const currentValue = remainingQty * parseFloat(currentPrice);
-          const costBasis = remainingQty * depositUnitCost;
-          const unrealizedPnL = currentValue - costBasis;
-          const formattedValue = currency === 'USD'
-            ? `$${Math.abs(unrealizedPnL).toLocaleString()}`
-            : `₫${Math.abs(unrealizedPnL).toLocaleString()}`;
-          return unrealizedPnL >= 0 ? `+${formattedValue}` : `-${formattedValue}`;
-        },
-      },
+      // Unrealized P&L removed
       {
         key: 'pnl_percent',
         title: 'P&L %',
@@ -468,9 +450,8 @@ const ReportsPage = () => {
         key: 'is_open',
         title: 'Status',
         render: (value: any) => (
-          <span className={`px-2 py-1 text-xs rounded-full ${
-            value ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
-          }`}>
+          <span className={`px-2 py-1 text-xs rounded-full ${value ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
+            }`}>
             {value ? 'Open' : 'Closed'}
           </span>
         ),
@@ -486,7 +467,7 @@ const ReportsPage = () => {
       const remainingQty = parseFloat(inv.remaining_qty || 0);
       return sum + (remainingQty * parseFloat(currentPrice));
     }, 0);
-    const totalUnrealizedPnL = totalRemainingValue - totalDepositCost;
+    // Unrealized P&L removed
 
     return (
       <div>
@@ -500,16 +481,7 @@ const ReportsPage = () => {
                 : `₫${totalDepositCost.toLocaleString()}`}
             </p>
           </div>
-          <div className={`p-4 rounded-lg ${totalUnrealizedPnL >= 0 ? 'bg-green-50' : 'bg-red-50'}`}>
-            <h4 className={`text-sm font-medium ${totalUnrealizedPnL >= 0 ? 'text-green-800' : 'text-red-800'}`}>
-              Unrealized P&L
-            </h4>
-            <p className={`text-2xl font-bold ${totalUnrealizedPnL >= 0 ? 'text-green-900' : 'text-red-900'}`}>
-              {currency === 'USD'
-                ? `${totalUnrealizedPnL >= 0 ? '+' : '-'}$${Math.abs(totalUnrealizedPnL).toLocaleString()}`
-                : `${totalUnrealizedPnL >= 0 ? '+' : '-'}₫${Math.abs(totalUnrealizedPnL).toLocaleString()}`}
-            </p>
-          </div>
+          {/* Unrealized P&L card removed */}
           <div className="bg-purple-50 p-4 rounded-lg">
             <h4 className="text-sm font-medium text-purple-800">Current Value</h4>
             <p className="text-2xl font-bold text-purple-900">
@@ -893,7 +865,7 @@ const ReportsPage = () => {
   const renderPnLTable = () => {
     const pnl: any = (data as any).pnl || {};
     const realizedPnL = parseFloat(currency === 'USD' ? (pnl.realized_pnl_usd || 0) : (pnl.realized_pnl_vnd || 0));
-    const unrealizedPnL = parseFloat(currency === 'USD' ? (pnl.unrealized_pnl_usd || 0) : (pnl.unrealized_pnl_vnd || 0));
+    // Unrealized removed
     const totalPnL = parseFloat(currency === 'USD' ? (pnl.total_pnl_usd || 0) : (pnl.total_pnl_vnd || 0));
 
     return (
@@ -913,19 +885,7 @@ const ReportsPage = () => {
               Gains/losses from closed positions
             </p>
           </div>
-          <div className={`p-4 rounded-lg ${unrealizedPnL >= 0 ? 'bg-blue-50' : 'bg-orange-50'}`}>
-            <h4 className={`text-sm font-medium ${unrealizedPnL >= 0 ? 'text-blue-800' : 'text-orange-800'}`}>
-              Unrealized P&L
-            </h4>
-            <p className={`text-2xl font-bold ${unrealizedPnL >= 0 ? 'text-blue-900' : 'text-orange-900'}`}>
-              {currency === 'USD'
-                ? `$${Math.abs(unrealizedPnL).toLocaleString()}`
-                : `₫${Math.abs(unrealizedPnL).toLocaleString()}`}
-            </p>
-            <p className="text-xs text-gray-600 mt-1">
-              Gains/losses from open positions
-            </p>
-          </div>
+          {/* Unrealized P&L removed */}
           <div className={`p-4 rounded-lg ${totalPnL >= 0 ? 'bg-purple-50' : 'bg-red-100'}`}>
             <h4 className={`text-sm font-medium ${totalPnL >= 0 ? 'text-purple-800' : 'text-red-800'}`}>
               Total P&L
@@ -983,14 +943,7 @@ const ReportsPage = () => {
                       : `₫${Math.abs(realizedPnL).toLocaleString()}`}
                   </span>
                 </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-sm text-gray-600">Unrealized</span>
-                  <span className={`text-sm font-medium ${unrealizedPnL >= 0 ? 'text-blue-600' : 'text-orange-600'}`}>
-                    {currency === 'USD'
-                      ? `$${Math.abs(unrealizedPnL).toLocaleString()}`
-                      : `₫${Math.abs(unrealizedPnL).toLocaleString()}`}
-                  </span>
-                </div>
+                {/* Unrealized removed */}
                 <div className="pt-2 mt-2 border-t border-gray-200">
                   <div className="flex justify-between items-center">
                     <span className="text-sm font-medium text-gray-900">Total</span>
@@ -1074,11 +1027,10 @@ const ReportsPage = () => {
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
-              className={`${
-                activeTab === tab.id
+              className={`${activeTab === tab.id
                   ? 'border-blue-500 text-blue-600'
                   : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              } whitespace-nowrap py-2 px-1 border-b-2 font-medium text-sm flex items-center space-x-2`}
+                } whitespace-nowrap py-2 px-1 border-b-2 font-medium text-sm flex items-center space-x-2`}
               data-testid={`reports-tab-${tab.id}`}
             >
               <span>{tab.icon}</span>

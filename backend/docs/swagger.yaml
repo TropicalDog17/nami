@@ -16,10 +16,6 @@ definitions:
         type: number
       total_value_vnd:
         type: number
-      unrealized_pnl_usd:
-        type: number
-      unrealized_pnl_vnd:
-        type: number
     type: object
   github_com_tropicaldog17_nami_internal_models.ActionRequest:
     properties:
@@ -59,10 +55,6 @@ definitions:
       total_pnl_usd:
         type: number
       total_pnl_vnd:
-        type: number
-      unrealized_pnl_usd:
-        type: number
-      unrealized_pnl_vnd:
         type: number
     type: object
   github_com_tropicaldog17_nami_internal_models.CashFlowByType:
@@ -232,6 +224,9 @@ definitions:
         type: number
       pnl_percent:
         type: number
+      realized_pnl:
+        description: Derived fields (not persisted)
+        type: number
       updated_at:
         type: string
       withdrawal_date:
@@ -321,10 +316,6 @@ definitions:
       total_pnl_usd:
         type: number
       total_pnl_vnd:
-        type: number
-      unrealized_pnl_usd:
-        type: number
-      unrealized_pnl_vnd:
         type: number
     type: object
   github_com_tropicaldog17_nami_internal_models.SpendingByTag:

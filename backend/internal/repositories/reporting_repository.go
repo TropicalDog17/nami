@@ -541,48 +541,9 @@ func (r *reportingRepository) GetPnL(ctx context.Context, period models.Period) 
 		return nil, fmt.Errorf("failed to get realized P&L: %w", err)
 	}
 
-	// Calculate unrealized P&L from open investments
-	unrealizedQuery := `
-        WITH latest_prices AS (
-            SELECT DISTINCT ON (asset)
-                asset,
-                amount_usd / NULLIF(quantity, 0) as current_price_usd,
-                fx_to_vnd
-            FROM transactions
-            WHERE quantity > 0 AND date <= $1
-            ORDER BY asset, date DESC
-        ),
-        open_investments AS (
-            SELECT
-                i.asset,
-                i.account,
-                (i.deposit_qty - i.withdrawal_qty) as remaining_qty,
-                i.deposit_unit_cost,
-                COALESCE(p.current_price_usd, i.deposit_unit_cost) as current_price_usd,
-                COALESCE(p.fx_to_vnd, 25000) as fx_to_vnd
-            FROM investments i
-            LEFT JOIN latest_prices p ON i.asset = p.asset
-            WHERE i.is_open = true
-            AND (i.deposit_qty - i.withdrawal_qty) > 0
-        )
-        SELECT
-            COALESCE(SUM(
-                (oi.current_price_usd - oi.deposit_unit_cost) * oi.remaining_qty
-            ), 0) as unrealized_pnl_usd,
-            COALESCE(SUM(
-                (oi.current_price_usd - oi.deposit_unit_cost) * oi.remaining_qty * oi.fx_to_vnd
-            ), 0) as unrealized_pnl_vnd
-        FROM open_investments oi`
-
-	err = sqlDB.QueryRowContext(ctx, unrealizedQuery, period.EndDate).Scan(
-		&report.UnrealizedPnLUSD, &report.UnrealizedPnLVND,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get unrealized P&L: %w", err)
-	}
-
-	report.TotalPnLUSD = report.RealizedPnLUSD.Add(report.UnrealizedPnLUSD)
-	report.TotalPnLVND = report.RealizedPnLVND.Add(report.UnrealizedPnLVND)
+	// Unrealized P&L removed: totals are realized-only
+	report.TotalPnLUSD = report.RealizedPnLUSD
+	report.TotalPnLVND = report.RealizedPnLVND
 
 	// Calculate ROI using total cost basis from all investments (including those still open)
 	totalInvestedQuery := `
@@ -619,7 +580,6 @@ func (r *reportingRepository) GetPnL(ctx context.Context, period models.Period) 
         SELECT
             i.asset,
             COALESCE(SUM(CASE WHEN i.is_open = false AND i.withdrawal_date >= $1 AND i.withdrawal_date <= $2 THEN i.pnl ELSE 0 END), 0) as realized_pnl_usd,
-            COALESCE(SUM(CASE WHEN i.is_open = true THEN (COALESCE(p.current_price_usd, i.deposit_unit_cost) - i.deposit_unit_cost) * (i.deposit_qty - i.withdrawal_qty) ELSE 0 END), 0) as unrealized_pnl_usd,
             COALESCE(SUM(i.deposit_cost), 0) as total_cost
         FROM investments i
         LEFT JOIN latest_prices p ON i.asset = p.asset
@@ -633,19 +593,18 @@ func (r *reportingRepository) GetPnL(ctx context.Context, period models.Period) 
 
 	for assetRows.Next() {
 		var asset string
-		var realizedPnL, unrealizedPnL, totalCost decimal.Decimal
-		err := assetRows.Scan(&asset, &realizedPnL, &unrealizedPnL, &totalCost)
+		var realizedPnL, totalCost decimal.Decimal
+		err := assetRows.Scan(&asset, &realizedPnL, &totalCost)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan asset breakdown: %w", err)
 		}
 
-		totalPnL := realizedPnL.Add(unrealizedPnL)
+		totalPnL := realizedPnL
 
 		report.ByAsset[asset] = &models.AssetPnL{
-			Asset:            asset,
-			RealizedPnLUSD:   realizedPnL,
-			UnrealizedPnLUSD: unrealizedPnL,
-			TotalPnLUSD:      totalPnL,
+			Asset:          asset,
+			RealizedPnLUSD: realizedPnL,
+			TotalPnLUSD:    totalPnL,
 		}
 	}
 

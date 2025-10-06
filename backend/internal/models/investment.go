@@ -39,6 +39,9 @@ type Investment struct {
 	PnL        decimal.Decimal `json:"pnl" gorm:"column:pnl;type:decimal(30,18);not null;default:0"`
 	PnLPercent decimal.Decimal `json:"pnl_percent" gorm:"column:pnl_percent;type:decimal(30,18);not null;default:0"`
 
+	// Derived fields (not persisted)
+	RealizedPnL decimal.Decimal `json:"realized_pnl" gorm:"-"`
+
 	// Status and quantities
 	IsOpen bool `json:"is_open" gorm:"column:is_open;type:boolean;not null;default:true"`
 

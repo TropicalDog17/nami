@@ -116,44 +116,38 @@ type TransactionSummary struct {
 
 // PnLReport represents profit and loss analysis
 type PnLReport struct {
-	Period           Period                 `json:"period"`
-	RealizedPnLUSD   decimal.Decimal        `json:"realized_pnl_usd"`
-	RealizedPnLVND   decimal.Decimal        `json:"realized_pnl_vnd"`
-	UnrealizedPnLUSD decimal.Decimal        `json:"unrealized_pnl_usd"`
-	UnrealizedPnLVND decimal.Decimal        `json:"unrealized_pnl_vnd"`
-	TotalPnLUSD      decimal.Decimal        `json:"total_pnl_usd"`
-	TotalPnLVND      decimal.Decimal        `json:"total_pnl_vnd"`
-	ROIPercent       decimal.Decimal        `json:"roi_percent"`
-	ByAsset          map[string]*AssetPnL   `json:"by_asset"`
-	ByAccount        map[string]*AccountPnL `json:"by_account"`
+	Period         Period                 `json:"period"`
+	RealizedPnLUSD decimal.Decimal        `json:"realized_pnl_usd"`
+	RealizedPnLVND decimal.Decimal        `json:"realized_pnl_vnd"`
+	TotalPnLUSD    decimal.Decimal        `json:"total_pnl_usd"`
+	TotalPnLVND    decimal.Decimal        `json:"total_pnl_vnd"`
+	ROIPercent     decimal.Decimal        `json:"roi_percent"`
+	ByAsset        map[string]*AssetPnL   `json:"by_asset"`
+	ByAccount      map[string]*AccountPnL `json:"by_account"`
 }
 
 // AssetPnL represents P&L breakdown by asset
 type AssetPnL struct {
-	Asset            string          `json:"asset"`
-	RealizedPnLUSD   decimal.Decimal `json:"realized_pnl_usd"`
-	RealizedPnLVND   decimal.Decimal `json:"realized_pnl_vnd"`
-	UnrealizedPnLUSD decimal.Decimal `json:"unrealized_pnl_usd"`
-	UnrealizedPnLVND decimal.Decimal `json:"unrealized_pnl_vnd"`
-	TotalPnLUSD      decimal.Decimal `json:"total_pnl_usd"`
-	TotalPnLVND      decimal.Decimal `json:"total_pnl_vnd"`
-	CurrentQuantity  decimal.Decimal `json:"current_quantity"`
-	AverageCostUSD   decimal.Decimal `json:"average_cost_usd"`
-	CurrentValueUSD  decimal.Decimal `json:"current_value_usd"`
-	CurrentValueVND  decimal.Decimal `json:"current_value_vnd"`
+	Asset           string          `json:"asset"`
+	RealizedPnLUSD  decimal.Decimal `json:"realized_pnl_usd"`
+	RealizedPnLVND  decimal.Decimal `json:"realized_pnl_vnd"`
+	TotalPnLUSD     decimal.Decimal `json:"total_pnl_usd"`
+	TotalPnLVND     decimal.Decimal `json:"total_pnl_vnd"`
+	CurrentQuantity decimal.Decimal `json:"current_quantity"`
+	AverageCostUSD  decimal.Decimal `json:"average_cost_usd"`
+	CurrentValueUSD decimal.Decimal `json:"current_value_usd"`
+	CurrentValueVND decimal.Decimal `json:"current_value_vnd"`
 }
 
 // AccountPnL represents P&L breakdown by account
 type AccountPnL struct {
-	Account          string          `json:"account"`
-	RealizedPnLUSD   decimal.Decimal `json:"realized_pnl_usd"`
-	RealizedPnLVND   decimal.Decimal `json:"realized_pnl_vnd"`
-	UnrealizedPnLUSD decimal.Decimal `json:"unrealized_pnl_usd"`
-	UnrealizedPnLVND decimal.Decimal `json:"unrealized_pnl_vnd"`
-	TotalPnLUSD      decimal.Decimal `json:"total_pnl_usd"`
-	TotalPnLVND      decimal.Decimal `json:"total_pnl_vnd"`
-	TotalValueUSD    decimal.Decimal `json:"total_value_usd"`
-	TotalValueVND    decimal.Decimal `json:"total_value_vnd"`
+	Account        string          `json:"account"`
+	RealizedPnLUSD decimal.Decimal `json:"realized_pnl_usd"`
+	RealizedPnLVND decimal.Decimal `json:"realized_pnl_vnd"`
+	TotalPnLUSD    decimal.Decimal `json:"total_pnl_usd"`
+	TotalPnLVND    decimal.Decimal `json:"total_pnl_vnd"`
+	TotalValueUSD  decimal.Decimal `json:"total_value_usd"`
+	TotalValueVND  decimal.Decimal `json:"total_value_vnd"`
 }
 
 // HoldingSummary represents aggregated holdings

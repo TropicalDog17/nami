@@ -185,6 +185,21 @@ func (h *TransactionHandler) createTransaction(w http.ResponseWriter, r *http.Re
 	}
 
 	if err := h.service.CreateTransaction(r.Context(), &tx); err != nil {
+		// Map known validation errors to 400
+		if strings.Contains(err.Error(), "transaction validation failed:") ||
+			strings.Contains(err.Error(), "date is required") ||
+			strings.Contains(err.Error(), "type is required") ||
+			strings.Contains(err.Error(), "asset is required") ||
+			strings.Contains(err.Error(), "account is required") ||
+			strings.Contains(err.Error(), "quantity must be non-zero") ||
+			strings.Contains(err.Error(), "price must be non-negative") ||
+			strings.Contains(err.Error(), "FX to USD rate is required") ||
+			strings.Contains(err.Error(), "FX to VND rate is required") ||
+			strings.Contains(err.Error(), "horizon must be") ||
+			strings.Contains(err.Error(), "borrow_") {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -217,6 +232,27 @@ func (h *TransactionHandler) updateTransaction(w http.ResponseWriter, r *http.Re
 
 	tx.ID = id
 	if err := h.service.UpdateTransaction(r.Context(), &tx); err != nil {
+		// Not found mapping
+		if strings.Contains(err.Error(), "no transaction found with id") ||
+			strings.Contains(err.Error(), "transaction not found:") {
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
+		}
+		// Validation mapping
+		if strings.Contains(err.Error(), "transaction validation failed:") ||
+			strings.Contains(err.Error(), "date is required") ||
+			strings.Contains(err.Error(), "type is required") ||
+			strings.Contains(err.Error(), "asset is required") ||
+			strings.Contains(err.Error(), "account is required") ||
+			strings.Contains(err.Error(), "quantity must be non-zero") ||
+			strings.Contains(err.Error(), "price must be non-negative") ||
+			strings.Contains(err.Error(), "FX to USD rate is required") ||
+			strings.Contains(err.Error(), "FX to VND rate is required") ||
+			strings.Contains(err.Error(), "horizon must be") ||
+			strings.Contains(err.Error(), "borrow_") {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
