@@ -114,15 +114,47 @@ func (r *reportingRepository) GetCashFlow(ctx context.Context, period models.Per
 	}
 
 	query := `
-		SELECT
-			COALESCE(SUM(CASE WHEN cashflow_usd > 0 THEN cashflow_usd ELSE 0 END), 0) as total_in_usd,
-			COALESCE(SUM(CASE WHEN cashflow_usd < 0 THEN ABS(cashflow_usd) ELSE 0 END), 0) as total_out_usd,
-			COALESCE(SUM(cashflow_usd), 0) as net_usd,
-			COALESCE(SUM(CASE WHEN cashflow_vnd > 0 THEN cashflow_vnd ELSE 0 END), 0) as total_in_vnd,
-			COALESCE(SUM(CASE WHEN cashflow_vnd < 0 THEN ABS(cashflow_vnd) ELSE 0 END), 0) as total_out_vnd,
-			COALESCE(SUM(cashflow_vnd), 0) as net_vnd
-		FROM transactions
-			WHERE date >= $1 AND date <= $2 AND (internal_flow IS DISTINCT FROM TRUE)`
+        SELECT
+            COALESCE(SUM(
+                CASE
+                    WHEN type = 'borrow' THEN amount_usd
+                    WHEN cashflow_usd > 0 THEN cashflow_usd
+                    ELSE 0
+                END
+            ), 0) as total_in_usd,
+            COALESCE(SUM(
+                CASE
+                    WHEN cashflow_usd < 0 THEN ABS(cashflow_usd)
+                    ELSE 0
+                END
+            ), 0) as total_out_usd,
+            COALESCE(SUM(
+                CASE
+                    WHEN type = 'borrow' THEN amount_usd
+                    ELSE cashflow_usd
+                END
+            ), 0) as net_usd,
+            COALESCE(SUM(
+                CASE
+                    WHEN type = 'borrow' THEN amount_vnd
+                    WHEN cashflow_vnd > 0 THEN cashflow_vnd
+                    ELSE 0
+                END
+            ), 0) as total_in_vnd,
+            COALESCE(SUM(
+                CASE
+                    WHEN cashflow_vnd < 0 THEN ABS(cashflow_vnd)
+                    ELSE 0
+                END
+            ), 0) as total_out_vnd,
+            COALESCE(SUM(
+                CASE
+                    WHEN type = 'borrow' THEN amount_vnd
+                    ELSE cashflow_vnd
+                END
+            ), 0) as net_vnd
+        FROM transactions
+            WHERE date >= $1 AND date <= $2 AND (internal_flow IS DISTINCT FROM TRUE)`
 
 	report := &models.CashFlowReport{
 		Period: period,
@@ -139,18 +171,50 @@ func (r *reportingRepository) GetCashFlow(ctx context.Context, period models.Per
 	}
 
 	typeQuery := `
-		SELECT
-			type,
-			COALESCE(SUM(CASE WHEN cashflow_usd > 0 THEN cashflow_usd ELSE 0 END), 0) as inflow_usd,
-			COALESCE(SUM(CASE WHEN cashflow_usd < 0 THEN ABS(cashflow_usd) ELSE 0 END), 0) as outflow_usd,
-			COALESCE(SUM(cashflow_usd), 0) as net_usd,
-			COALESCE(SUM(CASE WHEN cashflow_vnd > 0 THEN cashflow_vnd ELSE 0 END), 0) as inflow_vnd,
-			COALESCE(SUM(CASE WHEN cashflow_vnd < 0 THEN ABS(cashflow_vnd) ELSE 0 END), 0) as outflow_vnd,
-			COALESCE(SUM(cashflow_vnd), 0) as net_vnd,
-			COUNT(*) as count
-		FROM transactions
-			WHERE date >= $1 AND date <= $2 AND (internal_flow IS DISTINCT FROM TRUE)
-		GROUP BY type`
+        SELECT
+            type,
+            COALESCE(SUM(
+                CASE
+                    WHEN type = 'borrow' THEN amount_usd
+                    WHEN cashflow_usd > 0 THEN cashflow_usd
+                    ELSE 0
+                END
+            ), 0) as inflow_usd,
+            COALESCE(SUM(
+                CASE
+                    WHEN cashflow_usd < 0 THEN ABS(cashflow_usd)
+                    ELSE 0
+                END
+            ), 0) as outflow_usd,
+            COALESCE(SUM(
+                CASE
+                    WHEN type = 'borrow' THEN amount_usd
+                    ELSE cashflow_usd
+                END
+            ), 0) as net_usd,
+            COALESCE(SUM(
+                CASE
+                    WHEN type = 'borrow' THEN amount_vnd
+                    WHEN cashflow_vnd > 0 THEN cashflow_vnd
+                    ELSE 0
+                END
+            ), 0) as inflow_vnd,
+            COALESCE(SUM(
+                CASE
+                    WHEN cashflow_vnd < 0 THEN ABS(cashflow_vnd)
+                    ELSE 0
+                END
+            ), 0) as outflow_vnd,
+            COALESCE(SUM(
+                CASE
+                    WHEN type = 'borrow' THEN amount_vnd
+                    ELSE cashflow_vnd
+                END
+            ), 0) as net_vnd,
+            COUNT(*) as count
+        FROM transactions
+            WHERE date >= $1 AND date <= $2 AND (internal_flow IS DISTINCT FROM TRUE)
+        GROUP BY type`
 
 	rows, err := sqlDB.QueryContext(ctx, typeQuery, period.StartDate, period.EndDate)
 	if err != nil {

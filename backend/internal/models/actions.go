@@ -143,16 +143,17 @@ func (s StakeParams) ToIncomingTransaction() *Transaction {
 		fxVND = *s.FXToVND
 	}
 	tx := &Transaction{
-		Date:       s.Date,
-		Type:       ActionStake,
-		Asset:      s.Asset,
-		Account:    s.SourceAccount,
-		Quantity:   decimal.NewFromFloat(s.Amount),
-		PriceLocal: decimal.NewFromFloat(1.0),
-		FXToUSD:    decimal.NewFromFloat(fxUSD),
-		FXToVND:    decimal.NewFromFloat(fxVND),
-		FeeUSD:     decimal.Zero,
-		FeeVND:     decimal.Zero,
+		Date:         s.Date,
+		Type:         ActionStake,
+		Asset:        s.Asset,
+		Account:      s.InvestmentAccount,
+		Quantity:     decimal.NewFromFloat(s.Amount),
+		PriceLocal:   decimal.NewFromFloat(1.0),
+		FXToUSD:      decimal.NewFromFloat(fxUSD),
+		FXToVND:      decimal.NewFromFloat(fxVND),
+		FeeUSD:       decimal.Zero,
+		FeeVND:       decimal.Zero,
+		InternalFlow: func() *bool { b := true; return &b }(),
 	}
 	if s.Horizon != "" {
 		tx.Horizon = &s.Horizon

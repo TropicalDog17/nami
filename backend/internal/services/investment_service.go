@@ -185,11 +185,6 @@ func (s *investmentService) ProcessStake(ctx context.Context, stakeTx *models.Tr
 		return nil, fmt.Errorf("transaction type must be '%s', got %s", models.ActionStake, stakeTx.Type)
 	}
 
-	// Validate required fields
-	if stakeTx.Horizon == nil {
-		return nil, fmt.Errorf("horizon is required for stake transactions")
-	}
-
 	var investment *models.Investment
 	var err error
 
@@ -200,8 +195,12 @@ func (s *investmentService) ProcessStake(ctx context.Context, stakeTx *models.Tr
 			return nil, fmt.Errorf("failed to find investment by ID: %w", err)
 		}
 	} else {
-		// Find open investment for this asset/account/horizon
-		investment, err = s.investmentRepo.FindOpenInvestmentForStake(ctx, stakeTx.Asset, stakeTx.Account, *stakeTx.Horizon)
+		// Find open investment for this asset/account/horizon (allow nil horizon)
+		horizon := ""
+		if stakeTx.Horizon != nil {
+			horizon = *stakeTx.Horizon
+		}
+		investment, err = s.investmentRepo.FindOpenInvestmentForStake(ctx, stakeTx.Asset, stakeTx.Account, horizon)
 		if err != nil && err != gorm.ErrRecordNotFound {
 			return nil, fmt.Errorf("failed to find investment for stake: %w", err)
 		}
