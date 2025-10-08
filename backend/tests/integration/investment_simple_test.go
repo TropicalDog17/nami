@@ -80,9 +80,9 @@ func TestInvestmentSummaryValidation(t *testing.T) {
 		TotalWithdrawals:  decimal.NewFromFloat(30000.0),
 		RealizedPnL:       decimal.NewFromFloat(5000.0),
 		OpenMarketValue:   decimal.NewFromFloat(25000.0),
-		UnrealizedPnL:     decimal.NewFromFloat(2000.0),
-		TotalPnL:          decimal.NewFromFloat(7000.0),
-		ROI:               decimal.NewFromFloat(14.0),
+		// Unrealized PnL removed from reports; TotalPnL reflects realized only
+		TotalPnL: decimal.NewFromFloat(5000.0),
+		ROI:      decimal.NewFromFloat(14.0),
 	}
 
 	assert.Equal(t, 5, summary.TotalInvestments)
@@ -92,8 +92,7 @@ func TestInvestmentSummaryValidation(t *testing.T) {
 	assert.True(t, summary.TotalWithdrawals.Equal(decimal.NewFromFloat(30000.0)))
 	assert.True(t, summary.RealizedPnL.Equal(decimal.NewFromFloat(5000.0)))
 	assert.True(t, summary.OpenMarketValue.Equal(decimal.NewFromFloat(25000.0)))
-	assert.True(t, summary.UnrealizedPnL.Equal(decimal.NewFromFloat(2000.0)))
-	assert.True(t, summary.TotalPnL.Equal(decimal.NewFromFloat(7000.0)))
+	assert.True(t, summary.TotalPnL.Equal(decimal.NewFromFloat(5000.0)))
 	assert.True(t, summary.ROI.Equal(decimal.NewFromFloat(14.0)))
 }
 

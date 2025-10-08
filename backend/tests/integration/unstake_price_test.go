@@ -56,12 +56,12 @@ func TestUnstake_AmountOnly_UsesFetchedPriceAndPnL(t *testing.T) {
 	if err != nil {
 		t.Fatalf("stake action failed: %v", err)
 	}
-    depositTxID := stakeResp.Transactions[1].ID
-    // Also capture the investment ID created by the stake to use for unstake routing
-    investmentID := *stakeResp.Transactions[1].InvestmentID
+	depositTxID := stakeResp.Transactions[1].ID
+	// Also capture the investment ID created by the stake to use for unstake routing
+	investmentID := *stakeResp.Transactions[1].InvestmentID
 
 	// Unstake 275 with only amount (no exit price or exit amount) -> should fetch price 1.23
-    unstakeReq := &models.ActionRequest{
+	unstakeReq := &models.ActionRequest{
 		Action: models.ActionUnstake,
 		Params: map[string]interface{}{
 			"date":                "2025-02-01",
@@ -70,7 +70,7 @@ func TestUnstake_AmountOnly_UsesFetchedPriceAndPnL(t *testing.T) {
 			"asset":               "USDT",
 			"amount":              275.0,
 			"stake_deposit_tx_id": depositTxID,
-            "investment_id":       investmentID,
+			"investment_id":       investmentID,
 		},
 	}
 	unstakeResp, err := actionService.Perform(ctx, unstakeReq)
@@ -90,17 +90,18 @@ func TestUnstake_AmountOnly_UsesFetchedPriceAndPnL(t *testing.T) {
 		t.Fatalf("expected withdraw amount_usd %s, got %s", expectedAmount, withdraw.AmountUSD)
 	}
 
-	// PnL = 275 * (1.23 - 1.00) = 63.25 (on withdrawn portion), but unrealized PnL is on remaining quantity
+	// PnL for partial withdrawals remains unrealized; report includes realized-only totals
 	period := models.Period{StartDate: time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC), EndDate: time.Date(2025, 2, 28, 0, 0, 0, 0, time.UTC)}
 	pnl, err := reportingService.GetPnL(ctx, period)
 	if err != nil {
 		t.Fatalf("GetPnL failed: %v", err)
 	}
-	// Expected unrealized PnL is on remaining quantity: 225 * (1.23 - 1.00) = 51.75
-	expectedUnrealizedPnL := decimal.NewFromInt(225).Mul(decimal.NewFromFloat(0.23)) // 51.75
-	// For partial withdrawals, PnL is unrealized until investment is fully closed
-	if !pnl.UnrealizedPnLUSD.Equal(expectedUnrealizedPnL) {
-		t.Fatalf("expected unrealized pnl %s, got %s", expectedUnrealizedPnL, pnl.UnrealizedPnLUSD)
+	// Expect realized PnL and ROI to be zero while position remains open
+	if !pnl.RealizedPnLUSD.Equal(decimal.Zero) {
+		t.Fatalf("expected realized pnl 0, got %s", pnl.RealizedPnLUSD)
+	}
+	if !pnl.ROIPercent.Equal(decimal.Zero) {
+		t.Fatalf("expected ROI 0, got %s", pnl.ROIPercent)
 	}
 }
 
@@ -134,13 +135,13 @@ func TestUnstake_CloseAll_ExitAmountUSD_PriceDerivedAndPnL(t *testing.T) {
 	if err != nil {
 		t.Fatalf("stake action failed: %v", err)
 	}
-    depositTxID := stakeResp.Transactions[1].ID
-    // Capture investment ID for explicit unstake routing
-    investmentID := *stakeResp.Transactions[1].InvestmentID
+	depositTxID := stakeResp.Transactions[1].ID
+	// Capture investment ID for explicit unstake routing
+	investmentID := *stakeResp.Transactions[1].InvestmentID
 
 	// Close all with total exit USD 275 (derive price = 275/500 = 0.55)
 	// Since close_all=true, it will mark the original stake as closed but unstake only 275
-    unstakeReq := &models.ActionRequest{
+	unstakeReq := &models.ActionRequest{
 		Action: models.ActionUnstake,
 		Params: map[string]interface{}{
 			"date":                "2025-02-01",
@@ -151,7 +152,7 @@ func TestUnstake_CloseAll_ExitAmountUSD_PriceDerivedAndPnL(t *testing.T) {
 			"close_all":           true,  // Just mark original as closed
 			"exit_amount_usd":     "275",
 			"stake_deposit_tx_id": depositTxID,
-            "investment_id":       investmentID,
+			"investment_id":       investmentID,
 		},
 	}
 	unstakeResp, err := actionService.Perform(ctx, unstakeReq)

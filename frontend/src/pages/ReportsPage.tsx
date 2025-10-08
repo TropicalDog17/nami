@@ -121,8 +121,8 @@ const ReportsPage = () => {
               <button
                 onClick={() => setCurrency('USD')}
                 className={`px-3 py-2 rounded text-sm font-medium ${currency === 'USD'
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
                   }`}
                 data-testid="currency-usd-button"
               >
@@ -131,8 +131,8 @@ const ReportsPage = () => {
               <button
                 onClick={() => setCurrency('VND')}
                 className={`px-3 py-2 rounded text-sm font-medium ${currency === 'VND'
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
                   }`}
                 data-testid="currency-vnd-button"
               >
@@ -432,6 +432,18 @@ const ReportsPage = () => {
             : `₫${currentValue.toLocaleString()}`;
         },
       },
+      {
+        key: 'realized_pnl',
+        title: `Realized P&L (${currency})`,
+        type: 'currency',
+        render: (value: any) => {
+          const num = parseFloat(value || 0);
+          const formatted = currency === 'USD'
+            ? `$${Math.abs(num).toLocaleString()}`
+            : `₫${Math.abs(num).toLocaleString()}`;
+          return num >= 0 ? `+${formatted}` : `-${formatted}`;
+        },
+      },
       // Unrealized P&L removed
       {
         key: 'pnl_percent',
@@ -467,6 +479,9 @@ const ReportsPage = () => {
       const remainingQty = parseFloat(inv.remaining_qty || 0);
       return sum + (remainingQty * parseFloat(currentPrice));
     }, 0);
+    const totalRealizedPnl = displayInvestments.reduce(
+      (sum: number, inv: any) => sum + parseFloat(inv.realized_pnl || 0), 0
+    );
     // Unrealized P&L removed
 
     return (
@@ -479,6 +494,14 @@ const ReportsPage = () => {
               {currency === 'USD'
                 ? `$${totalDepositCost.toLocaleString()}`
                 : `₫${totalDepositCost.toLocaleString()}`}
+            </p>
+          </div>
+          <div className={`p-4 rounded-lg ${totalRealizedPnl >= 0 ? 'bg-green-50' : 'bg-red-50'}`}>
+            <h4 className={`text-sm font-medium ${totalRealizedPnl >= 0 ? 'text-green-800' : 'text-red-800'}`}>Realized P&L</h4>
+            <p className={`text-2xl font-bold ${totalRealizedPnl >= 0 ? 'text-green-900' : 'text-red-900'}`}>
+              {currency === 'USD'
+                ? `$${Math.abs(totalRealizedPnl).toLocaleString()}`
+                : `₫${Math.abs(totalRealizedPnl).toLocaleString()}`}
             </p>
           </div>
           {/* Unrealized P&L card removed */}
@@ -879,7 +902,7 @@ const ReportsPage = () => {
             <p className={`text-2xl font-bold ${realizedPnL >= 0 ? 'text-green-900' : 'text-red-900'}`}>
               {currency === 'USD'
                 ? `$${Math.abs(realizedPnL).toLocaleString()}`
-                : `₫${Math.abs(unrealizedPnL).toLocaleString()}`}
+                : `₫${Math.abs(realizedPnL).toLocaleString()}`}
             </p>
             <p className="text-xs text-gray-600 mt-1">
               Gains/losses from closed positions
@@ -1028,8 +1051,8 @@ const ReportsPage = () => {
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
               className={`${activeTab === tab.id
-                  ? 'border-blue-500 text-blue-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                ? 'border-blue-500 text-blue-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                 } whitespace-nowrap py-2 px-1 border-b-2 font-medium text-sm flex items-center space-x-2`}
               data-testid={`reports-tab-${tab.id}`}
             >
