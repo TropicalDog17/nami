@@ -36,6 +36,11 @@ type Props = {
   onRecalc?: ((row: Row) => void | Promise<void>) | null;
   onView?: ((row: Row) => void) | null;
   busyRowIds?: Set<string | number>;
+  // Selection for bulk actions
+  selectableRows?: boolean;
+  selectedIds?: Set<string | number>;
+  onToggleRow?: (id: string | number, checked: boolean) => void;
+  onToggleAll?: (checked: boolean, visibleIds: Array<string | number>) => void;
 };
 
 const DataTable: React.FC<Props> = ({
@@ -59,6 +64,10 @@ const DataTable: React.FC<Props> = ({
   onRecalc = null,
   onView = null,
   busyRowIds = new Set(),
+  selectableRows = false,
+  selectedIds = new Set(),
+  onToggleRow,
+  onToggleAll,
 }) => {
   const [sortConfig, setSortConfig] = useState({ key: null, direction: 'asc' });
   const [filterText, setFilterText] = useState('');
@@ -387,6 +396,16 @@ const DataTable: React.FC<Props> = ({
         >
           <thead className="bg-gray-50">
             <tr>
+              {selectableRows && (
+                <th className="px-4 py-3 text-center">
+                  <input
+                    type="checkbox"
+                    aria-label="Select all"
+                    checked={paginatedData.length > 0 && paginatedData.every((r) => selectedIds.has(r.id as any))}
+                    onChange={(e) => onToggleAll && onToggleAll(e.target.checked, paginatedData.map((r) => r.id as any))}
+                  />
+                </th>
+              )}
               {columns.map((column) => (
                 <th
                   key={column.key}
@@ -429,7 +448,7 @@ const DataTable: React.FC<Props> = ({
             {loading ? (
               <tr>
                 <td
-                  colSpan={columns.length + (actions.length > 0 ? 1 : 0)}
+                  colSpan={columns.length + (actions.length > 0 ? 1 : 0) + (selectableRows ? 1 : 0)}
                   className="px-6 py-12 text-center"
                 >
                   <div className="flex justify-center items-center">
@@ -459,7 +478,7 @@ const DataTable: React.FC<Props> = ({
             ) : paginatedData.length === 0 ? (
               <tr>
                 <td
-                  colSpan={columns.length + (actions.length > 0 ? 1 : 0)}
+                  colSpan={columns.length + (actions.length > 0 ? 1 : 0) + (selectableRows ? 1 : 0)}
                   className="px-6 py-12 text-center text-gray-500"
                 >
                   {emptyMessage}
@@ -472,6 +491,17 @@ const DataTable: React.FC<Props> = ({
                   className={`hover:bg-gray-50 ${onRowClick ? 'cursor-pointer' : ''}`}
                   onClick={() => onRowClick && onRowClick(row)}
                 >
+                  {selectableRows && (
+                    <td className="px-4 py-4 text-center">
+                      <input
+                        type="checkbox"
+                        aria-label={`Select row ${String(row.id)}`}
+                        checked={selectedIds.has(row.id as any)}
+                        onChange={(e) => onToggleRow && onToggleRow(row.id as any, e.target.checked)}
+                        onClick={(e) => e.stopPropagation()}
+                      />
+                    </td>
+                  )}
                   {columns.map((column) => {
                     const cellValue = getNestedValue(row, column.key);
                     const isEditing = editingCell?.rowId === row.id && editingCell?.columnKey === column.key;

@@ -47,6 +47,22 @@ func (h *TransactionHandler) HandleTransactions(w http.ResponseWriter, r *http.R
 		h.listTransactions(w, r)
 	case "POST":
 		h.createTransaction(w, r)
+	case "DELETE":
+		// Support bulk delete via JSON body: { "ids": ["id1","id2",...] }
+		var payload struct {
+			IDs []string `json:"ids"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil || len(payload.IDs) == 0 {
+			http.Error(w, "Invalid JSON body; expected {\"ids\":[...]} ", http.StatusBadRequest)
+			return
+		}
+		count, err := h.service.DeleteTransactions(r.Context(), payload.IDs)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(map[string]any{"deleted": count})
 	default:
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 	}

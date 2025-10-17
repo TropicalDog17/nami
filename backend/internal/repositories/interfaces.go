@@ -17,6 +17,8 @@ type TransactionRepository interface {
 	GetCount(ctx context.Context, filter *models.TransactionFilter) (int, error)
 	Update(ctx context.Context, tx *models.Transaction) error
 	Delete(ctx context.Context, id string) error
+	// DeleteMany deletes multiple transactions by their IDs and returns the number of rows affected
+	DeleteMany(ctx context.Context, ids []string) (int, error)
 	DeleteActionGroup(ctx context.Context, id string) (int, error)
 	RecalculateFX(ctx context.Context, onlyMissing bool) (int, error)
 	RecalculateOneFX(ctx context.Context, id string, onlyMissing bool) (*models.Transaction, error)

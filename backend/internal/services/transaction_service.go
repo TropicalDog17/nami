@@ -201,6 +201,21 @@ func (s *transactionService) DeleteTransaction(ctx context.Context, id string) e
 	return s.txRepo.Delete(ctx, id)
 }
 
+// DeleteTransactions deletes multiple transactions by IDs
+func (s *transactionService) DeleteTransactions(ctx context.Context, ids []string) (int, error) {
+	// Normalize ids to non-empty strings
+	filtered := make([]string, 0, len(ids))
+	for _, id := range ids {
+		if strings.TrimSpace(id) != "" {
+			filtered = append(filtered, id)
+		}
+	}
+	if len(filtered) == 0 {
+		return 0, nil
+	}
+	return s.txRepo.DeleteMany(ctx, filtered)
+}
+
 // GetTransactionCount returns the count of transactions matching the filter
 func (s *transactionService) GetTransactionCount(ctx context.Context, filter *models.TransactionFilter) (int, error) {
 	return s.txRepo.GetCount(ctx, filter)

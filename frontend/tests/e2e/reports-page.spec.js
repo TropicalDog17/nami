@@ -33,4 +33,47 @@ test.describe('Reports Page', () => {
     const pnlTab = page.locator('button:has-text("P&L")');
     await expect(pnlTab).toBeEnabled();
   });
+
+  test('should display spending charts and daily breakdown', async ({ page }) => {
+    await page.goto('/reports');
+    await page.locator('button:has-text("Spending")').click();
+
+    // Filters should be visible for spending
+    await expect(page.locator('[data-testid="reports-filters-title"]')).toContainText('Filters');
+
+    // Charts containers should render (if backend returns data)
+    // We only assert presence of section title to avoid flakiness when data empty
+    await expect(page.locator('text=Spending by Tag')).toBeVisible();
+    await expect(page.locator('text=Daily Spending Trend')).toBeVisible();
+  });
+
+  test('should display P&L summary cards', async ({ page }) => {
+    await page.goto('/reports');
+    await page.locator('button:has-text("P&L")').click();
+    await expect(page.locator('text=Realized P&L')).toBeVisible();
+    await expect(page.locator('text=Total P&L')).toBeVisible();
+  });
+
+  test('should display asset allocation charts and table', async ({ page }) => {
+    await page.goto('/reports');
+    await page.locator('button:has-text("Asset Allocation")').click();
+
+    // Filters visible
+    await expect(page.locator('[data-testid="reports-filters-title"]')).toContainText('Filters');
+
+    // Sections present even if data is empty (titles visible)
+    await expect(page.locator('text=Asset Distribution')).toBeVisible();
+    await expect(page.locator('text=Breakdown by Asset')).toBeVisible();
+  });
+
+  test('should display investments list UI', async ({ page }) => {
+    await page.goto('/reports');
+    await page.locator('button:has-text("Investments")').click();
+
+    // Columns headers present
+    await expect(page.locator('text=Asset')).toBeVisible();
+    await expect(page.locator('text=Account')).toBeVisible();
+    await expect(page.locator('text=Deposit Qty')).toBeVisible();
+    await expect(page.locator('text=Remaining Qty')).toBeVisible();
+  });
 });

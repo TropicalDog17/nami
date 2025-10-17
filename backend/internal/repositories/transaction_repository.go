@@ -214,6 +214,46 @@ func (r *transactionRepository) Delete(ctx context.Context, id string) error {
 	})
 }
 
+// DeleteMany deletes multiple transactions by IDs, handling related links and stake/unstake reversals where needed
+func (r *transactionRepository) DeleteMany(ctx context.Context, ids []string) (int, error) {
+	if len(ids) == 0 {
+		return 0, nil
+	}
+
+	var affected int64
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		// Clear exit_date for any deposits that were linked to an unstake being deleted
+		// For each id in ids, if it's a to_tx in stake_unstake, clear exit_date of its from_tx
+		// Use a single UPDATE with subquery
+		if err := tx.Exec(`
+            UPDATE transactions SET exit_date = NULL
+            WHERE id IN (
+                SELECT from_tx FROM transaction_links
+                WHERE link_type = 'stake_unstake' AND to_tx IN ?
+            )
+        `, ids).Error; err != nil {
+			return fmt.Errorf("failed to clear exit_date for linked deposits: %w", err)
+		}
+
+		// Delete action links referencing any of these IDs to avoid FK issues
+		if err := tx.Where("(from_tx IN ? OR to_tx IN ?)", ids, ids).Delete(&struct{}{}).Error; err != nil {
+			return fmt.Errorf("failed to delete links for transactions: %w", err)
+		}
+
+		// Delete transactions
+		result := tx.Where("id IN ?", ids).Delete(&models.Transaction{})
+		if result.Error != nil {
+			return fmt.Errorf("failed to delete transactions: %w", result.Error)
+		}
+		affected = result.RowsAffected
+		return nil
+	})
+	if err != nil {
+		return 0, err
+	}
+	return int(affected), nil
+}
+
 func (r *transactionRepository) DeleteActionGroup(ctx context.Context, oneID string) (int, error) {
 	if oneID == "" {
 		return 0, fmt.Errorf("id is required")

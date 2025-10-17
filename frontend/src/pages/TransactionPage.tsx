@@ -49,24 +49,14 @@ const TransactionPage: React.FC = () => {
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<any>(null);
   const [showForm, setShowForm] = useState<boolean>(false);
+  const [showQuickAdd, setShowQuickAdd] = useState<boolean>(false);
   const [editingTransaction, setEditingTransaction] =
     useState<Transaction | null>(null);
   const [filters, setFilters] = useState<Record<string, any>>({});
   const [masterData, setMasterData] = useState<MasterData>({});
-  const [performing, setPerforming] = useState<boolean>(false);
   const [bulkRefreshing, setBulkRefreshing] = useState<boolean>(false);
   const [busyRowIds, setBusyRowIds] = useState<Set<IdType>>(new Set<IdType>());
-  const [actionForm, setActionForm] = useState<{
-    action: string;
-    params: Record<string, any>;
-  }>({
-    action: '',
-    params: {},
-  });
-  const [activeStakeOptions, setActiveStakeOptions] = useState<Option[]>([]);
-  const [stakeIdToInfo, setStakeIdToInfo] = useState<Record<string, any>>({});
-  const [openInvestmentsForStake, setOpenInvestmentsForStake] = useState<Option[]>([]);
-  const [invIdToInfoForStake, setInvIdToInfoForStake] = useState<Record<string, any>>({});
+  const [selectedIds, setSelectedIds] = useState<Set<IdType>>(new Set<IdType>());
 
   const todayStr = useMemo(() => new Date().toISOString().split('T')[0], []);
 
@@ -85,112 +75,21 @@ const TransactionPage: React.FC = () => {
     loadMasterData();
   }, [filters]);
 
-  // Auto-fetch price for spot buy when base/quote/date change and no manual price entered
+  // Global keyboard shortcut: 'n' to toggle Quick Add
   useEffect(() => {
-    const p = actionForm.params || {};
-    if (actionForm.action !== 'spot_buy') return;
-    const base = String(p.base_asset || '').trim();
-    const quote = String(p.quote_asset || '').trim();
-    const date = String(p.date || todayStr);
-    const hasManualPrice = String(p.price_quote || '').trim().length > 0;
-    if (!base || !quote || hasManualPrice) return;
-    // fetch daily price for the chosen date (single day window)
-    const start = date;
-    const end = date;
-    let cancelled = false;
-    (async () => {
-      try {
-        const res: any = await pricesApi.daily(base, quote, start, end);
-        const arr = Array.isArray(res) ? res : [];
-        const last = arr[arr.length - 1];
-        const price = last && (last.price || last.Price);
-        if (price && !cancelled) {
-          setActionForm((s) => ({
-            ...s,
-            params: { ...s.params, price_quote: String(price) },
-          }));
-        }
-      } catch (e) {
-        // silent; user can enter price manually
+    const handler = (e: KeyboardEvent) => {
+      if ((e.target as HTMLElement)?.tagName === 'INPUT' || (e.target as HTMLElement)?.tagName === 'TEXTAREA' || (e.target as HTMLElement)?.getAttribute('contenteditable') === 'true') {
+        return; // don't hijack typing in inputs
       }
-    })();
-    return () => {
-      cancelled = true;
+      if (e.key.toLowerCase() === 'n') {
+        setShowQuickAdd((s) => !s);
+      }
     };
-  }, [
-    actionForm.action,
-    actionForm.params.base_asset,
-    actionForm.params.quote_asset,
-    actionForm.params.date,
-    todayStr,
-  ]);
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
 
-  // Load active stakes when switching to Unstake action
-  const loadActiveStakes = async (): Promise<void> => {
-    try {
-      // Fetch open investments from the investments table
-      const openInvestments = (await investmentsApi.list({ is_open: true })) as any[];
-
-      const idToInfo: Record<string, any> = {};
-      const options: Option[] = (openInvestments || []).map((inv: any) => {
-        idToInfo[String(inv.id)] = inv;
-        const d = new Date(inv.deposit_date);
-        const dStr = isNaN(d.getTime())
-          ? String(inv.deposit_date)
-          : d.toISOString().split('T')[0];
-        const horizonStr = inv.horizon ? ` [${inv.horizon}]` : '';
-        return {
-          value: String(inv.id),
-          label: `${inv.asset} @ ${inv.account}${horizonStr} — ${dStr} — ${inv.remaining_qty} remaining`,
-        } as Option;
-      });
-
-      setStakeIdToInfo(idToInfo);
-      setActiveStakeOptions(options);
-    } catch (e) {
-      // Silent failure; combo will simply be empty
-    }
-  };
-
-  useEffect(() => {
-    if (actionForm.action === 'unstake') {
-      loadActiveStakes();
-    }
-  }, [actionForm.action]);
-
-  // Load open investments for stake (to add to an existing investment)
-  const loadOpenInvestmentsForStake = async (): Promise<void> => {
-    try {
-      // If asset/account selected, filter by them; otherwise list all open
-      const filters: Record<string, any> = { is_open: true };
-      if (actionForm.params.asset) filters.asset = actionForm.params.asset;
-      if (actionForm.params.investment_account) filters.account = actionForm.params.investment_account;
-      const openInvestments = (await investmentsApi.list(filters)) as any[];
-
-      const idToInfo: Record<string, any> = {};
-      const options: Option[] = (openInvestments || []).map((inv: any) => {
-        idToInfo[String(inv.id)] = inv;
-        const d = new Date(inv.deposit_date);
-        const dStr = isNaN(d.getTime()) ? String(inv.deposit_date) : d.toISOString().split('T')[0];
-        const horizonStr = inv.horizon ? ` [${inv.horizon}]` : '';
-        return {
-          value: String(inv.id),
-          label: `${inv.asset} @ ${inv.account}${horizonStr} — ${dStr} — ${inv.remaining_qty} remaining`,
-        } as Option;
-      });
-
-      setInvIdToInfoForStake(idToInfo);
-      setOpenInvestmentsForStake(options);
-    } catch (e) {
-      // silent
-    }
-  };
-
-  useEffect(() => {
-    if (actionForm.action === 'stake') {
-      loadOpenInvestmentsForStake();
-    }
-  }, [actionForm.action, actionForm.params.asset, actionForm.params.investment_account]);
+  // Removed legacy spot_buy auto price hook (Quick Add handles simple flows)
 
   const loadMasterData = async (): Promise<void> => {
     try {
@@ -240,87 +139,368 @@ const TransactionPage: React.FC = () => {
     }
   };
 
-  const handlePerformAction = async (): Promise<void> => {
-    if (!actionForm.action) {
-      showErrorToast('Please select an action');
-      return;
-    }
-    try {
-      setPerforming(true);
-      let created: Transaction[] = [];
+  // Quick Add helpers (reuse existing toISODateTime defined above for actions)
 
-      // Use investment API for stake and unstake operations
-      if (actionForm.action === 'stake') {
-        const stakeTransaction = {
-          date: toISODateTime(actionForm.params.date),
-          type: 'stake',
-          asset: actionForm.params.asset,
-          account: actionForm.params.investment_account,
-          quantity: parseFloat(actionForm.params.amount) || 0,
-          price_local: parseFloat(actionForm.params.entry_price_usd) || 1.0,
-          amount_usd: (parseFloat(actionForm.params.amount) || 0) * (parseFloat(actionForm.params.entry_price_usd) || 1.0),
-          amount_vnd: (parseFloat(actionForm.params.amount) || 0) * (parseFloat(actionForm.params.entry_price_usd) || 1.0) * 23000, // approximate FX rate
-          investment_id: actionForm.params.investment_id || null,
-          counterparty: actionForm.params.counterparty || null,
-          note: actionForm.params.note || null,
-          horizon: actionForm.params.horizon || null,
-        };
-
-        const investment = await investmentsApi.stake(stakeTransaction);
-        // Reload transactions to get the created stake transaction
-        await loadTransactions();
-      } else if (actionForm.action === 'unstake') {
-        // Enforce required investment_id in UI before calling API
-        if (!actionForm.params.investment_id) {
-          showErrorToast('Please select an active investment');
-          return;
-        }
-        const unstakeTransaction = {
-          date: toISODateTime(actionForm.params.date),
-          type: 'unstake',
-          asset: actionForm.params.asset,
-          account: actionForm.params.investment_account,
-          quantity: parseFloat(actionForm.params.amount) || 0,
-          price_local: parseFloat(actionForm.params.exit_price_usd) || 1.0,
-          amount_usd: (parseFloat(actionForm.params.amount) || 0) * (parseFloat(actionForm.params.exit_price_usd) || 1.0),
-          amount_vnd: (parseFloat(actionForm.params.amount) || 0) * (parseFloat(actionForm.params.exit_price_usd) || 1.0) * 23000, // approximate FX rate
-          investment_id: actionForm.params.investment_id || null,
-          counterparty: actionForm.params.counterparty || null,
-          note: actionForm.params.note || null,
-          horizon: actionForm.params.horizon || null,
-        };
-
-        const investment = await investmentsApi.unstake(unstakeTransaction);
-        // Reload transactions to get the created unstake transaction
-        await loadTransactions();
-      } else {
-        // Use general actions API for other actions
-        const resp: any = await actionsApi.perform(
-          actionForm.action,
-          { ...actionForm.params, date: toISODateTime(actionForm.params.date) }
-        );
-        created = (resp?.transactions || []) as Transaction[];
-        if (created.length > 0) {
-          setTransactions((prev) => [...created, ...prev]);
-        } else {
-          await loadTransactions();
-        }
-      }
-
-      // Reload active stakes list if we just performed a stake or unstake action
-      if (actionForm.action === 'stake' || actionForm.action === 'unstake') {
-        await loadActiveStakes();
-      }
-
-      showSuccessToast('Action performed successfully');
-      setActionForm({ action: '', params: {} });
-    } catch (err: any) {
-      actions.setError(err?.message ?? 'Unknown error');
-      showErrorToast('Failed to perform action');
-    } finally {
-      setPerforming(false);
-    }
+  type QuickAddData = {
+    date: string;
+    type: string;
+    asset: string;
+    account: string;
+    quantity: string;
+    price_local?: string;
+    counterparty?: string;
+    tag?: string;
+    note?: string;
+    internal_flow?: boolean;
   };
+
+  const QuickAddForm: React.FC<{ onCreated: (tx: any) => void }> = ({ onCreated }) => {
+    const [qa, setQa] = useState<QuickAddData>({
+      date: todayStr,
+      type: 'expense',
+      asset: 'VND',
+      account: '',
+      quantity: '',
+      price_local: '1',
+      counterparty: '',
+      tag: '',
+      note: '',
+      internal_flow: false,
+    });
+    const [invMode, setInvMode] = useState<'none' | 'stake' | 'unstake'>('none');
+    const [invAccount, setInvAccount] = useState('');
+    const [invHorizon, setInvHorizon] = useState('');
+    const [invOpenOptions, setInvOpenOptions] = useState<Option[]>([]);
+    const [invId, setInvId] = useState('');
+    const [invIdToInfo, setInvIdToInfo] = useState<Record<string, any>>({});
+    const [submitting, setSubmitting] = useState(false);
+    const [qaError, setQaError] = useState<string | null>(null);
+    const number = (s?: string) => (s ? parseFloat(String(s)) : 0);
+
+    // Adjust defaults when type changes
+    useEffect(() => {
+      const t = String(qa.type || '').toLowerCase();
+      if (t === 'expense' || t === 'fee' || t === 'transfer_in' || t === 'transfer_out' || t === 'deposit' || t === 'withdraw') {
+        // Treat as 1:1 local unit
+        setQa((prev) => ({ ...prev, asset: prev.asset || 'VND', price_local: '1' }));
+      }
+    }, [qa.type]);
+
+    // Keyboard shortcuts: n to open (handled outside), esc to close, enter to submit
+    useEffect(() => {
+      const handler = (e: KeyboardEvent) => {
+        if (!showQuickAdd) return;
+        if (e.key === 'Escape') {
+          setShowQuickAdd(false);
+        }
+      };
+      window.addEventListener('keydown', handler);
+      return () => window.removeEventListener('keydown', handler);
+    }, [showQuickAdd]);
+
+    const validate = (): string | null => {
+      if (!qa.date) return 'Date is required';
+      if (!qa.type) return 'Type is required';
+      if (!qa.asset) return 'Asset is required';
+      if (!qa.account) return 'Account is required';
+      if (!qa.quantity || isNaN(number(qa.quantity)) || number(qa.quantity) <= 0) return 'Valid quantity is required';
+      const t = String(qa.type || '').toLowerCase();
+      const needsPrice = t === 'buy' || t === 'sell';
+      if (needsPrice && (!qa.price_local || isNaN(number(qa.price_local || '')) || number(qa.price_local || '') <= 0)) return 'Valid price is required';
+      if (invMode === 'stake') {
+        if (!invAccount) return 'Investment account is required';
+      }
+      if (invMode === 'unstake') {
+        if (!invId) return 'Select an active investment';
+      }
+      return null;
+    };
+
+    const submit = async (addAnother: boolean): Promise<void> => {
+      const err = validate();
+      if (err) {
+        setQaError(err);
+        return;
+      }
+      setQaError(null);
+      try {
+        setSubmitting(true);
+        let created: any = null;
+        if (invMode === 'stake') {
+          // Stake: create an incoming stake via investment API
+          const fxUSD = 1;
+          const fxVND = 1;
+          const amtLocal = number(qa.quantity) * (number(qa.price_local || '1'));
+          const amountUSD = amtLocal * fxUSD;
+          const amountVND = amtLocal * fxVND;
+          const stake = {
+            date: toISODateTime(qa.date),
+            type: 'stake',
+            asset: qa.asset,
+            account: invAccount,
+            quantity: number(qa.quantity),
+            price_local: number(qa.price_local || '1'),
+            fx_to_usd: fxUSD,
+            fx_to_vnd: fxVND,
+            amount_usd: amountUSD,
+            amount_vnd: amountVND,
+            counterparty: qa.counterparty || null,
+            tag: qa.tag || null,
+            note: qa.note || null,
+            horizon: invHorizon || null,
+            investment_id: invId || null,
+          };
+          await investmentsApi.stake(stake);
+          // Quick feedback: reload transactions list minimally
+          await loadTransactions();
+        } else if (invMode === 'unstake') {
+          const info = invIdToInfo[invId] || {};
+          const unstakeQty = number(qa.quantity);
+          const fxUSD = 1;
+          const fxVND = 1;
+          const amtLocal = unstakeQty * (number(qa.price_local || '1'));
+          const amountUSD = amtLocal * fxUSD;
+          const amountVND = amtLocal * fxVND;
+          const unstake = {
+            date: toISODateTime(qa.date),
+            type: 'unstake',
+            asset: info.asset || qa.asset,
+            account: info.account || invAccount,
+            quantity: unstakeQty,
+            price_local: number(qa.price_local || '1'),
+            fx_to_usd: fxUSD,
+            fx_to_vnd: fxVND,
+            amount_usd: amountUSD,
+            amount_vnd: amountVND,
+            counterparty: qa.counterparty || null,
+            tag: qa.tag || null,
+            note: qa.note || null,
+            investment_id: invId,
+          };
+          await investmentsApi.unstake(unstake);
+          await loadTransactions();
+        } else {
+          // Plain transaction
+          const payload: Record<string, any> = {
+            date: toISODateTime(qa.date),
+            type: qa.type,
+            asset: qa.asset,
+            account: qa.account,
+            quantity: number(qa.quantity),
+            price_local: number(qa.price_local || '1'),
+            counterparty: qa.counterparty || null,
+            tag: qa.tag || null,
+            note: qa.note || null,
+            fx_to_usd: 0,
+            fx_to_vnd: 0,
+          };
+          created = await transactionApi.create(payload);
+          if (created) onCreated(created);
+        }
+        if (addAnother) {
+          // Reset amount fields, keep type/account/asset for speed
+          setQa((prev) => ({ ...prev, quantity: '', note: '' }));
+        } else {
+          setShowQuickAdd(false);
+        }
+        actions.setError(null);
+        showSuccessToast('Transaction created');
+      } catch (e: any) {
+        setQaError(e?.message ?? 'Failed to create');
+        actions.setError(e?.message ?? 'Failed to create');
+      } finally {
+        setSubmitting(false);
+      }
+    };
+
+    // Amount preview
+    const amountLocal = number(qa.quantity) * (number(qa.price_local || '1'));
+
+    // Load open investments when entering unstake mode
+    useEffect(() => {
+      const loadOpen = async () => {
+        try {
+          const list = (await investmentsApi.list({ is_open: true })) as any[];
+          const idMap: Record<string, any> = {};
+          const options: Option[] = (list || []).map((inv: any) => {
+            idMap[String(inv.id)] = inv;
+            const dStr = (() => { const d = new Date(inv.deposit_date); return isNaN(d.getTime()) ? String(inv.deposit_date) : d.toISOString().split('T')[0]; })();
+            const hz = inv.horizon ? ` [${inv.horizon}]` : '';
+            return { value: String(inv.id), label: `${inv.asset} @ ${inv.account}${hz} — ${dStr} — ${inv.remaining_qty} remaining` } as Option;
+          });
+          setInvIdToInfo(idMap);
+          setInvOpenOptions(options);
+        } catch {}
+      };
+      if (invMode === 'unstake') loadOpen();
+    }, [invMode]);
+
+    return (
+      <div className="bg-white border border-gray-200 rounded-md p-4">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-md font-semibold">Quick Add</h3>
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-gray-500">Press Esc to close</span>
+            <button
+              onClick={() => setShowQuickAdd(false)}
+              className="px-2 py-1 text-sm rounded border border-gray-300 hover:bg-gray-50"
+            >Close</button>
+          </div>
+        </div>
+
+        {qaError && (
+          <div className="mb-3 text-sm text-red-700 bg-red-50 border border-red-200 rounded p-2">{qaError}</div>
+        )}
+
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+          <DateInput value={qa.date} onChange={(v) => setQa((s) => ({ ...s, date: v }))} />
+
+          <select
+            value={qa.type}
+            onChange={(e) => setQa((s) => ({ ...s, type: e.target.value }))}
+            className="w-full px-3 py-2 border rounded"
+          >
+            <option value="expense">Expense</option>
+            <option value="buy">Buy</option>
+            <option value="sell">Sell</option>
+            <option value="transfer_in">Transfer In</option>
+            <option value="transfer_out">Transfer Out</option>
+            <option value="deposit">Deposit</option>
+            <option value="withdraw">Withdraw</option>
+            <option value="fee">Fee</option>
+          </select>
+
+          <ComboBox
+            options={(masterData.account || []) as any}
+            value={qa.account}
+            onChange={(v) => setQa((s) => ({ ...s, account: v }))}
+            placeholder="Account"
+            allowCreate
+            onCreate={async (name) => {
+              await adminApi.createAccount({ name, type: 'bank', is_active: true });
+              const accounts = await adminApi.listAccounts();
+              setMasterData((prev) => ({ ...prev, account: ((accounts as any[]) || []).map((a: any) => ({ value: a.name, label: `${a.name} (${a.type})` })) }));
+            }}
+          />
+
+          <ComboBox
+            options={(masterData.asset || []) as any}
+            value={qa.asset}
+            onChange={(v) => setQa((s) => ({ ...s, asset: v }))}
+            placeholder="Asset"
+            allowCreate
+            onCreate={async (symbol) => {
+              await adminApi.createAsset({ symbol, name: symbol, decimals: 0, is_active: true });
+              const assets = await adminApi.listAssets();
+              setMasterData((prev) => ({ ...prev, asset: ((assets as any[]) || []).map((a: any) => ({ value: a.symbol, label: `${a.symbol} - ${a.name}` })) }));
+            }}
+          />
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mt-3">
+          <input className="px-3 py-2 border rounded" placeholder="Quantity" type="number" step="any" value={qa.quantity}
+            onChange={(e) => setQa((s) => ({ ...s, quantity: e.target.value }))} />
+          {(qa.type === 'buy' || qa.type === 'sell') && (
+            <input className="px-3 py-2 border rounded" placeholder="Price (Local)" type="number" step="any" value={qa.price_local}
+              onChange={(e) => setQa((s) => ({ ...s, price_local: e.target.value }))} />
+          )}
+          {!(qa.type === 'buy' || qa.type === 'sell') && (
+            <input className="px-3 py-2 border rounded bg-gray-50" placeholder="Price (Local)" value={qa.price_local} readOnly />
+          )}
+        </div>
+
+        {/* Investment section (optional) */}
+        <div className="mt-4">
+          <div className="flex items-center gap-3 mb-2">
+            <label className="text-sm text-gray-700">Investment</label>
+            <select className="px-2 py-1 border rounded text-sm" value={invMode} onChange={(e) => setInvMode(e.target.value as any)}>
+              <option value="none">None</option>
+              <option value="stake">Stake (open/add)</option>
+              <option value="unstake">Unstake (close/partial)</option>
+            </select>
+          </div>
+          {invMode === 'stake' && (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <ComboBox
+                options={(masterData.account || []) as any}
+                value={invAccount}
+                onChange={(v) => setInvAccount(String(v))}
+                placeholder="Investment Account"
+                allowCreate
+                onCreate={async (name) => {
+                  await adminApi.createAccount({ name, type: 'investment', is_active: true });
+                  const accounts = await adminApi.listAccounts();
+                  setMasterData((prev) => ({ ...prev, account: ((accounts as any[]) || []).map((a: any) => ({ value: a.name, label: `${a.name} (${a.type})` })) }));
+                }}
+              />
+              <select className="px-3 py-2 border rounded" value={invHorizon} onChange={(e) => setInvHorizon(e.target.value)}>
+                <option value="">Horizon (optional)</option>
+                <option value="short-term">Short-term</option>
+                <option value="long-term">Long-term</option>
+              </select>
+              <input className="px-3 py-2 border rounded" placeholder="Existing Investment ID (optional)" value={invId}
+                onChange={(e) => setInvId(e.target.value)} />
+            </div>
+          )}
+          {invMode === 'unstake' && (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <ComboBox
+                options={invOpenOptions as any}
+                value={invId}
+                onChange={(v) => setInvId(String(v))}
+                placeholder="Active Investment (required)"
+              />
+              <input className="px-3 py-2 border rounded" placeholder="Investment Account (optional override)" value={invAccount}
+                onChange={(e) => setInvAccount(e.target.value)} />
+              <input className="px-3 py-2 border rounded" placeholder="Horizon (optional override)" value={invHorizon}
+                onChange={(e) => setInvHorizon(e.target.value)} />
+            </div>
+          )}
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mt-3">
+          <ComboBox
+            options={(masterData.tag || []) as any}
+            value={qa.tag || ''}
+            onChange={(v) => setQa((s) => ({ ...s, tag: v }))}
+            placeholder="Tag (optional)"
+            allowCreate
+            onCreate={async (name) => {
+              await adminApi.createTag({ name, category: 'General', is_active: true });
+              const tags = await adminApi.listTags();
+              setMasterData((prev) => ({ ...prev, tag: ((tags as any[]) || []).map((t: any) => ({ value: t.name, label: `${t.name} (${t.category})` })) }));
+            }}
+          />
+          <input className="px-3 py-2 border rounded" placeholder="Counterparty (optional)" value={qa.counterparty}
+            onChange={(e) => setQa((s) => ({ ...s, counterparty: e.target.value }))} />
+          <input className="px-3 py-2 border rounded" placeholder="Note (optional)" value={qa.note}
+            onChange={(e) => setQa((s) => ({ ...s, note: e.target.value }))} />
+        </div>
+
+        <div className="flex items-center justify-between mt-4">
+          <div className="text-sm text-gray-600">Amount (Local): <span className="font-semibold">{amountLocal ? amountLocal.toLocaleString() : '0'}</span></div>
+          <div className="flex items-center gap-2">
+            <button
+              className={`px-4 py-2 text-sm rounded-md text-white ${submitting ? 'bg-gray-400' : 'bg-blue-600 hover:bg-blue-700'}`}
+              onClick={() => submit(false)}
+              disabled={submitting}
+            >Add</button>
+            <button
+              className={`px-4 py-2 text-sm rounded-md border ${submitting ? 'bg-gray-100' : 'bg-white hover:bg-gray-50'}`}
+              onClick={() => submit(true)}
+              disabled={submitting}
+            >Add & New</button>
+            <button
+              className="px-4 py-2 text-sm rounded-md border bg-white hover:bg-gray-50"
+              onClick={() => { setShowForm(true); setShowQuickAdd(false); }}
+            >Advanced…</button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // Removed legacy Quick Actions in favor of simplified Quick Add
 
   const handleCreateTransaction = async (
     transactionData: Record<string, any>
@@ -378,6 +558,23 @@ const TransactionPage: React.FC = () => {
     } catch (err: any) {
       actions.setError(err?.message ?? 'Unknown error');
       showErrorToast('Failed to delete transaction. Please try again.');
+    }
+  };
+
+  const handleDeleteSelected = async (): Promise<void> => {
+    const ids = Array.from(selectedIds).map(String);
+    if (ids.length === 0) return;
+    if (!confirm(`Delete ${ids.length} selected transaction(s)?`)) return;
+    try {
+      const res = await transactionApi.deleteMany(ids);
+      const deleted = (res as any)?.deleted ?? ids.length;
+      setTransactions((prev) => prev.filter((tx) => !selectedIds.has(tx.id)));
+      setSelectedIds(new Set());
+      actions.setError(null);
+      showSuccessToast(`Deleted ${deleted} transaction(s)`);
+    } catch (err: any) {
+      actions.setError(err?.message ?? 'Unknown error');
+      showErrorToast('Failed to delete selected. Please try again.');
     }
   };
 
@@ -639,6 +836,21 @@ const TransactionPage: React.FC = () => {
           </div>
           <div className="flex space-x-3">
             <button
+              onClick={() => setShowQuickAdd((s) => !s)}
+              className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+              title="Quick Add (press N)"
+            >
+              <svg
+                className="w-4 h-4 mr-2"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+              Quick Add
+            </button>
+            <button
               onClick={() => setShowForm(true)}
               className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
             >
@@ -656,6 +868,17 @@ const TransactionPage: React.FC = () => {
                 />
               </svg>
               New Transaction
+            </button>
+            <button
+              onClick={handleDeleteSelected}
+              className={`inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white ${selectedIds.size > 0 ? 'bg-red-600 hover:bg-red-700' : 'bg-gray-400 cursor-not-allowed'}`}
+              disabled={selectedIds.size === 0}
+              title={selectedIds.size === 0 ? 'Select rows to delete' : 'Delete selected'}
+            >
+              <svg className="w-4 h-4 mr-2" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M9 7V5a2 2 0 012-2h2a2 2 0 012 2v2m-9 0h10" />
+              </svg>
+              Delete Selected
             </button>
             <button
               onClick={async () => {
@@ -718,6 +941,13 @@ const TransactionPage: React.FC = () => {
         </div>
       </div>
 
+      {/* Quick Add Panel */}
+      {showQuickAdd && (
+        <div className="mb-6">
+          <QuickAddForm onCreated={(tx) => setTransactions((prev) => [tx as any, ...prev])} />
+        </div>
+      )}
+
       {/* Currency Toggle */}
       <div className="mb-6">
         <div className="inline-flex rounded-md shadow-sm">
@@ -742,1098 +972,7 @@ const TransactionPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Quick Actions */}
-      <div className="mb-6 p-4 border border-gray-200 rounded-md">
-        <h3 className="text-md font-semibold mb-3">Quick Actions</h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="space-y-2">
-            <label className="block text-sm font-medium text-gray-700">
-              Action
-            </label>
-            <select
-              className="w-full px-3 py-2 border rounded-md"
-              value={actionForm.action}
-              onChange={(e) =>
-                setActionForm({ action: e.target.value, params: {} })
-              }
-            >
-              <option value="">Select an action</option>
-              <option value="init_balance">
-                Init Balance (seed existing holding)
-              </option>
-              <option value="p2p_buy_usdt">P2P: Buy USDT with VND</option>
-              <option value="p2p_sell_usdt">P2P: Sell USDT for VND</option>
-              <option value="spend_vnd">Spend VND (daily)</option>
-              <option value="credit_spend_vnd">Spend VND (credit card)</option>
-              <option value="spot_buy">Spot Buy (pay with quote)</option>
-              <option value="borrow">Borrow</option>
-              <option value="repay_borrow">Repay Borrow</option>
-              <option value="stake">Stake (investment)</option>
-              <option value="unstake">Unstake (investment)</option>
-              <option value="internal_transfer">Internal Transfer</option>
-            </select>
-          </div>
-
-          {/* Dynamic params */}
-          {actionForm.action === 'p2p_buy_usdt' ||
-            actionForm.action === 'p2p_sell_usdt' ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-              <DateInput
-                className="w-full"
-                value={actionForm.params.date || todayStr}
-                onChange={(v) =>
-                  setActionForm((s) => ({
-                    ...s,
-                    params: { ...s.params, date: v },
-                  }))
-                }
-              />
-              <ComboBox
-                options={(masterData.account || []) as any}
-                value={actionForm.params.bank_account || ''}
-                onChange={(v) =>
-                  setActionForm((s) => ({
-                    ...s,
-                    params: { ...s.params, bank_account: v },
-                  }))
-                }
-                placeholder="Bank Account"
-                allowCreate
-                onCreate={async (name) => {
-                  await adminApi.createAccount({
-                    name,
-                    type: 'bank',
-                    is_active: true,
-                  });
-                  const accounts = await adminApi.listAccounts();
-                  setMasterData((prev) => ({
-                    ...prev,
-                    account: ((accounts as any[]) || []).map((a: any) => ({
-                      value: a.name,
-                      label: `${a.name} (${a.type})`,
-                    })),
-                  }));
-                }}
-              />
-              <ComboBox
-                options={(masterData.account || []) as any}
-                value={actionForm.params.exchange_account || ''}
-                onChange={(v) =>
-                  setActionForm((s) => ({
-                    ...s,
-                    params: { ...s.params, exchange_account: v },
-                  }))
-                }
-                placeholder="Exchange Account"
-                allowCreate
-                onCreate={async (name) => {
-                  await adminApi.createAccount({
-                    name,
-                    type: 'exchange',
-                    is_active: true,
-                  });
-                  const accounts = await adminApi.listAccounts();
-                  setMasterData((prev) => ({
-                    ...prev,
-                    account: ((accounts as any[]) || []).map((a: any) => ({
-                      value: a.name,
-                      label: `${a.name} (${a.type})`,
-                    })),
-                  }));
-                }}
-              />
-              <input
-                className="px-3 py-2 border rounded"
-                placeholder="VND Amount"
-                onChange={(e) =>
-                  setActionForm((s) => ({
-                    ...s,
-                    params: { ...s.params, vnd_amount: e.target.value },
-                  }))
-                }
-              />
-              <input
-                className="px-3 py-2 border rounded"
-                placeholder="Price VND per USDT"
-                onChange={(e) =>
-                  setActionForm((s) => ({
-                    ...s,
-                    params: { ...s.params, price_vnd_per_usdt: e.target.value },
-                  }))
-                }
-              />
-              <input
-                className="px-3 py-2 border rounded"
-                placeholder="Fee VND (optional)"
-                onChange={(e) =>
-                  setActionForm((s) => ({
-                    ...s,
-                    params: { ...s.params, fee_vnd: e.target.value },
-                  }))
-                }
-              />
-              <input
-                className="px-3 py-2 border rounded"
-                placeholder="Counterparty (optional)"
-                onChange={(e) =>
-                  setActionForm((s) => ({
-                    ...s,
-                    params: { ...s.params, counterparty: e.target.value },
-                  }))
-                }
-              />
-            </div>
-          ) : null}
-
-          {actionForm.action === 'spend_vnd' ||
-            actionForm.action === 'credit_spend_vnd' ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-              <DateInput
-                className="w-full"
-                value={actionForm.params.date || todayStr}
-                onChange={(v) =>
-                  setActionForm((s) => ({
-                    ...s,
-                    params: { ...s.params, date: v },
-                  }))
-                }
-              />
-              <ComboBox
-                options={(masterData.account || []) as any}
-                value={actionForm.params.account || ''}
-                onChange={(v) =>
-                  setActionForm((s) => ({
-                    ...s,
-                    params: { ...s.params, account: v },
-                  }))
-                }
-                placeholder="Account (Bank/CreditCard)"
-                allowCreate
-                onCreate={async (name) => {
-                  await adminApi.createAccount({
-                    name,
-                    type: 'bank',
-                    is_active: true,
-                  });
-                  const accounts = await adminApi.listAccounts();
-                  setMasterData((prev) => ({
-                    ...prev,
-                    account: ((accounts as any[]) || []).map((a: any) => ({
-                      value: a.name,
-                      label: `${a.name} (${a.type})`,
-                    })),
-                  }));
-                }}
-              />
-              <input
-                className="px-3 py-2 border rounded"
-                placeholder="VND Amount"
-                onChange={(e) =>
-                  setActionForm((s) => ({
-                    ...s,
-                    params: { ...s.params, vnd_amount: e.target.value },
-                  }))
-                }
-              />
-              <input
-                className="px-3 py-2 border rounded"
-                placeholder="Counterparty"
-                onChange={(e) =>
-                  setActionForm((s) => ({
-                    ...s,
-                    params: { ...s.params, counterparty: e.target.value },
-                  }))
-                }
-              />
-              <input
-                className="px-3 py-2 border rounded"
-                placeholder="Tag"
-                onChange={(e) =>
-                  setActionForm((s) => ({
-                    ...s,
-                    params: { ...s.params, tag: e.target.value },
-                  }))
-                }
-              />
-              <input
-                className="px-3 py-2 border rounded"
-                placeholder="Note"
-                onChange={(e) =>
-                  setActionForm((s) => ({
-                    ...s,
-                    params: { ...s.params, note: e.target.value },
-                  }))
-                }
-              />
-            </div>
-          ) : null}
-
-          {actionForm.action === 'init_balance' ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-              <DateInput
-                className="w-full"
-                value={actionForm.params.date || todayStr}
-                onChange={(v) =>
-                  setActionForm((s) => ({
-                    ...s,
-                    params: { ...s.params, date: v },
-                  }))
-                }
-              />
-              <ComboBox
-                options={masterData.account || []}
-                value={actionForm.params.account || ''}
-                onChange={(v) =>
-                  setActionForm((s) => ({
-                    ...s,
-                    params: { ...s.params, account: v },
-                  }))
-                }
-                placeholder="Account"
-                allowCreate
-                onCreate={async (name) => {
-                  await adminApi.createAccount({
-                    name,
-                    type: 'bank',
-                    is_active: true,
-                  });
-                  const accounts = await adminApi.listAccounts();
-                  setMasterData((prev) => ({
-                    ...prev,
-                    account: ((accounts as any[]) || []).map((a: any) => ({
-                      value: a.name,
-                      label: `${a.name} (${a.type})`,
-                    })),
-                  }));
-                }}
-              />
-              <ComboBox
-                options={(masterData.asset || []) as any}
-                value={actionForm.params.asset || ''}
-                onChange={(v) =>
-                  setActionForm((s) => ({
-                    ...s,
-                    params: { ...s.params, asset: v },
-                  }))
-                }
-                placeholder="Asset"
-              />
-              <input
-                className="px-3 py-2 border rounded"
-                placeholder="Quantity"
-                onChange={(e) =>
-                  setActionForm((s) => ({
-                    ...s,
-                    params: { ...s.params, quantity: e.target.value },
-                  }))
-                }
-              />
-              <input
-                className="px-3 py-2 border rounded"
-                placeholder="Price Local (default 1)"
-                onChange={(e) =>
-                  setActionForm((s) => ({
-                    ...s,
-                    params: { ...s.params, price_local: e.target.value },
-                  }))
-                }
-              />
-              <input
-                className="px-3 py-2 border rounded"
-                placeholder="FX to USD (optional)"
-                onChange={(e) =>
-                  setActionForm((s) => ({
-                    ...s,
-                    params: { ...s.params, fx_to_usd: e.target.value },
-                  }))
-                }
-              />
-              <input
-                className="px-3 py-2 border rounded"
-                placeholder="FX to VND (optional)"
-                onChange={(e) =>
-                  setActionForm((s) => ({
-                    ...s,
-                    params: { ...s.params, fx_to_vnd: e.target.value },
-                  }))
-                }
-              />
-              <input
-                className="px-3 py-2 border rounded"
-                placeholder="Tag (optional)"
-                onChange={(e) =>
-                  setActionForm((s) => ({
-                    ...s,
-                    params: { ...s.params, tag: e.target.value },
-                  }))
-                }
-              />
-              <input
-                className="px-3 py-2 border rounded"
-                placeholder="Note (optional)"
-                onChange={(e) =>
-                  setActionForm((s) => ({
-                    ...s,
-                    params: { ...s.params, note: e.target.value },
-                  }))
-                }
-              />
-            </div>
-          ) : null}
-
-          {actionForm.action === 'spot_buy' ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-              <DateInput
-                className="w-full"
-                value={actionForm.params.date || todayStr}
-                onChange={(v) =>
-                  setActionForm((s) => ({
-                    ...s,
-                    params: { ...s.params, date: v },
-                  }))
-                }
-              />
-              <ComboBox
-                options={(masterData.account || []) as any}
-                value={actionForm.params.exchange_account || ''}
-                onChange={(v) =>
-                  setActionForm((s) => ({
-                    ...s,
-                    params: { ...s.params, exchange_account: v },
-                  }))
-                }
-                placeholder="Exchange Account"
-                allowCreate
-                onCreate={async (name) => {
-                  await adminApi.createAccount({
-                    name,
-                    type: 'exchange',
-                    is_active: true,
-                  });
-                  const accounts = await adminApi.listAccounts();
-                  setMasterData((prev) => ({
-                    ...prev,
-                    account: ((accounts as any[]) || []).map((a: any) => ({
-                      value: a.name,
-                      label: `${a.name} (${a.type})`,
-                    })),
-                  }));
-                }}
-              />
-              <input
-                className="px-3 py-2 border rounded"
-                placeholder="Base Asset (e.g., BTC)"
-                value={actionForm.params.base_asset || ''}
-                onChange={(e) =>
-                  setActionForm((s) => ({
-                    ...s,
-                    params: { ...s.params, base_asset: e.target.value },
-                  }))
-                }
-              />
-              <input
-                className="px-3 py-2 border rounded"
-                placeholder="Quote Asset (e.g., USDT)"
-                value={actionForm.params.quote_asset || ''}
-                onChange={(e) =>
-                  setActionForm((s) => ({
-                    ...s,
-                    params: { ...s.params, quote_asset: e.target.value },
-                  }))
-                }
-              />
-              <input
-                className="px-3 py-2 border rounded"
-                placeholder="Quantity (base)"
-                onChange={(e) =>
-                  setActionForm((s) => ({
-                    ...s,
-                    params: { ...s.params, quantity: e.target.value },
-                  }))
-                }
-              />
-              <input
-                className="px-3 py-2 border rounded"
-                placeholder="Price (quote)"
-                value={actionForm.params.price_quote || ''}
-                onChange={(e) =>
-                  setActionForm((s) => ({
-                    ...s,
-                    params: { ...s.params, price_quote: e.target.value },
-                  }))
-                }
-              />
-              {/* Fee mode */}
-              <select
-                className="px-3 py-2 border rounded"
-                value={actionForm.params.fee_mode || ''}
-                onChange={(e) =>
-                  setActionForm((s) => ({
-                    ...s,
-                    params: { ...s.params, fee_mode: e.target.value },
-                  }))
-                }
-              >
-                <option value="">Fee: none</option>
-                <option value="percent">Fee: percent of spend</option>
-                <option value="base">Fee: in base asset</option>
-                <option value="quote">Fee: in quote asset</option>
-              </select>
-              {actionForm.params.fee_mode === 'percent' && (
-                <input
-                  className="px-3 py-2 border rounded"
-                  placeholder="Fee %"
-                  onChange={(e) =>
-                    setActionForm((s) => ({
-                      ...s,
-                      params: { ...s.params, fee_percent: e.target.value },
-                    }))
-                  }
-                />
-              )}
-              {actionForm.params.fee_mode === 'base' && (
-                <input
-                  className="px-3 py-2 border rounded"
-                  placeholder="Fee (base)"
-                  onChange={(e) =>
-                    setActionForm((s) => ({
-                      ...s,
-                      params: { ...s.params, fee_base: e.target.value },
-                    }))
-                  }
-                />
-              )}
-              {actionForm.params.fee_mode === 'quote' && (
-                <input
-                  className="px-3 py-2 border rounded"
-                  placeholder="Fee (quote)"
-                  onChange={(e) =>
-                    setActionForm((s) => ({
-                      ...s,
-                      params: { ...s.params, fee_quote: e.target.value },
-                    }))
-                  }
-                />
-              )}
-              <input
-                className="px-3 py-2 border rounded"
-                placeholder="Counterparty (optional)"
-                onChange={(e) =>
-                  setActionForm((s) => ({
-                    ...s,
-                    params: { ...s.params, counterparty: e.target.value },
-                  }))
-                }
-              />
-            </div>
-          ) : null}
-
-          {actionForm.action === 'internal_transfer' && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-              <DateInput
-                className="w-full"
-                value={actionForm.params.date || todayStr}
-                onChange={(v) =>
-                  setActionForm((s) => ({
-                    ...s,
-                    params: { ...s.params, date: v },
-                  }))
-                }
-              />
-              <ComboBox
-                options={(masterData.account || []) as any}
-                value={actionForm.params.source_account || ''}
-                onChange={(v) =>
-                  setActionForm((s) => ({
-                    ...s,
-                    params: { ...s.params, source_account: v },
-                  }))
-                }
-                placeholder="Source Account"
-                allowCreate
-                onCreate={async (name) => {
-                  await adminApi.createAccount({
-                    name,
-                    type: 'bank',
-                    is_active: true,
-                  });
-                  const accounts = await adminApi.listAccounts();
-                  setMasterData((prev) => ({
-                    ...prev,
-                    account: ((accounts as any[]) || []).map((a: any) => ({
-                      value: a.name,
-                      label: `${a.name} (${a.type})`,
-                    })),
-                  }));
-                }}
-              />
-              <ComboBox
-                options={(masterData.account || []) as any}
-                value={actionForm.params.destination_account || ''}
-                onChange={(v) =>
-                  setActionForm((s) => ({
-                    ...s,
-                    params: { ...s.params, destination_account: v },
-                  }))
-                }
-                placeholder="Destination Account"
-                allowCreate
-                onCreate={async (name) => {
-                  await adminApi.createAccount({
-                    name,
-                    type: 'bank',
-                    is_active: true,
-                  });
-                  const accounts = await adminApi.listAccounts();
-                  setMasterData((prev) => ({
-                    ...prev,
-                    account: ((accounts as any[]) || []).map((a: any) => ({
-                      value: a.name,
-                      label: `${a.name} (${a.type})`,
-                    })),
-                  }));
-                }}
-              />
-              <ComboBox
-                options={(masterData.asset || []) as any}
-                value={actionForm.params.asset || ''}
-                onChange={(v) =>
-                  setActionForm((s) => ({
-                    ...s,
-                    params: { ...s.params, asset: v },
-                  }))
-                }
-                placeholder="Asset"
-                allowCreate
-                onCreate={async (symbol) => {
-                  await adminApi.createAsset({
-                    symbol,
-                    name: symbol,
-                    decimals: 0,
-                    is_active: true,
-                  });
-                  const assets = await adminApi.listAssets();
-                  setMasterData((prev) => ({
-                    ...prev,
-                    asset: ((assets as any[]) || []).map((a: any) => ({
-                      value: a.symbol,
-                      label: `${a.symbol} - ${a.name}`,
-                    })),
-                  }));
-                }}
-              />
-              <input
-                className="px-3 py-2 border rounded"
-                placeholder="Amount"
-                onChange={(e) =>
-                  setActionForm((s) => ({
-                    ...s,
-                    params: { ...s.params, amount: e.target.value },
-                  }))
-                }
-              />
-              <input
-                className="px-3 py-2 border rounded"
-                placeholder="Counterparty (optional)"
-                onChange={(e) =>
-                  setActionForm((s) => ({
-                    ...s,
-                    params: { ...s.params, counterparty: e.target.value },
-                  }))
-                }
-              />
-              <input
-                className="px-3 py-2 border rounded"
-                placeholder="Note (optional)"
-                onChange={(e) =>
-                  setActionForm((s) => ({
-                    ...s,
-                    params: { ...s.params, note: e.target.value },
-                  }))
-                }
-              />
-            </div>
-          )}
-
-          {actionForm.action === 'borrow' ||
-            actionForm.action === 'repay_borrow' ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-              <DateInput
-                className="w-full"
-                value={actionForm.params.date || todayStr}
-                onChange={(v) =>
-                  setActionForm((s) => ({
-                    ...s,
-                    params: { ...s.params, date: v },
-                  }))
-                }
-              />
-              <ComboBox
-                options={(masterData.account || []) as any}
-                value={actionForm.params.account || ''}
-                onChange={(v) =>
-                  setActionForm((s) => ({
-                    ...s,
-                    params: { ...s.params, account: v },
-                  }))
-                }
-                placeholder="Account"
-                allowCreate
-                onCreate={async (name) => {
-                  await adminApi.createAccount({
-                    name,
-                    type: 'bank',
-                    is_active: true,
-                  });
-                  const accounts = await adminApi.listAccounts();
-                  setMasterData((prev) => ({
-                    ...prev,
-                    account: ((accounts as any[]) || []).map((a: any) => ({
-                      value: a.name,
-                      label: `${a.name} (${a.type})`,
-                    })),
-                  }));
-                }}
-              />
-              <ComboBox
-                options={(masterData.asset || []) as any}
-                value={actionForm.params.asset || ''}
-                onChange={(v) =>
-                  setActionForm((s) => ({
-                    ...s,
-                    params: { ...s.params, asset: v },
-                  }))
-                }
-                placeholder="Asset"
-                allowCreate
-                onCreate={async (symbol) => {
-                  await adminApi.createAsset({
-                    symbol,
-                    name: symbol,
-                    decimals: 0,
-                    is_active: true,
-                  });
-                  const assets = await adminApi.listAssets();
-                  setMasterData((prev) => ({
-                    ...prev,
-                    asset: ((assets as any[]) || []).map((a: any) => ({
-                      value: a.symbol,
-                      label: `${a.symbol} - ${a.name}`,
-                    })),
-                  }));
-                }}
-              />
-              <input
-                className="px-3 py-2 border rounded"
-                placeholder="Amount"
-                onChange={(e) =>
-                  setActionForm((s) => ({
-                    ...s,
-                    params: { ...s.params, amount: e.target.value },
-                  }))
-                }
-              />
-              {actionForm.action === 'repay_borrow' && (
-                <input
-                  className="px-3 py-2 border rounded"
-                  placeholder="Borrow Tx ID (optional)"
-                  onChange={(e) =>
-                    setActionForm((s) => ({
-                      ...s,
-                      params: { ...s.params, borrow_id: e.target.value },
-                    }))
-                  }
-                />
-              )}
-              <input
-                className="px-3 py-2 border rounded"
-                placeholder="Counterparty (optional)"
-                onChange={(e) =>
-                  setActionForm((s) => ({
-                    ...s,
-                    params: { ...s.params, counterparty: e.target.value },
-                  }))
-                }
-              />
-              <input
-                className="px-3 py-2 border rounded"
-                placeholder="Note (optional)"
-                onChange={(e) =>
-                  setActionForm((s) => ({
-                    ...s,
-                    params: { ...s.params, note: e.target.value },
-                  }))
-                }
-              />
-            </div>
-          ) : null}
-
-          {actionForm.action === 'stake' && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-              <DateInput
-                className="w-full"
-                value={actionForm.params.date || todayStr}
-                onChange={(v) =>
-                  setActionForm((s) => ({
-                    ...s,
-                    params: { ...s.params, date: v },
-                  }))
-                }
-              />
-              <ComboBox
-                options={(masterData.account || []) as any}
-                value={actionForm.params.source_account || ''}
-                onChange={(v) =>
-                  setActionForm((s) => ({
-                    ...s,
-                    params: { ...s.params, source_account: v },
-                  }))
-                }
-                placeholder="Source Account"
-                allowCreate
-                onCreate={async (name) => {
-                  await adminApi.createAccount({
-                    name,
-                    type: 'bank',
-                    is_active: true,
-                  });
-                  const accounts = await adminApi.listAccounts();
-                  setMasterData((prev) => ({
-                    ...prev,
-                    account: ((accounts as any[]) || []).map((a: any) => ({
-                      value: a.name,
-                      label: `${a.name} (${a.type})`,
-                    })),
-                  }));
-                }}
-              />
-              <ComboBox
-                options={(masterData.account || []) as any}
-                value={actionForm.params.investment_account || ''}
-                onChange={(v) =>
-                  setActionForm((s) => ({
-                    ...s,
-                    params: { ...s.params, investment_account: v },
-                  }))
-                }
-                placeholder="Investment Account"
-                allowCreate
-                onCreate={async (name) => {
-                  await adminApi.createAccount({
-                    name,
-                    type: 'investment',
-                    is_active: true,
-                  });
-                  const accounts = await adminApi.listAccounts();
-                  setMasterData((prev) => ({
-                    ...prev,
-                    account: ((accounts as any[]) || []).map((a: any) => ({
-                      value: a.name,
-                      label: `${a.name} (${a.type})`,
-                    })),
-                  }));
-                }}
-              />
-              {/* Optional: add to existing open investment */}
-              <ComboBox
-                options={openInvestmentsForStake as any}
-                value={actionForm.params.investment_id || ''}
-                onChange={(id) => {
-                  const info = invIdToInfoForStake[String(id)] || {};
-                  setActionForm((s) => ({
-                    ...s,
-                    params: {
-                      ...s.params,
-                      investment_id: id,
-                      investment_account: info.account || s.params.investment_account,
-                      asset: info.asset || s.params.asset,
-                      horizon: info.horizon || s.params.horizon,
-                    },
-                  }));
-                }}
-                placeholder="Existing Investment (optional)"
-              />
-              <ComboBox
-                options={(masterData.asset || []) as any}
-                value={actionForm.params.asset || ''}
-                onChange={(v) =>
-                  setActionForm((s) => ({
-                    ...s,
-                    params: { ...s.params, asset: v },
-                  }))
-                }
-                placeholder="Asset"
-                allowCreate
-                onCreate={async (symbol) => {
-                  await adminApi.createAsset({
-                    symbol,
-                    name: symbol,
-                    decimals: 0,
-                    is_active: true,
-                  });
-                  const assets = await adminApi.listAssets();
-                  setMasterData((prev) => ({
-                    ...prev,
-                    asset: ((assets as any[]) || []).map((a: any) => ({
-                      value: a.symbol,
-                      label: `${a.symbol} - ${a.name}`,
-                    })),
-                  }));
-                }}
-              />
-              <input
-                className="px-3 py-2 border rounded"
-                placeholder="Amount"
-                onChange={(e) =>
-                  setActionForm((s) => ({
-                    ...s,
-                    params: { ...s.params, amount: e.target.value },
-                  }))
-                }
-              />
-              <input
-                className="px-3 py-2 border rounded"
-                placeholder="Fee % (optional)"
-                onChange={(e) =>
-                  setActionForm((s) => ({
-                    ...s,
-                    params: { ...s.params, fee_percent: e.target.value },
-                  }))
-                }
-              />
-              <input
-                className="px-3 py-2 border rounded"
-                placeholder="Horizon 'short-term'|'long-term' (optional)"
-                onChange={(e) =>
-                  setActionForm((s) => ({
-                    ...s,
-                    params: { ...s.params, horizon: e.target.value },
-                  }))
-                }
-              />
-              <input
-                className="px-3 py-2 border rounded"
-                placeholder="Tag (optional)"
-                onChange={(e) =>
-                  setActionForm((s) => ({
-                    ...s,
-                    params: { ...s.params, tag: e.target.value },
-                  }))
-                }
-              />
-              <input
-                className="px-3 py-2 border rounded"
-                placeholder="Counterparty (optional)"
-                onChange={(e) =>
-                  setActionForm((s) => ({
-                    ...s,
-                    params: { ...s.params, counterparty: e.target.value },
-                  }))
-                }
-              />
-              <input
-                className="px-3 py-2 border rounded"
-                placeholder="Note (optional)"
-                onChange={(e) =>
-                  setActionForm((s) => ({
-                    ...s,
-                    params: { ...s.params, note: e.target.value },
-                  }))
-                }
-              />
-            </div>
-          )}
-
-          {actionForm.action === 'unstake' && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-              <DateInput
-                className="w-full"
-                value={actionForm.params.date || todayStr}
-                onChange={(v) =>
-                  setActionForm((s) => ({
-                    ...s,
-                    params: { ...s.params, date: v },
-                  }))
-                }
-              />
-              <ComboBox
-                options={activeStakeOptions as any}
-                value={actionForm.params.investment_id || ''}
-                onChange={(id) => {
-                  const info = stakeIdToInfo[String(id)] || {};
-                  setActionForm((s) => ({
-                    ...s,
-                    params: {
-                      ...s.params,
-                      investment_id: id,
-                      investment_account:
-                        info.account || s.params.investment_account,
-                      asset: info.asset || s.params.asset,
-                      // if close_all already toggled, auto-fill amount to remaining
-                      amount: s.params.close_all ? String(info.remaining_qty || '') : s.params.amount,
-                    },
-                  }));
-                }}
-                placeholder="Active Investment (required)"
-              />
-              <ComboBox
-                options={(masterData.account || []) as any}
-                value={actionForm.params.investment_account || ''}
-                onChange={(v) =>
-                  setActionForm((s) => ({
-                    ...s,
-                    params: { ...s.params, investment_account: v },
-                  }))
-                }
-                placeholder="Investment Account"
-                allowCreate
-                onCreate={async (name) => {
-                  await adminApi.createAccount({
-                    name,
-                    type: 'investment',
-                    is_active: true,
-                  });
-                  const accounts = await adminApi.listAccounts();
-                  setMasterData((prev) => ({
-                    ...prev,
-                    account: ((accounts as any[]) || []).map((a: any) => ({
-                      value: a.name,
-                      label: `${a.name} (${a.type})`,
-                    })),
-                  }));
-                }}
-              />
-              <ComboBox
-                options={masterData.account || []}
-                value={actionForm.params.destination_account || ''}
-                onChange={(v) =>
-                  setActionForm((s) => ({
-                    ...s,
-                    params: { ...s.params, destination_account: v },
-                  }))
-                }
-                placeholder="Destination Account"
-                allowCreate
-                onCreate={async (name) => {
-                  await adminApi.createAccount({
-                    name,
-                    type: 'bank',
-                    is_active: true,
-                  });
-                  const accounts = await adminApi.listAccounts();
-                  setMasterData((prev) => ({
-                    ...prev,
-                    account: ((accounts as any[]) || []).map((a: any) => ({
-                      value: a.name,
-                      label: `${a.name} (${a.type})`,
-                    })),
-                  }));
-                }}
-              />
-              <ComboBox
-                options={(masterData.asset || []) as any}
-                value={actionForm.params.asset || ''}
-                onChange={(v) =>
-                  setActionForm((s) => ({
-                    ...s,
-                    params: { ...s.params, asset: v },
-                  }))
-                }
-                placeholder="Asset"
-                allowCreate
-                onCreate={async (symbol) => {
-                  await adminApi.createAsset({
-                    symbol,
-                    name: symbol,
-                    decimals: 0,
-                    is_active: true,
-                  });
-                  const assets = await adminApi.listAssets();
-                  setMasterData((prev) => ({
-                    ...prev,
-                    asset: ((assets as any[]) || []).map((a: any) => ({
-                      value: a.symbol,
-                      label: `${a.symbol} - ${a.name}`,
-                    })),
-                  }));
-                }}
-              />
-              <input
-                className="px-3 py-2 border rounded"
-                placeholder="Amount (required)"
-                value={actionForm.params.amount || ''}
-                onChange={(e) =>
-                  setActionForm((s) => ({
-                    ...s,
-                    params: { ...s.params, amount: e.target.value },
-                  }))
-                }
-                required
-              />
-              <input
-                className="px-3 py-2 border rounded"
-                placeholder="Exit Price USD (optional)"
-                type="number"
-                step="any"
-                value={actionForm.params.exit_price_usd || ''}
-                onChange={(e) =>
-                  setActionForm((s) => ({
-                    ...s,
-                    params: { ...s.params, exit_price_usd: e.target.value },
-                  }))
-                }
-              />
-              <div className="flex items-center space-x-2">
-                <input
-                  id="unstake-close-all"
-                  type="checkbox"
-                  className="h-4 w-4 text-blue-600 border-gray-300 rounded"
-                  checked={Boolean(actionForm.params.close_all)}
-                  onChange={(e) =>
-                    setActionForm((s) => ({
-                      ...s,
-                      params: {
-                        ...s.params,
-                        close_all: e.target.checked,
-                        amount: e.target.checked
-                          ? String((stakeIdToInfo[String(s.params.investment_id || '')] || {}).remaining_qty || '')
-                          : s.params.amount,
-                      },
-                    }))
-                  }
-                />
-                <label
-                  htmlFor="unstake-close-all"
-                  className="text-sm text-gray-700"
-                  title="Mark the original stake position as closed"
-                >
-                  Close Position
-                </label>
-              </div>
-              <input
-                className="px-3 py-2 border rounded"
-                placeholder="Note (optional)"
-                onChange={(e) =>
-                  setActionForm((s) => ({
-                    ...s,
-                    params: { ...s.params, note: e.target.value },
-                  }))
-                }
-              />
-            </div>
-          )}
-
-          <div className="flex items-end">
-            <button
-              className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
-              onClick={handlePerformAction}
-              disabled={performing}
-            >
-              {performing ? 'Performing...' : 'Perform Action'}
-            </button>
-          </div>
-        </div>
-      </div>
+      {/* Quick Actions removed */}
 
       {/* Transactions Table */}
       <DataTable
@@ -1850,6 +989,24 @@ const TransactionPage: React.FC = () => {
         onEdit={handleEditClick as any}
         onDelete={handleDeleteTransaction as any}
         busyRowIds={busyRowIds as any}
+        selectableRows={true}
+        selectedIds={selectedIds as any}
+        onToggleRow={(id, checked) => {
+          setSelectedIds((s) => {
+            const next = new Set(s);
+            if (checked) next.add(id as IdType); else next.delete(id as IdType);
+            return next;
+          });
+        }}
+        onToggleAll={(checked, visibleIds) => {
+          setSelectedIds((s) => {
+            const next = new Set(s);
+            for (const id of visibleIds) {
+              if (checked) next.add(id as IdType); else next.delete(id as IdType);
+            }
+            return next;
+          });
+        }}
         onRecalc={async (row: any) => {
           try {
             setBusyRowIds((s) => {

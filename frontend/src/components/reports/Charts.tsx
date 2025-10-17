@@ -72,8 +72,7 @@ export const HoldingsChart = ({ data, currency = 'USD' }) => {
         position: 'bottom',
         labels: {
           boxWidth: 12,
-          fontSize: 10,
-          padding: 10
+          padding: 10,
         }
       },
       title: {
@@ -137,8 +136,7 @@ export const CashFlowChart = ({ data, currency = 'USD' }) => {
         position: 'top',
         labels: {
           boxWidth: 12,
-          fontSize: 10,
-          padding: 8
+          padding: 8,
         }
       },
       title: {
@@ -208,8 +206,7 @@ export const SpendingChart = ({ data, currency = 'USD' }) => {
         position: 'bottom',
         labels: {
           boxWidth: 12,
-          fontSize: 10,
-          padding: 10
+          padding: 10,
         }
       },
       title: {
@@ -280,21 +277,75 @@ export const PnLChart = ({ data, currency = 'USD' }) => {
       y: {
         beginAtZero: true,
         ticks: {
-          fontSize: 10,
           callback: function (value) {
-            return value.toLocaleString()
+            return (value as number).toLocaleString()
           }
         }
       },
       x: {
-        ticks: {
-          fontSize: 10
-        }
+        ticks: {}
       }
     },
   }
 
   return <Bar data={chartData} options={options} />
+}
+
+// Daily Spending Line Chart
+export const DailySpendingChart = ({ data, currency = 'USD' }) => {
+  if (!data || !data.by_day) return null
+
+  const entries = Object.entries(data.by_day)
+    .map(([day, d]: [string, any]) => ({ day, ...(d as any) }))
+    .sort((a, b) => (a.day < b.day ? -1 : 1))
+
+  const labels = entries.map((e) => e.day)
+  const values = entries.map((e) =>
+    Math.abs(parseFloat(currency === 'USD' ? e.amount_usd : e.amount_vnd))
+  )
+
+  const chartData = {
+    labels,
+    datasets: [
+      {
+        label: `Daily Spending (${currency})`,
+        data: values,
+        borderColor: '#F97316',
+        backgroundColor: 'rgba(249, 115, 22, 0.2)',
+        fill: true,
+        tension: 0.3,
+        pointRadius: 2,
+      },
+    ],
+  }
+
+  const options = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: { position: 'top' },
+      tooltip: {
+        callbacks: {
+          label: function (context) {
+            const value = Math.abs(context.parsed.y)
+            return `${context.dataset.label}: ${value.toLocaleString()} ${currency}`
+          }
+        }
+      }
+    },
+    scales: {
+      y: {
+        beginAtZero: true,
+        ticks: {
+          callback: function (value: any) {
+            return Math.abs(value).toLocaleString()
+          }
+        }
+      }
+    }
+  }
+
+  return <Line data={chartData} options={options} />
 }
 
 // Summary Stats Component

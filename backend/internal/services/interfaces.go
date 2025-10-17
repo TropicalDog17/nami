@@ -19,6 +19,8 @@ type TransactionService interface {
 	ListTransactions(ctx context.Context, filter *models.TransactionFilter) ([]*models.Transaction, error)
 	UpdateTransaction(ctx context.Context, tx *models.Transaction) error
 	DeleteTransaction(ctx context.Context, id string) error
+	// DeleteTransactions deletes multiple transactions and returns how many were deleted
+	DeleteTransactions(ctx context.Context, ids []string) (int, error)
 	// DeleteActionGroup deletes all transactions linked together by link_type = 'action' that are associated with the
 	// same group as the provided transaction id. Deletion is performed atomically in a single SQL transaction.
 	DeleteActionGroup(ctx context.Context, oneID string) (int, error)

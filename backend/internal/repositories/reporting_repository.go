@@ -347,6 +347,7 @@ func (r *reportingRepository) GetSpending(ctx context.Context, period models.Per
 		Period:         period,
 		ByTag:          make(map[string]*models.SpendingByTag),
 		ByCounterparty: make(map[string]*models.SpendingByTag),
+		ByDay:          make(map[string]*models.SpendingByDay),
 	}
 
 	err = sqlDB.QueryRowContext(ctx, query, period.StartDate, period.EndDate).Scan(
@@ -418,6 +419,33 @@ func (r *reportingRepository) GetSpending(ctx context.Context, period models.Per
 		}
 
 		report.ByCounterparty[counterparty] = sp
+	}
+
+	// Daily breakdown (outflows only)
+	dayQuery := `
+        SELECT
+            TO_CHAR(date::date, 'YYYY-MM-DD') as day,
+            COALESCE(SUM(ABS(cashflow_usd)), 0) as amount_usd,
+            COALESCE(SUM(ABS(cashflow_vnd)), 0) as amount_vnd,
+            COUNT(*) as count
+        FROM transactions
+            WHERE date >= $1 AND date <= $2 AND cashflow_usd < 0 AND (internal_flow IS DISTINCT FROM TRUE)
+        GROUP BY day
+        ORDER BY day`
+
+	dayRows, err := sqlDB.QueryContext(ctx, dayQuery, period.StartDate, period.EndDate)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get spending by day: %w", err)
+	}
+	defer dayRows.Close()
+
+	for dayRows.Next() {
+		var day string
+		sb := &models.SpendingByDay{}
+		if err := dayRows.Scan(&day, &sb.AmountUSD, &sb.AmountVND, &sb.Count); err != nil {
+			return nil, fmt.Errorf("failed to scan spending by day: %w", err)
+		}
+		report.ByDay[day] = sb
 	}
 
 	expenseQuery := `

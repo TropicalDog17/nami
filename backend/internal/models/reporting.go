@@ -90,6 +90,8 @@ type SpendingReport struct {
 	ByTag          map[string]*SpendingByTag `json:"by_tag"`
 	ByCounterparty map[string]*SpendingByTag `json:"by_counterparty"`
 	TopExpenses    []*TransactionSummary     `json:"top_expenses"`
+	// Daily breakdown of spending (outflows only) keyed by YYYY-MM-DD
+	ByDay map[string]*SpendingByDay `json:"by_day"`
 }
 
 // SpendingByTag represents spending breakdown by tag or counterparty
@@ -98,6 +100,13 @@ type SpendingByTag struct {
 	AmountVND  decimal.Decimal `json:"amount_vnd"`
 	Count      int             `json:"count"`
 	Percentage decimal.Decimal `json:"percentage"`
+}
+
+// SpendingByDay represents spending totals for a single day
+type SpendingByDay struct {
+	AmountUSD decimal.Decimal `json:"amount_usd"`
+	AmountVND decimal.Decimal `json:"amount_vnd"`
+	Count     int             `json:"count"`
 }
 
 // TransactionSummary represents a summary of a transaction for reports

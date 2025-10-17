@@ -124,9 +124,10 @@ class ApiClient {
     });
   }
 
-  async delete<T = unknown>(endpoint: string): Promise<T | null> {
+  async delete<T = unknown, B = unknown>(endpoint: string, data?: B): Promise<T | null> {
     return this.request<T>(endpoint, {
       method: 'DELETE',
+      body: data,
     });
   }
 }
@@ -143,6 +144,7 @@ export const transactionApi = {
   update: (id: string | number, transaction: unknown) =>
     api.put(`/api/transactions/${id}`, transaction),
   delete: (id: string | number) => api.delete(`/api/transactions/${id}`),
+  deleteMany: (ids: Array<string>) => api.delete<{ deleted: number }, { ids: Array<string> }>(`/api/transactions`, { ids }),
   recalc: (id: string, onlyMissing: boolean = true) =>
     api.post(
       `/api/transactions/${id}/recalc?only_missing=${onlyMissing ? 'true' : 'false'}`,

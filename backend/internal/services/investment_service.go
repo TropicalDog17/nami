@@ -32,6 +32,7 @@ func (s *investmentService) GetInvestments(ctx context.Context, filter *models.I
 	}
 	for _, inv := range investments {
 		inv.RealizedPnL = inv.PnL
+		inv.RemainingQty = inv.DepositQty.Sub(inv.WithdrawalQty)
 	}
 	return investments, nil
 }
@@ -43,6 +44,7 @@ func (s *investmentService) GetInvestmentByID(ctx context.Context, id string) (*
 		return nil, err
 	}
 	inv.RealizedPnL = inv.PnL
+	inv.RemainingQty = inv.DepositQty.Sub(inv.WithdrawalQty)
 	return inv, nil
 }
 
@@ -134,6 +136,7 @@ func (s *investmentService) CreateDeposit(ctx context.Context, tx *models.Transa
 
 	// Populate derived realized PnL before returning
 	targetInvestment.RealizedPnL = targetInvestment.PnL
+	targetInvestment.RemainingQty = targetInvestment.DepositQty.Sub(targetInvestment.WithdrawalQty)
 	return targetInvestment, nil
 }
 
@@ -192,6 +195,7 @@ func (s *investmentService) CreateWithdrawal(ctx context.Context, tx *models.Tra
 
 	// Populate derived realized PnL before returning
 	targetInvestment.RealizedPnL = targetInvestment.PnL
+	targetInvestment.RemainingQty = targetInvestment.DepositQty.Sub(targetInvestment.WithdrawalQty)
 	return targetInvestment, nil
 }
 
@@ -245,6 +249,7 @@ func (s *investmentService) ProcessStake(ctx context.Context, stakeTx *models.Tr
 
 	// Populate derived realized PnL before returning
 	investment.RealizedPnL = investment.PnL
+	investment.RemainingQty = investment.DepositQty.Sub(investment.WithdrawalQty)
 	return investment, nil
 }
 
@@ -280,6 +285,7 @@ func (s *investmentService) ProcessUnstake(ctx context.Context, unstakeTx *model
 
 	// Populate derived realized PnL before returning
 	investment.RealizedPnL = investment.PnL
+	investment.RemainingQty = investment.DepositQty.Sub(investment.WithdrawalQty)
 	return investment, nil
 }
 

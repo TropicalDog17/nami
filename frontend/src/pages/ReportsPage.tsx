@@ -4,7 +4,7 @@ import DateInput from '../components/ui/DateInput';
 import DataTable from '../components/ui/DataTable';
 import { useBackendStatus } from '../context/BackendStatusContext';
 import { reportsApi, investmentsApi } from '../services/api';
-import { HoldingsChart, PnLChart } from '../components/reports/Charts';
+import { HoldingsChart, PnLChart, SpendingChart, DailySpendingChart } from '../components/reports/Charts';
 
 const ReportsPage = () => {
   const [activeTab, setActiveTab] = useState('holdings');
@@ -857,13 +857,29 @@ const ReportsPage = () => {
     ];
 
     return (
-      <div>
+      <div className="space-y-6">
+        {/* Summary & Charts */}
+        {spending.total_usd !== undefined && (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div className="bg-white p-6 rounded-lg border border-gray-200">
+              <h4 className="text-lg font-medium text-gray-900 mb-4">Daily Spending Trend</h4>
+              <div style={{ height: '300px' }}>
+                <DailySpendingChart data={spending} currency={currency} />
+              </div>
+            </div>
+            <div className="bg-white p-6 rounded-lg border border-gray-200">
+              <h4 className="text-lg font-medium text-gray-900 mb-4">Spending by Tag</h4>
+              <div style={{ height: '300px' }}>
+                <SpendingChart data={spending} currency={currency} />
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Total Spending */}
         {spending.total_usd !== undefined && (
-          <div className="bg-orange-50 p-4 rounded-lg mb-6">
-            <h4 className="text-sm font-medium text-orange-800">
-              Total Spending
-            </h4>
+          <div className="bg-orange-50 p-4 rounded-lg">
+            <h4 className="text-sm font-medium text-orange-800">Total Spending</h4>
             <p className="text-3xl font-bold text-orange-900">
               {currency === 'USD'
                 ? `$${parseFloat(spending.total_usd || 0).toLocaleString()}`
@@ -872,6 +888,7 @@ const ReportsPage = () => {
           </div>
         )}
 
+        {/* Table */}
         <DataTable
           data={byTag}
           columns={columns}
@@ -890,6 +907,36 @@ const ReportsPage = () => {
     const realizedPnL = parseFloat(currency === 'USD' ? (pnl.realized_pnl_usd || 0) : (pnl.realized_pnl_vnd || 0));
     // Unrealized removed
     const totalPnL = parseFloat(currency === 'USD' ? (pnl.total_pnl_usd || 0) : (pnl.total_pnl_vnd || 0));
+
+    // Prepare by-asset breakdown (USD values as backend provides USD per asset)
+    const byAssetEntries = Object.entries(pnl.by_asset || {}).map(([asset, rec]: [string, any]) => ({
+      asset,
+      realized_usd: parseFloat((rec as any).realized_pnl_usd || 0),
+      total_usd: parseFloat((rec as any).total_pnl_usd || 0),
+    })) as Array<{ asset: string; realized_usd: number; total_usd: number }>;
+    const assetColumns = [
+      { key: 'asset', title: 'Asset' },
+      {
+        key: 'realized_usd',
+        title: 'Realized P&L (USD)',
+        type: 'currency',
+        render: (value: any) => {
+          const num = parseFloat(value || 0);
+          const formatted = `$${Math.abs(num).toLocaleString()}`;
+          return num >= 0 ? `+${formatted}` : `-${formatted}`;
+        },
+      },
+      {
+        key: 'total_usd',
+        title: 'Total P&L (USD)',
+        type: 'currency',
+        render: (value: any) => {
+          const num = parseFloat(value || 0);
+          const formatted = `$${Math.abs(num).toLocaleString()}`;
+          return num >= 0 ? `+${formatted}` : `-${formatted}`;
+        },
+      },
+    ];
 
     return (
       <div>
@@ -978,6 +1025,22 @@ const ReportsPage = () => {
                   </div>
                 </div>
               </div>
+            </div>
+
+            {/* By-Asset Breakdown (USD) */}
+            <div className="bg-white p-4 rounded-lg border border-gray-200">
+              <h4 className="text-sm font-medium text-gray-800 mb-2">
+                By Asset (USD)
+              </h4>
+              <DataTable
+                data={byAssetEntries}
+                columns={assetColumns}
+                loading={loading}
+                emptyMessage="No asset P&L data"
+                filterable={true}
+                sortable={true}
+                pagination={true}
+              />
             </div>
           </div>
         </div>
