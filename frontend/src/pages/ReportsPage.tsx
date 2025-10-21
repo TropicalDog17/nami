@@ -5,6 +5,8 @@ import DataTable from '../components/ui/DataTable';
 import { useBackendStatus } from '../context/BackendStatusContext';
 import { reportsApi, investmentsApi } from '../services/api';
 import { HoldingsChart, PnLChart, SpendingChart, DailySpendingChart } from '../components/reports/Charts';
+import AssetAllocationChart from '../components/reports/AssetAllocationChart';
+import CashFlowChart from '../components/reports/CashFlowChart';
 
 const ReportsPage = () => {
   const [activeTab, setActiveTab] = useState('holdings');
@@ -282,104 +284,7 @@ const ReportsPage = () => {
       );
     }
 
-    // Calculate total value and prepare data for table
-    const totalValue =
-      currency === 'USD'
-        ? parseFloat(allocationData.total_value_usd || 0)
-        : parseFloat(allocationData.total_value_vnd || 0);
-
-    const assetData = Object.entries(allocationData.by_asset || {})
-      .map(([asset, holding]: [string, any]) => {
-        const value =
-          currency === 'USD'
-            ? parseFloat(holding.value_usd || 0)
-            : parseFloat(holding.value_vnd || 0);
-        // Use backend percentage instead of calculating on frontend
-        const percentage = parseFloat(holding.percentage || 0);
-
-        return {
-          asset,
-          quantity: parseFloat(holding.quantity || 0),
-          value,
-          percentage,
-        };
-      })
-      .sort((a, b) => Math.abs(b.value) - Math.abs(a.value)); // Sort by value descending
-
-    const columns = [
-      { key: 'asset', title: 'Asset' },
-      {
-        key: 'quantity',
-        title: 'Quantity',
-        type: 'number',
-        render: (value: any) => parseFloat(value || 0).toLocaleString(),
-      },
-      {
-        key: 'value',
-        title: `Value (${currency})`,
-        type: 'currency',
-        render: (value: any) => {
-          const num = parseFloat(value || 0);
-          return currency === 'USD'
-            ? `$${num.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-            : `₫${num.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
-        },
-      },
-      {
-        key: 'percentage',
-        title: 'Allocation %',
-        type: 'number',
-        render: (value: any) => `${parseFloat(value || 0).toFixed(2)}%`,
-      },
-    ];
-
-    return (
-      <div className="space-y-6">
-        {/* Summary Card */}
-        <div className="bg-gradient-to-r from-blue-50 to-indigo-50 p-6 rounded-lg border border-blue-200">
-          <h3 className="text-lg font-medium text-gray-900 mb-2">
-            Total Portfolio Value
-          </h3>
-          <p className="text-4xl font-bold text-blue-900">
-            {currency === 'USD'
-              ? `$${totalValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-              : `₫${totalValue.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`}
-          </p>
-          <p className="text-sm text-gray-600 mt-1">
-            As of {new Date(filters.asOf).toLocaleDateString()}
-          </p>
-        </div>
-
-        {/* Chart and Table Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Pie Chart */}
-          <div className="bg-white p-6 rounded-lg border border-gray-200">
-            <h3 className="text-lg font-medium text-gray-900 mb-4">
-              Asset Distribution
-            </h3>
-            <div style={{ height: '400px' }}>
-              <HoldingsChart data={allocationData} currency={currency} />
-            </div>
-          </div>
-
-          {/* Allocation Table */}
-          <div className="bg-white p-6 rounded-lg border border-gray-200">
-            <h3 className="text-lg font-medium text-gray-900 mb-4">
-              Breakdown by Asset
-            </h3>
-            <DataTable
-              data={assetData}
-              columns={columns}
-              loading={loading}
-              emptyMessage="No allocation data found"
-              filterable={false}
-              sortable={true}
-              pagination={false}
-            />
-          </div>
-        </div>
-      </div>
-    );
+    return <AssetAllocationChart data={allocationData} currency={currency} />;
   };
 
   const renderInvestmentsTable = () => {
@@ -644,6 +549,9 @@ const ReportsPage = () => {
 
     return (
       <div>
+        {/* Enhanced Cash Flow Chart */}
+        <CashFlowChart data={cashFlow} currency={currency} />
+
         {/* Summary Stats - Combined */}
         {cashFlow.total_in_usd !== undefined && (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
