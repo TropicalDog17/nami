@@ -2,11 +2,13 @@ package handlers
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/shopspring/decimal"
 	"github.com/tropicaldog17/nami/internal/models"
 	"github.com/tropicaldog17/nami/internal/services"
 )
@@ -17,6 +19,35 @@ type TransactionHandler struct {
 
 func NewTransactionHandler(service services.TransactionService) *TransactionHandler {
 	return &TransactionHandler{service: service}
+}
+
+// validateQuickExpense validates and sets defaults for quick expense entries
+func validateQuickExpense(tx *models.Transaction) error {
+	// Ensure essential fields are present for quick expense
+	if tx.Type == "expense" {
+		if tx.AmountLocal.IsZero() {
+			return errors.New("expense amount is required")
+		}
+		if tx.Asset == "" {
+			return errors.New("asset is required for expense")
+		}
+		if tx.Account == "" {
+			return errors.New("account is required for expense")
+		}
+
+		// Set default values for quick expense
+		if tx.Quantity.IsZero() {
+			tx.Quantity = decimal.NewFromInt(1)
+		}
+		if tx.FXToUSD.IsZero() {
+			tx.FXToUSD = decimal.NewFromInt(1)
+		}
+		if tx.FXToVND.IsZero() {
+			tx.FXToVND = decimal.NewFromInt(24000)
+		}
+	}
+
+	return nil
 }
 
 // HandleTransactions handles collection-level operations for transactions.
@@ -197,6 +228,12 @@ func (h *TransactionHandler) createTransaction(w http.ResponseWriter, r *http.Re
 	var tx models.Transaction
 	if err := json.NewDecoder(r.Body).Decode(&tx); err != nil {
 		http.Error(w, "Invalid JSON: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	// Validate quick expense entries and set defaults
+	if err := validateQuickExpense(&tx); err != nil {
+		http.Error(w, "Quick expense validation failed: "+err.Error(), http.StatusBadRequest)
 		return
 	}
 
