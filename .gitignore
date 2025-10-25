@@ -43,6 +43,9 @@ GOSUMDB
 ehthumbs.db
 Thumbs.db
 
+# Worktrees
+.worktrees/
+
 # Logs
 *.log
 logs/
