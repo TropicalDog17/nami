@@ -15,7 +15,6 @@ type PnLTestSuite struct {
 	txService         services.TransactionService
 	linkService       services.LinkService
 	investmentRepo    repositories.InvestmentRepository
-	transactionRepo   repositories.TransactionRepository
 	investmentService services.InvestmentService
 	actionService     services.ActionService
 	reportingService  services.ReportingService
@@ -23,14 +22,13 @@ type PnLTestSuite struct {
 
 // NewPnLTestSuite creates a new test suite with all services initialized
 func NewPnLTestSuite(t *testing.T) *PnLTestSuite {
-	tdb := setupTestDB(t)
+	tdb := SetupTestDB(t)
 	ctx := context.Background()
 	
 	txService := services.NewTransactionService(tdb.database)
 	linkService := services.NewLinkService(tdb.database)
 	investmentRepo := repositories.NewInvestmentRepository(tdb.database)
-	transactionRepo := repositories.NewTransactionRepository(tdb.database)
-	investmentService := services.NewInvestmentService(investmentRepo, transactionRepo)
+	investmentService := services.NewInvestmentService(investmentRepo, txService)
 	actionService := services.NewActionServiceWithInvestments(tdb.database, txService, linkService, nil, investmentService)
 	reportingService := services.NewReportingService(tdb.database)
 
@@ -40,7 +38,6 @@ func NewPnLTestSuite(t *testing.T) *PnLTestSuite {
 		txService:         txService,
 		linkService:       linkService,
 		investmentRepo:    investmentRepo,
-		transactionRepo:   transactionRepo,
 		investmentService: investmentService,
 		actionService:     actionService,
 		reportingService:  reportingService,
@@ -72,10 +69,6 @@ func (s *PnLTestSuite) GetInvestmentService() services.InvestmentService {
 	return s.investmentService
 }
 
-// GetTransactionRepo returns the transaction repository
-func (s *PnLTestSuite) GetTransactionRepo() repositories.TransactionRepository {
-	return s.transactionRepo
-}
 
 // GetInvestmentRepo returns the investment repository
 func (s *PnLTestSuite) GetInvestmentRepo() repositories.InvestmentRepository {

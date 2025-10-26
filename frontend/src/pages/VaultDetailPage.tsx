@@ -1,0 +1,571 @@
+import React, { useState, useEffect, useMemo } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
+import { useToast } from '../components/ui/Toast';
+import { useBackendStatus } from '../context/BackendStatusContext';
+import { vaultApi, investmentsApi } from '../services/api';
+import DataTable from '../components/ui/DataTable';
+import DateInput from '../components/ui/DateInput';
+import ComboBox from '../components/ui/ComboBox';
+import { format } from 'date-fns';
+
+type Vault = {
+  id: string;
+  is_vault: boolean;
+  vault_name?: string;
+  vault_status?: string;
+  vault_ended_at?: string;
+  asset: string;
+  account: string;
+  horizon?: string;
+  deposit_date: string;
+  deposit_qty: string;
+  deposit_cost: string;
+  deposit_unit_cost: string;
+  withdrawal_qty: string;
+  withdrawal_value: string;
+  withdrawal_unit_price: string;
+  pnl: string;
+  pnl_percent: string;
+  is_open: boolean;
+  realized_pnl: string;
+  remaining_qty: string;
+  created_at: string;
+  updated_at: string;
+};
+
+type Transaction = {
+  id: string;
+  date: string;
+  type: string;
+  asset: string;
+  account: string;
+  quantity: string;
+  amount_usd: number;
+  amount_vnd: number;
+  counterparty?: string;
+  tag?: string;
+  note?: string;
+  investment_id?: string;
+};
+
+type Option = { value: string; label: string };
+type Column = {
+  key: string;
+  title: string;
+  type?: 'date' | 'datetime' | 'currency' | 'number' | 'text' | string;
+  width?: number | string;
+  editable?: boolean;
+  editType?: 'select' | 'date' | 'number' | 'text' | string;
+  render?: (value: any, column: any, row: any) => React.ReactNode;
+  decimals?: number;
+  currency?: string;
+};
+
+const VaultDetailPage: React.FC = () => {
+  const { vaultName } = useParams<{ vaultName: string }>();
+  const navigate = useNavigate();
+  const { isOnline } = useBackendStatus() as unknown as { isOnline: boolean };
+  const { error: showErrorToast, success: showSuccessToast } =
+    useToast() as unknown as {
+      error: (m: string) => void;
+      success: (m: string) => void;
+    };
+
+  const [vault, setVault] = useState<Vault | null>(null);
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
+  const [showDepositForm, setShowDepositForm] = useState<boolean>(false);
+  const [showWithdrawForm, setShowWithdrawForm] = useState<boolean>(false);
+  const [accounts, setAccounts] = useState<Option[]>([]);
+
+  // Form states
+  const [depositForm, setDepositForm] = useState({
+    quantity: '',
+    cost: '',
+    sourceAccount: '',
+  });
+
+  const [withdrawForm, setWithdrawForm] = useState({
+    quantity: '',
+    value: '',
+    targetAccount: '',
+  });
+
+  useEffect(() => {
+    if (vaultName) {
+      loadVault();
+      loadVaultTransactions();
+      loadAccounts();
+    }
+  }, [vaultName]);
+
+  const loadVault = async () => {
+    try {
+      setLoading(true);
+      const vaultData = await vaultApi.getVaultByName(vaultName!);
+      setVault(vaultData as Vault);
+    } catch (err: any) {
+      setError(err?.message || 'Failed to load vault');
+      showErrorToast('Failed to load vault details');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadVaultTransactions = async () => {
+    try {
+      // Load transactions related to this vault
+      const txs = await investmentsApi.list({ investment_id: vaultName }) as any[];
+      setTransactions(txs || []);
+    } catch (err: any) {
+      console.error('Failed to load vault transactions:', err);
+    }
+  };
+
+  const loadAccounts = async () => {
+    try {
+      // This would come from admin API in a real implementation
+      const mockAccounts = [
+        { value: 'Cash - VND', label: 'Cash - VND (bank)' },
+        { value: 'Cash - USD', label: 'Cash - USD (bank)' },
+        { value: 'Binance', label: 'Binance (exchange)' },
+        { value: 'Coinbase', label: 'Coinbase (exchange)' },
+      ];
+      setAccounts(mockAccounts);
+    } catch (err) {
+      console.error('Failed to load accounts:', err);
+    }
+  };
+
+  const handleDeposit = async () => {
+    if (!depositForm.quantity || !depositForm.cost || !depositForm.sourceAccount) {
+      showErrorToast('Please fill in all deposit fields');
+      return;
+    }
+
+    try {
+      await vaultApi.depositToVault(vaultName!, {
+        quantity: parseFloat(depositForm.quantity),
+        cost: parseFloat(depositForm.cost),
+        sourceAccount: depositForm.sourceAccount,
+      });
+
+      showSuccessToast('Deposit successful!');
+      setShowDepositForm(false);
+      setDepositForm({ quantity: '', cost: '', sourceAccount: '' });
+
+      // Reload vault data and transactions
+      await loadVault();
+      await loadVaultTransactions();
+    } catch (err: any) {
+      showErrorToast(err?.message || 'Failed to process deposit');
+    }
+  };
+
+  const handleWithdraw = async () => {
+    if (!withdrawForm.quantity || !withdrawForm.value || !withdrawForm.targetAccount) {
+      showErrorToast('Please fill in all withdrawal fields');
+      return;
+    }
+
+    try {
+      await vaultApi.withdrawFromVault(vaultName!, {
+        quantity: parseFloat(withdrawForm.quantity),
+        value: parseFloat(withdrawForm.value),
+        targetAccount: withdrawForm.targetAccount,
+      });
+
+      showSuccessToast('Withdrawal successful!');
+      setShowWithdrawForm(false);
+      setWithdrawForm({ quantity: '', value: '', targetAccount: '' });
+
+      // Reload vault data and transactions
+      await loadVault();
+      await loadVaultTransactions();
+    } catch (err: any) {
+      showErrorToast(err?.message || 'Failed to process withdrawal');
+    }
+  };
+
+  const handleEndVault = async () => {
+    if (!confirm('Are you sure you want to end this vault? This will mark it as closed.')) {
+      return;
+    }
+
+    try {
+      await vaultApi.endVault(vaultName!);
+      showSuccessToast('Vault ended successfully!');
+      await loadVault();
+      await loadVaultTransactions();
+    } catch (err: any) {
+      showErrorToast(err?.message || 'Failed to end vault');
+    }
+  };
+
+  const formatCurrency = (value: string | number, currency: string = 'USD'): string => {
+    const num = typeof value === 'string' ? parseFloat(value) : value;
+    if (isNaN(num)) return '0';
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency,
+    }).format(num);
+  };
+
+  const formatNumber = (value: string | number, decimals: number = 2): string => {
+    const num = typeof value === 'string' ? parseFloat(value) : value;
+    if (isNaN(num)) return '0';
+    return num.toLocaleString(undefined, { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+  };
+
+  const vaultColumns: Column[] = [
+    {
+      key: 'created_at',
+      title: 'Created',
+      type: 'date',
+    },
+    {
+      key: 'deposit_date',
+      title: 'First Deposit',
+      type: 'date',
+    },
+    {
+      key: 'deposit_qty',
+      title: 'Total Deposited',
+      type: 'number',
+      decimals: 8,
+      render: (value: any) => formatNumber(value, 8),
+    },
+    {
+      key: 'deposit_cost',
+      title: 'Total Cost',
+      type: 'currency',
+      currency: 'USD',
+    },
+    {
+      key: 'remaining_qty',
+      title: 'Remaining Balance',
+      type: 'number',
+      decimals: 8,
+      render: (value: any) => formatNumber(value, 8),
+    },
+    {
+      key: 'pnl',
+      title: 'Realized P&L',
+      type: 'currency',
+      currency: 'USD',
+      render: (value: any, _column: any, row: any) => {
+        const pnl = parseFloat(value || '0');
+        const isPositive = pnl > 0;
+        const className = isPositive ? 'text-green-700' : 'text-red-700';
+        return <span className={className}>{formatCurrency(pnl)}</span>;
+      },
+    },
+    {
+      key: 'pnl_percent',
+      title: 'ROI %',
+      type: 'number',
+      decimals: 2,
+      render: (value: any, _column: any, row: any) => {
+        const roi = parseFloat(value || '0');
+        const isPositive = roi > 0;
+        const className = isPositive ? 'text-green-700' : 'text-red-700';
+        return <span className={className}>{formatNumber(roi, 2)}%</span>;
+      },
+    },
+    {
+      key: 'vault_status',
+      title: 'Status',
+      render: (value: any) => {
+        const status = String(value || '').toLowerCase();
+        const statusConfig = {
+          active: { label: 'Active', class: 'bg-green-100 text-green-800' },
+          ended: { label: 'Ended', class: 'bg-red-100 text-red-800' },
+          closed: { label: 'Closed', class: 'bg-gray-100 text-gray-800' },
+        };
+        const config = statusConfig[status as keyof typeof statusConfig] || { label: status, class: 'bg-gray-100 text-gray-800' };
+        return (
+          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${config.class}`}>
+            {config.label}
+          </span>
+        );
+      },
+    },
+  ];
+
+  const transactionColumns: Column[] = [
+    {
+      key: 'date',
+      title: 'Date',
+      type: 'date',
+    },
+    {
+      key: 'type',
+      title: 'Type',
+      render: (value: any) => {
+        const type = String(value || '').toLowerCase();
+        const typeConfig = {
+          deposit: { label: 'Deposit', class: 'bg-green-100 text-green-800' },
+          withdrawal: { label: 'Withdrawal', class: 'bg-red-100 text-red-800' },
+          stake: { label: 'Stake', class: 'bg-blue-100 text-blue-800' },
+          unstake: { label: 'Unstake', class: 'bg-purple-100 text-purple-800' },
+        };
+        const config = typeConfig[type as keyof typeof typeConfig] || { label: type, class: 'bg-gray-100 text-gray-800' };
+        return (
+          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${config.class}`}>
+            {config.label}
+          </span>
+        );
+      },
+    },
+    {
+      key: 'asset',
+      title: 'Asset',
+    },
+    {
+      key: 'quantity',
+      title: 'Quantity',
+      type: 'number',
+      decimals: 8,
+    },
+    {
+      key: 'amount_usd',
+      title: 'Amount (USD)',
+      type: 'currency',
+      currency: 'USD',
+    },
+    {
+      key: 'counterparty',
+      title: 'Source/Target',
+    },
+    {
+      key: 'note',
+      title: 'Note',
+    },
+  ];
+
+  if (loading) {
+    return (
+      <div className="px-4 py-6 sm:px-0">
+        <div className="flex items-center justify-center h-64">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+        </div>
+      </div>
+    );
+  }
+
+  if (error || !vault) {
+    return (
+      <div className="px-4 py-6 sm:px-0">
+        <div className="text-center">
+          <h1 className="text-2xl font-bold text-red-600 mb-4">Vault Not Found</h1>
+          <p className="text-gray-600 mb-4">{error || 'The requested vault could not be found.'}</p>
+          <button
+            onClick={() => navigate('/transactions')}
+            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+          >
+            Back to Transactions
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="px-4 py-6 sm:px-0">
+      {/* Header */}
+      <div className="mb-6">
+        <button
+          onClick={() => navigate('/transactions')}
+          className="mb-4 text-blue-600 hover:text-blue-800 flex items-center"
+        >
+          ← Back to Transactions
+        </button>
+        <h1 className="text-3xl font-bold text-gray-900 mb-2">
+          {vault.vault_name || vaultName}
+        </h1>
+        <p className="text-gray-600">
+          Vault Details - {vault.asset} @ {vault.account}
+          {vault.horizon && ` [${vault.horizon}]`}
+        </p>
+      </div>
+
+      {/* Vault Overview Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+        <div className="bg-white p-4 rounded-lg border border-gray-200">
+          <h3 className="text-sm font-medium text-gray-500 mb-2">Total Deposited</h3>
+          <p className="text-2xl font-bold text-gray-900">{formatNumber(vault.deposit_qty, 8)} {vault.asset}</p>
+          <p className="text-sm text-gray-600">{formatCurrency(vault.deposit_cost)}</p>
+        </div>
+
+        <div className="bg-white p-4 rounded-lg border border-gray-200">
+          <h3 className="text-sm font-medium text-gray-500 mb-2">Current Balance</h3>
+          <p className="text-2xl font-bold text-gray-900">{formatNumber(vault.remaining_qty, 8)} {vault.asset}</p>
+          <p className="text-sm text-gray-600">Remaining in vault</p>
+        </div>
+
+        <div className="bg-white p-4 rounded-lg border border-gray-200">
+          <h3 className="text-sm font-medium text-gray-500 mb-2">Realized P&L</h3>
+          <p className={`text-2xl font-bold ${parseFloat(vault.pnl) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+            {formatCurrency(vault.pnl)}
+          </p>
+          <p className="text-sm text-gray-600">{formatNumber(vault.pnl_percent, 2)}% ROI</p>
+        </div>
+
+        <div className="bg-white p-4 rounded-lg border border-gray-200">
+          <h3 className="text-sm font-medium text-gray-500 mb-2">Vault Status</h3>
+          <p className="text-lg font-medium text-gray-900 capitalize">{vault.vault_status || 'Unknown'}</p>
+          <p className="text-sm text-gray-600">
+            Created: {format(new Date(vault.created_at), 'MMM d, yyyy')}
+          </p>
+        </div>
+      </div>
+
+      {/* Action Buttons */}
+      <div className="flex space-x-3 mb-6">
+        <button
+          onClick={() => setShowDepositForm(!showDepositForm)}
+          className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700"
+          disabled={!vault.is_open}
+        >
+          Deposit to Vault
+        </button>
+        <button
+          onClick={() => setShowWithdrawForm(!showWithdrawForm)}
+          className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+          disabled={!vault.is_open}
+        >
+          Withdraw from Vault
+        </button>
+        {vault.is_open && (
+          <button
+            onClick={handleEndVault}
+            className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700"
+          >
+            End Vault
+          </button>
+        )}
+      </div>
+
+      {/* Deposit Form */}
+      {showDepositForm && (
+        <div className="bg-white p-4 rounded-lg border border-gray-200 mb-6">
+          <h3 className="text-lg font-semibold mb-4">Deposit to Vault</h3>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+            <input
+              type="number"
+              step="any"
+              placeholder="Quantity"
+              value={depositForm.quantity}
+              onChange={(e) => setDepositForm({ ...depositForm, quantity: e.target.value })}
+              className="px-3 py-2 border rounded-md"
+            />
+            <input
+              type="number"
+              step="any"
+              placeholder="Cost (USD)"
+              value={depositForm.cost}
+              onChange={(e) => setDepositForm({ ...depositForm, cost: e.target.value })}
+              className="px-3 py-2 border rounded-md"
+            />
+            <ComboBox
+              options={accounts}
+              value={depositForm.sourceAccount}
+              onChange={(value) => setDepositForm({ ...depositForm, sourceAccount: value })}
+              placeholder="Source Account"
+            />
+          </div>
+          <div className="flex space-x-3">
+            <button
+              onClick={handleDeposit}
+              className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700"
+            >
+              Deposit
+            </button>
+            <button
+              onClick={() => setShowDepositForm(false)}
+              className="px-4 py-2 border border-gray-300 rounded-md hover:bg-gray-50"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Withdraw Form */}
+      {showWithdrawForm && (
+        <div className="bg-white p-4 rounded-lg border border-gray-200 mb-6">
+          <h3 className="text-lg font-semibold mb-4">Withdraw from Vault</h3>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+            <input
+              type="number"
+              step="any"
+              placeholder="Quantity"
+              value={withdrawForm.quantity}
+              onChange={(e) => setWithdrawForm({ ...withdrawForm, quantity: e.target.value })}
+              className="px-3 py-2 border rounded-md"
+            />
+            <input
+              type="number"
+              step="any"
+              placeholder="Value (USD)"
+              value={withdrawForm.value}
+              onChange={(e) => setWithdrawForm({ ...withdrawForm, value: e.target.value })}
+              className="px-3 py-2 border rounded-md"
+            />
+            <ComboBox
+              options={accounts}
+              value={withdrawForm.targetAccount}
+              onChange={(value) => setWithdrawForm({ ...withdrawForm, targetAccount: value })}
+              placeholder="Target Account"
+            />
+          </div>
+          <div className="flex space-x-3">
+            <button
+              onClick={handleWithdraw}
+              className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+            >
+              Withdraw
+            </button>
+            <button
+              onClick={() => setShowWithdrawForm(false)}
+              className="px-4 py-2 border border-gray-300 rounded-md hover:bg-gray-50"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Vault Details Table */}
+      <div className="mb-8">
+        <h2 className="text-xl font-semibold mb-4">Vault Details</h2>
+        <DataTable
+          data={[vault]}
+          columns={vaultColumns}
+          loading={false}
+          error={null}
+          emptyMessage="No vault data available"
+          editable={false}
+          selectableRows={false}
+        />
+      </div>
+
+      {/* Vault Transactions */}
+      <div>
+        <h2 className="text-xl font-semibold mb-4">Vault Transactions</h2>
+        <DataTable
+          data={transactions}
+          columns={transactionColumns}
+          loading={false}
+          error={null}
+          emptyMessage="No transactions found for this vault"
+          editable={false}
+          selectableRows={false}
+        />
+      </div>
+    </div>
+  );
+};
+
+export default VaultDetailPage;

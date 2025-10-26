@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useBackendStatus } from '../context/BackendStatusContext';
-import { reportsApi, transactionsApi } from '../services/api';
+import { reportsApi, transactionApi } from '../services/api';
 import CreditCardSummary from '../components/CreditCardSummary';
 import DataTable from '../components/ui/DataTable';
 
@@ -34,20 +34,29 @@ const CreditDashboardPage: React.FC = () => {
     setError(null);
 
     try {
+      // Fetch accounts to identify credit card accounts
+      const accountsResponse = await fetch('http://localhost:8080/api/admin/accounts').then(res => res.json());
+      const creditCardAccounts = accountsResponse.filter((account: any) => account.type === 'CreditCard');
+      const creditCardAccountNames = new Set(creditCardAccounts.map((account: any) => account.name));
+
       // Fetch credit transactions (expenses and repay_borrow)
       const [expensesResponse, repayResponse] = await Promise.all([
-        transactionsApi.list({ type: 'expense', limit: 100 }),
-        transactionsApi.list({ type: 'repay_borrow', limit: 100 })
+        transactionApi.list({ type: 'expense', limit: 100 }),
+        transactionApi.list({ type: 'repay_borrow', limit: 100 })
       ]);
 
+      // Filter transactions to only include credit card accounts
+      const creditCardExpenses = expensesResponse.filter((expense: any) => creditCardAccountNames.has(expense.account));
+      const creditCardRepayments = repayResponse.filter((payment: any) => creditCardAccountNames.has(payment.account));
+
       // Process transactions to group by credit card account
-      const creditAccounts = processCreditAccounts(expensesResponse, repayResponse);
+      const creditAccounts = processCreditAccounts(creditCardExpenses, creditCardRepayments);
       setCreditCards(creditAccounts);
 
       // Combine recent credit transactions
       const allCreditTransactions = [
-        ...expensesResponse,
-        ...repayResponse
+        ...creditCardExpenses,
+        ...creditCardRepayments
       ].sort((a, b) => new Date(b.date) - new Date(a.date)).slice(0, 50);
 
       setCreditTransactions(allCreditTransactions);

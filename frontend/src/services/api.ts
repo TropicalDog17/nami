@@ -230,6 +230,17 @@ export const healthApi = {
   check: () => api.get('/health'),
 };
 
+// Vault API
+export const vaultApi = {
+  getActiveVaults: () => api.get('/api/vaults'),
+  getVaultByName: (name: string) => api.get(`/api/vaults/${encodeURIComponent(name)}`),
+  createVault: (vault: unknown) => api.post('/api/vaults', vault),
+  depositToVault: (name: string, deposit: unknown) => api.post(`/api/vaults/${encodeURIComponent(name)}/deposit`, deposit),
+  withdrawFromVault: (name: string, withdrawal: unknown) => api.post(`/api/vaults/${encodeURIComponent(name)}/withdraw`, withdrawal),
+  endVault: (name: string) => api.post(`/api/vaults/${encodeURIComponent(name)}/end`, {}),
+  deleteVault: (name: string) => api.delete(`/api/vaults/${encodeURIComponent(name)}`),
+};
+
 export default api;
 export { ApiError };
 

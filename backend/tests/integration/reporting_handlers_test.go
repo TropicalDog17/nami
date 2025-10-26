@@ -16,7 +16,7 @@ import (
 )
 
 func TestReportingHandlers_SpendingAndCashflow(t *testing.T) {
-	tdb := setupTestDB(t)
+	tdb := SetupTestDB(t)
 	defer tdb.cleanup(t)
 
 	ctx := context.Background()

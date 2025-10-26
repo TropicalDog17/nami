@@ -11,7 +11,7 @@ import (
 )
 
 func TestReportingService_GetHoldings_WithPercentages(t *testing.T) {
-	tdb := setupTestDB(t)
+	tdb := SetupTestDB(t)
 	defer tdb.cleanup(t)
 
 	ctx := context.Background()
@@ -117,7 +117,7 @@ func TestReportingService_GetHoldings_WithPercentages(t *testing.T) {
 }
 
 func TestReportingService_GetHoldingsByAsset_WithPercentages(t *testing.T) {
-	tdb := setupTestDB(t)
+	tdb := SetupTestDB(t)
 	defer tdb.cleanup(t)
 
 	ctx := context.Background()

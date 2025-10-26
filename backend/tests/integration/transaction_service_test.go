@@ -13,7 +13,7 @@ import (
 )
 
 func TestTransactionService_UpdateTransaction(t *testing.T) {
-	tdb := setupTestDB(t)
+	tdb := SetupTestDB(t)
 	defer tdb.cleanup(t)
 
 	ctx := context.Background()
@@ -89,7 +89,7 @@ func TestTransactionService_UpdateTransaction(t *testing.T) {
 }
 
 func TestTransactionService_UpdateTransactionMultipleFields(t *testing.T) {
-	tdb := setupTestDB(t)
+	tdb := SetupTestDB(t)
 	defer tdb.cleanup(t)
 
 	ctx := context.Background()
@@ -171,7 +171,7 @@ func TestTransactionService_UpdateTransactionMultipleFields(t *testing.T) {
 }
 
 func TestTransactionService_CreateTransaction_WithFees(t *testing.T) {
-	tdb := setupTestDB(t)
+	tdb := SetupTestDB(t)
 	defer tdb.cleanup(t)
 
 	ctx := context.Background()
@@ -213,7 +213,7 @@ func TestTransactionService_CreateTransaction_WithFees(t *testing.T) {
 }
 
 func TestTransactionService_UpdateTransactionNotFound(t *testing.T) {
-	tdb := setupTestDB(t)
+	tdb := SetupTestDB(t)
 	defer tdb.cleanup(t)
 
 	ctx := context.Background()
@@ -240,7 +240,7 @@ func TestTransactionService_UpdateTransactionNotFound(t *testing.T) {
 // local stringPtr removed; using shared helper from testutil.go
 
 func TestTransactionService_ExportTransactions(t *testing.T) {
-	tdb := setupTestDB(t)
+	tdb := SetupTestDB(t)
 	defer tdb.cleanup(t)
 
 	ctx := context.Background()
@@ -321,7 +321,7 @@ func TestTransactionService_ExportTransactions(t *testing.T) {
 }
 
 func TestTransactionService_ImportTransactions_CreateAndUpsert(t *testing.T) {
-	tdb := setupTestDB(t)
+	tdb := SetupTestDB(t)
 	defer tdb.cleanup(t)
 
 	ctx := context.Background()

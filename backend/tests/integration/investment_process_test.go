@@ -50,13 +50,13 @@ func buildUnstakeTx(date time.Time, account, asset string, qty, exitPrice float6
 
 // Test staking into an existing investment by specifying InvestmentID, then partial and full unstakes
 func TestInvestmentService_StakeIntoExisting_ThenUnstake_PartialAndFull(t *testing.T) {
-	tdb := setupTestDB(t)
+	tdb := SetupTestDB(t)
 	defer tdb.cleanup(t)
 
 	ctx := context.Background()
 	invRepo := repositories.NewInvestmentRepository(tdb.database)
-	txRepo := repositories.NewTransactionRepository(tdb.database)
-	invSvc := services.NewInvestmentService(invRepo, txRepo)
+	txSvc := services.NewTransactionService(tdb.database)
+	invSvc := services.NewInvestmentService(invRepo, txSvc)
 
 	date1 := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
 	date2 := time.Date(2025, 2, 1, 0, 0, 0, 0, time.UTC)

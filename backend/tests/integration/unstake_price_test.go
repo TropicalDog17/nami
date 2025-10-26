@@ -28,15 +28,14 @@ func (m *mockAssetPriceService) GetRange(ctx context.Context, symbol, currency s
 
 // Test that providing only amount (quantity) on unstake fetches USD price from AssetPriceService
 func TestUnstake_AmountOnly_UsesFetchedPriceAndPnL(t *testing.T) {
-	tdb := setupTestDB(t)
+	tdb := SetupTestDB(t)
 	defer tdb.cleanup(t)
 
 	ctx := context.Background()
 	txService := services.NewTransactionService(tdb.database)
 	linkService := services.NewLinkService(tdb.database)
 	investmentRepo := repositories.NewInvestmentRepository(tdb.database)
-	transactionRepo := repositories.NewTransactionRepository(tdb.database)
-	investmentService := services.NewInvestmentService(investmentRepo, transactionRepo)
+	investmentService := services.NewInvestmentService(investmentRepo, txService)
 	priceSvc := &mockAssetPriceService{price: decimal.NewFromFloat(1.23)}
 	actionService := services.NewActionServiceWithInvestments(tdb.database, txService, linkService, priceSvc, investmentService)
 	reportingService := services.NewReportingService(tdb.database)
@@ -107,15 +106,14 @@ func TestUnstake_AmountOnly_UsesFetchedPriceAndPnL(t *testing.T) {
 
 // Test close_all with exit_amount_usd derives price and closes the full remaining
 func TestUnstake_CloseAll_ExitAmountUSD_PriceDerivedAndPnL(t *testing.T) {
-	tdb := setupTestDB(t)
+	tdb := SetupTestDB(t)
 	defer tdb.cleanup(t)
 
 	ctx := context.Background()
 	txService := services.NewTransactionService(tdb.database)
 	linkService := services.NewLinkService(tdb.database)
 	investmentRepo := repositories.NewInvestmentRepository(tdb.database)
-	transactionRepo := repositories.NewTransactionRepository(tdb.database)
-	investmentService := services.NewInvestmentService(investmentRepo, transactionRepo)
+	investmentService := services.NewInvestmentService(investmentRepo, txService)
 	// priceSvc not needed since exit_amount_usd is provided
 	actionService := services.NewActionServiceWithInvestments(tdb.database, txService, linkService, nil, investmentService)
 	reportingService := services.NewReportingService(tdb.database)

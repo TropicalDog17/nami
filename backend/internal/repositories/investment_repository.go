@@ -79,6 +79,14 @@ func (r *investmentRepository) List(ctx context.Context, filter *models.Investme
 			query = query.Where("is_open = ?", *filter.IsOpen)
 		}
 
+		if filter.IsVault != nil {
+			query = query.Where("is_vault = ?", *filter.IsVault)
+		}
+
+		if filter.VaultStatus != nil {
+			query = query.Where("vault_status = ?", *filter.VaultStatus)
+		}
+
 		if filter.CostBasisMethod != "" {
 			query = query.Where("cost_basis_method = ?", filter.CostBasisMethod)
 		}
@@ -330,4 +338,74 @@ func (r *investmentRepository) GetInvestmentsByAccount(ctx context.Context, acco
 		return nil, fmt.Errorf("failed to get investments by account: %w", err)
 	}
 	return investments, nil
+}
+
+// Vault-specific repository methods
+
+// CreateVault creates a new vault (investment with IsVault = true)
+func (r *investmentRepository) CreateVault(ctx context.Context, vault *models.Investment) error {
+	vault.IsVault = true
+	if vault.VaultStatus == nil {
+		status := string(models.VaultStatusActive)
+		vault.VaultStatus = &status
+	}
+
+	if err := r.db.WithContext(ctx).Create(vault).Error; err != nil {
+		return fmt.Errorf("failed to create vault: %w", err)
+	}
+	return nil
+}
+
+// GetVaultByName retrieves a vault by name
+func (r *investmentRepository) GetVaultByName(ctx context.Context, name string) (*models.Investment, error) {
+	var vault models.Investment
+	if err := r.db.WithContext(ctx).Where("is_vault = ? AND vault_name = ?", true, name).First(&vault).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return nil, fmt.Errorf("vault not found: %s", name)
+		}
+		return nil, fmt.Errorf("failed to get vault: %w", err)
+	}
+	return &vault, nil
+}
+
+// GetActiveVaults returns all active vaults
+func (r *investmentRepository) GetActiveVaults(ctx context.Context) ([]*models.Investment, error) {
+	var vaults []*models.Investment
+	if err := r.db.WithContext(ctx).Where("is_vault = ? AND vault_status = ? AND is_open = ?", true, string(models.VaultStatusActive), true).Find(&vaults).Error; err != nil {
+		return nil, fmt.Errorf("failed to get active vaults: %w", err)
+	}
+	return vaults, nil
+}
+
+// GetVaultsByStatus returns vaults by status
+func (r *investmentRepository) GetVaultsByStatus(ctx context.Context, status models.VaultStatus) ([]*models.Investment, error) {
+	var vaults []*models.Investment
+	if err := r.db.WithContext(ctx).Where("is_vault = ? AND vault_status = ?", true, string(status)).Find(&vaults).Error; err != nil {
+		return nil, fmt.Errorf("failed to get vaults by status: %w", err)
+	}
+	return vaults, nil
+}
+
+// UpdateVault updates a vault
+func (r *investmentRepository) UpdateVault(ctx context.Context, vault *models.Investment) error {
+	if err := r.db.WithContext(ctx).Save(vault).Error; err != nil {
+		return fmt.Errorf("failed to update vault: %w", err)
+	}
+	return nil
+}
+
+// DeleteVault deletes a vault by ID
+func (r *investmentRepository) DeleteVault(ctx context.Context, id string) error {
+	if err := r.db.WithContext(ctx).Where("id = ? AND is_vault = ?", id, true).Delete(&models.Investment{}).Error; err != nil {
+		return fmt.Errorf("failed to delete vault: %w", err)
+	}
+	return nil
+}
+
+// DeleteTransactionsByInvestmentID deletes all transactions related to an investment
+func (r *investmentRepository) DeleteTransactionsByInvestmentID(ctx context.Context, investmentID string) error {
+	if err := r.db.WithContext(ctx).Where("investment_id = ?", investmentID).Delete(&models.Transaction{}).Error; err != nil {
+		return fmt.Errorf("failed to delete related transactions: %w", err)
+	}
+	return nil
 }

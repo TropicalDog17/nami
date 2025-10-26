@@ -16,6 +16,15 @@ const (
 	CostBasisAverage CostBasisMethod = "average"
 )
 
+// VaultStatus represents different states of a vault
+type VaultStatus string
+
+const (
+	VaultStatusActive VaultStatus = "active"
+	VaultStatusEnded  VaultStatus = "ended"
+	VaultStatusClosed VaultStatus = "closed"
+)
+
 // Investment represents a specific investment position that can have multiple deposits
 type Investment struct {
 	ID      string  `json:"id" gorm:"primaryKey;column:id;type:varchar(255)"`
@@ -42,12 +51,19 @@ type Investment struct {
 	// Derived fields (not persisted)
 	RealizedPnL  decimal.Decimal `json:"realized_pnl" gorm:"-"`
 	RemainingQty decimal.Decimal `json:"remaining_qty" gorm:"-"`
+	APRPercent   decimal.Decimal `json:"apr_percent" gorm:"-"`
 
 	// Status and quantities
 	IsOpen bool `json:"is_open" gorm:"column:is_open;type:boolean;not null;default:true"`
 
 	// Configuration
 	CostBasisMethod CostBasisMethod `json:"cost_basis_method" gorm:"column:cost_basis_method;type:varchar(20);not null;default:'fifo'"`
+
+	// Vault support (acts as a blackbox vault when IsVault = true)
+	IsVault      bool       `json:"is_vault" gorm:"column:is_vault;type:boolean;not null;default:false"`
+	VaultName    *string    `json:"vault_name,omitempty" gorm:"column:vault_name;type:varchar(255)"`
+	VaultStatus  *string    `json:"vault_status,omitempty" gorm:"column:vault_status;type:varchar(20)"`
+	VaultEndedAt *time.Time `json:"vault_ended_at,omitempty" gorm:"column:vault_ended_at;type:timestamptz"`
 
 	// Metadata
 	CreatedAt time.Time `json:"created_at" gorm:"column:created_at;type:timestamptz;autoCreateTime"`
@@ -65,6 +81,8 @@ type InvestmentFilter struct {
 	Account         string
 	Horizon         string
 	IsOpen          *bool
+	IsVault         *bool
+	VaultStatus     *string
 	CostBasisMethod CostBasisMethod
 	StartDate       *time.Time
 	EndDate         *time.Time
@@ -171,4 +189,46 @@ func (i *Investment) AddWithdrawal(qty, value decimal.Decimal) error {
 	i.UpdatePnL()
 	i.UpdatedAt = time.Now()
 	return nil
+}
+
+// Vault-specific methods
+
+// IsVaultActive checks if the investment is a vault and is currently active
+func (i *Investment) IsVaultActive() bool {
+	return i.IsVault && i.VaultStatus != nil && *i.VaultStatus == string(VaultStatusActive)
+}
+
+// EndVault marks the vault as ended
+func (i *Investment) EndVault() {
+	if i.IsVault {
+		status := string(VaultStatusEnded)
+		i.VaultStatus = &status
+		now := time.Now()
+		i.VaultEndedAt = &now
+		i.IsOpen = false
+		i.UpdatedAt = time.Now()
+	}
+}
+
+// VaultDeposit adds a deposit to the vault (blackbox approach - no validation)
+func (i *Investment) VaultDeposit(qty, cost decimal.Decimal) {
+	if i.IsVault {
+		i.AddDeposit(qty, cost)
+	}
+}
+
+// VaultWithdrawal processes a withdrawal from the vault (blackbox approach - no validation)
+func (i *Investment) VaultWithdrawal(qty, value decimal.Decimal) error {
+	if i.IsVault {
+		return i.AddWithdrawal(qty, value)
+	}
+	return errors.New("investment is not a vault")
+}
+
+// GetVaultBalance returns the current balance of the vault
+func (i *Investment) GetVaultBalance() decimal.Decimal {
+	if i.IsVault {
+		return i.DepositQty.Sub(i.WithdrawalQty)
+	}
+	return decimal.Zero
 }

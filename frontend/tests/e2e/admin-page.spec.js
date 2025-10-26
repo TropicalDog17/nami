@@ -153,4 +153,31 @@ test.describe('Admin Page', () => {
     await showInactiveCheckbox.uncheck();
     expect(await showInactiveCheckbox.isChecked()).toBe(false);
   });
+
+  test('should not show Quick Expense Categories on admin page', async ({ page }) => {
+    await page.goto('/admin');
+
+    // Wait for page to load
+    await waitForBackendReady(page);
+
+    // Verify that Quick Expense Categories section does NOT exist
+    const quickExpenseSection = page.locator('h3:has-text("Quick Expense Categories")');
+    await expect(quickExpenseSection).not.toBeVisible();
+
+    // Also check for alternative text patterns
+    const alternativePatterns = [
+      'text=/Quick.*Expense.*Categories/i',
+      'text=/Popular.*Categories/i',
+      '[data-testid="quick-expense-categories"]'
+    ];
+
+    for (const pattern of alternativePatterns) {
+      const element = page.locator(pattern).first();
+      await expect(element).not.toBeVisible();
+    }
+
+    // Verify that only admin-related content is visible
+    const adminTabs = page.locator('button:has-text("Transaction Types"), button:has-text("Accounts"), button:has-text("Assets"), button:has-text("Tags")');
+    await expect(adminTabs.first()).toBeVisible();
+  });
 });

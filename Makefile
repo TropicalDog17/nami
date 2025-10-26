@@ -13,13 +13,15 @@ help: ## Show this help message
 # Development setup
 setup: ## Set up the development environment (install dependencies, setup database)
 	@echo "🔧 Setting up development environment..."
-	@./demo.sh demo
+	@make install
+	@make docker-up
+	@make migrate
 	@echo "✅ Development environment ready!"
 
 install: ## Install all dependencies (Go modules and Node packages)
 	@echo "📦 Installing Go dependencies..."
 	@cd backend && go mod download
-	@cd migrations && go mod download
+	@cd backend/migrations && go mod download
 	@echo "📦 Installing Node dependencies..."
 	@cd frontend && npm install
 	@echo "✅ Dependencies installed"
@@ -59,7 +61,7 @@ run: run-demo ## Run the full application (alias for run-demo)
 
 run-demo: ## Run the full demo environment (database + backend + frontend)
 	@echo "🚀 Starting full demo..."
-	@./demo.sh demo
+	@make docker-up && sleep 2 && make run-dev
 
 run-dev: ## Run both backend and frontend simultaneously (requires database)
 	@echo "🚀 Starting backend and frontend..."
@@ -84,15 +86,20 @@ frontend: run-frontend ## Alias for run-frontend
 # Stop targets
 stop: ## Stop backend, frontend, and docker services
 	@echo "🛑 Stopping all services..."
-	@./demo.sh stop
+	@make stop-backend || true
+	@make stop-frontend || true
 
 stop-backend: ## Stop backend service
 	@echo "🛑 Stopping backend..."
-	@./demo.sh stop-backend
+	@lsof -ti tcp:8080 | xargs kill -TERM 2>/dev/null || true
+	@pkill -f "cmd/server/main.go" 2>/dev/null || true
+	@pkill -f "bin/nami-server" 2>/dev/null || true
 
 stop-frontend: ## Stop frontend service
 	@echo "🛑 Stopping frontend..."
-	@./demo.sh stop-frontend
+	@lsof -ti tcp:3000 | xargs kill -TERM 2>/dev/null || true
+	@pkill -f "vite" 2>/dev/null || true
+	@pkill -f "npm run dev" 2>/dev/null || true
 
 # Database targets
 migrate: ## Run database migrations
@@ -119,13 +126,13 @@ docker-logs: ## Show Docker service logs
 fmt: ## Format Go code
 	@echo "🎨 Formatting Go code..."
 	@cd backend && go fmt ./...
-	@cd migrations && go fmt ./...
+	@cd backend/migrations && go fmt ./...
 	@echo "✅ Code formatted"
 
 lint: ## Run Go linter
 	@echo "🔍 Running Go linter..."
 	@cd backend && go vet ./...
-	@cd migrations && go vet ./...
+	@cd backend/migrations && go vet ./...
 	@echo "✅ Linting completed"
 
 # Swagger/OpenAPI
@@ -167,7 +174,7 @@ dev: ## Start development environment (backend + frontend)
 
 test-dev: ## Run tests in development environment
 	@echo "🧪 Running tests in development environment..."
-	@./demo.sh test
+	@./run_tests.sh
 
 # CI/CD targets
 ci: deps fmt lint test ## Run full CI pipeline (deps, format, lint, test)

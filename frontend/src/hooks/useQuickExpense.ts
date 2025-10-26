@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { transactionsApi } from '../services/api';
+import { transactionApi } from '../services/api';
 
 export const useQuickExpense = () => {
   const [isLoading, setIsLoading] = useState(false);
@@ -10,7 +10,7 @@ export const useQuickExpense = () => {
     setError(null);
 
     try {
-      const response = await transactionsApi.create(expenseData);
+      const response = await transactionApi.create(expenseData);
       return response;
     } catch (err: any) {
       setError(err.message || 'Failed to create expense');

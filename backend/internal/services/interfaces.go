@@ -151,4 +151,13 @@ type InvestmentService interface {
 	ProcessStake(ctx context.Context, stakeTx *models.Transaction) (*models.Investment, error)
 	ProcessUnstake(ctx context.Context, unstakeTx *models.Transaction) (*models.Investment, error)
 	GetOpenInvestmentsForStake(ctx context.Context, asset, account, horizon string) ([]*models.Investment, error)
+
+	// Vault-specific methods
+	CreateVault(ctx context.Context, name, asset, account string, initialDeposit decimal.Decimal, horizon string) (*models.Investment, error)
+	GetActiveVaults(ctx context.Context) ([]*models.Investment, error)
+	GetVaultByName(ctx context.Context, name string) (*models.Investment, error)
+	DepositToVault(ctx context.Context, vaultName string, depositQty, depositCost decimal.Decimal, sourceAccount string) (*models.Investment, error)
+	WithdrawFromVault(ctx context.Context, vaultName string, withdrawQty, withdrawValue decimal.Decimal, targetAccount string) (*models.Investment, error)
+	EndVault(ctx context.Context, vaultName string) (*models.Investment, error)
+	DeleteVault(ctx context.Context, vaultName string) error
 }

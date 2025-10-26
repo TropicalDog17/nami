@@ -100,10 +100,11 @@ func (t *Transaction) Validate() error {
 	if t.PriceLocal.IsNegative() {
 		return errors.New("price must be non-negative")
 	}
-	if t.FXToUSD.IsZero() {
+	// Allow repay_borrow transactions to have zero FX rates (will be auto-populated)
+	if t.FXToUSD.IsZero() && t.Type != "repay_borrow" {
 		return errors.New("FX to USD rate is required")
 	}
-	if t.FXToVND.IsZero() {
+	if t.FXToVND.IsZero() && t.Type != "repay_borrow" {
 		return errors.New("FX to VND rate is required")
 	}
 

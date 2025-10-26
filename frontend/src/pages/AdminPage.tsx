@@ -5,40 +5,6 @@ import { useApp } from '../context/AppContext';
 import { adminApi } from '../services/api';
 import { AdminAssetsTab } from '../components/AdminAssetsTab';
 
-const PopularExpenseCategories = () => {
-  const { tags, actions } = useApp();
-  const popularCategories = ['Food', 'Transport', 'Shopping', 'Entertainment', 'Bills', 'Healthcare'];
-
-  const ensurePopularCategories = async () => {
-    for (const category of popularCategories) {
-      const exists = tags.some(tag => tag.name === category);
-      if (!exists) {
-        await actions.createTag({
-          name: category,
-          category: 'expense',
-          is_active: true
-        });
-      }
-    }
-  };
-
-  useEffect(() => {
-    ensurePopularCategories();
-  }, []);
-
-  return (
-    <div className="bg-white p-6 rounded-lg border border-gray-200">
-      <h3 className="text-lg font-medium text-gray-900 mb-4">Quick Expense Categories</h3>
-      <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-        {popularCategories.map(category => (
-          <div key={category} className="p-3 bg-gray-50 rounded text-center">
-            {category}
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-};
 
 const AdminPage = () => {
   const { actions, error, success } = useApp();
@@ -408,9 +374,7 @@ const AdminPage = () => {
         </nav>
       </div>
 
-      {/* Quick Expense Categories */}
-      <PopularExpenseCategories />
-
+      
       {/* Content */}
       {activeTab === 'assets' ? (
         <AdminAssetsTab />

@@ -10,6 +10,8 @@ import AdminPage from './pages/AdminPage'
 import CreditDashboardPage from './pages/CreditDashboardPage'
 import ReportsPage from './pages/ReportsPage'
 import TransactionPage from './pages/TransactionPage'
+import VaultDetailPage from './pages/VaultDetailPage'
+import VaultManager from './components/VaultManager'
 
 function App() {
   return (
@@ -25,6 +27,8 @@ function App() {
                   <Route path="/admin" element={<AdminPage />} />
                   <Route path="/credit" element={<CreditDashboardPage />} />
                   <Route path="/reports" element={<ReportsPage />} />
+                  <Route path="/vaults" element={<VaultManager />} />
+                  <Route path="/vault/:vaultName" element={<VaultDetailPage />} />
                 </Routes>
               </Layout>
             </Router>

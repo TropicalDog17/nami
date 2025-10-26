@@ -44,11 +44,18 @@ func (r *transactionRepository) CreateBatch(ctx context.Context, txs []*models.T
 
 		// Handle transaction links if needed (keeping raw SQL for this custom table)
 		if linkType != "" && len(txs) > 1 {
-			rootID := txs[0].ID
-			for i := 1; i < len(txs); i++ {
-				if err := tx.Exec("INSERT INTO transaction_links (link_type, from_tx, to_tx) VALUES (?, ?, ?)",
-					linkType, rootID, txs[i].ID).Error; err != nil {
-					return fmt.Errorf("failed to insert link: %w", err)
+			// Detect if transaction_links table exists; if not, skip linking to remain forward-compatible
+			var hasLinks bool
+			if err := tx.Raw("SELECT to_regclass('public.transaction_links') IS NOT NULL").Scan(&hasLinks).Error; err != nil {
+				hasLinks = false
+			}
+			if hasLinks {
+				rootID := txs[0].ID
+				for i := 1; i < len(txs); i++ {
+					if err := tx.Exec("INSERT INTO transaction_links (link_type, from_tx, to_tx) VALUES (?, ?, ?)",
+						linkType, rootID, txs[i].ID).Error; err != nil {
+						return fmt.Errorf("failed to insert link: %w", err)
+					}
 				}
 			}
 		}
@@ -192,11 +199,17 @@ func (r *transactionRepository) Update(ctx context.Context, tx *models.Transacti
 
 func (r *transactionRepository) Delete(ctx context.Context, id string) error {
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		// Check for stake_unstake links and clear exit_date if found
-		var linkedDepositID string
-		if err := tx.Raw("SELECT from_tx FROM transaction_links WHERE link_type = 'stake_unstake' AND to_tx = ?", id).Scan(&linkedDepositID).Error; err == nil && linkedDepositID != "" {
-			if err := tx.Exec("UPDATE transactions SET exit_date = NULL WHERE id = ?", linkedDepositID).Error; err != nil {
-				return fmt.Errorf("failed to clear exit_date: %w", err)
+		// Check for stake_unstake links and clear exit_date if found, only if links table exists
+		var hasLinks bool
+		if err := tx.Raw("SELECT to_regclass('public.transaction_links') IS NOT NULL").Scan(&hasLinks).Error; err != nil {
+			hasLinks = false
+		}
+		if hasLinks {
+			var linkedDepositID string
+			if err := tx.Raw("SELECT from_tx FROM transaction_links WHERE link_type = 'stake_unstake' AND to_tx = ?", id).Scan(&linkedDepositID).Error; err == nil && linkedDepositID != "" {
+				if err := tx.Exec("UPDATE transactions SET exit_date = NULL WHERE id = ?", linkedDepositID).Error; err != nil {
+					return fmt.Errorf("failed to clear exit_date: %w", err)
+				}
 			}
 		}
 
@@ -222,22 +235,32 @@ func (r *transactionRepository) DeleteMany(ctx context.Context, ids []string) (i
 
 	var affected int64
 	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		// Detect if transaction_links table exists; if not, skip link-related operations
+		var hasLinks bool
+		if err := tx.Raw("SELECT to_regclass('public.transaction_links') IS NOT NULL").Scan(&hasLinks).Error; err != nil {
+			hasLinks = false
+		}
+
 		// Clear exit_date for any deposits that were linked to an unstake being deleted
 		// For each id in ids, if it's a to_tx in stake_unstake, clear exit_date of its from_tx
 		// Use a single UPDATE with subquery
-		if err := tx.Exec(`
+		if hasLinks {
+			if err := tx.Exec(`
             UPDATE transactions SET exit_date = NULL
             WHERE id IN (
                 SELECT from_tx FROM transaction_links
                 WHERE link_type = 'stake_unstake' AND to_tx IN ?
             )
-        `, ids).Error; err != nil {
-			return fmt.Errorf("failed to clear exit_date for linked deposits: %w", err)
+		`, ids).Error; err != nil {
+				return fmt.Errorf("failed to clear exit_date for linked deposits: %w", err)
+			}
 		}
 
 		// Delete action links referencing any of these IDs to avoid FK issues
-		if err := tx.Where("(from_tx IN ? OR to_tx IN ?)", ids, ids).Delete(&struct{}{}).Error; err != nil {
-			return fmt.Errorf("failed to delete links for transactions: %w", err)
+		if hasLinks {
+			if err := tx.Exec("DELETE FROM transaction_links WHERE (from_tx IN ? OR to_tx IN ?)", ids, ids).Error; err != nil {
+				return fmt.Errorf("failed to delete links for transactions: %w", err)
+			}
 		}
 
 		// Delete transactions
@@ -266,6 +289,17 @@ func (r *transactionRepository) DeleteActionGroup(ctx context.Context, oneID str
 		sqlTx, err := tx.DB()
 		if err != nil {
 			return fmt.Errorf("failed to get SQL tx: %w", err)
+		}
+
+		// Detect if transaction_links table exists; if not, just delete the single id
+		var hasLinks bool
+		if err := tx.Raw("SELECT to_regclass('public.transaction_links') IS NOT NULL").Scan(&hasLinks).Error; err != nil {
+			hasLinks = false
+		}
+		if !hasLinks {
+			result := tx.Where("id = ?", oneID).Delete(&models.Transaction{})
+			affected = result.RowsAffected
+			return result.Error
 		}
 
 		queryIDs := `
@@ -308,7 +342,7 @@ func (r *transactionRepository) DeleteActionGroup(ctx context.Context, oneID str
 		}
 
 		// Delete transaction links first
-		if err := tx.Where("link_type = ? AND (from_tx IN ? OR to_tx IN ?)", "action", ids, ids).Delete(&struct{}{}).Error; err != nil {
+		if err := tx.Exec("DELETE FROM transaction_links WHERE link_type = ? AND (from_tx IN ? OR to_tx IN ?)", "action", ids, ids).Error; err != nil {
 			return fmt.Errorf("failed to delete action links: %w", err)
 		}
 

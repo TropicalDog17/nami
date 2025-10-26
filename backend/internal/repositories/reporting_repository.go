@@ -341,7 +341,8 @@ func (r *reportingRepository) GetSpending(ctx context.Context, period models.Per
 			COALESCE(SUM(CASE WHEN cashflow_usd < 0 THEN ABS(cashflow_usd) ELSE 0 END), 0) as total_usd,
 			COALESCE(SUM(CASE WHEN cashflow_vnd < 0 THEN ABS(cashflow_vnd) ELSE 0 END), 0) as total_vnd
 		FROM transactions
-			WHERE date >= $1 AND date <= $2 AND cashflow_usd < 0 AND (internal_flow IS DISTINCT FROM TRUE)`
+			WHERE date >= $1 AND date <= $2 AND cashflow_usd < 0 AND (internal_flow IS DISTINCT FROM TRUE)
+			AND type NOT IN ('borrow', 'repay_borrow', 'interest_expense')`
 
 	report := &models.SpendingReport{
 		Period:         period,
@@ -365,6 +366,7 @@ func (r *reportingRepository) GetSpending(ctx context.Context, period models.Per
 			COUNT(*) as count
 		FROM transactions
 			WHERE date >= $1 AND date <= $2 AND cashflow_usd < 0 AND (internal_flow IS DISTINCT FROM TRUE)
+			AND type NOT IN ('borrow', 'repay_borrow', 'interest_expense')
 		GROUP BY tag
 		ORDER BY amount_usd DESC`
 
@@ -397,6 +399,7 @@ func (r *reportingRepository) GetSpending(ctx context.Context, period models.Per
 			COUNT(*) as count
 		FROM transactions
 			WHERE date >= $1 AND date <= $2 AND cashflow_usd < 0 AND (internal_flow IS DISTINCT FROM TRUE)
+			AND type NOT IN ('borrow', 'repay_borrow', 'interest_expense')
 		GROUP BY counterparty
 		ORDER BY amount_usd DESC`
 
@@ -430,6 +433,7 @@ func (r *reportingRepository) GetSpending(ctx context.Context, period models.Per
             COUNT(*) as count
         FROM transactions
             WHERE date >= $1 AND date <= $2 AND cashflow_usd < 0 AND (internal_flow IS DISTINCT FROM TRUE)
+            AND type NOT IN ('borrow', 'repay_borrow', 'interest_expense')
         GROUP BY day
         ORDER BY day`
 
@@ -631,6 +635,38 @@ func (r *reportingRepository) GetPnL(ctx context.Context, period models.Period) 
 
 		report.ByAsset[asset] = &models.AssetPnL{
 			Asset:          asset,
+			RealizedPnLUSD: realizedPnL,
+			TotalPnLUSD:    totalPnL,
+		}
+	}
+
+	// Get detailed breakdown by account
+	accountQuery := `
+        SELECT
+            i.account,
+            COALESCE(SUM(CASE WHEN i.is_open = false AND i.withdrawal_date >= $1 AND i.withdrawal_date <= $2 THEN i.pnl ELSE 0 END), 0) as realized_pnl_usd,
+            COALESCE(SUM(i.deposit_cost), 0) as total_cost
+        FROM investments i
+        GROUP BY i.account`
+
+	accountRows, err := sqlDB.QueryContext(ctx, accountQuery, period.StartDate, period.EndDate)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get account breakdown: %w", err)
+	}
+	defer accountRows.Close()
+
+	for accountRows.Next() {
+		var account string
+		var realizedPnL, totalCost decimal.Decimal
+		err := accountRows.Scan(&account, &realizedPnL, &totalCost)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan account breakdown: %w", err)
+		}
+
+		totalPnL := realizedPnL
+
+		report.ByAccount[account] = &models.AccountPnL{
+			Account:        account,
 			RealizedPnLUSD: realizedPnL,
 			TotalPnLUSD:    totalPnL,
 		}
