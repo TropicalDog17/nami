@@ -23,7 +23,7 @@ type testDB struct {
 	database  *db.DB
 }
 
-func SetupTestDB(t *testing.T) *testDB {
+func setupTestDB(t *testing.T) *testDB {
 	if testing.Short() {
 		t.Skip("skipping container-based DB tests in short mode")
 	}

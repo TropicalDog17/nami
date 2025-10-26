@@ -73,7 +73,7 @@ func main() {
 	adminService := services.NewAdminService(database, transactionRepo, investmentRepo, reportingRepo)
 	reportingService := services.NewReportingService(database)
 	linkService := services.NewLinkService(database)
-	investmentService := services.NewInvestmentService(investmentRepo, transactionService)
+	investmentService := services.NewInvestmentService(investmentRepo, transactionRepo)
 	actionService := services.NewActionServiceWithInvestments(database, transactionService, linkService, assetPriceService, investmentService)
 
 	// Initialize handlers
@@ -134,55 +134,6 @@ func main() {
 	mux.HandleFunc("/api/investments/unstake", investmentHandler.HandleUnstake)
 	mux.HandleFunc("/api/investments/available", investmentHandler.HandleAvailableInvestments)
 	mux.HandleFunc("/api/investments/summary", investmentHandler.HandleInvestmentSummary)
-
-	// Vault endpoints
-	mux.HandleFunc("/api/vaults", func(w http.ResponseWriter, r *http.Request) {
-		// /api/vaults - GET (list) or POST (create)
-		if r.Method == http.MethodGet {
-			investmentHandler.HandleGetActiveVaults(w, r)
-		} else if r.Method == http.MethodPost {
-			investmentHandler.HandleCreateVault(w, r)
-		} else {
-			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		}
-	})
-	mux.HandleFunc("/api/vaults/", func(w http.ResponseWriter, r *http.Request) {
-		if strings.HasPrefix(r.URL.Path, "/api/vaults/") && len(strings.TrimPrefix(r.URL.Path, "/api/vaults/")) > 0 {
-			pathParts := strings.Split(strings.TrimPrefix(r.URL.Path, "/api/vaults/"), "/")
-
-			if len(pathParts) == 1 {
-				// /api/vaults/{name} - GET or DELETE
-				if r.Method == http.MethodGet {
-					investmentHandler.HandleGetVaultByName(w, r)
-				} else if r.Method == http.MethodDelete {
-					investmentHandler.HandleDeleteVault(w, r)
-				} else {
-					http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-				}
-			} else if len(pathParts) == 2 {
-				// /api/vaults/{name}/{action} - POST
-				action := pathParts[1]
-				if r.Method == http.MethodPost {
-					switch action {
-					case "deposit":
-						investmentHandler.HandleDepositToVault(w, r)
-					case "withdraw":
-						investmentHandler.HandleWithdrawFromVault(w, r)
-					case "end":
-						investmentHandler.HandleEndVault(w, r)
-					default:
-						http.Error(w, "Invalid action", http.StatusBadRequest)
-					}
-				} else {
-					http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-				}
-			} else {
-				http.Error(w, "Invalid path", http.StatusBadRequest)
-			}
-		} else {
-			http.Error(w, "Invalid vault path", http.StatusBadRequest)
-		}
-	})
 
 	// Actions endpoint
 	mux.HandleFunc("/api/actions", actionHandler.HandleActions)

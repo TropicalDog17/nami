@@ -387,7 +387,25 @@ func TestInvestment_Copy(t *testing.T) {
 	require.True(t, original.WithdrawalValue.GreaterThan(decimal.Zero))
 	require.True(t, original.WithdrawalUnitPrice.GreaterThan(decimal.Zero))
 	require.False(t, original.IsOpen)
-	require.True(t, original.WithdrawalQty.IsZero())
+
+	// Test Copy method
+	copied := original.Copy()
+	require.Equal(t, original.ID, copied.ID)
+	require.Equal(t, original.Asset, copied.Asset)
+	require.Equal(t, original.Account, copied.Account)
+	require.Equal(t, original.Horizon, copied.Horizon)
+	require.Equal(t, original.DepositDate, copied.DepositDate)
+	require.Equal(t, original.DepositQty, copied.DepositQty)
+	require.Equal(t, original.DepositCost, copied.DepositCost)
+	require.Equal(t, original.DepositUnitCost, copied.DepositUnitCost)
+	require.Equal(t, original.WithdrawalDate, copied.WithdrawalDate)
+	require.Equal(t, original.WithdrawalQty, copied.WithdrawalQty)
+	require.Equal(t, original.WithdrawalValue, copied.WithdrawalValue)
+	require.Equal(t, original.WithdrawalUnitPrice, copied.WithdrawalUnitPrice)
+	require.Equal(t, original.PnL, copied.PnL)
+	require.Equal(t, original.PnLPercent, copied.PnLPercent)
+	require.Equal(t, original.IsOpen, copied.IsOpen)
+	require.Equal(t, original.CreatedAt, copied.CreatedAt)
 }
 
 // Helper functions

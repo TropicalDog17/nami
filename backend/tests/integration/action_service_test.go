@@ -84,15 +84,15 @@ func TestActionService_Stake_TableDriven(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			tdb := SetupTestDB(t)
+			tdb := setupTestDB(t)
 			defer tdb.cleanup(t)
 
 			ctx := context.Background()
 			txService := services.NewTransactionService(tdb.database)
 			// Ensure investment service is provided (action service always non-nil investment service)
 			invRepo := repositories.NewInvestmentRepository(tdb.database)
-			txSvc := services.NewTransactionService(tdb.database)
-	invSvc := services.NewInvestmentService(invRepo, txSvc)
+			txRepo := repositories.NewTransactionRepository(tdb.database)
+			invSvc := services.NewInvestmentService(invRepo, txRepo)
 			linkSvc := services.NewLinkService(tdb.database)
 			svc := services.NewActionServiceWithInvestments(tdb.database, txService, linkSvc, nil, invSvc)
 
@@ -278,14 +278,14 @@ func TestActionService_Unstake_TableDriven(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			tdb := SetupTestDB(t)
+			tdb := setupTestDB(t)
 			defer tdb.cleanup(t)
 
 			ctx := context.Background()
 			txService := services.NewTransactionService(tdb.database)
 			invRepo := repositories.NewInvestmentRepository(tdb.database)
-			txSvc := services.NewTransactionService(tdb.database)
-	invSvc := services.NewInvestmentService(invRepo, txSvc)
+			txRepo := repositories.NewTransactionRepository(tdb.database)
+			invSvc := services.NewInvestmentService(invRepo, txRepo)
 			linkService := services.NewLinkService(tdb.database)
 			svc := services.NewActionServiceWithInvestments(tdb.database, txService, linkService, nil, invSvc)
 

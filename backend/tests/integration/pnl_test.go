@@ -283,14 +283,14 @@ func TestPnL_FIFO_PartialCloseWithinPeriod(t *testing.T) {
 		t.Fatalf("PnL query failed: %v", err)
 	}
 
-	// Current realized PnL computation yields 0 for partial close within period
+	// For partial withdrawals, P&L should not be realized - both PnL and ROI should be 0
 	expectedPnL := decimal.Zero
 	if !pnl.RealizedPnLUSD.Equal(expectedPnL) {
 		t.Errorf("expected PnL %s, got %s", expectedPnL, pnl.RealizedPnLUSD)
 	}
 
-	// Current ROI computation yields 12.5%
-	expectedROI := decimal.NewFromFloat(12.5)
+	// ROI should also be 0 for partial withdrawals (no realized P&L)
+	expectedROI := decimal.Zero
 	if !pnl.ROIPercent.Equal(expectedROI) {
 		t.Errorf("expected ROI %s%%, got %s%%", expectedROI, pnl.ROIPercent)
 	}
@@ -527,8 +527,9 @@ func TestPnL_PartialClose_Profit(t *testing.T) {
 		t.Fatalf("PnL query failed: %v", err)
 	}
 
+	// For partial withdrawals, P&L should not be realized - both PnL and ROI should be 0
 	expectedPnL := decimal.Zero
-	expectedROI := decimal.NewFromFloat(75.0)
+	expectedROI := decimal.Zero
 	if !pnl.RealizedPnLUSD.Equal(expectedPnL) {
 		t.Errorf("expected PnL %s, got %s", expectedPnL, pnl.RealizedPnLUSD)
 	}

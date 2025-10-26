@@ -17,16 +17,20 @@
     "test:e2e:report": "./node_modules/.bin/playwright show-report",
     "test:e2e:clean": "rm -rf test-results playwright-report",
     "test:e2e:install": "playwright install",
-    "test:e2e:update": "npx playwright update"
+    "test:e2e:update": "npx playwright update",
+    "test:e2e:isolated": "PORT=3001 VITE_API_BASE_URL=http://localhost:8001 ./node_modules/.bin/playwright test --config=playwright-isolated.config.js",
+    "test:e2e:isolated:headed": "PORT=3001 VITE_API_BASE_URL=http://localhost:8001 ./node_modules/.bin/playwright test --config=playwright-isolated.config.js --headed",
+    "test:setup": "cd .. && ./scripts/setup-test-env.sh",
+    "test:backend": "cd ../backend && ./scripts/start-test-backend.sh",
+    "test:frontend": "PORT=3001 VITE_API_BASE_URL=http://localhost:8001 npm run dev"
   },
   "dependencies": {
     "axios": "^1.5.0",
     "chart.js": "^4.5.0",
-    "date-fns": "^4.1.0",
+    "date-fns": "^3.6.0",
     "react": "^18.2.0",
     "react-chartjs-2": "^5.3.0",
     "react-dom": "^18.2.0",
-    "react-hot-toast": "^2.6.0",
     "react-router-dom": "^6.15.0"
   },
   "devDependencies": {
@@ -49,6 +53,7 @@
     "eslint-plugin-react": "^7.32.2",
     "eslint-plugin-react-hooks": "^4.6.0",
     "eslint-plugin-react-refresh": "^0.4.3",
+    "jsdom": "^27.0.1",
     "postcss": "^8.4.28",
     "prettier": "^3.0.0",
     "tailwindcss": "^3.3.3",

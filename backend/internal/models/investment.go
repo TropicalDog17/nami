@@ -16,15 +16,6 @@ const (
 	CostBasisAverage CostBasisMethod = "average"
 )
 
-// VaultStatus represents different states of a vault
-type VaultStatus string
-
-const (
-	VaultStatusActive VaultStatus = "active"
-	VaultStatusEnded  VaultStatus = "ended"
-	VaultStatusClosed VaultStatus = "closed"
-)
-
 // Investment represents a specific investment position that can have multiple deposits
 type Investment struct {
 	ID      string  `json:"id" gorm:"primaryKey;column:id;type:varchar(255)"`
@@ -51,19 +42,12 @@ type Investment struct {
 	// Derived fields (not persisted)
 	RealizedPnL  decimal.Decimal `json:"realized_pnl" gorm:"-"`
 	RemainingQty decimal.Decimal `json:"remaining_qty" gorm:"-"`
-	APRPercent   decimal.Decimal `json:"apr_percent" gorm:"-"`
 
 	// Status and quantities
 	IsOpen bool `json:"is_open" gorm:"column:is_open;type:boolean;not null;default:true"`
 
 	// Configuration
 	CostBasisMethod CostBasisMethod `json:"cost_basis_method" gorm:"column:cost_basis_method;type:varchar(20);not null;default:'fifo'"`
-
-	// Vault support (acts as a blackbox vault when IsVault = true)
-	IsVault      bool       `json:"is_vault" gorm:"column:is_vault;type:boolean;not null;default:false"`
-	VaultName    *string    `json:"vault_name,omitempty" gorm:"column:vault_name;type:varchar(255)"`
-	VaultStatus  *string    `json:"vault_status,omitempty" gorm:"column:vault_status;type:varchar(20)"`
-	VaultEndedAt *time.Time `json:"vault_ended_at,omitempty" gorm:"column:vault_ended_at;type:timestamptz"`
 
 	// Metadata
 	CreatedAt time.Time `json:"created_at" gorm:"column:created_at;type:timestamptz;autoCreateTime"`
@@ -81,8 +65,6 @@ type InvestmentFilter struct {
 	Account         string
 	Horizon         string
 	IsOpen          *bool
-	IsVault         *bool
-	VaultStatus     *string
 	CostBasisMethod CostBasisMethod
 	StartDate       *time.Time
 	EndDate         *time.Time
@@ -141,20 +123,46 @@ func (i *Investment) UpdatePnL() {
 		return
 	}
 
-	// Calculate realized P&L from withdrawals
-	realizedPnL := i.WithdrawalValue.Sub(i.DepositCost)
+	// Calculate cost basis for withdrawals
+	var costBasisForWithdrawal decimal.Decimal
+	if i.DepositQty.IsPositive() {
+		if i.WithdrawalQty.GreaterThanOrEqual(i.DepositQty) {
+			// Overwithdrawal or full withdrawal - use total deposit cost
+			costBasisForWithdrawal = i.DepositCost
+		} else {
+			// Partial withdrawal - use proportional cost basis
+			costBasisForWithdrawal = i.DepositCost.Mul(i.WithdrawalQty).Div(i.DepositQty)
+		}
+	} else {
+		costBasisForWithdrawal = decimal.Zero
+	}
 
+	// Calculate realized P&L from withdrawals using cost basis
+	realizedPnL := i.WithdrawalValue.Sub(costBasisForWithdrawal)
+
+	
 	// If position is fully closed, only use realized P&L
 	if !i.IsOpen {
 		i.PnL = realizedPnL
-		i.PnLPercent = i.PnL.Div(i.DepositCost).Mul(decimal.NewFromInt(100))
+		if !costBasisForWithdrawal.IsZero() {
+			i.PnLPercent = i.PnL.Div(costBasisForWithdrawal).Mul(decimal.NewFromInt(100))
+		}
 		return
 	}
 
-	// For open positions, we can't calculate unrealized P&L without current market value
-	// So we only show realized P&L from partial withdrawals
-	i.PnL = realizedPnL
-	i.PnLPercent = i.PnL.Div(i.DepositCost).Mul(decimal.NewFromInt(100))
+	// For open positions with partial withdrawals, we don't calculate P&L
+	// P&L should only be realized when position is fully closed or over-withdrawn
+	if i.WithdrawalQty.GreaterThanOrEqual(i.DepositQty) {
+		// Position is fully closed or over-withdrawn - calculate realized P&L
+		i.PnL = realizedPnL
+		if !costBasisForWithdrawal.IsZero() {
+			i.PnLPercent = i.PnL.Div(costBasisForWithdrawal).Mul(decimal.NewFromInt(100))
+		}
+	} else {
+		// Partial withdrawal - don't realize P&L
+		i.PnL = decimal.Zero
+		i.PnLPercent = decimal.Zero
+	}
 }
 
 // AddDeposit adds a new deposit to the investment and recalculates weighted average cost
@@ -191,44 +199,29 @@ func (i *Investment) AddWithdrawal(qty, value decimal.Decimal) error {
 	return nil
 }
 
-// Vault-specific methods
-
-// IsVaultActive checks if the investment is a vault and is currently active
-func (i *Investment) IsVaultActive() bool {
-	return i.IsVault && i.VaultStatus != nil && *i.VaultStatus == string(VaultStatusActive)
-}
-
-// EndVault marks the vault as ended
-func (i *Investment) EndVault() {
-	if i.IsVault {
-		status := string(VaultStatusEnded)
-		i.VaultStatus = &status
-		now := time.Now()
-		i.VaultEndedAt = &now
-		i.IsOpen = false
-		i.UpdatedAt = time.Now()
+// Copy creates a deep copy of the Investment
+func (i *Investment) Copy() *Investment {
+	copied := &Investment{
+		ID:                  i.ID,
+		Asset:               i.Asset,
+		Account:             i.Account,
+		Horizon:             i.Horizon,
+		DepositDate:         i.DepositDate,
+		DepositQty:          i.DepositQty,
+		DepositCost:         i.DepositCost,
+		DepositUnitCost:     i.DepositUnitCost,
+		WithdrawalDate:      i.WithdrawalDate,
+		WithdrawalQty:       i.WithdrawalQty,
+		WithdrawalValue:     i.WithdrawalValue,
+		WithdrawalUnitPrice: i.WithdrawalUnitPrice,
+		PnL:                 i.PnL,
+		PnLPercent:          i.PnLPercent,
+		RealizedPnL:         i.RealizedPnL,
+		RemainingQty:        i.RemainingQty,
+		IsOpen:              i.IsOpen,
+		CostBasisMethod:     i.CostBasisMethod,
+		CreatedAt:           i.CreatedAt,
+		UpdatedAt:           i.UpdatedAt,
 	}
-}
-
-// VaultDeposit adds a deposit to the vault (blackbox approach - no validation)
-func (i *Investment) VaultDeposit(qty, cost decimal.Decimal) {
-	if i.IsVault {
-		i.AddDeposit(qty, cost)
-	}
-}
-
-// VaultWithdrawal processes a withdrawal from the vault (blackbox approach - no validation)
-func (i *Investment) VaultWithdrawal(qty, value decimal.Decimal) error {
-	if i.IsVault {
-		return i.AddWithdrawal(qty, value)
-	}
-	return errors.New("investment is not a vault")
-}
-
-// GetVaultBalance returns the current balance of the vault
-func (i *Investment) GetVaultBalance() decimal.Decimal {
-	if i.IsVault {
-		return i.DepositQty.Sub(i.WithdrawalQty)
-	}
-	return decimal.Zero
+	return copied
 }

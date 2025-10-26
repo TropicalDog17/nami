@@ -850,7 +850,7 @@ const ReportsPage = () => {
       <div>
         {/* P&L Summary Cards */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-          <div className={`p-4 rounded-lg ${realizedPnL >= 0 ? 'bg-green-50' : 'bg-red-50'}`}>
+          <div className={`p-4 rounded-lg ${realizedPnL >= 0 ? 'bg-green-50' : 'bg-red-50'}`} data-testid="pnl-value">
             <h4 className={`text-sm font-medium ${realizedPnL >= 0 ? 'text-green-800' : 'text-red-800'}`}>
               Realized P&L
             </h4>

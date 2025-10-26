@@ -1,7 +1,7 @@
 # Nami Transaction Tracking System - Makefile
 # This Makefile provides convenient targets for development, testing, and deployment
 
-.PHONY: help test test-integration test-e2e test-unit build run clean setup deps fmt lint docker-up docker-down docker-logs migrate db-reset demo backend frontend stop stop-backend stop-frontend install swagger swagger-install
+.PHONY: help test test-integration test-unit test-isolated build run clean setup deps fmt lint docker-up docker-down docker-logs migrate db-reset demo backend frontend stop stop-backend stop-frontend install swagger swagger-install test-setup test-teardown clean-test-results
 
 # Default target
 help: ## Show this help message
@@ -13,9 +13,7 @@ help: ## Show this help message
 # Development setup
 setup: ## Set up the development environment (install dependencies, setup database)
 	@echo "🔧 Setting up development environment..."
-	@make install
-	@make docker-up
-	@make migrate
+	@make install && make docker-up && make migrate
 	@echo "✅ Development environment ready!"
 
 install: ## Install all dependencies (Go modules and Node packages)
@@ -28,8 +26,10 @@ install: ## Install all dependencies (Go modules and Node packages)
 
 deps: install ## Alias for install
 
+.PHONY: test-isolated-run
 # Testing targets
-test: test-integration test-e2e ## Run all tests (integration + e2e)
+test: VAULT_E2E=1
+test: test-integration test-isolated ## Run integration tests and isolated frontend smoke
 
 test-integration: ## Run Go integration tests with testcontainers
 	@echo "🧪 Running Go integration tests with testcontainers..."
@@ -39,9 +39,45 @@ test-unit: ## Run Go unit tests
 	@echo "🧪 Running Go unit tests..."
 	@cd backend && go test -v ./... -short
 
-test-e2e: ## Run end-to-end tests (requires backend and frontend running)
-	@echo "🧪 Running end-to-end tests..."
-	@./run_tests.sh
+# Isolated test environment (separate from main app)
+test-isolated: test-teardown test-setup test-isolated-run test-teardown ## Run tests in isolated environment
+
+test-setup: ## Set up isolated test environment (ports 3001/8001, database 5434)
+	@echo "🚀 Setting up isolated test environment..."
+	@./scripts/setup-test-env.sh
+	@echo "✅ Test environment ready (ports: frontend=3001, backend=8001, db=5434)"
+
+test-teardown: ## Tear down isolated test environment and clean up resources
+	@echo "🧹 Tearing down isolated test environment..."
+	@docker-compose -f docker-compose.test.yml down
+    # kill backend and frontend
+	@lsof -ti tcp:8001 | xargs kill -TERM 2>/dev/null || true
+	@pkill -f "cmd/server/main.go" 2>/dev/null || true
+	@pkill -f "bin/nami-server" 2>/dev/null || true
+	@lsof -ti tcp:3001 | xargs kill -TERM 2>/dev/null || true
+	@pkill -f "vite" 2>/dev/null || true
+	@pkill -f "npm run dev" 2>/dev/null || true
+	@echo "✅ Test environment torn down"
+
+test-isolated-run: ## Run tests in isolated environment (requires test-setup first)
+	@echo "🧪 Running tests in isolated environment..."
+	@echo "🗄️  Running DB migrations for isolated DB..." && \
+	cd backend/migrations && DB_HOST=localhost DB_PORT=5434 DB_NAME=nami_test DB_USER=nami_test_user DB_PASSWORD=nami_test_password DB_SSL_MODE=disable go run migrate.go && \
+	cd ../.. && \
+	cd backend && SERVER_PORT=8001 DB_HOST=localhost DB_PORT=5434 DB_NAME=nami_test DB_USER=nami_test_user DB_PASSWORD=nami_test_password DB_SSL_MODE=disable go run cmd/server/main.go > /tmp/test-backend.log 2>&1 & \
+	sleep 1 && \
+	( \
+	  echo "⏳ Waiting for backend to be ready..."; \
+	  for i in $$(seq 1 60); do \
+	    if curl -sSf http://localhost:8001/health >/dev/null 2>&1; then \
+	      echo "✅ Backend ready"; \
+	      break; \
+	    fi; \
+	    sleep 1; \
+	  done \
+	) && \
+	cd frontend && PORT=3001 VITE_API_BASE_URL=http://localhost:8001 npm run test:e2e:isolated && \
+	cd .. && make test-teardown
 
 # Building targets
 build: build-backend build-frontend ## Build all components
@@ -158,27 +194,14 @@ clean-build: ## Clean build artifacts
 clean-test-results: ## Clean test results and cache
 	@echo "🧹 Cleaning test results..."
 	@rm -rf test-results/
-	@cd backend && go clean -testcache ./...
+	@cd backend && go clean -testcache
 	@cd frontend && rm -rf test-results/ playwright-report/
 	@echo "✅ Test results cleaned"
 
-# Development workflow targets
-dev: ## Start development environment (backend + frontend)
-	@echo "🚀 Starting development environment..."
-	@echo "Backend will be available at: http://localhost:8080"
-	@echo "Frontend will be available at: http://localhost:3000"
-	@echo ""
-	@echo "Press Ctrl+C to stop all services"
-	@echo ""
-	@make docker-up && sleep 2 && make run-dev
-
-test-dev: ## Run tests in development environment
-	@echo "🧪 Running tests in development environment..."
-	@./run_tests.sh
 
 # CI/CD targets
 ci: deps fmt lint test ## Run full CI pipeline (deps, format, lint, test)
 
 ci-backend: deps fmt lint test-integration test-unit ## Run CI for backend only
 
-ci-frontend: test-e2e ## Run CI for frontend only
+ci-frontend: test-isolated ## Run CI for frontend smoke tests only

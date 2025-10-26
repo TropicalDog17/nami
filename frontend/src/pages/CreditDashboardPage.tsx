@@ -34,29 +34,20 @@ const CreditDashboardPage: React.FC = () => {
     setError(null);
 
     try {
-      // Fetch accounts to identify credit card accounts
-      const accountsResponse = await fetch('http://localhost:8080/api/admin/accounts').then(res => res.json());
-      const creditCardAccounts = accountsResponse.filter((account: any) => account.type === 'CreditCard');
-      const creditCardAccountNames = new Set(creditCardAccounts.map((account: any) => account.name));
-
       // Fetch credit transactions (expenses and repay_borrow)
       const [expensesResponse, repayResponse] = await Promise.all([
         transactionApi.list({ type: 'expense', limit: 100 }),
         transactionApi.list({ type: 'repay_borrow', limit: 100 })
       ]);
 
-      // Filter transactions to only include credit card accounts
-      const creditCardExpenses = expensesResponse.filter((expense: any) => creditCardAccountNames.has(expense.account));
-      const creditCardRepayments = repayResponse.filter((payment: any) => creditCardAccountNames.has(payment.account));
-
       // Process transactions to group by credit card account
-      const creditAccounts = processCreditAccounts(creditCardExpenses, creditCardRepayments);
+      const creditAccounts = processCreditAccounts(expensesResponse, repayResponse);
       setCreditCards(creditAccounts);
 
       // Combine recent credit transactions
       const allCreditTransactions = [
-        ...creditCardExpenses,
-        ...creditCardRepayments
+        ...expensesResponse,
+        ...repayResponse
       ].sort((a, b) => new Date(b.date) - new Date(a.date)).slice(0, 50);
 
       setCreditTransactions(allCreditTransactions);
@@ -154,7 +145,7 @@ const CreditDashboardPage: React.FC = () => {
   return (
     <div className="px-4 py-6 sm:px-0">
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">Credit Card Dashboard</h1>
+        <h1 className="text-2xl font-bold text-gray-900" data-testid="credit-dashboard-page-title">Credit Card Dashboard</h1>
         <p className="mt-1 text-sm text-gray-500">
           Track your credit card spending, balances, and payments.
         </p>

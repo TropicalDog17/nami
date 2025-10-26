@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/shopspring/decimal"
 	"github.com/tropicaldog17/nami/internal/models"
 	"github.com/tropicaldog17/nami/internal/repositories"
@@ -13,15 +12,15 @@ import (
 )
 
 type investmentService struct {
-	investmentRepo repositories.InvestmentRepository
-	transactionSvc TransactionService
+	investmentRepo  repositories.InvestmentRepository
+	transactionRepo repositories.TransactionRepository
 }
 
 // NewInvestmentService creates a new investment service
-func NewInvestmentService(investmentRepo repositories.InvestmentRepository, transactionSvc TransactionService) InvestmentService {
+func NewInvestmentService(investmentRepo repositories.InvestmentRepository, transactionRepo repositories.TransactionRepository) InvestmentService {
 	return &investmentService{
-		investmentRepo: investmentRepo,
-		transactionSvc: transactionSvc,
+		investmentRepo:  investmentRepo,
+		transactionRepo: transactionRepo,
 	}
 }
 
@@ -34,15 +33,6 @@ func (s *investmentService) GetInvestments(ctx context.Context, filter *models.I
 	for _, inv := range investments {
 		inv.RealizedPnL = inv.PnL
 		inv.RemainingQty = inv.DepositQty.Sub(inv.WithdrawalQty)
-		// Compute APR for ended vaults: annualized return based on realized PnL over holding period
-		if inv.IsVault && !inv.IsOpen && inv.VaultEndedAt != nil {
-			days := inv.VaultEndedAt.Sub(inv.DepositDate).Hours() / 24
-			if days > 0 && !inv.DepositCost.IsZero() {
-				roi := inv.PnL.Div(inv.DepositCost) // decimal
-				apr := roi.Mul(decimal.NewFromFloat(365.0 / days)).Mul(decimal.NewFromInt(100))
-				inv.APRPercent = apr
-			}
-		}
 	}
 	return investments, nil
 }
@@ -55,14 +45,6 @@ func (s *investmentService) GetInvestmentByID(ctx context.Context, id string) (*
 	}
 	inv.RealizedPnL = inv.PnL
 	inv.RemainingQty = inv.DepositQty.Sub(inv.WithdrawalQty)
-	if inv.IsVault && !inv.IsOpen && inv.VaultEndedAt != nil {
-		days := inv.VaultEndedAt.Sub(inv.DepositDate).Hours() / 24
-		if days > 0 && !inv.DepositCost.IsZero() {
-			roi := inv.PnL.Div(inv.DepositCost)
-			apr := roi.Mul(decimal.NewFromFloat(365.0 / days)).Mul(decimal.NewFromInt(100))
-			inv.APRPercent = apr
-		}
-	}
 	return inv, nil
 }
 
@@ -147,7 +129,7 @@ func (s *investmentService) CreateDeposit(ctx context.Context, tx *models.Transa
 	}
 
 	// Create the transaction record
-	err = s.transactionSvc.CreateTransaction(ctx, tx)
+	err = s.transactionRepo.Create(ctx, tx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create deposit transaction: %w", err)
 	}
@@ -206,7 +188,7 @@ func (s *investmentService) CreateWithdrawal(ctx context.Context, tx *models.Tra
 	}
 
 	// Create the transaction record
-	err = s.transactionSvc.CreateTransaction(ctx, tx)
+	err = s.transactionRepo.Create(ctx, tx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create withdrawal transaction: %w", err)
 	}
@@ -260,7 +242,7 @@ func (s *investmentService) ProcessStake(ctx context.Context, stakeTx *models.Tr
 
 	// Create the stake transaction and link it to the investment
 	stakeTx.InvestmentID = &investment.ID
-	err = s.transactionSvc.CreateTransaction(ctx, stakeTx)
+	err = s.transactionRepo.Create(ctx, stakeTx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create stake transaction: %w", err)
 	}
@@ -296,7 +278,7 @@ func (s *investmentService) ProcessUnstake(ctx context.Context, unstakeTx *model
 	}
 
 	// Create the unstake transaction
-	err = s.transactionSvc.CreateTransaction(ctx, unstakeTx)
+	err = s.transactionRepo.Create(ctx, unstakeTx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create unstake transaction: %w", err)
 	}
@@ -319,234 +301,4 @@ func (s *investmentService) GetOpenInvestmentsForStake(ctx context.Context, asse
 	}
 
 	return []*models.Investment{investment}, nil
-}
-
-// Vault-specific service methods
-
-// CreateVault creates a new vault with the given parameters
-func (s *investmentService) CreateVault(ctx context.Context, name, asset, account string, initialDeposit decimal.Decimal, horizon string) (*models.Investment, error) {
-	// Check if vault with same name already exists
-	existingVault, err := s.investmentRepo.GetVaultByName(ctx, name)
-	if err == nil && existingVault != nil {
-		return nil, fmt.Errorf("vault with name '%s' already exists", name)
-	}
-
-	// Create new vault
-	vault := &models.Investment{
-		ID:              uuid.New().String(),
-		Asset:           asset,
-		Account:         account,
-		VaultName:       &name,
-		DepositDate:     time.Now(),
-		DepositQty:      initialDeposit,
-		DepositCost:     initialDeposit,        // Assuming 1:1 for simplicity, can be enhanced later
-		DepositUnitCost: decimal.NewFromInt(1), // Assuming 1:1 for simplicity
-		WithdrawalQty:   decimal.Zero,
-		WithdrawalValue: decimal.Zero,
-		PnL:             decimal.Zero,
-		PnLPercent:      decimal.Zero,
-		IsOpen:          true,
-		IsVault:         true,
-		CostBasisMethod: models.CostBasisFIFO,
-	}
-
-	if horizon != "" {
-		vault.Horizon = &horizon
-	}
-
-	err = s.investmentRepo.CreateVault(ctx, vault)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create vault: %w", err)
-	}
-
-	// Populate derived fields before returning
-	vault.RealizedPnL = vault.PnL
-	vault.RemainingQty = vault.DepositQty.Sub(vault.WithdrawalQty)
-	return vault, nil
-}
-
-// GetActiveVaults returns all active vaults
-func (s *investmentService) GetActiveVaults(ctx context.Context) ([]*models.Investment, error) {
-	vaults, err := s.investmentRepo.GetActiveVaults(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get active vaults: %w", err)
-	}
-
-	// Populate derived fields
-	for _, vault := range vaults {
-		vault.RealizedPnL = vault.PnL
-		vault.RemainingQty = vault.DepositQty.Sub(vault.WithdrawalQty)
-		// APR only for ended vaults
-	}
-
-	return vaults, nil
-}
-
-// GetVaultByName retrieves a vault by name
-func (s *investmentService) GetVaultByName(ctx context.Context, name string) (*models.Investment, error) {
-	vault, err := s.investmentRepo.GetVaultByName(ctx, name)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get vault: %w", err)
-	}
-
-	// Populate derived fields before returning
-	vault.RealizedPnL = vault.PnL
-	vault.RemainingQty = vault.DepositQty.Sub(vault.WithdrawalQty)
-	if vault.IsVault && !vault.IsOpen && vault.VaultEndedAt != nil {
-		days := vault.VaultEndedAt.Sub(vault.DepositDate).Hours() / 24
-		if days > 0 && !vault.DepositCost.IsZero() {
-			roi := vault.PnL.Div(vault.DepositCost)
-			apr := roi.Mul(decimal.NewFromFloat(365.0 / days)).Mul(decimal.NewFromInt(100))
-			vault.APRPercent = apr
-		}
-	}
-	return vault, nil
-}
-
-// DepositToVault adds a deposit to an existing vault
-func (s *investmentService) DepositToVault(ctx context.Context, vaultName string, depositQty, depositCost decimal.Decimal, sourceAccount string) (*models.Investment, error) {
-	vault, err := s.investmentRepo.GetVaultByName(ctx, vaultName)
-	if err != nil {
-		return nil, fmt.Errorf("failed to find vault: %w", err)
-	}
-
-	if !vault.IsVaultActive() {
-		return nil, fmt.Errorf("vault '%s' is not active", vaultName)
-	}
-
-	// Create deposit transaction (use existing transaction type)
-	depositTx := &models.Transaction{
-		ID:           uuid.New().String(),
-		Type:         "stake", // Use stake for deposits to vault
-		Asset:        vault.Asset,
-		Account:      sourceAccount,
-		Quantity:     depositQty,
-		AmountUSD:    depositCost,
-		Date:         time.Now(),
-		InvestmentID: &vault.ID,
-	}
-
-	err = s.transactionSvc.CreateTransaction(ctx, depositTx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create deposit transaction: %w", err)
-	}
-
-	// Update vault with deposit (blackbox approach - no validation)
-	vault.VaultDeposit(depositQty, depositCost)
-
-	err = s.investmentRepo.UpdateVault(ctx, vault)
-	if err != nil {
-		return nil, fmt.Errorf("failed to update vault: %w", err)
-	}
-
-	// Populate derived fields before returning
-	vault.RealizedPnL = vault.PnL
-	vault.RemainingQty = vault.DepositQty.Sub(vault.WithdrawalQty)
-	// No APR until ended
-	return vault, nil
-}
-
-// WithdrawFromVault processes a withdrawal from a vault
-func (s *investmentService) WithdrawFromVault(ctx context.Context, vaultName string, withdrawQty, withdrawValue decimal.Decimal, targetAccount string) (*models.Investment, error) {
-	vault, err := s.investmentRepo.GetVaultByName(ctx, vaultName)
-	if err != nil {
-		return nil, fmt.Errorf("failed to find vault: %w", err)
-	}
-
-	if !vault.IsVaultActive() {
-		return nil, fmt.Errorf("vault '%s' is not active", vaultName)
-	}
-
-	// Create withdrawal transaction
-	withdrawalTx := &models.Transaction{
-		ID:           uuid.New().String(),
-		Type:         "unstake",
-		Asset:        vault.Asset,
-		Account:      targetAccount,
-		Quantity:     withdrawQty,
-		AmountUSD:    withdrawValue,
-		Date:         time.Now(),
-		InvestmentID: &vault.ID,
-	}
-
-	err = s.transactionSvc.CreateTransaction(ctx, withdrawalTx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create withdrawal transaction: %w", err)
-	}
-
-	// Update vault with withdrawal (blackbox approach - no validation)
-	err = vault.VaultWithdrawal(withdrawQty, withdrawValue)
-	if err != nil {
-		return nil, fmt.Errorf("failed to process vault withdrawal: %w", err)
-	}
-
-	err = s.investmentRepo.UpdateVault(ctx, vault)
-	if err != nil {
-		return nil, fmt.Errorf("failed to update vault: %w", err)
-	}
-
-	// Populate derived fields before returning
-	vault.RealizedPnL = vault.PnL
-	vault.RemainingQty = vault.DepositQty.Sub(vault.WithdrawalQty)
-	// No APR until ended
-	return vault, nil
-}
-
-// EndVault marks a vault as ended
-func (s *investmentService) EndVault(ctx context.Context, vaultName string) (*models.Investment, error) {
-	vault, err := s.investmentRepo.GetVaultByName(ctx, vaultName)
-	if err != nil {
-		return nil, fmt.Errorf("failed to find vault: %w", err)
-	}
-
-	if !vault.IsVaultActive() {
-		return nil, fmt.Errorf("vault '%s' is not active", vaultName)
-	}
-
-	// Mark vault as ended
-	vault.EndVault()
-
-	err = s.investmentRepo.UpdateVault(ctx, vault)
-	if err != nil {
-		return nil, fmt.Errorf("failed to update vault: %w", err)
-	}
-
-	// Populate derived fields before returning
-	vault.RealizedPnL = vault.PnL
-	vault.RemainingQty = vault.DepositQty.Sub(vault.WithdrawalQty)
-	if vault.IsVault && !vault.IsOpen && vault.VaultEndedAt != nil {
-		days := vault.VaultEndedAt.Sub(vault.DepositDate).Hours() / 24
-		if days > 0 && !vault.DepositCost.IsZero() {
-			roi := vault.PnL.Div(vault.DepositCost)
-			apr := roi.Mul(decimal.NewFromFloat(365.0 / days)).Mul(decimal.NewFromInt(100))
-			vault.APRPercent = apr
-		}
-	}
-	return vault, nil
-}
-
-// DeleteVault permanently deletes a vault
-func (s *investmentService) DeleteVault(ctx context.Context, vaultName string) error {
-	vault, err := s.investmentRepo.GetVaultByName(ctx, vaultName)
-	if err != nil {
-		return fmt.Errorf("failed to find vault: %w", err)
-	}
-
-	// For safety, only allow deletion of ended vaults
-	if vault.IsVaultActive() {
-		return fmt.Errorf("cannot delete active vault '%s'. End the vault first.", vaultName)
-	}
-
-	// Delete related transactions first to avoid foreign key constraint violations
-	err = s.investmentRepo.DeleteTransactionsByInvestmentID(ctx, vault.ID)
-	if err != nil {
-		return fmt.Errorf("failed to delete related transactions: %w", err)
-	}
-
-	err = s.investmentRepo.DeleteVault(ctx, vault.ID)
-	if err != nil {
-		return fmt.Errorf("failed to delete vault: %w", err)
-	}
-
-	return nil
 }

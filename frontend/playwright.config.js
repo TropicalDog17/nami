@@ -1,24 +1,25 @@
 import { defineConfig, devices } from '@playwright/test';
 
 export default defineConfig({
+  timeout: 120000,
   testDir: './tests/e2e',
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
-  retries: process.env.CI ? 3 : 2, // Increased retries for better reliability
+  retries: process.env.CI ? 2 : 1,
   workers: process.env.CI ? 1 : undefined,
   reporter: [
-    ['json', { outputFile: 'test-results/results.json' }],
     ['list'],
+    ['json', { outputFile: 'test-results/results.json' }],
+    ['html', { open: 'never' }],
   ],
   use: {
     baseURL: 'http://localhost:3000',
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
     video: 'retain-on-failure',
-    // Increased timeouts for better reliability
-    navigationTimeout: 30000,
-    timeout: 60000,
-    actionTimeout: 10000,
+    navigationTimeout: 45000,
+    timeout: 90000,
+    actionTimeout: 15000,
   },
 
   projects: [
@@ -26,9 +27,8 @@ export default defineConfig({
       name: 'chromium',
       use: {
         ...devices['Desktop Chrome'],
-        // Launch options for more stable tests
         launchOptions: {
-          slowMo: process.env.CI ? 0 : 100, // Slow down tests in dev for better debugging
+          slowMo: process.env.CI ? 0 : 50,
         },
       },
     },
@@ -38,11 +38,9 @@ export default defineConfig({
     command: 'npm run dev',
     url: 'http://localhost:3000',
     reuseExistingServer: true, // Reuse existing server if available
-    timeout: 120000, // Increased timeout for server startup
+    timeout: 180000,
     // Note: Backend server on port 8080 must be running externally
   },
 
-  // Global setup for test environment
-  globalSetup: './tests/e2e/global-setup.js',
-  globalTeardown: './tests/e2e/global-teardown.js',
+  // Global setup/teardown removed; use isolated config for E2E if needed
 });

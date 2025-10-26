@@ -41,7 +41,6 @@ func (r *reportingRepository) GetHoldings(ctx context.Context, asOf time.Time) (
 			FROM transactions
 			WHERE date <= $1
 			GROUP BY asset, account
-			HAVING SUM(delta_qty) != 0
 		),
 		latest_prices AS (
 			SELECT DISTINCT ON (asset)
@@ -71,7 +70,6 @@ func (r *reportingRepository) GetHoldings(ctx context.Context, asOf time.Time) (
 			lp.last_transaction_date
 		FROM latest_positions lp
 		LEFT JOIN latest_prices pr ON lp.asset = pr.asset
-		WHERE lp.total_quantity != 0
 		ORDER BY lp.asset, lp.account`
 
 	rows, err := sqlDB.QueryContext(ctx, query, asOf)
@@ -93,14 +91,18 @@ func (r *reportingRepository) GetHoldings(ctx context.Context, asOf time.Time) (
 		holdings = append(holdings, h)
 	}
 
+	// Calculate percentages with proper handling
 	var totalValueUSD decimal.Decimal
 	for _, h := range holdings {
 		totalValueUSD = totalValueUSD.Add(h.ValueUSD)
 	}
 
+	// Calculate percentages only for assets with non-zero values
 	if !totalValueUSD.IsZero() {
 		for _, h := range holdings {
-			h.Percentage = h.ValueUSD.Div(totalValueUSD).Mul(decimal.NewFromInt(100))
+			if !h.ValueUSD.IsZero() {
+				h.Percentage = h.ValueUSD.Div(totalValueUSD).Mul(decimal.NewFromInt(100))
+			}
 		}
 	}
 
@@ -341,8 +343,7 @@ func (r *reportingRepository) GetSpending(ctx context.Context, period models.Per
 			COALESCE(SUM(CASE WHEN cashflow_usd < 0 THEN ABS(cashflow_usd) ELSE 0 END), 0) as total_usd,
 			COALESCE(SUM(CASE WHEN cashflow_vnd < 0 THEN ABS(cashflow_vnd) ELSE 0 END), 0) as total_vnd
 		FROM transactions
-			WHERE date >= $1 AND date <= $2 AND cashflow_usd < 0 AND (internal_flow IS DISTINCT FROM TRUE)
-			AND type NOT IN ('borrow', 'repay_borrow', 'interest_expense')`
+			WHERE date >= $1 AND date <= $2 AND cashflow_usd < 0 AND (internal_flow IS DISTINCT FROM TRUE)`
 
 	report := &models.SpendingReport{
 		Period:         period,
@@ -366,7 +367,6 @@ func (r *reportingRepository) GetSpending(ctx context.Context, period models.Per
 			COUNT(*) as count
 		FROM transactions
 			WHERE date >= $1 AND date <= $2 AND cashflow_usd < 0 AND (internal_flow IS DISTINCT FROM TRUE)
-			AND type NOT IN ('borrow', 'repay_borrow', 'interest_expense')
 		GROUP BY tag
 		ORDER BY amount_usd DESC`
 
@@ -399,7 +399,6 @@ func (r *reportingRepository) GetSpending(ctx context.Context, period models.Per
 			COUNT(*) as count
 		FROM transactions
 			WHERE date >= $1 AND date <= $2 AND cashflow_usd < 0 AND (internal_flow IS DISTINCT FROM TRUE)
-			AND type NOT IN ('borrow', 'repay_borrow', 'interest_expense')
 		GROUP BY counterparty
 		ORDER BY amount_usd DESC`
 
@@ -433,7 +432,6 @@ func (r *reportingRepository) GetSpending(ctx context.Context, period models.Per
             COUNT(*) as count
         FROM transactions
             WHERE date >= $1 AND date <= $2 AND cashflow_usd < 0 AND (internal_flow IS DISTINCT FROM TRUE)
-            AND type NOT IN ('borrow', 'repay_borrow', 'interest_expense')
         GROUP BY day
         ORDER BY day`
 
@@ -533,37 +531,27 @@ func (r *reportingRepository) GetPnL(ctx context.Context, period models.Period) 
 		ByAccount: make(map[string]*models.AccountPnL),
 	}
 
-	// Enhanced PnL calculation using the investments table for better accuracy
-	// This handles multiple deposits per investment and proper cost basis tracking
+	// Simple PnL calculation using investments table
 	realizedQuery := `
-        WITH investment_pnl AS (
-            SELECT
-                i.asset,
-                i.account,
-                i.pnl as realized_pnl_usd,
-                i.pnl * fx.fx_to_vnd as realized_pnl_vnd,
-                i.deposit_cost as total_cost_basis,
-                i.withdrawal_value as total_withdrawal_value,
-                CASE
-                    WHEN i.withdrawal_date >= $1 AND i.withdrawal_date <= $2 THEN 1
-                    ELSE 0
-                END as is_in_period
-            FROM investments i
-            LEFT JOIN (
-                SELECT DISTINCT ON (asset, date)
-                    asset, fx_to_vnd, date
-                FROM transactions
-                WHERE date <= $2
-                ORDER BY asset, date DESC
-            ) fx ON i.asset = fx.asset AND i.withdrawal_date = fx.date
-            WHERE i.is_open = false  -- Only closed investments have realized P&L
-            AND i.withdrawal_date IS NOT NULL
-        )
         SELECT
-            COALESCE(SUM(CASE WHEN is_in_period = 1 THEN realized_pnl_usd ELSE 0 END), 0) as realized_pnl_usd,
-            COALESCE(SUM(CASE WHEN is_in_period = 1 THEN realized_pnl_vnd ELSE 0 END), 0) as realized_pnl_vnd,
-            COALESCE(SUM(CASE WHEN is_in_period = 1 THEN total_cost_basis ELSE 0 END), 0) as total_cost_basis
-        FROM investment_pnl`
+            COALESCE(SUM(i.pnl), 0) as realized_pnl_usd,
+            COALESCE(SUM(i.pnl * fx.fx_to_vnd), 0) as realized_pnl_vnd,
+            COALESCE(SUM(
+                CASE
+                    WHEN i.withdrawal_qty >= i.deposit_qty THEN i.deposit_cost
+                    ELSE i.deposit_cost * i.withdrawal_qty / NULLIF(i.deposit_qty, 0)
+                END
+            ), 0) as total_cost_basis
+        FROM investments i
+        LEFT JOIN (
+            SELECT DISTINCT ON (asset)
+                asset, fx_to_vnd, date
+            FROM transactions
+            WHERE date <= $2
+            ORDER BY asset, date DESC
+        ) fx ON i.asset = fx.asset AND i.withdrawal_date = fx.date
+        WHERE i.withdrawal_qty > 0
+        AND i.withdrawal_date >= $1 AND i.withdrawal_date <= $2`
 
 	var totalCostBasis decimal.Decimal
 	err = sqlDB.QueryRowContext(ctx, realizedQuery, period.StartDate, period.EndDate).Scan(
@@ -573,11 +561,12 @@ func (r *reportingRepository) GetPnL(ctx context.Context, period models.Period) 
 		return nil, fmt.Errorf("failed to get realized P&L: %w", err)
 	}
 
-	// Unrealized P&L removed: totals are realized-only
+	
+	// Total PnL is realized-only (no unrealized for closed positions)
 	report.TotalPnLUSD = report.RealizedPnLUSD
 	report.TotalPnLVND = report.RealizedPnLVND
 
-	// Calculate ROI using total cost basis from all investments (including those still open)
+	// ROI calculation using cost basis
 	totalInvestedQuery := `
         SELECT COALESCE(SUM(deposit_cost), 0) as total_invested
         FROM investments
@@ -589,7 +578,7 @@ func (r *reportingRepository) GetPnL(ctx context.Context, period models.Period) 
 		return nil, fmt.Errorf("failed to get total invested: %w", err)
 	}
 
-	// Use the larger of total_cost_basis or total_invested for ROI calculation
+	// Use larger of cost basis or total invested for ROI
 	roiBasis := totalCostBasis
 	if totalInvested.GreaterThan(totalCostBasis) {
 		roiBasis = totalInvested
@@ -599,22 +588,13 @@ func (r *reportingRepository) GetPnL(ctx context.Context, period models.Period) 
 		report.ROIPercent = report.TotalPnLUSD.Div(roiBasis).Mul(decimal.NewFromInt(100))
 	}
 
-	// Get detailed breakdown by asset
+	// Asset breakdown
 	assetQuery := `
-        WITH latest_prices AS (
-            SELECT DISTINCT ON (asset)
-                asset,
-                amount_usd / NULLIF(quantity, 0) as current_price_usd
-            FROM transactions
-            WHERE quantity > 0 AND date <= $2
-            ORDER BY asset, date DESC
-        )
         SELECT
             i.asset,
-            COALESCE(SUM(CASE WHEN i.is_open = false AND i.withdrawal_date >= $1 AND i.withdrawal_date <= $2 THEN i.pnl ELSE 0 END), 0) as realized_pnl_usd,
+            COALESCE(SUM(CASE WHEN i.withdrawal_qty > 0 AND i.withdrawal_date >= $1 AND i.withdrawal_date <= $2 THEN i.pnl ELSE 0 END), 0) as realized_pnl_usd,
             COALESCE(SUM(i.deposit_cost), 0) as total_cost
         FROM investments i
-        LEFT JOIN latest_prices p ON i.asset = p.asset
         GROUP BY i.asset`
 
 	assetRows, err := sqlDB.QueryContext(ctx, assetQuery, period.StartDate, period.EndDate)
@@ -631,20 +611,18 @@ func (r *reportingRepository) GetPnL(ctx context.Context, period models.Period) 
 			return nil, fmt.Errorf("failed to scan asset breakdown: %w", err)
 		}
 
-		totalPnL := realizedPnL
-
 		report.ByAsset[asset] = &models.AssetPnL{
 			Asset:          asset,
 			RealizedPnLUSD: realizedPnL,
-			TotalPnLUSD:    totalPnL,
+			TotalPnLUSD:    realizedPnL,
 		}
 	}
 
-	// Get detailed breakdown by account
+	// Account breakdown (similar structure to asset breakdown)
 	accountQuery := `
         SELECT
             i.account,
-            COALESCE(SUM(CASE WHEN i.is_open = false AND i.withdrawal_date >= $1 AND i.withdrawal_date <= $2 THEN i.pnl ELSE 0 END), 0) as realized_pnl_usd,
+            COALESCE(SUM(CASE WHEN i.withdrawal_qty > 0 AND i.withdrawal_date >= $1 AND i.withdrawal_date <= $2 THEN i.pnl ELSE 0 END), 0) as realized_pnl_usd,
             COALESCE(SUM(i.deposit_cost), 0) as total_cost
         FROM investments i
         GROUP BY i.account`
@@ -663,12 +641,10 @@ func (r *reportingRepository) GetPnL(ctx context.Context, period models.Period) 
 			return nil, fmt.Errorf("failed to scan account breakdown: %w", err)
 		}
 
-		totalPnL := realizedPnL
-
 		report.ByAccount[account] = &models.AccountPnL{
 			Account:        account,
 			RealizedPnLUSD: realizedPnL,
-			TotalPnLUSD:    totalPnL,
+			TotalPnLUSD:    realizedPnL,
 		}
 	}
 

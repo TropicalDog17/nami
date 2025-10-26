@@ -12,7 +12,7 @@ import (
 )
 
 func TestReportingService_GetCashFlow_OperatingVsFinancing(t *testing.T) {
-	tdb := SetupTestDB(t)
+	tdb := setupTestDB(t)
 	defer tdb.cleanup(t)
 
 	ctx := context.Background()

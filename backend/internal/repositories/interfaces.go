@@ -41,15 +41,6 @@ type InvestmentRepository interface {
 	FindOpenInvestmentForStake(ctx context.Context, asset, account, horizon string) (*models.Investment, error)
 	UpdateWithStake(ctx context.Context, investment *models.Investment, stakeTx *models.Transaction) error
 	UpdateWithUnstake(ctx context.Context, investment *models.Investment, unstakeTx *models.Transaction) error
-
-	// Vault-specific methods
-	CreateVault(ctx context.Context, vault *models.Investment) error
-	GetVaultByName(ctx context.Context, name string) (*models.Investment, error)
-	GetActiveVaults(ctx context.Context) ([]*models.Investment, error)
-	GetVaultsByStatus(ctx context.Context, status models.VaultStatus) ([]*models.Investment, error)
-	UpdateVault(ctx context.Context, vault *models.Investment) error
-	DeleteVault(ctx context.Context, id string) error
-	DeleteTransactionsByInvestmentID(ctx context.Context, investmentID string) error
 }
 
 // ReportingRepository defines the interface for reporting data operations

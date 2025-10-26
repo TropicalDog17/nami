@@ -509,10 +509,6 @@ func (s *actionService) performRepayBorrow(ctx context.Context, req *models.Acti
 		return nil, fmt.Errorf("missing required params: account, asset, amount")
 	}
 
-	// Get FX rates from parameters if provided
-	fxToUSD, _ := getDecimal(p, "fx_to_usd")
-	fxToVND, _ := getDecimal(p, "fx_to_vnd")
-
 	tx := &models.Transaction{
 		Date:       date,
 		Type:       "repay_borrow",
@@ -520,9 +516,9 @@ func (s *actionService) performRepayBorrow(ctx context.Context, req *models.Acti
 		Account:    account,
 		Quantity:   amount,
 		PriceLocal: decimal.NewFromInt(1),
-		// Use provided FX rates or leave zero for auto-population
-		FXToUSD: fxToUSD,
-		FXToVND: fxToVND,
+		// Leave FX zero so TransactionService can auto-populate correct rates
+		FXToUSD: decimal.Zero,
+		FXToVND: decimal.Zero,
 	}
 	if counterparty != "" {
 		tx.Counterparty = &counterparty

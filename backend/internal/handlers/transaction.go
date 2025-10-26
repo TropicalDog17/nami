@@ -39,16 +39,11 @@ func validateQuickExpense(tx *models.Transaction) error {
 		if tx.Quantity.IsZero() {
 			tx.Quantity = decimal.NewFromInt(1)
 		}
-
-		// Only set FX defaults for regular expenses, not for repay_borrow
-		// repay_borrow actions use FX zero and expect TransactionService to auto-populate
-		if tx.FXToUSD.IsZero() && tx.Type != "repay_borrow" {
+		if tx.FXToUSD.IsZero() {
 			tx.FXToUSD = decimal.NewFromInt(1)
 		}
-		if tx.FXToVND.IsZero() && tx.Type != "repay_borrow" {
-			// Don't hardcode FX rates - let TransactionService.populateFXRates fetch real rates from provider
-			// Previously: tx.FXToVND = decimal.NewFromInt(24000) - This was incorrect
-			// Remove hardcoded rates to allow real FX rates to be used
+		if tx.FXToVND.IsZero() {
+			tx.FXToVND = decimal.NewFromInt(24000)
 		}
 	}
 

@@ -1,15 +1,12 @@
 import React, { useState, useEffect, useMemo } from 'react';
 
 import TransactionForm from '../components/TransactionForm';
-import SmartActionModal from '../components/SmartActionModal';
-import FastInvestmentButton from '../components/FastInvestmentButton';
 import DataTable from '../components/ui/DataTable';
 import DateInput from '../components/ui/DateInput';
 import ComboBox from '../components/ui/ComboBox';
 import { useToast } from '../components/ui/Toast';
 import { useApp } from '../context/AppContext';
 import { useBackendStatus } from '../context/BackendStatusContext';
-import { useSmartTransaction } from '../hooks/useSmartTransaction';
 import {
   transactionApi,
   adminApi,
@@ -52,8 +49,7 @@ const TransactionPage: React.FC = () => {
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<any>(null);
   const [showForm, setShowForm] = useState<boolean>(false);
-  const [showSmartAction, setShowSmartAction] = useState<boolean>(false);
-  const [initialActionType, setInitialActionType] = useState<'expense' | 'income' | 'transfer' | 'repay_borrow'>('expense');
+  const [showQuickAdd, setShowQuickAdd] = useState<boolean>(false);
   const [editingTransaction, setEditingTransaction] =
     useState<Transaction | null>(null);
   const [filters, setFilters] = useState<Record<string, any>>({});
@@ -61,7 +57,6 @@ const TransactionPage: React.FC = () => {
   const [bulkRefreshing, setBulkRefreshing] = useState<boolean>(false);
   const [busyRowIds, setBusyRowIds] = useState<Set<IdType>>(new Set<IdType>());
   const [selectedIds, setSelectedIds] = useState<Set<IdType>>(new Set<IdType>());
-  const { createTransaction, isLoading: isTransactionLoading, error: transactionError } = useSmartTransaction();
 
   const todayStr = useMemo(() => new Date().toISOString().split('T')[0], []);
 
@@ -80,52 +75,19 @@ const TransactionPage: React.FC = () => {
     loadMasterData();
   }, [filters]);
 
-  // Global keyboard shortcut: 'n' to toggle Smart Action Modal
+  // Global keyboard shortcut: 'n' to toggle Quick Add
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if ((e.target as HTMLElement)?.tagName === 'INPUT' || (e.target as HTMLElement)?.tagName === 'TEXTAREA' || (e.target as HTMLElement)?.getAttribute('contenteditable') === 'true') {
         return; // don't hijack typing in inputs
       }
       if (e.key.toLowerCase() === 'n') {
-        setShowSmartAction((s) => !s);
+        setShowQuickAdd((s) => !s);
       }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
   }, []);
-
-  // Smart Action handlers
-  const handleSmartActionSubmit = async (transactionData: any) => {
-    try {
-      const newTransaction = await createTransaction(transactionData);
-      setTransactions((prev) => [newTransaction as any, ...prev]);
-      showSuccessToast(`${transactionData.type} created successfully!`);
-    } catch (error: any) {
-      showErrorToast(error.message || 'Failed to create transaction');
-    }
-  };
-
-  // Vault handlers
-  const handleVaultUpdated = async () => {
-    // Reload transactions to show the new vault transactions
-    await loadTransactions();
-    showSuccessToast('Vault updated successfully!');
-  };
-
-  const openExpenseModal = () => {
-    setInitialActionType('expense');
-    setShowSmartAction(true);
-  };
-
-  const openIncomeModal = () => {
-    setInitialActionType('income');
-    setShowSmartAction(true);
-  };
-
-  const openTransferModal = () => {
-    setInitialActionType('transfer');
-    setShowSmartAction(true);
-  };
 
   // Removed legacy spot_buy auto price hook (Quick Add handles simple flows)
 
@@ -873,39 +835,21 @@ const TransactionPage: React.FC = () => {
             </p>
           </div>
           <div className="flex space-x-3">
-            {/* Smart Action Buttons */}
-            <div className="flex space-x-2">
-              <button
-                onClick={openExpenseModal}
-                className="inline-flex items-center px-3 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-red-500 hover:bg-red-600 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2"
-                title="Add Expense (press N)"
+            <button
+              onClick={() => setShowQuickAdd((s) => !s)}
+              className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+              title="Quick Add (press N)"
+            >
+              <svg
+                className="w-4 h-4 mr-2"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
               >
-                <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" />
-                </svg>
-                Expense
-              </button>
-              <button
-                onClick={openIncomeModal}
-                className="inline-flex items-center px-3 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-green-500 hover:bg-green-600 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2"
-                title="Add Income"
-              >
-                <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                Income
-              </button>
-              <button
-                onClick={openTransferModal}
-                className="inline-flex items-center px-3 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-500 hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
-                title="Transfer Money"
-              >
-                <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
-                </svg>
-                Transfer
-              </button>
-            </div>
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+              Quick Add
+            </button>
             <button
               onClick={() => setShowForm(true)}
               className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
@@ -997,13 +941,12 @@ const TransactionPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Smart Action Modal */}
-      <SmartActionModal
-        isOpen={showSmartAction}
-        onClose={() => setShowSmartAction(false)}
-        onSubmit={handleSmartActionSubmit}
-        initialType={initialActionType}
-      />
+      {/* Quick Add Panel */}
+      {showQuickAdd && (
+        <div className="mb-6">
+          <QuickAddForm onCreated={(tx) => setTransactions((prev) => [tx as any, ...prev])} />
+        </div>
+      )}
 
       {/* Currency Toggle */}
       <div className="mb-6">
@@ -1093,9 +1036,6 @@ const TransactionPage: React.FC = () => {
           }
         }}
       />
-
-      {/* Vault Manager Button */}
-      <FastInvestmentButton onVaultUpdated={handleVaultUpdated} />
     </div>
   );
 };

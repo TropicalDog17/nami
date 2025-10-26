@@ -7,6 +7,7 @@ import DataTable from '../components/ui/DataTable';
 import DateInput from '../components/ui/DateInput';
 import ComboBox from '../components/ui/ComboBox';
 import { format } from 'date-fns';
+import { formatCurrency, formatPercentage, formatPnL, getDecimalPlaces } from '../utils/currencyFormatter';
 
 type Vault = {
   id: string;
@@ -203,16 +204,7 @@ const VaultDetailPage: React.FC = () => {
     }
   };
 
-  const formatCurrency = (value: string | number, currency: string = 'USD'): string => {
-    const num = typeof value === 'string' ? parseFloat(value) : value;
-    if (isNaN(num)) return '0';
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency,
-    }).format(num);
-  };
-
-  const formatNumber = (value: string | number, decimals: number = 2): string => {
+  const formatVaultNumber = (value: string | number, decimals: number = 2): string => {
     const num = typeof value === 'string' ? parseFloat(value) : value;
     if (isNaN(num)) return '0';
     return num.toLocaleString(undefined, { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
@@ -234,20 +226,29 @@ const VaultDetailPage: React.FC = () => {
       title: 'Total Deposited',
       type: 'number',
       decimals: 8,
-      render: (value: any) => formatNumber(value, 8),
+      render: (value: any, column: any, row: any) => {
+        const qty = parseFloat(value || '0');
+        const decimals = getDecimalPlaces(row.asset || 'USD');
+        return formatVaultNumber(qty, decimals);
+      },
     },
     {
       key: 'deposit_cost',
       title: 'Total Cost',
       type: 'currency',
       currency: 'USD',
+      render: (value: any) => formatCurrency(parseFloat(value || '0'), 'USD'),
     },
     {
       key: 'remaining_qty',
       title: 'Remaining Balance',
       type: 'number',
       decimals: 8,
-      render: (value: any) => formatNumber(value, 8),
+      render: (value: any, column: any, row: any) => {
+        const qty = parseFloat(value || '0');
+        const decimals = getDecimalPlaces(row.asset || 'USD');
+        return formatVaultNumber(qty, decimals);
+      },
     },
     {
       key: 'pnl',
@@ -256,9 +257,8 @@ const VaultDetailPage: React.FC = () => {
       currency: 'USD',
       render: (value: any, _column: any, row: any) => {
         const pnl = parseFloat(value || '0');
-        const isPositive = pnl > 0;
-        const className = isPositive ? 'text-green-700' : 'text-red-700';
-        return <span className={className}>{formatCurrency(pnl)}</span>;
+        const formattedPnL = formatPnL(pnl, 'USD');
+        return <span className={formattedPnL.colorClass}>{formattedPnL.sign}{formattedPnL.value}</span>;
       },
     },
     {
@@ -269,8 +269,8 @@ const VaultDetailPage: React.FC = () => {
       render: (value: any, _column: any, row: any) => {
         const roi = parseFloat(value || '0');
         const isPositive = roi > 0;
-        const className = isPositive ? 'text-green-700' : 'text-red-700';
-        return <span className={className}>{formatNumber(roi, 2)}%</span>;
+        const className = isPositive ? 'text-green-700' : roi < 0 ? 'text-red-700' : 'text-gray-700';
+        return <span className={className}>{formatPercentage(roi / 100, 2)}</span>;
       },
     },
     {
@@ -372,7 +372,7 @@ const VaultDetailPage: React.FC = () => {
   }
 
   return (
-    <div className="px-4 py-6 sm:px-0">
+    <div className="px-4 py-6 sm:px-0" data-testid="vault-detail-page">
       {/* Header */}
       <div className="mb-6">
         <button
@@ -394,13 +394,13 @@ const VaultDetailPage: React.FC = () => {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         <div className="bg-white p-4 rounded-lg border border-gray-200">
           <h3 className="text-sm font-medium text-gray-500 mb-2">Total Deposited</h3>
-          <p className="text-2xl font-bold text-gray-900">{formatNumber(vault.deposit_qty, 8)} {vault.asset}</p>
+          <p className="text-2xl font-bold text-gray-900">{formatVaultNumber(vault.deposit_qty, 8)} {vault.asset}</p>
           <p className="text-sm text-gray-600">{formatCurrency(vault.deposit_cost)}</p>
         </div>
 
         <div className="bg-white p-4 rounded-lg border border-gray-200">
           <h3 className="text-sm font-medium text-gray-500 mb-2">Current Balance</h3>
-          <p className="text-2xl font-bold text-gray-900">{formatNumber(vault.remaining_qty, 8)} {vault.asset}</p>
+          <p className="text-2xl font-bold text-gray-900">{formatVaultNumber(vault.remaining_qty, 8)} {vault.asset}</p>
           <p className="text-sm text-gray-600">Remaining in vault</p>
         </div>
 
@@ -409,7 +409,7 @@ const VaultDetailPage: React.FC = () => {
           <p className={`text-2xl font-bold ${parseFloat(vault.pnl) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
             {formatCurrency(vault.pnl)}
           </p>
-          <p className="text-sm text-gray-600">{formatNumber(vault.pnl_percent, 2)}% ROI</p>
+          <p className="text-sm text-gray-600">{formatVaultNumber(vault.pnl_percent, 2)}% ROI</p>
         </div>
 
         <div className="bg-white p-4 rounded-lg border border-gray-200">
@@ -548,6 +548,7 @@ const VaultDetailPage: React.FC = () => {
           emptyMessage="No vault data available"
           editable={false}
           selectableRows={false}
+          data-testid="vault-details-table"
         />
       </div>
 
@@ -562,6 +563,7 @@ const VaultDetailPage: React.FC = () => {
           emptyMessage="No transactions found for this vault"
           editable={false}
           selectableRows={false}
+          data-testid="vault-transactions-table"
         />
       </div>
     </div>

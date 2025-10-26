@@ -1,15 +1,28 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { Link, useLocation } from 'react-router-dom'
 
 import { useBackendStatus } from '../context/BackendStatusContext'
+// import FloatingAddButton from './FloatingAddButton';
+// import QuickExpenseModal from './QuickExpenseModal';
+// import { useQuickExpense } from '../hooks/useQuickExpense';
 
 const Layout = ({ children }) => {
   const location = useLocation()
   const { isOnline } = useBackendStatus()
+  // const [isQuickExpenseOpen, setIsQuickExpenseOpen] = useState(false);
+  // const { createExpense, isLoading, error } = useQuickExpense();
+
+  // const handleQuickExpenseSubmit = async (expenseData: any) => {
+  //   try {
+  //     await createExpense(expenseData);
+  //     // Optionally show success message or refresh data
+  //   } catch (error) {
+  //     // Handle error (could be shown in modal)
+  //   }
+  // };
 
   const navigation = [
     { name: 'Transactions', href: '/', current: location.pathname === '/' },
-    { name: 'Vaults', href: '/vaults', current: location.pathname === '/vaults' || location.pathname.startsWith('/vault/') },
     { name: 'Admin', href: '/admin', current: location.pathname === '/admin' },
     { name: 'Credit Cards', href: '/credit', current: location.pathname === '/credit' },
     { name: 'Reports', href: '/reports', current: location.pathname === '/reports' },
@@ -47,6 +60,18 @@ const Layout = ({ children }) => {
       <main className="mx-auto max-w-7xl py-6 sm:px-6 lg:px-8" style={{ display: 'block', visibility: 'visible', opacity: 1, height: 'auto' }}>
         {children}
       </main>
+
+      {/* Add floating button - only show on non-transaction pages */}
+      {/* {!location.pathname.includes('/transactions') && (
+        <FloatingAddButton onClick={() => setIsQuickExpenseOpen(true)} />
+      )} */}
+
+      {/* Quick Expense Modal */}
+      {/* <QuickExpenseModal
+        isOpen={isQuickExpenseOpen}
+        onClose={() => setIsQuickExpenseOpen(false)}
+        onSubmit={handleQuickExpenseSubmit}
+      /> */}
     </div>
   )
 }

@@ -1,4 +1,5 @@
 import React from 'react';
+import { formatCurrency, formatPercentage } from '../../utils/currencyFormatter';
 
 interface AssetData {
   [key: string]: {
@@ -25,10 +26,11 @@ const AssetAllocationChart: React.FC<AssetAllocationChartProps> = ({
   const assets = Object.entries(data.by_asset || {})
     .map(([asset, info]) => ({
       asset,
-      value: currency === 'USD' ? info.value_usd || 0 : info.value_vnd || 0,
-      percentage: parseFloat(info.percentage) || 0,
-      quantity: info.quantity,
+      value: currency === 'USD' ? (info.value_usd || 0) : (info.value_vnd || 0),
+      percentage: parseFloat(info.percentage?.toString() || '0') || 0,
+      quantity: info.quantity || 0,
     }))
+    .filter(asset => asset.value > 0) // Only show assets with value
     .sort((a, b) => b.value - a.value);
 
   const totalValue =
@@ -41,6 +43,26 @@ const AssetAllocationChart: React.FC<AssetAllocationChartProps> = ({
     return 'bg-gray-400';
   };
 
+  // Helper function to get quantity decimal places based on asset type
+  const getQuantityDecimals = (asset: string): number => {
+    const cryptoAssets = ['BTC', 'ETH', 'USDT', 'USDC', 'BNB', 'ADA', 'DOT', 'SOL', 'MATIC'];
+    return cryptoAssets.includes(asset.toUpperCase()) ? 8 : 4;
+  };
+
+  if (assets.length === 0) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h3 className="text-lg font-medium text-gray-900">Asset Allocation</h3>
+          <p className="text-sm text-gray-500">Portfolio diversification by asset</p>
+        </div>
+        <div className="bg-gray-50 p-6 rounded-lg border border-gray-200">
+          <p className="text-center text-gray-500">No assets to display</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       {/* Title */}
@@ -52,27 +74,25 @@ const AssetAllocationChart: React.FC<AssetAllocationChartProps> = ({
       </div>
 
       {/* Total Portfolio Value */}
-      <div className="bg-gradient-to-r from-blue-50 to-indigo-50 p-6 rounded-lg border border-blue-200">
+      <div className="bg-gradient-to-r from-blue-50 to-indigo-50 p-6 rounded-lg border border-blue-200" data-testid="total-portfolio-value">
         <div className="text-center">
           <p className="text-sm font-medium text-blue-800 mb-2">
             Total Portfolio Value
           </p>
           <p className="text-4xl font-bold text-blue-900">
-            {currency === 'USD'
-              ? `$${totalValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-              : `₫${totalValue.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`}
+            {formatCurrency(totalValue, currency)}
           </p>
         </div>
       </div>
 
       {/* Horizontal Bar Chart */}
-      <div className="bg-white p-6 rounded-lg border border-gray-200">
+      <div className="bg-white p-6 rounded-lg border border-gray-200" data-testid="asset-breakdown">
         <h4 className="text-md font-medium text-gray-900 mb-4">
           Allocation Breakdown
         </h4>
         <div className="space-y-3">
           {assets.map((asset, index) => (
-            <div key={asset.asset} className="space-y-2">
+            <div key={asset.asset} className="space-y-2" data-testid={`asset-${asset.asset}`}>
               <div className="flex justify-between items-center">
                 <div className="flex items-center space-x-3">
                   <div
@@ -82,17 +102,19 @@ const AssetAllocationChart: React.FC<AssetAllocationChartProps> = ({
                     {asset.asset}
                   </span>
                   <span className="text-sm text-gray-500">
-                    {asset.quantity.toLocaleString()}
+                    {formatCurrency(asset.quantity, asset.asset, {
+                      symbolPosition: 'after',
+                      decimalPlaces: getQuantityDecimals(asset.asset),
+                      symbol: ''
+                    })}
                   </span>
                 </div>
                 <div className="text-right">
                   <span className="font-medium text-gray-900">
-                    {currency === 'USD'
-                      ? `$${asset.value.toLocaleString()}`
-                      : `₫${asset.value.toLocaleString()}`}
+                    {formatCurrency(asset.value, currency)}
                   </span>
                   <span className="ml-2 text-sm text-gray-500">
-                    ({asset.percentage.toFixed(1)}%)
+                    ({formatPercentage(asset.percentage / 100, 1)})
                   </span>
                 </div>
               </div>
@@ -101,7 +123,7 @@ const AssetAllocationChart: React.FC<AssetAllocationChartProps> = ({
               <div className="w-full bg-gray-200 rounded-full h-2">
                 <div
                   className={`h-2 rounded-full ${getAllocationColor(asset.percentage)}`}
-                  style={{ width: `${asset.percentage}%` }}
+                  style={{ width: `${Math.min(asset.percentage, 100)}%` }}
                 />
               </div>
             </div>
@@ -124,7 +146,7 @@ const AssetAllocationChart: React.FC<AssetAllocationChartProps> = ({
         <div className="text-center p-4 bg-gray-50 rounded-lg">
           <p className="text-sm text-gray-600">Largest %</p>
           <p className="text-xl font-bold text-gray-900">
-            {assets[0]?.percentage.toFixed(1) || 0}%
+            {formatPercentage((assets[0]?.percentage || 0) / 100, 1)}
           </p>
         </div>
         <div className="text-center p-4 bg-gray-50 rounded-lg">
