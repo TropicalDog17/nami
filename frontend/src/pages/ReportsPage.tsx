@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import DateInput from '../components/ui/DateInput';
+import { useNavigate } from 'react-router-dom';
 
-import DataTable from '../components/ui/DataTable';
-import { useBackendStatus } from '../context/BackendStatusContext';
-import { reportsApi, investmentsApi } from '../services/api';
-import { HoldingsChart, PnLChart, SpendingChart, DailySpendingChart } from '../components/reports/Charts';
 import AssetAllocationChart from '../components/reports/AssetAllocationChart';
 import CashFlowChart from '../components/reports/CashFlowChart';
+import { HoldingsChart, PnLChart, SpendingChart, DailySpendingChart } from '../components/reports/Charts';
+import DataTable from '../components/ui/DataTable';
+import DateInput from '../components/ui/DateInput';
+import { useBackendStatus } from '../context/BackendStatusContext';
+import { reportsApi, investmentsApi } from '../services/api';
 
 const ReportsPage = () => {
   const [activeTab, setActiveTab] = useState('holdings');
@@ -14,6 +15,8 @@ const ReportsPage = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<any>({});
+
+  const navigate = useNavigate();
 
   // Filters
   const [filters, setFilters] = useState({
@@ -35,6 +38,7 @@ const ReportsPage = () => {
     { id: 'holdings', name: 'Holdings', icon: '📊' },
     { id: 'allocation', name: 'Asset Allocation', icon: '🥧' },
     { id: 'investments', name: 'Investments', icon: '💼' },
+    { id: 'vaults', name: 'Vaults', icon: '🏦' },
     { id: 'cashflow', name: 'Cash Flow', icon: '💸' },
     { id: 'spending', name: 'Spending', icon: '🛒' },
     { id: 'pnl', name: 'P&L', icon: '📈' },
@@ -62,6 +66,9 @@ const ReportsPage = () => {
           break;
         case 'investments':
           result = await investmentsApi.list({ is_open: true });
+          break;
+        case 'vaults':
+          result = await investmentsApi.list({});
           break;
         case 'cashflow':
           result = await reportsApi.cashFlow({
@@ -217,7 +224,7 @@ const ReportsPage = () => {
   };
 
   const renderHoldingsTable = () => {
-    const holdings = (data as any).holdings || [];
+    const holdings = (data).holdings || [];
 
     // Display all holdings and convert values to the selected currency
     const displayHoldings = Array.isArray(holdings) ? holdings : [];
@@ -271,7 +278,7 @@ const ReportsPage = () => {
   };
 
   const renderAssetAllocation = () => {
-    const allocationData = (data as any).allocation || {};
+    const allocationData = (data).allocation || {};
 
     if (
       !allocationData.by_asset ||
@@ -288,7 +295,7 @@ const ReportsPage = () => {
   };
 
   const renderInvestmentsTable = () => {
-    const investments = (data as any).investments || [];
+    const investments = (data).investments || [];
     const displayInvestments = Array.isArray(investments) ? investments : [];
 
     const columns = [
@@ -434,8 +441,88 @@ const ReportsPage = () => {
     );
   };
 
+  const renderVaultsTable = () => {
+    const vaults = (data).vaults || [];
+    const displayVaults = Array.isArray(vaults) ? vaults : [];
+
+    const columns = [
+      { key: 'asset', title: 'Asset' },
+      { key: 'account', title: 'Account' },
+      {
+        key: 'deposit_qty',
+        title: 'Deposited Qty',
+        type: 'number',
+        render: (value: any) => parseFloat(value || 0).toLocaleString(),
+      },
+      {
+        key: 'remaining_qty',
+        title: 'Remaining Qty',
+        type: 'number',
+        render: (value: any) => parseFloat(value || 0).toLocaleString(),
+      },
+      {
+        key: 'deposit_cost',
+        title: 'Total Cost (USD)',
+        type: 'currency',
+        currency: 'USD',
+        render: (value: any) => {
+          const num = parseFloat(value || 0);
+          return `$${num.toLocaleString()}`;
+        },
+      },
+      {
+        key: 'pnl',
+        title: 'Realized P&L (USD)',
+        type: 'currency',
+        currency: 'USD',
+        render: (value: any) => {
+          const num = parseFloat(value || 0);
+          const formatted = `$${Math.abs(num).toLocaleString()}`;
+          return num >= 0 ? `+${formatted}` : `-${formatted}`;
+        },
+      },
+      {
+        key: 'pnl_percent',
+        title: 'ROI %',
+        type: 'number',
+        render: (value: any) => {
+          const roi = parseFloat(value || 0);
+          const pct = (roi / 100).toFixed(2);
+          const sign = roi >= 0 ? '+' : '';
+          return `${sign}${pct}%`;
+        },
+      },
+      {
+        key: 'is_open',
+        title: 'Status',
+        render: (value: any) => (
+          <span className={`px-2 py-1 text-xs rounded-full ${value ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}`}>
+            {value ? 'Open' : 'Closed'}
+          </span>
+        ),
+      },
+      { key: 'created_at', title: 'Created', type: 'date' },
+    ];
+
+    return (
+      <DataTable
+        data={displayVaults}
+        columns={columns}
+        loading={loading}
+        emptyMessage="No vaults found"
+        filterable={true}
+        sortable={true}
+        pagination={true}
+        onRowClick={(row: any) => {
+          const id = row.id;
+          if (id) navigate(`/vault/${encodeURIComponent(String(id))}`);
+        }}
+      />
+    );
+  };
+
   const renderCashFlowTable = () => {
-    const cashFlow: any = (data as any).cashflow || {};
+    const cashFlow: any = (data).cashflow || {};
     type CashRow = {
       type: string;
       inflow_usd?: number | string;
@@ -448,17 +535,17 @@ const ReportsPage = () => {
       [key: string]: any;
     };
     let allRows: CashRow[] = Object.entries(cashFlow.by_type || {}).map(
-      ([type, d]: [string, any]) => ({ type, ...(d as any) })
+      ([type, d]: [string, any]) => ({ type, ...(d) })
     );
 
     // For borrow, inflow is tracked in amount fields not cashflow; override so the row reflects real inflow
     allRows = allRows.map((row) => {
       if (row.type === 'borrow') {
         const inflowUSD = parseFloat(
-          String((cashFlow as any).financing_in_usd ?? 0)
+          String((cashFlow).financing_in_usd ?? 0)
         );
         const inflowVND = parseFloat(
-          String((cashFlow as any).financing_in_vnd ?? 0)
+          String((cashFlow).financing_in_vnd ?? 0)
         );
         return {
           ...row,
@@ -731,7 +818,7 @@ const ReportsPage = () => {
   };
 
   const renderSpendingTable = () => {
-    const spending: any = (data as any).spending || {};
+    const spending: any = (data).spending || {};
     const byTag = Object.entries(spending.by_tag || {}).map(
       ([tag, data]: [string, any]) => ({
         tag,
@@ -811,7 +898,7 @@ const ReportsPage = () => {
   };
 
   const renderPnLTable = () => {
-    const pnl: any = (data as any).pnl || {};
+    const pnl: any = (data).pnl || {};
     const realizedPnL = parseFloat(currency === 'USD' ? (pnl.realized_pnl_usd || 0) : (pnl.realized_pnl_vnd || 0));
     // Unrealized removed
     const totalPnL = parseFloat(currency === 'USD' ? (pnl.total_pnl_usd || 0) : (pnl.total_pnl_vnd || 0));
@@ -819,8 +906,8 @@ const ReportsPage = () => {
     // Prepare by-asset breakdown (USD values as backend provides USD per asset)
     const byAssetEntries = Object.entries(pnl.by_asset || {}).map(([asset, rec]: [string, any]) => ({
       asset,
-      realized_usd: parseFloat((rec as any).realized_pnl_usd || 0),
-      total_usd: parseFloat((rec as any).total_pnl_usd || 0),
+      realized_usd: parseFloat((rec).realized_pnl_usd || 0),
+      total_usd: parseFloat((rec).total_pnl_usd || 0),
     })) as Array<{ asset: string; realized_usd: number; total_usd: number }>;
     const assetColumns = [
       { key: 'asset', title: 'Asset' },
@@ -988,6 +1075,8 @@ const ReportsPage = () => {
         return renderAssetAllocation();
       case 'investments':
         return renderInvestmentsTable();
+      case 'vaults':
+        return renderVaultsTable();
       case 'cashflow':
         return renderCashFlowTable();
       case 'spending':

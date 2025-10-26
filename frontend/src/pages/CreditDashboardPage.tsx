@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { useBackendStatus } from '../context/BackendStatusContext';
-import { reportsApi, transactionApi } from '../services/api';
+
 import CreditCardSummary from '../components/CreditCardSummary';
 import DataTable from '../components/ui/DataTable';
+import { useBackendStatus } from '../context/BackendStatusContext';
+import { reportsApi, transactionApi } from '../services/api';
 
 interface CreditCard {
   id: string;
@@ -17,11 +18,11 @@ interface CreditCard {
 
 const CreditDashboardPage: React.FC = () => {
   const [creditCards, setCreditCards] = useState<CreditCard[]>([]);
-  const [creditTransactions, setCreditTransactions] = useState([]);
+  const [creditTransactions, setCreditTransactions] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const { isOnline } = useBackendStatus();
+  const { isOnline } = useBackendStatus() as { isOnline: boolean };
 
   useEffect(() => {
     if (isOnline) {
@@ -35,10 +36,13 @@ const CreditDashboardPage: React.FC = () => {
 
     try {
       // Fetch credit transactions (expenses and repay_borrow)
-      const [expensesResponse, repayResponse] = await Promise.all([
+      const [expensesResponseRaw, repayResponseRaw] = await Promise.all([
         transactionApi.list({ type: 'expense', limit: 100 }),
         transactionApi.list({ type: 'repay_borrow', limit: 100 })
       ]);
+
+      const expensesResponse = (expensesResponseRaw as any[] | null) ?? [];
+      const repayResponse = (repayResponseRaw as any[] | null) ?? [];
 
       // Process transactions to group by credit card account
       const creditAccounts = processCreditAccounts(expensesResponse, repayResponse);
@@ -48,7 +52,7 @@ const CreditDashboardPage: React.FC = () => {
       const allCreditTransactions = [
         ...expensesResponse,
         ...repayResponse
-      ].sort((a, b) => new Date(b.date) - new Date(a.date)).slice(0, 50);
+      ].sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, 50);
 
       setCreditTransactions(allCreditTransactions);
     } catch (err: any) {
@@ -57,6 +61,7 @@ const CreditDashboardPage: React.FC = () => {
       setLoading(false);
     }
   };
+
 
   const processCreditAccounts = (expenses: any[], repayments: any[]): CreditCard[] => {
     // Group transactions by account and calculate balances
@@ -149,6 +154,7 @@ const CreditDashboardPage: React.FC = () => {
         <p className="mt-1 text-sm text-gray-500">
           Track your credit card spending, balances, and payments.
         </p>
+        
       </div>
 
       {/* Credit Summary Cards */}

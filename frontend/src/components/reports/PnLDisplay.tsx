@@ -1,4 +1,5 @@
 import React from 'react';
+
 import { formatCurrency, formatPercentage, formatPnL } from '../../utils/currencyFormatter';
 
 interface PnLData {

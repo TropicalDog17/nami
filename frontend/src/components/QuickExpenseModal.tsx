@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+
 import { useApp } from '../context/AppContext';
 
 interface QuickExpenseModalProps {
@@ -12,7 +13,7 @@ const QuickExpenseModal: React.FC<QuickExpenseModalProps> = ({
   onClose,
   onSubmit
 }) => {
-  const { accounts, assets, tags, actions } = useApp();
+  const { accounts, assets, tags } = useApp();
   const today = new Date().toISOString().split('T')[0];
 
   const [formData, setFormData] = useState({
@@ -21,7 +22,8 @@ const QuickExpenseModal: React.FC<QuickExpenseModalProps> = ({
     category: '',
     note: '',
     account: '',
-    asset: 'USD'
+    asset: 'USD',
+    payee: ''
   });
 
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -31,8 +33,15 @@ const QuickExpenseModal: React.FC<QuickExpenseModalProps> = ({
     setIsSubmitting(true);
 
     try {
+      const toISODateTime = (value?: string) => {
+        if (!value) return new Date().toISOString();
+        const s = String(value);
+        if (s.includes('T')) return s;
+        const timePart = new Date().toISOString().split('T')[1];
+        return `${s}T${timePart}`;
+      };
       const transactionData = {
-        date: formData.date,
+        date: toISODateTime(formData.date),
         type: 'expense',
         quantity: '1',
         price_local: formData.amount,
@@ -41,6 +50,7 @@ const QuickExpenseModal: React.FC<QuickExpenseModalProps> = ({
         account: formData.account || 'Default',
         tag: formData.category,
         note: formData.note,
+        counterparty: formData.payee || undefined,
         fx_to_usd: '1.0',
         fx_to_vnd: '24000.0',
         amount_usd: formData.amount,
@@ -78,52 +88,97 @@ const QuickExpenseModal: React.FC<QuickExpenseModalProps> = ({
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Amount
-            </label>
-            <input
-              type="number"
-              step="0.01"
-              value={formData.amount}
-              onChange={(e) => handleInputChange('amount', e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="0.00"
-              required
-            />
-          </div>
+          <div className="grid grid-cols-1 gap-3">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Date</label>
+              <input
+                type="date"
+                value={formData.date}
+                onChange={(e) => handleInputChange('date', e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                required
+              />
+            </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Category
-            </label>
-            <select
-              value={formData.category}
-              onChange={(e) => handleInputChange('category', e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              required
-            >
-              <option value="">Select category</option>
-              {tags?.filter(t => t.is_active).map(tag => (
-                <option key={tag.name} value={tag.name}>
-                  {tag.name}
-                </option>
-              ))}
-            </select>
-          </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Amount</label>
+              <input
+                type="number"
+                step="0.01"
+                value={formData.amount}
+                onChange={(e) => handleInputChange('amount', e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="0.00"
+                required
+              />
+            </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Note
-            </label>
-            <input
-              type="text"
-              value={formData.note}
-              onChange={(e) => handleInputChange('note', e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="What was this expense for?"
-              required
-            />
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Paying Account</label>
+              <select
+                value={formData.account}
+                onChange={(e) => handleInputChange('account', e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                required
+              >
+                <option value="">Select account</option>
+                {accounts?.filter((a: any) => a.is_active).map((a: any) => (
+                  <option key={a.name} value={a.name}>{a.name}</option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Currency</label>
+              <select
+                value={formData.asset}
+                onChange={(e) => handleInputChange('asset', e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                {(assets || []).filter((as: any) => as.is_active).map((as: any) => (
+                  <option key={as.symbol} value={as.symbol}>{as.symbol}{as.name ? ` - ${as.name}` : ''}</option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
+              <select
+                value={formData.category}
+                onChange={(e) => handleInputChange('category', e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                required
+              >
+                <option value="">Select category</option>
+                {tags?.filter(t => t.is_active).map(tag => (
+                  <option key={tag.name} value={tag.name}>
+                    {tag.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Payee</label>
+              <input
+                type="text"
+                value={formData.payee}
+                onChange={(e) => handleInputChange('payee', e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="Merchant or recipient"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Note</label>
+              <input
+                type="text"
+                value={formData.note}
+                onChange={(e) => handleInputChange('note', e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="What was this expense for?"
+              />
+            </div>
           </div>
 
           <div className="flex space-x-3">
@@ -136,7 +191,7 @@ const QuickExpenseModal: React.FC<QuickExpenseModalProps> = ({
             </button>
             <button
               type="submit"
-              disabled={isSubmitting || !formData.amount}
+              disabled={isSubmitting || !formData.amount || !formData.account}
               className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50"
             >
               {isSubmitting ? 'Saving...' : 'Save Expense'}

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
-import DateInput from './ui/DateInput'
-import ComboBox from './ui/ComboBox'
 
+import ComboBox from './ui/ComboBox'
+import DateInput from './ui/DateInput'
 import { useApp } from '../context/AppContext'
 
 const TransactionForm = ({ transaction = null, onSubmit, onCancel }) => {

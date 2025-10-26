@@ -27,7 +27,7 @@ ChartJS.register(
 
 // Holdings Pie Chart
 export const HoldingsChart = ({ data, currency = 'USD' }) => {
-  if (!data || !data.by_asset) return null
+  if (!data?.by_asset) return null
 
   const assets = Object.entries(data.by_asset)
   const labels = assets.map(([asset]) => asset)
@@ -97,7 +97,7 @@ export const HoldingsChart = ({ data, currency = 'USD' }) => {
 
 // Cash Flow Bar Chart
 export const CashFlowChart = ({ data, currency = 'USD' }) => {
-  if (!data || !data.by_type) return null
+  if (!data?.by_type) return null
 
   const types = Object.entries(data.by_type)
   const labels = types.map(([type]) => type)
@@ -174,7 +174,7 @@ export const CashFlowChart = ({ data, currency = 'USD' }) => {
 
 // Spending Breakdown Chart
 export const SpendingChart = ({ data, currency = 'USD' }) => {
-  if (!data || !data.by_tag) return null
+  if (!data?.by_tag) return null
 
   const tags = Object.entries(data.by_tag)
     .sort(([, a], [, b]) => parseFloat(b.amount_usd) - parseFloat(a.amount_usd))
@@ -293,10 +293,10 @@ export const PnLChart = ({ data, currency = 'USD' }) => {
 
 // Daily Spending Line Chart
 export const DailySpendingChart = ({ data, currency = 'USD' }) => {
-  if (!data || !data.by_day) return null
+  if (!data?.by_day) return null
 
   const entries = Object.entries(data.by_day)
-    .map(([day, d]: [string, any]) => ({ day, ...(d as any) }))
+    .map(([day, d]: [string, any]) => ({ day, ...(d) }))
     .sort((a, b) => (a.day < b.day ? -1 : 1))
 
   const labels = entries.map((e) => e.day)

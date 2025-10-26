@@ -38,7 +38,9 @@
       "Bash(npm install:*)",
       "Bash(awk:*)",
       "Bash(xargs:*)",
-      "Bash(npm run build)"
+      "Bash(npm run build)",
+      "Bash(npm run lint:ts:*)",
+      "Bash(npm run lint)"
     ],
     "deny": [],
     "ask": []

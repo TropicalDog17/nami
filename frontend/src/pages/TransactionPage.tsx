@@ -1,12 +1,17 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 
+import QuickExpenseModal from '../components/QuickExpenseModal';
+import QuickIncomeModal from '../components/QuickIncomeModal';
+import QuickInvestmentModal from '../components/QuickInvestmentModal';
+import QuickVaultModal from '../components/QuickVaultModal';
 import TransactionForm from '../components/TransactionForm';
+import ComboBox from '../components/ui/ComboBox';
 import DataTable from '../components/ui/DataTable';
 import DateInput from '../components/ui/DateInput';
-import ComboBox from '../components/ui/ComboBox';
 import { useToast } from '../components/ui/Toast';
 import { useApp } from '../context/AppContext';
 import { useBackendStatus } from '../context/BackendStatusContext';
+import { useQuickCreate } from '../hooks/useQuickCreate';
 import {
   transactionApi,
   adminApi,
@@ -57,6 +62,14 @@ const TransactionPage: React.FC = () => {
   const [bulkRefreshing, setBulkRefreshing] = useState<boolean>(false);
   const [busyRowIds, setBusyRowIds] = useState<Set<IdType>>(new Set<IdType>());
   const [selectedIds, setSelectedIds] = useState<Set<IdType>>(new Set<IdType>());
+  const [isQuickExpenseOpen, setIsQuickExpenseOpen] = useState(false);
+  const [isQuickIncomeOpen, setIsQuickIncomeOpen] = useState(false);
+  const [isQuickVaultOpen, setIsQuickVaultOpen] = useState(false);
+  const [isQuickInvestmentOpen, setIsQuickInvestmentOpen] = useState(false);
+  const [isQuickMenuOpen, setIsQuickMenuOpen] = useState(false);
+  const quickMenuRef = useRef<HTMLDivElement | null>(null);
+
+  const { createExpense, createIncome, createVault, createInvestment, isLoading: isQuickLoading, error: quickError } = useQuickCreate();
 
   const todayStr = useMemo(() => new Date().toISOString().split('T')[0], []);
 
@@ -75,19 +88,31 @@ const TransactionPage: React.FC = () => {
     loadMasterData();
   }, [filters]);
 
-  // Global keyboard shortcut: 'n' to toggle Quick Add
+  // Global keyboard shortcut: 'n' to toggle Quick Add menu
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if ((e.target as HTMLElement)?.tagName === 'INPUT' || (e.target as HTMLElement)?.tagName === 'TEXTAREA' || (e.target as HTMLElement)?.getAttribute('contenteditable') === 'true') {
         return; // don't hijack typing in inputs
       }
       if (e.key.toLowerCase() === 'n') {
-        setShowQuickAdd((s) => !s);
+        setIsQuickMenuOpen((s) => !s);
       }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
   }, []);
+
+  // Click outside to close quick menu
+  useEffect(() => {
+    const onDocClick = (e: MouseEvent) => {
+      if (!isQuickMenuOpen) return;
+      if (quickMenuRef.current && !quickMenuRef.current.contains(e.target as Node)) {
+        setIsQuickMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', onDocClick);
+    return () => document.removeEventListener('mousedown', onDocClick);
+  }, [isQuickMenuOpen]);
 
   // Removed legacy spot_buy auto price hook (Quick Add handles simple flows)
 
@@ -136,6 +161,61 @@ const TransactionPage: React.FC = () => {
       actions.setError(err?.message ?? 'Unknown error');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleQuickExpenseSubmit = async (transactionData: any): Promise<void> => {
+    try {
+      await createExpense(transactionData);
+      await loadTransactions();
+      actions.setError(null);
+      showSuccessToast('Expense added');
+    } catch (e: any) {
+      const msg = e?.message ?? 'Failed to add expense';
+      actions.setError(msg);
+      showErrorToast(msg);
+      throw e;
+    }
+  };
+
+  const handleQuickIncomeSubmit = async (transactionData: any): Promise<void> => {
+    try {
+      await createIncome(transactionData);
+      await loadTransactions();
+      actions.setError(null);
+      showSuccessToast('Income added');
+    } catch (e: any) {
+      const msg = e?.message ?? 'Failed to add income';
+      actions.setError(msg);
+      showErrorToast(msg);
+      throw e;
+    }
+  };
+
+  const handleQuickVaultSubmit = async (vaultData: any): Promise<void> => {
+    try {
+      await createVault(vaultData);
+      showSuccessToast('Vault created');
+      actions.setError(null);
+    } catch (e: any) {
+      const msg = e?.message ?? 'Failed to create vault';
+      actions.setError(msg);
+      showErrorToast(msg);
+      throw e;
+    }
+  };
+
+  const handleQuickInvestmentSubmit = async (investmentData: any): Promise<void> => {
+    try {
+      await createInvestment(investmentData);
+      await loadTransactions();
+      actions.setError(null);
+      showSuccessToast('Investment recorded');
+    } catch (e: any) {
+      const msg = e?.message ?? 'Failed to record investment';
+      actions.setError(msg);
+      showErrorToast(msg);
+      throw e;
     }
   };
 
@@ -834,22 +914,37 @@ const TransactionPage: React.FC = () => {
               comprehensive reporting.
             </p>
           </div>
-          <div className="flex space-x-3">
-            <button
-              onClick={() => setShowQuickAdd((s) => !s)}
-              className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
-              title="Quick Add (press N)"
-            >
-              <svg
-                className="w-4 h-4 mr-2"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
+          <div className="flex items-center space-x-3">
+            <div className="relative" ref={quickMenuRef}>
+              <button
+                onClick={() => setIsQuickMenuOpen((s) => !s)}
+                className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+                title="Quick Add (N)"
               >
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-              </svg>
-              Quick Add
-            </button>
+                <svg
+                  className="w-4 h-4 mr-2"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                </svg>
+                Quick Add
+                <svg className="w-4 h-4 ml-2" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.173l3.71-3.942a.75.75 0 111.08 1.04l-4.243 4.5a.75.75 0 01-1.08 0l-4.243-4.5a.75.75 0 01.02-1.06z" clipRule="evenodd" />
+                </svg>
+              </button>
+              {isQuickMenuOpen && (
+                <div className="absolute right-0 mt-2 w-44 rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5 z-10">
+                  <div className="py-1">
+                    <button className="w-full text-left px-4 py-2 text-sm hover:bg-gray-50" onClick={() => { setIsQuickMenuOpen(false); setIsQuickExpenseOpen(true); }}>Expense</button>
+                    <button className="w-full text-left px-4 py-2 text-sm hover:bg-gray-50" onClick={() => { setIsQuickMenuOpen(false); setIsQuickIncomeOpen(true); }}>Income</button>
+                    <button className="w-full text-left px-4 py-2 text-sm hover:bg-gray-50" onClick={() => { setIsQuickMenuOpen(false); setIsQuickVaultOpen(true); }}>New Vault</button>
+                    <button className="w-full text-left px-4 py-2 text-sm hover:bg-gray-50" onClick={() => { setIsQuickMenuOpen(false); setIsQuickInvestmentOpen(true); }}>New Investment</button>
+                  </div>
+                </div>
+              )}
+            </div>
             <button
               onClick={() => setShowForm(true)}
               className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
@@ -942,9 +1037,10 @@ const TransactionPage: React.FC = () => {
       </div>
 
       {/* Quick Add Panel */}
-      {showQuickAdd && (
+      {/* Replace inline Quick Add panel with modals: leaving toggle available for power users */}
+      {false && showQuickAdd && (
         <div className="mb-6">
-          <QuickAddForm onCreated={(tx) => setTransactions((prev) => [tx as any, ...prev])} />
+          <QuickAddForm onCreated={(tx) => setTransactions((prev) => [tx, ...prev])} />
         </div>
       )}
 
@@ -1036,6 +1132,30 @@ const TransactionPage: React.FC = () => {
           }
         }}
       />
+
+      <QuickExpenseModal
+        isOpen={isQuickExpenseOpen}
+        onClose={() => setIsQuickExpenseOpen(false)}
+        onSubmit={handleQuickExpenseSubmit}
+      />
+      <QuickIncomeModal
+        isOpen={isQuickIncomeOpen}
+        onClose={() => setIsQuickIncomeOpen(false)}
+        onSubmit={handleQuickIncomeSubmit}
+      />
+      <QuickVaultModal
+        isOpen={isQuickVaultOpen}
+        onClose={() => setIsQuickVaultOpen(false)}
+        onSubmit={handleQuickVaultSubmit}
+      />
+      <QuickInvestmentModal
+        isOpen={isQuickInvestmentOpen}
+        onClose={() => setIsQuickInvestmentOpen(false)}
+        onSubmit={handleQuickInvestmentSubmit}
+      />
+      {quickError && (
+        <div className="mt-3 text-sm text-red-700">{quickError}</div>
+      )}
     </div>
   );
 };

@@ -402,7 +402,7 @@ const DataTable: React.FC<Props> = ({
                     type="checkbox"
                     aria-label="Select all"
                     checked={paginatedData.length > 0 && paginatedData.every((r) => selectedIds.has(r.id as any))}
-                    onChange={(e) => onToggleAll && onToggleAll(e.target.checked, paginatedData.map((r) => r.id as any))}
+                    onChange={(e) => onToggleAll?.(e.target.checked, paginatedData.map((r) => r.id as any))}
                   />
                 </th>
               )}
@@ -497,7 +497,7 @@ const DataTable: React.FC<Props> = ({
                         type="checkbox"
                         aria-label={`Select row ${String(row.id)}`}
                         checked={selectedIds.has(row.id as any)}
-                        onChange={(e) => onToggleRow && onToggleRow(row.id as any, e.target.checked)}
+                        onChange={(e) => onToggleRow?.(row.id as any, e.target.checked)}
                         onClick={(e) => e.stopPropagation()}
                       />
                     </td>

@@ -55,9 +55,7 @@ test-teardown: ## Tear down isolated test environment and clean up resources
 	@pkill -f "cmd/server/main.go" 2>/dev/null || true
 	@pkill -f "bin/nami-server" 2>/dev/null || true
 	@lsof -ti tcp:3001 | xargs kill -TERM 2>/dev/null || true
-	@pkill -f "vite" 2>/dev/null || true
-	@pkill -f "npm run dev" 2>/dev/null || true
-	@echo "✅ Test environment torn down"
+	@echo "✅ Test environment torn down and resources cleaned up"
 
 test-isolated-run: ## Run tests in isolated environment (requires test-setup first)
 	@echo "🧪 Running tests in isolated environment..."

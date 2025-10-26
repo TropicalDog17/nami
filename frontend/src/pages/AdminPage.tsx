@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
 
+import { AdminAssetsTab } from '../components/AdminAssetsTab';
 import DataTable from '../components/ui/DataTable';
 import { useApp } from '../context/AppContext';
 import { adminApi } from '../services/api';
-import { AdminAssetsTab } from '../components/AdminAssetsTab';
 
 const PopularExpenseCategories = () => {
   const { tags, actions } = useApp();

@@ -1,4 +1,5 @@
 import React from 'react';
+
 import { formatCurrency, formatPercentage } from '../../utils/currencyFormatter';
 
 interface AssetData {
