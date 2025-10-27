@@ -2,18 +2,22 @@ package integration
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/shopspring/decimal"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
 	"github.com/testcontainers/testcontainers-go/wait"
 	"github.com/tropicaldog17/nami/internal/db"
+	"github.com/tropicaldog17/nami/internal/models"
 	gormPostgres "gorm.io/driver/postgres"
 	"gorm.io/gorm"
 )
@@ -139,6 +143,72 @@ func setupTestTables(database *db.DB) error {
 		}
 	}
 	return nil
+}
+
+// Common helper functions for integration tests
+
+func makeStakeTx(date time.Time, asset, account string, qty, priceUSD float64) *models.Transaction {
+	return &models.Transaction{
+		Date:       date,
+		Type:       models.ActionStake,
+		Asset:      asset,
+		Account:    account,
+		Quantity:   decimal.NewFromFloat(qty),
+		PriceLocal: decimal.NewFromFloat(priceUSD),
+		FXToUSD:    decimal.NewFromFloat(1),
+		FXToVND:    decimal.NewFromFloat(24000),
+	}
+}
+
+func getDecimal(v interface{}) decimal.Decimal {
+	switch x := v.(type) {
+	case string:
+		if x == "" {
+			return decimal.Zero
+		}
+		if d, err := decimal.NewFromString(x); err == nil {
+			return d
+		}
+		if f, err := strconv.ParseFloat(x, 64); err == nil {
+			return decimal.NewFromFloat(f)
+		}
+		return decimal.Zero
+	case float64:
+		return decimal.NewFromFloat(x)
+	case json.Number:
+		if f, err := x.Float64(); err == nil {
+			return decimal.NewFromFloat(f)
+		}
+		return decimal.Zero
+	default:
+		return decimal.Zero
+	}
+}
+
+type mockAssetPriceService struct {
+	price decimal.Decimal
+}
+
+func (m *mockAssetPriceService) GetDaily(ctx context.Context, symbol, currency string, date time.Time) (*models.AssetPrice, error) {
+	return &models.AssetPrice{
+		Symbol:   symbol,
+		Currency: currency,
+		Price:    m.price,
+		Date:     date,
+	}, nil
+}
+
+func (m *mockAssetPriceService) GetRange(ctx context.Context, symbol, currency string, start, end time.Time) ([]*models.AssetPrice, error) {
+	res := make([]*models.AssetPrice, 0)
+	for d := start; !d.After(end); d = d.AddDate(0, 0, 1) {
+		res = append(res, &models.AssetPrice{
+			Symbol:   symbol,
+			Currency: currency,
+			Price:    m.price,
+			Date:     d,
+		})
+	}
+	return res, nil
 }
 
 // Shared pointer helpers for tests

@@ -84,6 +84,7 @@ func main() {
 	fxHandler := handlers.NewFXHandler(fxHistoryService)
 	priceHandler := handlers.NewPriceHandler(assetPriceService, priceMappingResolver, fxHistoryService)
 	investmentHandler := handlers.NewInvestmentHandler(investmentService)
+	vaultHandler := handlers.NewVaultHandler(investmentService)
 
 	// Setup HTTP server
 	mux := http.NewServeMux()
@@ -199,6 +200,16 @@ func main() {
 
 	// Asset prices
 	mux.HandleFunc("/api/prices/daily", priceHandler.HandleDaily)
+
+	// Vault endpoints (thin wrapper over investments for UX)
+	mux.HandleFunc("/api/vaults", vaultHandler.HandleVaults)
+	mux.HandleFunc("/api/vaults/", func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/api/vaults/") && len(strings.TrimPrefix(r.URL.Path, "/api/vaults/")) > 0 {
+			vaultHandler.HandleVault(w, r)
+			return
+		}
+		vaultHandler.HandleVaults(w, r)
+	})
 
 	// Crypto tokens management
 	mux.HandleFunc("/api/admin/crypto/tokens", adminHandler.HandleCryptoTokens)

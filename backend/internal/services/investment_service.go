@@ -208,6 +208,11 @@ func (s *investmentService) ProcessStake(ctx context.Context, stakeTx *models.Tr
 	var investment *models.Investment
 	var err error
 
+	// Ensure derived amounts (AmountUSD, AmountLocal, DeltaQty, CashFlow) are computed
+	if err := stakeTx.PreSave(); err != nil {
+		return nil, fmt.Errorf("invalid stake transaction: %w", err)
+	}
+
 	if stakeTx.InvestmentID != nil {
 		// Try to find investment by InvestmentID first
 		investment, err = s.investmentRepo.GetByID(ctx, *stakeTx.InvestmentID)
@@ -265,6 +270,11 @@ func (s *investmentService) ProcessUnstake(ctx context.Context, unstakeTx *model
 	if unstakeTx.InvestmentID == nil {
 		return nil, fmt.Errorf("investment ID is required for unstake transactions")
 	}
+
+	// Ensure derived amounts (AmountUSD, AmountLocal, DeltaQty, CashFlow) are computed
+	if err := unstakeTx.PreSave(); err != nil {
+		return nil, fmt.Errorf("invalid unstake transaction: %w", err)
+	}
 	// Try to find investment by InvestmentID first
 	investment, err = s.investmentRepo.GetByID(ctx, *unstakeTx.InvestmentID)
 	if err != nil {
@@ -301,4 +311,29 @@ func (s *investmentService) GetOpenInvestmentsForStake(ctx context.Context, asse
 	}
 
 	return []*models.Investment{investment}, nil
+}
+
+// CloseInvestment marks an investment as closed and finalizes realized PnL.
+func (s *investmentService) CloseInvestment(ctx context.Context, id string) (*models.Investment, error) {
+	inv, err := s.investmentRepo.GetByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if !inv.IsOpen {
+		return inv, nil
+	}
+	// Mark closed; when closed, PnL represents realized PnL based on withdrawals
+	inv.IsOpen = false
+	now := time.Now()
+	if inv.WithdrawalDate == nil {
+		inv.WithdrawalDate = &now
+	}
+	// Recompute PnL in closed state
+	inv.UpdatePnL()
+	if err := s.investmentRepo.Update(ctx, inv); err != nil {
+		return nil, err
+	}
+	inv.RealizedPnL = inv.PnL
+	inv.RemainingQty = inv.DepositQty.Sub(inv.WithdrawalQty)
+	return inv, nil
 }

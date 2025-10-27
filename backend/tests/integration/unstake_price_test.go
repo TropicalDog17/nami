@@ -11,21 +11,6 @@ import (
 	"github.com/tropicaldog17/nami/internal/services"
 )
 
-// mockAssetPriceService implements AssetPriceService for tests
-type mockAssetPriceService struct{ price decimal.Decimal }
-
-func (m *mockAssetPriceService) GetDaily(ctx context.Context, symbol, currency string, date time.Time) (*models.AssetPrice, error) {
-	return &models.AssetPrice{Symbol: symbol, Currency: currency, Price: m.price, Date: date}, nil
-}
-
-func (m *mockAssetPriceService) GetRange(ctx context.Context, symbol, currency string, start, end time.Time) ([]*models.AssetPrice, error) {
-	res := make([]*models.AssetPrice, 0)
-	for d := start; !d.After(end); d = d.AddDate(0, 0, 1) {
-		res = append(res, &models.AssetPrice{Symbol: symbol, Currency: currency, Price: m.price, Date: d})
-	}
-	return res, nil
-}
-
 // Test that providing only amount (quantity) on unstake fetches USD price from AssetPriceService
 func TestUnstake_AmountOnly_UsesFetchedPriceAndPnL(t *testing.T) {
 	tdb := setupTestDB(t)

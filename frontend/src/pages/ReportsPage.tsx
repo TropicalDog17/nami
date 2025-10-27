@@ -230,6 +230,14 @@ const ReportsPage = () => {
     const displayHoldings = Array.isArray(holdings) ? holdings : [];
 
     const columns = [
+      {
+        key: 'vault_name',
+        title: 'Vault',
+        render: (_: any, __: any, row: any) => {
+          const horizon = row.horizon ? ` [${row.horizon}]` : '';
+          return `${row.asset} @ ${row.account}${horizon}`;
+        },
+      },
       { key: 'asset', title: 'Asset' },
       { key: 'account', title: 'Account' },
       {
@@ -487,9 +495,8 @@ const ReportsPage = () => {
         type: 'number',
         render: (value: any) => {
           const roi = parseFloat(value || 0);
-          const pct = (roi / 100).toFixed(2);
           const sign = roi >= 0 ? '+' : '';
-          return `${sign}${pct}%`;
+          return `${sign}${roi.toFixed(2)}%`;
         },
       },
       {

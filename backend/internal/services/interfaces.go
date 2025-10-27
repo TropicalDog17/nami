@@ -151,4 +151,6 @@ type InvestmentService interface {
 	ProcessStake(ctx context.Context, stakeTx *models.Transaction) (*models.Investment, error)
 	ProcessUnstake(ctx context.Context, unstakeTx *models.Transaction) (*models.Investment, error)
 	GetOpenInvestmentsForStake(ctx context.Context, asset, account, horizon string) ([]*models.Investment, error)
+	// CloseInvestment marks an investment as closed and finalizes PnL
+	CloseInvestment(ctx context.Context, id string) (*models.Investment, error)
 }
