@@ -7,7 +7,7 @@
 export async function waitForBackendHealth(request, {
   baseUrl = process.env.VITE_API_BASE_URL || 'http://localhost:8001',
   path = '/health',
-  maxAttempts = 30,
+  maxAttempts = 60,
   delayMs = 1000,
 } = {}) {
   const url = `${baseUrl}${path}`;

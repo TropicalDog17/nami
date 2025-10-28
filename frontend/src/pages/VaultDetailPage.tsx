@@ -362,10 +362,10 @@ const VaultDetailPage: React.FC = () => {
           <h1 className="text-2xl font-bold text-red-600 mb-4">Vault Not Found</h1>
           <p className="text-gray-600 mb-4">{error || 'The requested vault could not be found.'}</p>
           <button
-            onClick={() => navigate('/transactions')}
+            onClick={() => navigate('/vaults')}
             className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
           >
-            Back to Transactions
+            Back to Vaults
           </button>
         </div>
       </div>
@@ -377,10 +377,10 @@ const VaultDetailPage: React.FC = () => {
       {/* Header */}
       <div className="mb-6">
         <button
-          onClick={() => navigate('/transactions')}
+          onClick={() => navigate('/vaults')}
           className="mb-4 text-blue-600 hover:text-blue-800 flex items-center"
         >
-          ← Back to Transactions
+          ← Back to Vaults
         </button>
         <h1 className="text-3xl font-bold text-gray-900 mb-2">
           {vault.vault_name || vaultName}

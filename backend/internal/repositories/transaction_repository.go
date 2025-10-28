@@ -2,6 +2,7 @@ package repositories
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -194,7 +195,13 @@ func (r *transactionRepository) Delete(ctx context.Context, id string) error {
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		// Check for stake_unstake links and clear exit_date if found
 		var linkedDepositID string
-		if err := tx.Raw("SELECT from_tx FROM transaction_links WHERE link_type = 'stake_unstake' AND to_tx = ?", id).Scan(&linkedDepositID).Error; err == nil && linkedDepositID != "" {
+		if err := tx.Raw("SELECT from_tx FROM transaction_links WHERE link_type = 'stake_unstake' AND to_tx = ?", id).Scan(&linkedDepositID).Error; err != nil {
+			// If there's an error other than "no rows", return it
+			if !errors.Is(err, gorm.ErrRecordNotFound) {
+				return fmt.Errorf("failed to check for linked transactions: %w", err)
+			}
+		} else if linkedDepositID != "" {
+			// Clear exit_date for linked deposit
 			if err := tx.Exec("UPDATE transactions SET exit_date = NULL WHERE id = ?", linkedDepositID).Error; err != nil {
 				return fmt.Errorf("failed to clear exit_date: %w", err)
 			}

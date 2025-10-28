@@ -38,7 +38,6 @@ const ReportsPage = () => {
     { id: 'holdings', name: 'Holdings', icon: '📊' },
     { id: 'allocation', name: 'Asset Allocation', icon: '🥧' },
     { id: 'investments', name: 'Investments', icon: '💼' },
-    { id: 'vaults', name: 'Vaults', icon: '🏦' },
     { id: 'cashflow', name: 'Cash Flow', icon: '💸' },
     { id: 'spending', name: 'Spending', icon: '🛒' },
     { id: 'pnl', name: 'P&L', icon: '📈' },
@@ -66,9 +65,6 @@ const ReportsPage = () => {
           break;
         case 'investments':
           result = await investmentsApi.list({ is_open: true });
-          break;
-        case 'vaults':
-          result = await investmentsApi.list({});
           break;
         case 'cashflow':
           result = await reportsApi.cashFlow({
@@ -449,85 +445,7 @@ const ReportsPage = () => {
     );
   };
 
-  const renderVaultsTable = () => {
-    const vaults = (data).vaults || [];
-    const displayVaults = Array.isArray(vaults) ? vaults : [];
-
-    const columns = [
-      { key: 'asset', title: 'Asset' },
-      { key: 'account', title: 'Account' },
-      {
-        key: 'deposit_qty',
-        title: 'Deposited Qty',
-        type: 'number',
-        render: (value: any) => parseFloat(value || 0).toLocaleString(),
-      },
-      {
-        key: 'remaining_qty',
-        title: 'Remaining Qty',
-        type: 'number',
-        render: (value: any) => parseFloat(value || 0).toLocaleString(),
-      },
-      {
-        key: 'deposit_cost',
-        title: 'Total Cost (USD)',
-        type: 'currency',
-        currency: 'USD',
-        render: (value: any) => {
-          const num = parseFloat(value || 0);
-          return `$${num.toLocaleString()}`;
-        },
-      },
-      {
-        key: 'pnl',
-        title: 'Realized P&L (USD)',
-        type: 'currency',
-        currency: 'USD',
-        render: (value: any) => {
-          const num = parseFloat(value || 0);
-          const formatted = `$${Math.abs(num).toLocaleString()}`;
-          return num >= 0 ? `+${formatted}` : `-${formatted}`;
-        },
-      },
-      {
-        key: 'pnl_percent',
-        title: 'ROI %',
-        type: 'number',
-        render: (value: any) => {
-          const roi = parseFloat(value || 0);
-          const sign = roi >= 0 ? '+' : '';
-          return `${sign}${roi.toFixed(2)}%`;
-        },
-      },
-      {
-        key: 'is_open',
-        title: 'Status',
-        render: (value: any) => (
-          <span className={`px-2 py-1 text-xs rounded-full ${value ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}`}>
-            {value ? 'Open' : 'Closed'}
-          </span>
-        ),
-      },
-      { key: 'created_at', title: 'Created', type: 'date' },
-    ];
-
-    return (
-      <DataTable
-        data={displayVaults}
-        columns={columns}
-        loading={loading}
-        emptyMessage="No vaults found"
-        filterable={true}
-        sortable={true}
-        pagination={true}
-        onRowClick={(row: any) => {
-          const id = row.id;
-          if (id) navigate(`/vault/${encodeURIComponent(String(id))}`);
-        }}
-      />
-    );
-  };
-
+  
   const renderCashFlowTable = () => {
     const cashFlow: any = (data).cashflow || {};
     type CashRow = {
@@ -1082,8 +1000,6 @@ const ReportsPage = () => {
         return renderAssetAllocation();
       case 'investments':
         return renderInvestmentsTable();
-      case 'vaults':
-        return renderVaultsTable();
       case 'cashflow':
         return renderCashFlowTable();
       case 'spending':

@@ -159,11 +159,71 @@ func (h *VaultHandler) HandleVaults(w http.ResponseWriter, r *http.Request) {
 		return
 
 	case http.MethodPost:
-		// Accept any payload and acknowledge creation; actual investments are created via deposits
-		var payload map[string]interface{}
-		_ = json.NewDecoder(r.Body).Decode(&payload)
+		// Create a new vault via stake action
+		var body struct {
+			Asset        string  `json:"asset"`
+			Account      string  `json:"account"`
+			Horizon      *string `json:"horizon,omitempty"`
+			DepositQty   float64 `json:"depositQty"`
+			DepositCost  float64 `json:"depositCost"`
+			Date         string  `json:"date"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			http.Error(w, "Invalid JSON: "+err.Error(), http.StatusBadRequest)
+			return
+		}
+		if body.Asset == "" || body.Account == "" || body.DepositQty <= 0 || body.DepositCost < 0 {
+			http.Error(w, "asset, account, depositQty (>0), and depositCost (>=0) are required", http.StatusBadRequest)
+			return
+		}
+
+		// Parse date
+		var depositDate time.Time
+		if body.Date != "" {
+			if parsed, err := time.Parse("2006-01-02", body.Date); err == nil {
+				depositDate = parsed
+			} else {
+				http.Error(w, "Invalid date format, use YYYY-MM-DD", http.StatusBadRequest)
+				return
+			}
+		} else {
+			depositDate = time.Now()
+		}
+
+		// Create stake transaction
+		qty := decimal.NewFromFloat(body.DepositQty)
+		unitPriceLocal := decimal.NewFromFloat(0)
+		if body.DepositQty > 0 {
+			unitPriceLocal = decimal.NewFromFloat(body.DepositCost).Div(decimal.NewFromFloat(body.DepositQty))
+		}
+
+		stakeTx := &models.Transaction{
+			Date:         depositDate,
+			Type:         models.ActionStake,
+			Asset:        body.Asset,
+			Account:      body.Account,
+			Quantity:     qty,
+			PriceLocal:   unitPriceLocal,
+			FXToUSD:      decimal.NewFromInt(1),
+			FXToVND:      decimal.NewFromInt(1),
+			Horizon:      body.Horizon,
+		}
+		if err := stakeTx.PreSave(); err != nil {
+			http.Error(w, "Invalid stake transaction: "+err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		// Create investment via stake
+		created, err := h.investmentService.ProcessStake(r.Context(), stakeTx)
+		if err != nil {
+			http.Error(w, "Failed to create vault: "+err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		created.RealizedPnL = created.PnL
+		created.RemainingQty = created.DepositQty.Sub(created.WithdrawalQty)
 		w.WriteHeader(http.StatusCreated)
-		json.NewEncoder(w).Encode(map[string]interface{}{"ok": true})
+		json.NewEncoder(w).Encode(mapInvestmentToVaultDTO(created))
 		return
 
 	default:

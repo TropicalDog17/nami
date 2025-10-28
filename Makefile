@@ -26,7 +26,6 @@ install: ## Install all dependencies (Go modules and Node packages)
 
 deps: install ## Alias for install
 
-.PHONY: test-isolated-run
 # Testing targets
 test: VAULT_E2E=1
 test: test-integration test-isolated ## Run integration tests and isolated frontend smoke
@@ -40,12 +39,17 @@ test-unit: ## Run Go unit tests
 	@cd backend && go test -v ./... -short
 
 # Isolated test environment (separate from main app)
-test-isolated: test-teardown test-setup test-isolated-run test-teardown ## Run tests in isolated environment
+test-isolated: test-teardown test-isolated-run test-setup ## Run tests in isolated environment
 
 test-setup: ## Set up isolated test environment (ports 3001/8001, database 5434)
 	@echo "🚀 Setting up isolated test environment..."
 	@./scripts/setup-test-env.sh
 	@echo "✅ Test environment ready (ports: frontend=3001, backend=8001, db=5434)"
+
+test-isolated-run: ## Run the isolated e2e tests
+	@echo "🧪 Running isolated e2e tests..."
+	@cd frontend && npm run test:e2e:isolated
+	@echo "✅ Isolated e2e tests completed"
 
 test-teardown: ## Tear down isolated test environment and clean up resources
 	@echo "🧹 Tearing down isolated test environment..."
@@ -57,25 +61,6 @@ test-teardown: ## Tear down isolated test environment and clean up resources
 	@lsof -ti tcp:3001 | xargs kill -TERM 2>/dev/null || true
 	@echo "✅ Test environment torn down and resources cleaned up"
 
-test-isolated-run: ## Run tests in isolated environment (requires test-setup first)
-	@echo "🧪 Running tests in isolated environment..."
-	@echo "🗄️  Running DB migrations for isolated DB..." && \
-	cd backend/migrations && DB_HOST=localhost DB_PORT=5434 DB_NAME=nami_test DB_USER=nami_test_user DB_PASSWORD=nami_test_password DB_SSL_MODE=disable go run migrate.go && \
-	cd ../.. && \
-	cd backend && SERVER_PORT=8001 DB_HOST=localhost DB_PORT=5434 DB_NAME=nami_test DB_USER=nami_test_user DB_PASSWORD=nami_test_password DB_SSL_MODE=disable go run cmd/server/main.go > /tmp/test-backend.log 2>&1 & \
-	sleep 1 && \
-	( \
-	  echo "⏳ Waiting for backend to be ready..."; \
-	  for i in $$(seq 1 60); do \
-	    if curl -sSf http://localhost:8001/health >/dev/null 2>&1; then \
-	      echo "✅ Backend ready"; \
-	      break; \
-	    fi; \
-	    sleep 1; \
-	  done \
-	) && \
-	cd frontend && PORT=3001 VITE_API_BASE_URL=http://localhost:8001 npm run test:e2e:isolated && \
-	cd .. && make test-teardown
 
 # Building targets
 build: build-backend build-frontend ## Build all components
@@ -179,24 +164,6 @@ swagger: ## Generate Swagger docs (OpenAPI) under backend/docs
 	@echo "📝 Generating Swagger docs..."
 	@cd backend && "$(shell go env GOPATH)/bin/swag" init -g cmd/server/main.go -o docs --parseDependency --parseInternal
 	@echo "✅ Swagger docs generated at backend/docs"
-
-# Cleanup targets
-clean: clean-build clean-test-results ## Clean build artifacts and test results
-
-clean-build: ## Clean build artifacts
-	@echo "🧹 Cleaning build artifacts..."
-	@rm -rf bin/
-	@cd frontend && npm run clean 2>/dev/null || true
-	@echo "✅ Build artifacts cleaned"
-
-clean-test-results: ## Clean test results and cache
-	@echo "🧹 Cleaning test results..."
-	@rm -rf test-results/
-	@cd backend && go clean -testcache
-	@cd frontend && rm -rf test-results/ playwright-report/
-	@echo "✅ Test results cleaned"
-
-
 # CI/CD targets
 ci: deps fmt lint test ## Run full CI pipeline (deps, format, lint, test)
 

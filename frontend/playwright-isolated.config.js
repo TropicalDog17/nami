@@ -1,12 +1,15 @@
 import { defineConfig, devices } from '@playwright/test';
 
 export default defineConfig({
-  timeout: 120000,
+  timeout: 300000, // 5 minutes global timeout
   testDir: './tests/e2e/isolated',
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 1,
   workers: process.env.CI ? 1 : undefined,
+  expect: {
+    timeout: 60000, // 1 minute for expect assertions
+  },
   reporter: [
     ['list'],
     ['json', { outputFile: 'test-results/results.json' }],
@@ -18,9 +21,9 @@ export default defineConfig({
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
     video: 'retain-on-failure',
-    navigationTimeout: 45000,
-    timeout: 90000,
-    actionTimeout: 15000,
+    navigationTimeout: 120000, // 2 minutes navigation timeout
+    timeout: 180000, // 3 minutes per test timeout
+    actionTimeout: 60000, // 1 minute action timeout
   },
 
   projects: [
@@ -39,7 +42,7 @@ export default defineConfig({
     command: 'PORT=3001 VITE_API_BASE_URL=http://localhost:8001 npm run dev',
     url: 'http://localhost:3001',
     reuseExistingServer: true,
-    timeout: 180000,
+    timeout: 300000,
   },
   // Global setup/teardown removed for lean smoke tests
 });

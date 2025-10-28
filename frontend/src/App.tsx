@@ -11,6 +11,7 @@ import CreditDashboardPage from './pages/CreditDashboardPage'
 import ReportsPage from './pages/ReportsPage'
 import TransactionPage from './pages/TransactionPage'
 import VaultDetailPage from './pages/VaultDetailPage'
+import VaultsPage from './pages/VaultsPage'
 
 function App() {
   return (
@@ -26,6 +27,7 @@ function App() {
                   <Route path="/admin" element={<AdminPage />} />
                   <Route path="/credit" element={<CreditDashboardPage />} />
                   <Route path="/reports" element={<ReportsPage />} />
+                  <Route path="/vaults" element={<VaultsPage />} />
                   <Route path="/vault/:vaultName" element={<VaultDetailPage />} />
                 </Routes>
               </Layout>

@@ -408,9 +408,6 @@ const AdminPage = () => {
         </nav>
       </div>
 
-      {/* Quick Expense Categories */}
-      <PopularExpenseCategories />
-
       {/* Content */}
       {activeTab === 'assets' ? (
         <AdminAssetsTab />

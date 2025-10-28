@@ -23,6 +23,7 @@ const Layout = ({ children }) => {
 
   const navigation = [
     { name: 'Transactions', href: '/', current: location.pathname === '/' },
+    { name: 'Vaults', href: '/vaults', current: location.pathname === '/vaults' || location.pathname.startsWith('/vault/') },
     { name: 'Admin', href: '/admin', current: location.pathname === '/admin' },
     { name: 'Credit Cards', href: '/credit', current: location.pathname === '/credit' },
     { name: 'Reports', href: '/reports', current: location.pathname === '/reports' },

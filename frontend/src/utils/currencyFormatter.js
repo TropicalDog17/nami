@@ -82,7 +82,14 @@ function formatNumber(value, decimalPlaces, thousandsSeparator, decimalSeparator
     return '0';
   }
 
-  const fixedValue = value.toFixed(decimalPlaces);
+  // Convert to number if it's a string
+  const numValue = typeof value === 'string' ? parseFloat(value) : value;
+
+  if (isNaN(numValue)) {
+    return '0';
+  }
+
+  const fixedValue = numValue.toFixed(decimalPlaces);
   const [integerPart, decimalPart] = fixedValue.split('.');
 
   // Add thousands separator
@@ -112,16 +119,19 @@ export function formatCurrency(value, currency = 'USD', options = {}) {
     ...options,
   };
 
+  // Convert to number if it's a string
+  const numValue = typeof value === 'string' ? parseFloat(value) : value;
+
   const formattedNumber = formatNumber(
-    value,
+    numValue,
     finalConfig.decimalPlaces,
     finalConfig.thousandsSeparator,
     finalConfig.decimalSeparator
   );
 
   // Handle negative values
-  const isNegative = value < 0;
-  const absoluteValue = isNegative ? -value : value;
+  const isNegative = numValue < 0;
+  const absoluteValue = isNegative ? -numValue : numValue;
   const formattedAbsoluteNumber = formatNumber(
     absoluteValue,
     finalConfig.decimalPlaces,
@@ -167,19 +177,26 @@ export function formatLargeNumber(value, decimalPlaces = 2) {
     return '0';
   }
 
-  const absValue = Math.abs(value);
+  // Convert to number if it's a string
+  const numValue = typeof value === 'string' ? parseFloat(value) : value;
 
-  if (absValue >= 1e12) {
-    return `${(value / 1e12).toFixed(decimalPlaces)}T`;
-  } else if (absValue >= 1e9) {
-    return `${(value / 1e9).toFixed(decimalPlaces)}B`;
-  } else if (absValue >= 1e6) {
-    return `${(value / 1e6).toFixed(decimalPlaces)}M`;
-  } else if (absValue >= 1e3) {
-    return `${(value / 1e3).toFixed(decimalPlaces)}K`;
+  if (isNaN(numValue)) {
+    return '0';
   }
 
-  return value.toFixed(decimalPlaces);
+  const absValue = Math.abs(numValue);
+
+  if (absValue >= 1e12) {
+    return `${(numValue / 1e12).toFixed(decimalPlaces)}T`;
+  } else if (absValue >= 1e9) {
+    return `${(numValue / 1e9).toFixed(decimalPlaces)}B`;
+  } else if (absValue >= 1e6) {
+    return `${(numValue / 1e6).toFixed(decimalPlaces)}M`;
+  } else if (absValue >= 1e3) {
+    return `${(numValue / 1e3).toFixed(decimalPlaces)}K`;
+  }
+
+  return numValue.toFixed(decimalPlaces);
 }
 
 /**
@@ -193,14 +210,21 @@ export function formatCrypto(value, symbol = 'BTC') {
     return '0';
   }
 
+  // Convert to number if it's a string
+  const numValue = typeof value === 'string' ? parseFloat(value) : value;
+
+  if (isNaN(numValue)) {
+    return '0';
+  }
+
   const cryptoConfig = CURRENCY_CONFIG[symbol.toUpperCase()];
   if (!cryptoConfig) {
     // Default to 8 decimal places for unknown crypto
-    return `${value.toFixed(8)} ${symbol}`;
+    return `${numValue.toFixed(8)} ${symbol}`;
   }
 
   const formattedNumber = formatNumber(
-    value,
+    numValue,
     cryptoConfig.decimalPlaces,
     cryptoConfig.thousandsSeparator,
     cryptoConfig.decimalSeparator
