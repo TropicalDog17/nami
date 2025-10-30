@@ -219,11 +219,12 @@ const DataTable: React.FC<Props> = ({
 
   // Format cell value
   const formatCellValue = (value: any, column: Column, row: Row) => {
-    if (value === null || value === undefined) return '-';
-
+    // Always prefer custom renderers, even when value is null/undefined
     if (column.render) {
       return column.render(value, column, row);
     }
+
+    if (value === null || value === undefined) return '-';
 
     if (column.type === 'datetime') {
       return new Date(value).toLocaleString();

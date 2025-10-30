@@ -153,4 +153,6 @@ type InvestmentService interface {
 	GetOpenInvestmentsForStake(ctx context.Context, asset, account, horizon string) ([]*models.Investment, error)
 	// CloseInvestment marks an investment as closed and finalizes PnL
 	CloseInvestment(ctx context.Context, id string) (*models.Investment, error)
+	// DeleteInvestment deletes an investment and all its related transactions
+	DeleteInvestment(ctx context.Context, id string) error
 }

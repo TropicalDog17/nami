@@ -80,4 +80,35 @@ test.describe('Vaults Page - Navigation and Click Functionality', () => {
 
     expect(pageLoaded).toBe(true);
   });
+  test('should navigate to a vault detail and gracefully handle End/Delete buttons', async ({ page }) => {
+    // This test is resilient to environments without real data; it verifies buttons do not crash the page
+    await gotoAndWait(page, '/vaults');
+    await page.waitForLoadState('domcontentloaded');
+
+    // Try clicking into first vault row if present
+    const firstRowLink = page.locator('[data-testid="vaults-table"] a').first();
+    if (await firstRowLink.isVisible().catch(() => false)) {
+      await firstRowLink.click();
+      await page.waitForLoadState('domcontentloaded');
+
+      // Optionally interact with End/Delete without failing if absent
+      const endBtn = page.getByRole('button', { name: 'End Vault' });
+      if (await endBtn.isVisible().catch(() => false)) {
+        page.on('dialog', async (d) => { await d.accept(); });
+        await endBtn.click();
+      }
+      const deleteBtn = page.getByRole('button', { name: 'Delete Vault' });
+      if (await deleteBtn.isVisible().catch(() => false)) {
+        page.on('dialog', async (d) => { await d.accept(); });
+        await deleteBtn.click();
+      }
+
+      // Ensure detail page remains visible
+      const stillVisible = await page.locator('[data-testid="vault-detail-page"]').isVisible().catch(() => true);
+      expect(stillVisible).toBe(true);
+    } else {
+      // If no data, just ensure page is stable
+      expect(await page.locator('body').isVisible()).toBe(true);
+    }
+  });
 });

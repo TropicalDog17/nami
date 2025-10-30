@@ -152,7 +152,8 @@ test.describe('Vault Detail Page - Operations', () => {
       const buttonExists = await endVaultButton.isVisible().catch(() => false);
 
       if (buttonExists) {
-        // If button exists, verify clicking it doesn't crash the page
+        // If button exists, accept confirm and verify page stays stable
+        page.on('dialog', async (d) => { await d.accept(); });
         await endVaultButton.click();
         await expect(page.locator('[data-testid="vault-detail-page"]')).toBeVisible();
       }

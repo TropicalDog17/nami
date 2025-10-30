@@ -84,6 +84,9 @@ func (r *transactionRepository) List(ctx context.Context, filter *models.Transac
 
 	// Apply filters
 	if filter != nil {
+		if filter.InvestmentID != nil && *filter.InvestmentID != "" {
+			query = query.Where("investment_id = ?", *filter.InvestmentID)
+		}
 		if filter.StartDate != nil {
 			query = query.Where("date >= ?", *filter.StartDate)
 		}
@@ -137,6 +140,9 @@ func (r *transactionRepository) GetCount(ctx context.Context, filter *models.Tra
 
 	// Apply filters (same as List method)
 	if filter != nil {
+		if filter.InvestmentID != nil && *filter.InvestmentID != "" {
+			query = query.Where("investment_id = ?", *filter.InvestmentID)
+		}
 		if filter.StartDate != nil {
 			query = query.Where("date >= ?", *filter.StartDate)
 		}

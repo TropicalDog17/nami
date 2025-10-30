@@ -161,12 +161,12 @@ func (h *VaultHandler) HandleVaults(w http.ResponseWriter, r *http.Request) {
 	case http.MethodPost:
 		// Create a new vault via stake action
 		var body struct {
-			Asset        string  `json:"asset"`
-			Account      string  `json:"account"`
-			Horizon      *string `json:"horizon,omitempty"`
-			DepositQty   float64 `json:"depositQty"`
-			DepositCost  float64 `json:"depositCost"`
-			Date         string  `json:"date"`
+			Asset       string  `json:"asset"`
+			Account     string  `json:"account"`
+			Horizon     *string `json:"horizon,omitempty"`
+			DepositQty  float64 `json:"depositQty"`
+			DepositCost float64 `json:"depositCost"`
+			Date        string  `json:"date"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			http.Error(w, "Invalid JSON: "+err.Error(), http.StatusBadRequest)
@@ -198,15 +198,15 @@ func (h *VaultHandler) HandleVaults(w http.ResponseWriter, r *http.Request) {
 		}
 
 		stakeTx := &models.Transaction{
-			Date:         depositDate,
-			Type:         models.ActionStake,
-			Asset:        body.Asset,
-			Account:      body.Account,
-			Quantity:     qty,
-			PriceLocal:   unitPriceLocal,
-			FXToUSD:      decimal.NewFromInt(1),
-			FXToVND:      decimal.NewFromInt(1),
-			Horizon:      body.Horizon,
+			Date:       depositDate,
+			Type:       models.ActionStake,
+			Asset:      body.Asset,
+			Account:    body.Account,
+			Quantity:   qty,
+			PriceLocal: unitPriceLocal,
+			FXToUSD:    decimal.NewFromInt(1),
+			FXToVND:    decimal.NewFromInt(1),
+			Horizon:    body.Horizon,
 		}
 		if err := stakeTx.PreSave(); err != nil {
 			http.Error(w, "Invalid stake transaction: "+err.Error(), http.StatusBadRequest)
@@ -280,10 +280,25 @@ func (h *VaultHandler) HandleVault(w http.ResponseWriter, r *http.Request) {
 		case "end":
 			h.handleEnd(w, r, idOrName)
 			return
+		case "delete":
+			h.handleDelete(w, r, idOrName)
+			return
 		default:
 			http.Error(w, "Unknown action", http.StatusNotFound)
 			return
 		}
+	case http.MethodDelete:
+		// Delete the vault and all related transactions
+		if action != "" {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		if err := h.investmentService.DeleteInvestment(r.Context(), idOrName); err != nil {
+			http.Error(w, "Failed to delete vault: "+err.Error(), http.StatusBadRequest)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+		return
 	default:
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -409,4 +424,12 @@ func (h *VaultHandler) handleEnd(w http.ResponseWriter, r *http.Request, id stri
 	updated.RealizedPnL = updated.PnL
 	updated.RemainingQty = updated.DepositQty.Sub(updated.WithdrawalQty)
 	json.NewEncoder(w).Encode(mapInvestmentToVaultDTO(updated))
+}
+
+func (h *VaultHandler) handleDelete(w http.ResponseWriter, r *http.Request, id string) {
+	if err := h.investmentService.DeleteInvestment(r.Context(), id); err != nil {
+		http.Error(w, "Failed to delete vault: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }

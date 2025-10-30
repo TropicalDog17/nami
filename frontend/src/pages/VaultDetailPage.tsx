@@ -205,6 +205,19 @@ const VaultDetailPage: React.FC = () => {
     }
   };
 
+  const handleDeleteVault = async () => {
+    if (!confirm('Delete this vault permanently? This cannot be undone.')) {
+      return;
+    }
+    try {
+      await vaultApi.deleteVault(vaultName!);
+      showSuccessToast('Vault deleted successfully!');
+      navigate('/vaults');
+    } catch (err: any) {
+      showErrorToast(err?.message || 'Failed to delete vault');
+    }
+  };
+
   const formatVaultNumber = (value: string | number, decimals: number = 2): string => {
     const num = typeof value === 'string' ? parseFloat(value) : value;
     if (isNaN(num)) return '0';
@@ -446,6 +459,12 @@ const VaultDetailPage: React.FC = () => {
             End Vault
           </button>
         )}
+        <button
+          onClick={handleDeleteVault}
+          className="px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700"
+        >
+          Delete Vault
+        </button>
       </div>
 
       {/* Deposit Form */}

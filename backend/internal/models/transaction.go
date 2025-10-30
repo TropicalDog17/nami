@@ -76,6 +76,8 @@ type TransactionFilter struct {
 	Accounts     []string
 	Tags         []string
 	Counterparty *string
+	// Filter by linked investment ID when provided
+	InvestmentID *string
 	Limit        int
 	Offset       int
 }

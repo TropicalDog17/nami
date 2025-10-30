@@ -337,3 +337,37 @@ func (s *investmentService) CloseInvestment(ctx context.Context, id string) (*mo
 	inv.RemainingQty = inv.DepositQty.Sub(inv.WithdrawalQty)
 	return inv, nil
 }
+
+// DeleteInvestment deletes an investment and all transactions referencing it
+func (s *investmentService) DeleteInvestment(ctx context.Context, id string) error {
+	// Ensure investment exists
+	if _, err := s.investmentRepo.GetByID(ctx, id); err != nil {
+		return err
+	}
+
+	// List all transactions linked to this investment and delete them in bulk
+	filter := &models.TransactionFilter{InvestmentID: &id}
+	txs, err := s.transactionRepo.List(ctx, filter)
+	if err != nil {
+		return fmt.Errorf("failed to list transactions for investment: %w", err)
+	}
+	if len(txs) > 0 {
+		ids := make([]string, 0, len(txs))
+		for _, t := range txs {
+			if t != nil && t.ID != "" {
+				ids = append(ids, t.ID)
+			}
+		}
+		if len(ids) > 0 {
+			if _, err := s.transactionRepo.DeleteMany(ctx, ids); err != nil {
+				return fmt.Errorf("failed to delete transactions for investment: %w", err)
+			}
+		}
+	}
+
+	// Finally delete the investment itself
+	if err := s.investmentRepo.Delete(ctx, id); err != nil {
+		return err
+	}
+	return nil
+}
