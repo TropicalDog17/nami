@@ -80,6 +80,13 @@ const VaultsPage: React.FC = () => {
     depositCost: '',
     date: format(new Date(), 'yyyy-MM-dd'),
   });
+  const [isUsdOnly, setIsUsdOnly] = useState<boolean>(false);
+  const unitCost = useMemo(() => {
+    const qty = parseFloat(createForm.depositQty || '');
+    const cost = parseFloat(createForm.depositCost || '');
+    if (!qty || !cost || qty <= 0 || cost <= 0) return null;
+    return cost / qty;
+  }, [createForm.depositQty, createForm.depositCost]);
 
   useEffect(() => {
     loadVaults();
@@ -153,10 +160,10 @@ const VaultsPage: React.FC = () => {
     try {
       // Create vault via vault API
       const vaultData = {
-        asset: createForm.asset,
+        asset: isUsdOnly ? 'USD' : createForm.asset,
         account: createForm.account,
         horizon: createForm.horizon || null,
-        depositQty: parseFloat(createForm.depositQty),
+        depositQty: isUsdOnly ? 1 : parseFloat(createForm.depositQty),
         depositCost: parseFloat(createForm.depositCost),
         date: createForm.date,
       };
@@ -173,6 +180,7 @@ const VaultsPage: React.FC = () => {
         depositCost: '',
         date: format(new Date(), 'yyyy-MM-dd'),
       });
+      setIsUsdOnly(false);
 
       await loadVaults();
     } catch (err: any) {
@@ -512,13 +520,34 @@ const VaultsPage: React.FC = () => {
       {showCreateForm && (
         <div className="bg-white p-6 rounded-lg border border-gray-200 mb-6">
           <h3 className="text-lg font-semibold mb-4">Create New Vault</h3>
+          <div className="flex items-center mb-4">
+            <label className="flex items-center text-sm text-gray-700">
+              <input
+                type="checkbox"
+                className="mr-2"
+                checked={isUsdOnly}
+                onChange={(e) => {
+                  const next = e.target.checked;
+                  setIsUsdOnly(next);
+                  setCreateForm((prev) => ({
+                    ...prev,
+                    asset: next ? 'USD' : '',
+                    depositQty: next ? '1' : '',
+                  }));
+                }}
+              />
+              USD-only mode (track by USD only; fixes Quantity = 1)
+            </label>
+          </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-4">
-            <ComboBox
-              options={assets}
-              value={createForm.asset}
-              onChange={(value) => setCreateForm({ ...createForm, asset: value })}
-              placeholder="Asset"
-            />
+            {!isUsdOnly && (
+              <ComboBox
+                options={assets}
+                value={createForm.asset}
+                onChange={(value) => setCreateForm({ ...createForm, asset: value })}
+                placeholder="Asset"
+              />
+            )}
             <ComboBox
               options={accounts}
               value={createForm.account}
@@ -531,14 +560,20 @@ const VaultsPage: React.FC = () => {
               onChange={(value) => setCreateForm({ ...createForm, horizon: value })}
               placeholder="Horizon (optional)"
             />
-            <input
-              type="number"
-              step="any"
-              placeholder="Deposit Quantity"
-              value={createForm.depositQty}
-              onChange={(e) => setCreateForm({ ...createForm, depositQty: e.target.value })}
-              className="px-3 py-2 border rounded-md"
-            />
+            {isUsdOnly ? (
+              <div className="flex items-center px-3 py-2 border rounded-md bg-gray-50 text-gray-700">
+                <span className="text-sm">Quantity fixed to 1</span>
+              </div>
+            ) : (
+              <input
+                type="number"
+                step="any"
+                placeholder="Deposit Quantity"
+                value={createForm.depositQty}
+                onChange={(e) => setCreateForm({ ...createForm, depositQty: e.target.value })}
+                className="px-3 py-2 border rounded-md"
+              />
+            )}
             <input
               type="number"
               step="any"
@@ -553,6 +588,14 @@ const VaultsPage: React.FC = () => {
               placeholder="Date"
             />
           </div>
+          {!!unitCost && !isUsdOnly && (
+            <div className="text-xs text-gray-500 mb-2">Unit cost preview: ${unitCost.toLocaleString(undefined, { maximumFractionDigits: 8 })} per unit</div>
+          )}
+          {isUsdOnly && (
+            <div className="text-xs text-gray-500 mb-4">
+              Tip: For partial exits, withdraw by percentage in the vault page; enter the USD received to realize PnL.
+            </div>
+          )}
           <div className="flex space-x-3">
             <button
               onClick={handleCreateVault}

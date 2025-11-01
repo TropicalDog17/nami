@@ -46,6 +46,9 @@ type InvestmentRepository interface {
 // ReportingRepository defines the interface for reporting data operations
 type ReportingRepository interface {
 	GetHoldings(ctx context.Context, asOf time.Time) ([]*models.Holding, error)
+    // GetOpenInvestmentHoldings returns holdings-valued view of open investments as of date
+    // Assets are labeled with suffix " (vault)" so allocation can distinguish vault exposure
+    GetOpenInvestmentHoldings(ctx context.Context, asOf time.Time) ([]*models.Holding, error)
 	GetCashFlow(ctx context.Context, period models.Period) (*models.CashFlowReport, error)
 	GetSpending(ctx context.Context, period models.Period) (*models.SpendingReport, error)
 	GetOutstandingBorrows(ctx context.Context, asOf time.Time) (map[string]map[string]decimal.Decimal, error)

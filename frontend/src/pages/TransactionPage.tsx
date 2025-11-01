@@ -3,6 +3,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import QuickExpenseModal from '../components/QuickExpenseModal';
 import QuickIncomeModal from '../components/QuickIncomeModal';
 import QuickInvestmentModal from '../components/QuickInvestmentModal';
+import QuickInitBalanceModal from '../components/QuickInitBalanceModal';
 import QuickVaultModal from '../components/QuickVaultModal';
 import TransactionForm from '../components/TransactionForm';
 import ComboBox from '../components/ui/ComboBox';
@@ -18,6 +19,7 @@ import {
   actionsApi,
   pricesApi,
   investmentsApi,
+  vaultApi,
 } from '../services/api';
 
 type IdType = string | number;
@@ -65,6 +67,7 @@ const TransactionPage: React.FC = () => {
   const [isQuickExpenseOpen, setIsQuickExpenseOpen] = useState(false);
   const [isQuickIncomeOpen, setIsQuickIncomeOpen] = useState(false);
   const [isQuickVaultOpen, setIsQuickVaultOpen] = useState(false);
+  const [isQuickInitOpen, setIsQuickInitOpen] = useState(false);
   const [isQuickInvestmentOpen, setIsQuickInvestmentOpen] = useState(false);
   const [isQuickMenuOpen, setIsQuickMenuOpen] = useState(false);
   const quickMenuRef = useRef<HTMLDivElement | null>(null);
@@ -207,12 +210,31 @@ const TransactionPage: React.FC = () => {
 
   const handleQuickInvestmentSubmit = async (investmentData: any): Promise<void> => {
     try {
-      await createInvestment(investmentData);
+      if (investmentData && investmentData.vaultId) {
+        const { vaultId, quantity, cost } = investmentData as { vaultId: string; quantity: number; cost: number };
+        await vaultApi.depositToVault(String(vaultId), { quantity, cost });
+      } else {
+        await createInvestment(investmentData);
+      }
       await loadTransactions();
       actions.setError(null);
-      showSuccessToast('Investment recorded');
+      showSuccessToast(investmentData && investmentData.vaultId ? 'Vault deposit recorded' : 'Investment recorded');
     } catch (e: any) {
-      const msg = e?.message ?? 'Failed to record investment';
+      const msg = e?.message ?? (investmentData && investmentData.vaultId ? 'Failed to record vault deposit' : 'Failed to record investment');
+      actions.setError(msg);
+      showErrorToast(msg);
+      throw e;
+    }
+  };
+
+  const handleQuickInitSubmit = async (params: any): Promise<void> => {
+    try {
+      await actionsApi.perform('init_balance', params);
+      await loadTransactions();
+      actions.setError(null);
+      showSuccessToast('Balance initialized');
+    } catch (e: any) {
+      const msg = e?.message ?? 'Failed to initialize balance';
       actions.setError(msg);
       showErrorToast(msg);
       throw e;
@@ -940,6 +962,7 @@ const TransactionPage: React.FC = () => {
                     <button className="w-full text-left px-4 py-2 text-sm hover:bg-gray-50" onClick={() => { setIsQuickMenuOpen(false); setIsQuickExpenseOpen(true); }}>Expense</button>
                     <button className="w-full text-left px-4 py-2 text-sm hover:bg-gray-50" onClick={() => { setIsQuickMenuOpen(false); setIsQuickIncomeOpen(true); }}>Income</button>
                     <button className="w-full text-left px-4 py-2 text-sm hover:bg-gray-50" onClick={() => { setIsQuickMenuOpen(false); setIsQuickVaultOpen(true); }}>New Vault</button>
+                    <button className="w-full text-left px-4 py-2 text-sm hover:bg-gray-50" onClick={() => { setIsQuickMenuOpen(false); setIsQuickInitOpen(true); }}>Init Balance</button>
                     <button className="w-full text-left px-4 py-2 text-sm hover:bg-gray-50" onClick={() => { setIsQuickMenuOpen(false); setIsQuickInvestmentOpen(true); }}>New Investment</button>
                   </div>
                 </div>
@@ -1152,6 +1175,11 @@ const TransactionPage: React.FC = () => {
         isOpen={isQuickInvestmentOpen}
         onClose={() => setIsQuickInvestmentOpen(false)}
         onSubmit={handleQuickInvestmentSubmit}
+      />
+      <QuickInitBalanceModal
+        isOpen={isQuickInitOpen}
+        onClose={() => setIsQuickInitOpen(false)}
+        onSubmit={handleQuickInitSubmit}
       />
       {quickError && (
         <div className="mt-3 text-sm text-red-700">{quickError}</div>

@@ -93,6 +93,7 @@ const VaultDetailPage: React.FC = () => {
     value: '',
     targetAccount: '',
   });
+  const [withdrawPercent, setWithdrawPercent] = useState<string>('');
 
   useEffect(() => {
     if (vaultName) {
@@ -141,8 +142,8 @@ const VaultDetailPage: React.FC = () => {
   };
 
   const handleDeposit = async () => {
-    if (!depositForm.quantity || !depositForm.cost || !depositForm.sourceAccount) {
-      showErrorToast('Please fill in all deposit fields');
+    if (!depositForm.quantity || !depositForm.cost) {
+      showErrorToast('Please enter quantity and cost');
       return;
     }
 
@@ -150,7 +151,7 @@ const VaultDetailPage: React.FC = () => {
       await vaultApi.depositToVault(vaultName!, {
         quantity: parseFloat(depositForm.quantity),
         cost: parseFloat(depositForm.cost),
-        sourceAccount: depositForm.sourceAccount,
+        ...(depositForm.sourceAccount ? { sourceAccount: depositForm.sourceAccount } : {}),
       });
 
       showSuccessToast('Deposit successful!');
@@ -166,8 +167,8 @@ const VaultDetailPage: React.FC = () => {
   };
 
   const handleWithdraw = async () => {
-    if (!withdrawForm.quantity || !withdrawForm.value || !withdrawForm.targetAccount) {
-      showErrorToast('Please fill in all withdrawal fields');
+    if (!withdrawForm.quantity || !withdrawForm.value) {
+      showErrorToast('Please enter quantity and value');
       return;
     }
 
@@ -175,7 +176,7 @@ const VaultDetailPage: React.FC = () => {
       await vaultApi.withdrawFromVault(vaultName!, {
         quantity: parseFloat(withdrawForm.quantity),
         value: parseFloat(withdrawForm.value),
-        targetAccount: withdrawForm.targetAccount,
+        ...(withdrawForm.targetAccount ? { targetAccount: withdrawForm.targetAccount } : {}),
       });
 
       showSuccessToast('Withdrawal successful!');
@@ -358,6 +359,27 @@ const VaultDetailPage: React.FC = () => {
     },
   ];
 
+  const isUsdOnlyVault = useMemo(() => {
+    return (vault?.asset || '').toUpperCase() === 'USD';
+  }, [vault]);
+
+  useEffect(() => {
+    // When opening deposit form for USD vault, default qty to 1
+    if (isUsdOnlyVault && showDepositForm) {
+      setDepositForm((s) => ({ ...s, quantity: s.quantity || '1' }));
+    }
+  }, [isUsdOnlyVault, showDepositForm]);
+
+  const onChangeWithdrawPercent = (val: string) => {
+    setWithdrawPercent(val);
+    const pct = parseFloat(val || '');
+    const rem = parseFloat(vault?.remaining_qty || '0');
+    if (!isNaN(pct) && !isNaN(rem)) {
+      const qty = Math.max(0, Math.min(100, pct)) / 100 * rem;
+      setWithdrawForm((s) => ({ ...s, quantity: String(qty) }));
+    }
+  };
+
   if (loading) {
     return (
       <div className="px-4 py-6 sm:px-0">
@@ -472,14 +494,18 @@ const VaultDetailPage: React.FC = () => {
         <div className="bg-white p-4 rounded-lg border border-gray-200 mb-6">
           <h3 className="text-lg font-semibold mb-4">Deposit to Vault</h3>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-            <input
-              type="number"
-              step="any"
-              placeholder="Quantity"
-              value={depositForm.quantity}
-              onChange={(e) => setDepositForm({ ...depositForm, quantity: e.target.value })}
-              className="px-3 py-2 border rounded-md"
-            />
+            {isUsdOnlyVault ? (
+              <div className="px-3 py-2 border rounded-md bg-gray-50 text-gray-700 flex items-center">Quantity fixed to 1</div>
+            ) : (
+              <input
+                type="number"
+                step="any"
+                placeholder="Quantity"
+                value={depositForm.quantity}
+                onChange={(e) => setDepositForm({ ...depositForm, quantity: e.target.value })}
+                className="px-3 py-2 border rounded-md"
+              />
+            )}
             <input
               type="number"
               step="any"
@@ -492,7 +518,7 @@ const VaultDetailPage: React.FC = () => {
               options={accounts}
               value={depositForm.sourceAccount}
               onChange={(value) => setDepositForm({ ...depositForm, sourceAccount: value })}
-              placeholder="Source Account"
+              placeholder="Source Account (optional)"
             />
           </div>
           <div className="flex space-x-3">
@@ -517,14 +543,35 @@ const VaultDetailPage: React.FC = () => {
         <div className="bg-white p-4 rounded-lg border border-gray-200 mb-6">
           <h3 className="text-lg font-semibold mb-4">Withdraw from Vault</h3>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-            <input
-              type="number"
-              step="any"
-              placeholder="Quantity"
-              value={withdrawForm.quantity}
-              onChange={(e) => setWithdrawForm({ ...withdrawForm, quantity: e.target.value })}
-              className="px-3 py-2 border rounded-md"
-            />
+            {isUsdOnlyVault ? (
+              <>
+                <input
+                  type="number"
+                  step="any"
+                  placeholder="Withdraw % of remaining"
+                  value={withdrawPercent}
+                  onChange={(e) => onChangeWithdrawPercent(e.target.value)}
+                  className="px-3 py-2 border rounded-md"
+                />
+                <input
+                  type="number"
+                  step="any"
+                  placeholder="Quantity (auto)"
+                  value={withdrawForm.quantity}
+                  readOnly
+                  className="px-3 py-2 border rounded-md bg-gray-50"
+                />
+              </>
+            ) : (
+              <input
+                type="number"
+                step="any"
+                placeholder="Quantity"
+                value={withdrawForm.quantity}
+                onChange={(e) => setWithdrawForm({ ...withdrawForm, quantity: e.target.value })}
+                className="px-3 py-2 border rounded-md"
+              />
+            )}
             <input
               type="number"
               step="any"
@@ -537,7 +584,7 @@ const VaultDetailPage: React.FC = () => {
               options={accounts}
               value={withdrawForm.targetAccount}
               onChange={(value) => setWithdrawForm({ ...withdrawForm, targetAccount: value })}
-              placeholder="Target Account"
+              placeholder="Target Account (optional)"
             />
           </div>
           <div className="flex space-x-3">

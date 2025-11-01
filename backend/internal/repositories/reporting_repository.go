@@ -109,6 +109,86 @@ func (r *reportingRepository) GetHoldings(ctx context.Context, asOf time.Time) (
 	return holdings, nil
 }
 
+// GetOpenInvestmentHoldings returns a holdings-like view of open investments valued at latest prices as of date.
+// Asset labels are suffixed with " (vault)" so downstream allocation can distinguish vault exposure.
+func (r *reportingRepository) GetOpenInvestmentHoldings(ctx context.Context, asOf time.Time) ([]*models.Holding, error) {
+    sqlDB, err := r.getSQLDB()
+    if err != nil {
+        return nil, fmt.Errorf("failed to get SQL DB: %w", err)
+    }
+
+    query := `
+		WITH open_investments AS (
+			SELECT
+				asset,
+				account,
+				(deposit_qty - withdrawal_qty) AS total_quantity,
+				deposit_unit_cost
+			FROM investments
+			WHERE is_open = TRUE
+		),
+		latest_prices AS (
+			SELECT DISTINCT ON (asset)
+				asset,
+				price_local,
+				amount_usd / NULLIF(quantity, 0) AS price_usd,
+				fx_to_usd,
+				fx_to_vnd
+			FROM transactions
+			WHERE date <= $1 AND quantity > 0
+			ORDER BY asset, date DESC
+		),
+		usd_to_vnd_rate AS (
+			SELECT rate
+			FROM fx_rates
+			WHERE from_currency = 'USD' AND to_currency = 'VND'
+			AND date <= $1
+			ORDER BY date DESC
+			LIMIT 1
+		)
+		SELECT
+			(oi.asset || ' (vault)') AS asset,
+			oi.account AS account,
+			COALESCE(oi.total_quantity, 0) AS total_quantity,
+			COALESCE(COALESCE(lp.price_usd, oi.deposit_unit_cost) * oi.total_quantity, 0) AS value_usd,
+			COALESCE(COALESCE(lp.price_usd, oi.deposit_unit_cost) * oi.total_quantity * (SELECT COALESCE(rate, 25000) FROM usd_to_vnd_rate), 0) AS value_vnd,
+			$1 AS last_transaction_date
+		FROM open_investments oi
+		LEFT JOIN latest_prices lp ON oi.asset = lp.asset
+		WHERE oi.total_quantity > 0
+		ORDER BY oi.asset, oi.account`
+
+    rows, err := sqlDB.QueryContext(ctx, query, asOf)
+    if err != nil {
+        return nil, fmt.Errorf("failed to get open investment holdings: %w", err)
+    }
+    defer rows.Close()
+
+    var holdings []*models.Holding
+    for rows.Next() {
+        h := &models.Holding{}
+        if err := rows.Scan(&h.Asset, &h.Account, &h.Quantity, &h.ValueUSD, &h.ValueVND, &h.LastUpdated); err != nil {
+            return nil, fmt.Errorf("failed to scan investment holding: %w", err)
+        }
+        holdings = append(holdings, h)
+    }
+
+    // Compute percentage breakdown within this set for convenience (not strictly required here)
+    var totalUSD decimal.Decimal
+    for _, h := range holdings {
+        totalUSD = totalUSD.Add(h.ValueUSD)
+    }
+    if !totalUSD.IsZero() {
+        for _, h := range holdings {
+            if !h.ValueUSD.IsZero() {
+                h.Percentage = h.ValueUSD.Div(totalUSD).Mul(decimal.NewFromInt(100))
+            }
+        }
+    }
+
+    return holdings, nil
+}
+
 func (r *reportingRepository) GetCashFlow(ctx context.Context, period models.Period) (*models.CashFlowReport, error) {
 	sqlDB, err := r.getSQLDB()
 	if err != nil {

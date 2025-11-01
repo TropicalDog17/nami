@@ -31,7 +31,10 @@ const TransactionForm = ({ transaction = null, onSubmit, onCancel }) => {
   })
 
   const [errors, setErrors] = useState({})
-  const [isCalculating, setIsCalculating] = useState(false)
+  // Local drafts so typing doesn't commit and trigger re-renders until Enter/blur
+  const [quantityDraft, setQuantityDraft] = useState('')
+  const [priceLocalDraft, setPriceLocalDraft] = useState('')
+  // Derived amounts are computed live instead of stored in state to avoid re-renders stealing focus
 
   // Load transaction data for editing
   useEffect(() => {
@@ -58,37 +61,21 @@ const TransactionForm = ({ transaction = null, onSubmit, onCancel }) => {
         exit_date: transaction.exit_date ? new Date(transaction.exit_date).toISOString().split('T')[0] : '',
         internal_flow: Boolean(transaction.internal_flow) || false,
       })
+      setQuantityDraft(String(transaction.quantity ?? ''))
+      setPriceLocalDraft(String(transaction.price_local ?? ''))
     }
   }, [transaction])
 
-  // Calculate derived fields when relevant inputs change
-  useEffect(() => {
-    calculateDerivedFields()
-  }, [formData.quantity, formData.price_local, formData.fx_to_usd, formData.fx_to_vnd])
-
-  const calculateDerivedFields = () => {
-    if (!formData.quantity || !formData.price_local) return
-
-    setIsCalculating(true)
-
-    const quantity = parseFloat(formData.quantity) || 0
-    const priceLocal = parseFloat(formData.price_local) || 0
-    const fxToUsd = parseFloat(formData.fx_to_usd) || 1
-    const fxToVnd = parseFloat(formData.fx_to_vnd) || 24000
-
-    const amountLocal = quantity * priceLocal
-    const amountUsd = amountLocal * fxToUsd
-    const amountVnd = amountLocal * fxToVnd
-
-    setFormData(prev => ({
-      ...prev,
-      amount_local: amountLocal.toFixed(8),
-      amount_usd: amountUsd.toFixed(2),
-      amount_vnd: amountVnd.toFixed(2),
-    }))
-
-    setIsCalculating(false)
-  }
+  const normalizeNum = (s) => String(s ?? '').replace(/\s+/g, '').replace(/,/g, '.')
+  const effectiveQtyStr = quantityDraft !== '' ? quantityDraft : String(formData.quantity || '')
+  const effectivePriceStr = priceLocalDraft !== '' ? priceLocalDraft : String(formData.price_local || '')
+  const qtyNum = parseFloat(normalizeNum(effectiveQtyStr)) || 0
+  const priceLocalNum = parseFloat(normalizeNum(effectivePriceStr)) || 0
+  const fxUsdNum = parseFloat(formData.fx_to_usd) || 1
+  const fxVndNum = parseFloat(formData.fx_to_vnd) || 24000
+  const amountLocalNum = qtyNum * priceLocalNum
+  const amountUsdNum = amountLocalNum * fxUsdNum
+  const amountVndNum = amountLocalNum * fxVndNum
 
   const handleInputChange = (field, value) => {
     setFormData(prev => ({ ...prev, [field]: value }))
@@ -107,14 +94,14 @@ const TransactionForm = ({ transaction = null, onSubmit, onCancel }) => {
     if (!formData.type) newErrors.type = 'Transaction type is required'
     if (!formData.asset) newErrors.asset = 'Asset is required'
     if (!formData.account) newErrors.account = 'Account is required'
-    if (!formData.quantity) newErrors.quantity = 'Quantity is required'
-    if (!formData.price_local) newErrors.price_local = 'Price is required'
+    if (!effectiveQtyStr) newErrors.quantity = 'Quantity is required'
+    if (!effectivePriceStr) newErrors.price_local = 'Price is required'
 
     // Numeric validation
-    if (formData.quantity && isNaN(parseFloat(formData.quantity))) {
+    if (effectiveQtyStr && isNaN(parseFloat(normalizeNum(effectiveQtyStr)))) {
       newErrors.quantity = 'Quantity must be a number'
     }
-    if (formData.price_local && isNaN(parseFloat(formData.price_local))) {
+    if (effectivePriceStr && isNaN(parseFloat(normalizeNum(effectivePriceStr)))) {
       newErrors.price_local = 'Price must be a number'
     }
     if (formData.fx_to_usd && isNaN(parseFloat(formData.fx_to_usd))) {
@@ -125,10 +112,10 @@ const TransactionForm = ({ transaction = null, onSubmit, onCancel }) => {
     }
 
     // Positive number validation
-    if (formData.quantity && parseFloat(formData.quantity) <= 0) {
+    if (effectiveQtyStr && parseFloat(normalizeNum(effectiveQtyStr)) <= 0) {
       newErrors.quantity = 'Quantity must be positive'
     }
-    if (formData.price_local && parseFloat(formData.price_local) < 0) {
+    if (effectivePriceStr && parseFloat(normalizeNum(effectivePriceStr)) < 0) {
       newErrors.price_local = 'Price must be non-negative'
     }
     if (formData.fx_to_usd && parseFloat(formData.fx_to_usd) <= 0) {
@@ -162,13 +149,13 @@ const TransactionForm = ({ transaction = null, onSubmit, onCancel }) => {
       date: toISODateTime(formData.date),
       entry_date: formData.entry_date ? toISODateTime(formData.entry_date) : null,
       exit_date: formData.exit_date ? toISODateTime(formData.exit_date) : null,
-      quantity: parseFloat(formData.quantity),
-      price_local: parseFloat(formData.price_local),
-      amount_local: parseFloat(formData.amount_local),
+      quantity: parseFloat(normalizeNum(effectiveQtyStr)),
+      price_local: parseFloat(normalizeNum(effectivePriceStr)),
+      amount_local: amountLocalNum,
       fx_to_usd: parseFloat(formData.fx_to_usd),
       fx_to_vnd: parseFloat(formData.fx_to_vnd),
-      amount_usd: parseFloat(formData.amount_usd),
-      amount_vnd: parseFloat(formData.amount_vnd),
+      amount_usd: amountUsdNum,
+      amount_vnd: amountVndNum,
       fee_usd: parseFloat(formData.fee_usd) || 0,
       fee_vnd: parseFloat(formData.fee_vnd) || 0,
       counterparty: formData.counterparty || null,
@@ -308,33 +295,51 @@ const TransactionForm = ({ transaction = null, onSubmit, onCancel }) => {
         <div className="border-t border-gray-200 pt-4">
           <h4 className="text-md font-medium text-gray-900 mb-4">Amount Information</h4>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            <InputField
-              label="Quantity"
-              field="quantity"
-              type="number"
-              step="any"
-              required
-              placeholder="0.00000000"
-            />
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Quantity<span className="text-red-500 ml-1">*</span></label>
+              <input
+                inputMode="decimal"
+                pattern="[0-9]*[.,]?[0-9]*"
+                value={quantityDraft !== '' ? quantityDraft : String(formData.quantity || '')}
+                onChange={(e) => setQuantityDraft(e.target.value)}
+                onBlur={() => { if (quantityDraft !== '') { handleInputChange('quantity', normalizeNum(quantityDraft)); setQuantityDraft('') } }}
+                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); if (quantityDraft !== '') { handleInputChange('quantity', normalizeNum(quantityDraft)); setQuantityDraft('') } }} }
+                placeholder="0.00000000"
+                className={`w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${errors['quantity'] ? 'border-red-300' : 'border-gray-300'}`}
+              />
+              {errors['quantity'] && (
+                <p className="mt-1 text-sm text-red-600">{errors['quantity']}</p>
+              )}
+            </div>
 
-            <InputField
-              label="Price (Local Currency)"
-              field="price_local"
-              type="number"
-              step="any"
-              required
-              placeholder="0.00000000"
-            />
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Price (Local Currency)<span className="text-red-500 ml-1">*</span></label>
+              <input
+                inputMode="decimal"
+                pattern="[0-9]*[.,]?[0-9]*"
+                value={priceLocalDraft !== '' ? priceLocalDraft : String(formData.price_local || '')}
+                onChange={(e) => setPriceLocalDraft(e.target.value)}
+                onBlur={() => { if (priceLocalDraft !== '') { handleInputChange('price_local', normalizeNum(priceLocalDraft)); setPriceLocalDraft('') } }}
+                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); if (priceLocalDraft !== '') { handleInputChange('price_local', normalizeNum(priceLocalDraft)); setPriceLocalDraft('') } }} }
+                placeholder="0.00000000"
+                className={`w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${errors['price_local'] ? 'border-red-300' : 'border-gray-300'}`}
+              />
+              {errors['price_local'] && (
+                <p className="mt-1 text-sm text-red-600">{errors['price_local']}</p>
+              )}
+            </div>
 
-            <InputField
-              label="Amount (Local)"
-              field="amount_local"
-              type="number"
-              step="any"
-              readOnly
-              placeholder="Auto-calculated"
-              className="bg-gray-50"
-            />
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Amount (Local)</label>
+              <input
+                type="number"
+                step="any"
+                readOnly
+                value={Number.isFinite(amountLocalNum) ? amountLocalNum.toFixed(8) : ''}
+                placeholder="Auto-calculated"
+                className="w-full px-3 py-2 border rounded-md shadow-sm bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              />
+            </div>
           </div>
         </div>
 
@@ -375,25 +380,29 @@ const TransactionForm = ({ transaction = null, onSubmit, onCancel }) => {
               placeholder="24000.0"
             />
 
-            <InputField
-              label="Amount (USD)"
-              field="amount_usd"
-              type="number"
-              step="0.01"
-              readOnly
-              placeholder="Auto-calculated"
-              className="bg-gray-50"
-            />
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Amount (USD)</label>
+              <input
+                type="number"
+                step="0.01"
+                readOnly
+                value={Number.isFinite(amountUsdNum) ? amountUsdNum.toFixed(2) : ''}
+                placeholder="Auto-calculated"
+                className="w-full px-3 py-2 border rounded-md shadow-sm bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              />
+            </div>
 
-            <InputField
-              label="Amount (VND)"
-              field="amount_vnd"
-              type="number"
-              step="0.01"
-              readOnly
-              placeholder="Auto-calculated"
-              className="bg-gray-50"
-            />
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Amount (VND)</label>
+              <input
+                type="number"
+                step="0.01"
+                readOnly
+                value={Number.isFinite(amountVndNum) ? amountVndNum.toFixed(2) : ''}
+                placeholder="Auto-calculated"
+                className="w-full px-3 py-2 border rounded-md shadow-sm bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              />
+            </div>
           </div>
         </div>
 
@@ -467,10 +476,9 @@ const TransactionForm = ({ transaction = null, onSubmit, onCancel }) => {
 
           <button
             type="submit"
-            disabled={isCalculating}
-            className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
           >
-            {isCalculating ? 'Calculating...' : transaction ? 'Update Transaction' : 'Create Transaction'}
+            {transaction ? 'Update Transaction' : 'Create Transaction'}
           </button>
         </div>
       </form>
