@@ -136,6 +136,8 @@ type FXHistoryService interface {
 type AssetPriceService interface {
 	GetDaily(ctx context.Context, symbol, currency string, date time.Time) (*models.AssetPrice, error)
 	GetRange(ctx context.Context, symbol, currency string, start, end time.Time) ([]*models.AssetPrice, error)
+    // GetLatest returns the latest spot price as of now (UTC)
+    GetLatest(ctx context.Context, symbol, currency string) (*models.AssetPrice, error)
 }
 
 // InvestmentService defines the interface for investment tracking operations

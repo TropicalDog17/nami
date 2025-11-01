@@ -211,6 +211,17 @@ func (m *mockAssetPriceService) GetRange(ctx context.Context, symbol, currency s
 	return res, nil
 }
 
+func (m *mockAssetPriceService) GetLatest(ctx context.Context, symbol, currency string) (*models.AssetPrice, error) {
+	return &models.AssetPrice{
+		Symbol:    symbol,
+		Currency:  currency,
+		Price:     m.price,
+		Date:      time.Now(),
+		Source:    "coingecko",
+		CreatedAt: time.Now(),
+	}, nil
+}
+
 // Shared pointer helpers for tests
 func stringPtr(s string) *string     { return &s }
 func boolPtr(b bool) *bool           { return &b }

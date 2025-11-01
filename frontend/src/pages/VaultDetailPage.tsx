@@ -80,6 +80,7 @@ const VaultDetailPage: React.FC = () => {
   const [showDepositForm, setShowDepositForm] = useState<boolean>(false);
   const [showWithdrawForm, setShowWithdrawForm] = useState<boolean>(false);
   const [accounts, setAccounts] = useState<Option[]>([]);
+  const [manualMetrics, setManualMetrics] = useState<any | null>(null);
 
   // Form states
   const [depositForm, setDepositForm] = useState({
@@ -216,6 +217,25 @@ const VaultDetailPage: React.FC = () => {
       navigate('/vaults');
     } catch (err: any) {
       showErrorToast(err?.message || 'Failed to delete vault');
+    }
+  };
+
+  const handleManualUpdate = async () => {
+    const input = window.prompt('Enter current value (USD) for manual update');
+    if (input === null) return; // cancelled
+    const value = parseFloat(input);
+    if (isNaN(value) || value <= 0) {
+      showErrorToast('Please enter a valid positive number');
+      return;
+    }
+    try {
+      const data = await vaultApi.refresh(vaultName!, { current_value_usd: value });
+      if (data) {
+        setManualMetrics(data);
+        showSuccessToast('Manual update calculated');
+      }
+    } catch (err: any) {
+      showErrorToast(err?.message || 'Failed to run manual update');
     }
   };
 
@@ -418,7 +438,7 @@ const VaultDetailPage: React.FC = () => {
           ← Back to Vaults
         </button>
         <h1 className="text-3xl font-bold text-gray-900 mb-2">
-          {vault.vault_name || vaultName}
+          {`${vault.asset} @ ${vault.account}${vault.horizon ? ` [${vault.horizon}]` : ''}`}
         </h1>
         <p className="text-gray-600">
           Vault Details - {vault.asset} @ {vault.account}
@@ -430,13 +450,35 @@ const VaultDetailPage: React.FC = () => {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         <div className="bg-white p-4 rounded-lg border border-gray-200">
           <h3 className="text-sm font-medium text-gray-500 mb-2">Total Deposited</h3>
-          <p className="text-2xl font-bold text-gray-900">{formatVaultNumber(vault.deposit_qty, 8)} {vault.asset}</p>
+          <p className="text-2xl font-bold text-gray-900">
+            {(() => {
+              const isUSD = String(vault.asset || '').toUpperCase() === 'USD';
+              const decimals = getDecimalPlaces(vault.asset || 'USD');
+              const value = isUSD
+                ? (typeof vault.deposit_cost === 'string' ? parseFloat(vault.deposit_cost) : (vault.deposit_cost as unknown as number))
+                : (typeof vault.deposit_qty === 'string' ? parseFloat(vault.deposit_qty) : (vault.deposit_qty as unknown as number));
+              return `${formatVaultNumber(value || 0, isUSD ? 2 : decimals)} ${vault.asset}`;
+            })()}
+          </p>
           <p className="text-sm text-gray-600">{formatCurrency(vault.deposit_cost)}</p>
         </div>
 
         <div className="bg-white p-4 rounded-lg border border-gray-200">
           <h3 className="text-sm font-medium text-gray-500 mb-2">Current Balance</h3>
-          <p className="text-2xl font-bold text-gray-900">{formatVaultNumber(vault.remaining_qty, 8)} {vault.asset}</p>
+          <p className="text-2xl font-bold text-gray-900">
+            {(() => {
+              const isUSD = String(vault.asset || '').toUpperCase() === 'USD';
+              if (isUSD) {
+                const deposit = typeof vault.deposit_cost === 'string' ? parseFloat(vault.deposit_cost) : (vault.deposit_cost as unknown as number);
+                const withdrawn = typeof vault.withdrawal_value === 'string' ? parseFloat(vault.withdrawal_value) : (vault.withdrawal_value as unknown as number);
+                const remainingUSD = (deposit || 0) - (withdrawn || 0);
+                return `${formatVaultNumber(remainingUSD < 0 ? 0 : remainingUSD, 2)} USD`;
+              }
+              const decimals = getDecimalPlaces(vault.asset || 'USD');
+              const qty = typeof vault.remaining_qty === 'string' ? parseFloat(vault.remaining_qty) : (vault.remaining_qty as unknown as number);
+              return `${formatVaultNumber(qty || 0, decimals)} ${vault.asset}`;
+            })()}
+          </p>
           <p className="text-sm text-gray-600">Remaining in vault</p>
         </div>
 
@@ -486,6 +528,12 @@ const VaultDetailPage: React.FC = () => {
           className="px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700"
         >
           Delete Vault
+        </button>
+        <button
+          onClick={handleManualUpdate}
+          className="px-4 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700"
+        >
+          Manual Update
         </button>
       </div>
 
@@ -605,6 +653,44 @@ const VaultDetailPage: React.FC = () => {
       )}
 
       {/* Vault Details Table */}
+      {manualMetrics && (
+        <div className="bg-white p-4 rounded-lg border border-gray-200 mb-6">
+          <h3 className="text-lg font-semibold mb-2">Manual Update</h3>
+          <div className="text-sm text-gray-700 mb-2">
+            As of: {manualMetrics.as_of ? new Date(manualMetrics.as_of).toLocaleString() : '—'}
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+              <div className="text-gray-500 text-sm">Current Value</div>
+              <div className="font-semibold">{formatCurrency(manualMetrics.current_value_usd || 0)}</div>
+            </div>
+            <div>
+              <div className="text-gray-500 text-sm">ROI (now)</div>
+              <div className="font-semibold">{formatVaultNumber(manualMetrics.roi_realtime_percent || 0, 2)}%</div>
+            </div>
+            <div>
+              <div className="text-gray-500 text-sm">APR (now)</div>
+              <div className="font-semibold">{formatVaultNumber(manualMetrics.apr_percent || 0, 2)}%</div>
+            </div>
+          </div>
+          {manualMetrics.benchmark_asset && (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
+              <div>
+                <div className="text-gray-500 text-sm">Benchmark</div>
+                <div className="font-semibold">{manualMetrics.benchmark_asset}</div>
+              </div>
+              <div>
+                <div className="text-gray-500 text-sm">Benchmark ROI</div>
+                <div className="font-semibold">{formatVaultNumber(manualMetrics.benchmark_roi_percent || 0, 2)}%</div>
+              </div>
+              <div>
+                <div className="text-gray-500 text-sm">Benchmark APR</div>
+                <div className="font-semibold">{formatVaultNumber(manualMetrics.benchmark_apr_percent || 0, 2)}%</div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
       <div className="mb-8">
         <h2 className="text-xl font-semibold mb-4">Vault Details</h2>
         <DataTable

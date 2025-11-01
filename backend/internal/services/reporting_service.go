@@ -19,9 +19,37 @@ func NewReportingService(database *db.DB) ReportingService {
 	return &reportingService{reportRepo: repositories.NewReportingRepository(database)}
 }
 
-// GetHoldings retrieves current asset holdings with percentage calculations
+// GetHoldings retrieves current holdings and includes open investment (vault) holdings.
+// Percentages are computed over the combined set based on USD value.
 func (s *reportingService) GetHoldings(ctx context.Context, asOf time.Time) ([]*models.Holding, error) {
-	return s.reportRepo.GetHoldings(ctx, asOf)
+    // Base holdings from transactions view
+    baseHoldings, err := s.reportRepo.GetHoldings(ctx, asOf)
+    if err != nil {
+        return nil, err
+    }
+
+    // Vault holdings (open investments) labeled as "asset (vault)"
+    vaultHoldings, err := s.reportRepo.GetOpenInvestmentHoldings(ctx, asOf)
+    if err != nil {
+        return nil, err
+    }
+
+    // Combine both sets
+    all := append([]*models.Holding{}, baseHoldings...)
+    all = append(all, vaultHoldings...)
+
+    // Compute portfolio percentages
+    var totalUSD decimal.Decimal
+    for _, h := range all {
+        totalUSD = totalUSD.Add(h.ValueUSD)
+    }
+    if !totalUSD.IsZero() {
+        for _, h := range all {
+            h.Percentage = h.ValueUSD.Div(totalUSD).Mul(decimal.NewFromInt(100))
+        }
+    }
+
+    return all, nil
 }
 
 // GetCashFlow retrieves cash flow analysis for a period
@@ -61,21 +89,11 @@ func (s *reportingService) GetHoldingsByAccount(ctx context.Context, asOf time.T
 
 // GetHoldingsByAsset retrieves holdings grouped by asset
 func (s *reportingService) GetHoldingsByAsset(ctx context.Context, asOf time.Time) (map[string]*models.Holding, error) {
-    // Base holdings from transactions view
-    holdings, err := s.GetHoldings(ctx, asOf)
+    // Use combined holdings (transactions + open investments)
+    all, err := s.GetHoldings(ctx, asOf)
     if err != nil {
         return nil, err
     }
-
-    // Vault holdings (open investments) labeled as "asset (vault)"
-    vaultHoldings, err := s.reportRepo.GetOpenInvestmentHoldings(ctx, asOf)
-    if err != nil {
-        return nil, err
-    }
-
-    // Combine both sets
-    all := append([]*models.Holding{}, holdings...)
-    all = append(all, vaultHoldings...)
 
     // Aggregate by asset label
     result := make(map[string]*models.Holding)

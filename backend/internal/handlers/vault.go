@@ -17,10 +17,11 @@ import (
 // VaultHandler exposes high-level vault operations backed by investments
 type VaultHandler struct {
 	investmentService services.InvestmentService
+    priceService      services.AssetPriceService
 }
 
-func NewVaultHandler(investmentService services.InvestmentService) *VaultHandler {
-	return &VaultHandler{investmentService: investmentService}
+func NewVaultHandler(investmentService services.InvestmentService, priceService services.AssetPriceService) *VaultHandler {
+    return &VaultHandler{investmentService: investmentService, priceService: priceService}
 }
 
 // vaultDTO is a projection returned to the frontend
@@ -48,6 +49,14 @@ type vaultDTO struct {
 	CreatedAt           time.Time        `json:"created_at"`
 	UpdatedAt           time.Time        `json:"updated_at"`
 	APRPercent          *decimal.Decimal `json:"apr_percent,omitempty"`
+    // Live metrics (optional, computed at request time)
+    AsOf                *time.Time       `json:"as_of,omitempty"`
+    CurrentPriceUSD     *decimal.Decimal `json:"current_price_usd,omitempty"`
+    CurrentValueUSD     *decimal.Decimal `json:"current_value_usd,omitempty"`
+    ROIRealTimePercent  *decimal.Decimal `json:"roi_realtime_percent,omitempty"`
+    BenchmarkAsset      *string          `json:"benchmark_asset,omitempty"`
+    BenchmarkROIPercent *decimal.Decimal `json:"benchmark_roi_percent,omitempty"`
+    BenchmarkAPRPercent *decimal.Decimal `json:"benchmark_apr_percent,omitempty"`
 }
 
 func mapInvestmentToVaultDTO(inv *models.Investment) *vaultDTO {
@@ -112,6 +121,190 @@ func mapInvestmentToVaultDTO(inv *models.Investment) *vaultDTO {
 	return dto
 }
 
+// enrichVaultWithLiveMetrics enriches the DTO with live price-based metrics at second precision
+func (h *VaultHandler) enrichVaultWithLiveMetrics(r *http.Request, inv *models.Investment, dto *vaultDTO) {
+    if h.priceService == nil || inv == nil || dto == nil {
+        return
+    }
+    ctx := r.Context()
+    // Defaults
+    currency := "USD"
+    benchmark := "BTC"
+    q := r.URL.Query()
+    if v := q.Get("currency"); v != "" {
+        currency = v
+    }
+    if v := q.Get("benchmark"); v != "" {
+        benchmark = v
+    }
+
+    now := time.Now().UTC().Truncate(time.Second)
+    dto.AsOf = &now
+
+    // Get latest price for vault asset
+    ap, err := h.priceService.GetLatest(ctx, inv.Asset, currency)
+    if err == nil && ap != nil {
+        price := ap.Price
+        dto.CurrentPriceUSD = &price
+        // Compute current value = remaining qty * price
+        remaining := inv.DepositQty.Sub(inv.WithdrawalQty)
+        if remaining.IsNegative() {
+            remaining = decimal.Zero
+        }
+        value := remaining.Mul(price)
+        dto.CurrentValueUSD = &value
+
+        // Compute ROI and APR to date including withdrawals cash-in
+        if !inv.DepositCost.IsZero() {
+            totalValue := value.Add(inv.WithdrawalValue)
+            pnl := totalValue.Sub(inv.DepositCost)
+            roiPct := pnl.Div(inv.DepositCost).Mul(decimal.NewFromInt(100))
+            dto.ROIRealTimePercent = &roiPct
+
+            // APR using per-second precision
+            elapsedSec := now.Sub(inv.DepositDate).Seconds()
+            if elapsedSec < 1 {
+                elapsedSec = 1
+            }
+            onePlusROI := decimal.NewFromInt(1).Add(roiPct.Div(decimal.NewFromInt(100)))
+            onePlusROIF := onePlusROI.InexactFloat64()
+            if onePlusROIF > 0 {
+                secondsInYear := 365.0 * 24.0 * 3600.0
+                exponent := secondsInYear / elapsedSec
+                aprNow := decimal.NewFromFloat(pow(onePlusROIF, exponent) - 1).Mul(decimal.NewFromInt(100))
+                dto.APRPercent = &aprNow
+            }
+        }
+    }
+
+    // Benchmark vs BTC (or specified benchmark)
+    if benchmark != "" {
+        b := benchmark
+        dto.BenchmarkAsset = &b
+        // Get start price (use daily historical for the deposit day) and latest price
+        startPrice, err1 := h.priceService.GetDaily(ctx, benchmark, currency, inv.DepositDate)
+        latestPrice, err2 := h.priceService.GetLatest(ctx, benchmark, currency)
+        if err1 == nil && err2 == nil && startPrice != nil && latestPrice != nil && !startPrice.Price.IsZero() {
+            ratio := latestPrice.Price.Div(startPrice.Price)
+            benchROI := ratio.Sub(decimal.NewFromInt(1)).Mul(decimal.NewFromInt(100))
+            dto.BenchmarkROIPercent = &benchROI
+
+            elapsedSec := now.Sub(inv.DepositDate).Seconds()
+            if elapsedSec < 1 {
+                elapsedSec = 1
+            }
+            onePlusROI := decimal.NewFromInt(1).Add(benchROI.Div(decimal.NewFromInt(100)))
+            onePlusROIF := onePlusROI.InexactFloat64()
+            if onePlusROIF > 0 {
+                secondsInYear := 365.0 * 24.0 * 3600.0
+                exponent := secondsInYear / elapsedSec
+                benchAPR := decimal.NewFromFloat(pow(onePlusROIF, exponent) - 1).Mul(decimal.NewFromInt(100))
+                dto.BenchmarkAPRPercent = &benchAPR
+            }
+        }
+    }
+}
+
+// enrichVaultWithManualMetrics computes metrics using a manually provided current value or unit price
+func (h *VaultHandler) enrichVaultWithManualMetrics(r *http.Request, inv *models.Investment, dto *vaultDTO, manual struct {
+    CurrentValueUSD     *float64 `json:"current_value_usd"`
+    CurrentUnitPriceUSD *float64 `json:"current_unit_price_usd"`
+    Benchmark           *string  `json:"benchmark"`
+    Currency            *string  `json:"currency"`
+}) {
+    if inv == nil || dto == nil {
+        return
+    }
+
+    // Defaults
+    currency := "USD"
+    if manual.Currency != nil && *manual.Currency != "" {
+        currency = *manual.Currency
+    }
+    benchmark := "BTC"
+    if manual.Benchmark != nil && *manual.Benchmark != "" {
+        benchmark = *manual.Benchmark
+    }
+
+    now := time.Now().UTC().Truncate(time.Second)
+    dto.AsOf = &now
+
+    remaining := inv.DepositQty.Sub(inv.WithdrawalQty)
+    if remaining.IsNegative() {
+        remaining = decimal.Zero
+    }
+
+    var unitPrice decimal.Decimal
+    var value decimal.Decimal
+    if manual.CurrentValueUSD != nil {
+        value = decimal.NewFromFloat(*manual.CurrentValueUSD)
+        if remaining.IsPositive() {
+            unitPrice = value.Div(remaining)
+        } else {
+            unitPrice = decimal.Zero
+        }
+    } else if manual.CurrentUnitPriceUSD != nil {
+        unitPrice = decimal.NewFromFloat(*manual.CurrentUnitPriceUSD)
+        value = unitPrice.Mul(remaining)
+    }
+
+    // Set current price/value
+    if unitPrice.String() != "" {
+        p := unitPrice
+        dto.CurrentPriceUSD = &p
+    }
+    if value.String() != "" {
+        v := value
+        dto.CurrentValueUSD = &v
+    }
+
+    // Compute ROI and APR
+    if !inv.DepositCost.IsZero() {
+        totalValue := value.Add(inv.WithdrawalValue)
+        pnl := totalValue.Sub(inv.DepositCost)
+        roiPct := pnl.Div(inv.DepositCost).Mul(decimal.NewFromInt(100))
+        dto.ROIRealTimePercent = &roiPct
+
+        elapsedSec := now.Sub(inv.DepositDate).Seconds()
+        if elapsedSec < 1 {
+            elapsedSec = 1
+        }
+        onePlusROI := decimal.NewFromInt(1).Add(roiPct.Div(decimal.NewFromInt(100)))
+        onePlusROIF := onePlusROI.InexactFloat64()
+        if onePlusROIF > 0 {
+            secondsInYear := 365.0 * 24.0 * 3600.0
+            exponent := secondsInYear / elapsedSec
+            aprNow := decimal.NewFromFloat(pow(onePlusROIF, exponent) - 1).Mul(decimal.NewFromInt(100))
+            dto.APRPercent = &aprNow
+        }
+    }
+
+    // Benchmark vs BTC (or specified benchmark)
+    if benchmark != "" && h.priceService != nil {
+        b := benchmark
+        dto.BenchmarkAsset = &b
+        startPrice, err1 := h.priceService.GetDaily(r.Context(), benchmark, currency, inv.DepositDate)
+        latestPrice, err2 := h.priceService.GetLatest(r.Context(), benchmark, currency)
+        if err1 == nil && err2 == nil && startPrice != nil && latestPrice != nil && !startPrice.Price.IsZero() {
+            ratio := latestPrice.Price.Div(startPrice.Price)
+            benchROI := ratio.Sub(decimal.NewFromInt(1)).Mul(decimal.NewFromInt(100))
+            dto.BenchmarkROIPercent = &benchROI
+
+            elapsedSec := now.Sub(inv.DepositDate).Seconds()
+            if elapsedSec < 1 {
+                elapsedSec = 1
+            }
+            onePlusROI := decimal.NewFromInt(1).Add(benchROI.Div(decimal.NewFromInt(100)))
+            onePlusROIF := onePlusROI.InexactFloat64()
+            if onePlusROIF > 0 {
+                secondsInYear := 365.0 * 24.0 * 3600.0
+                exponent := secondsInYear / elapsedSec
+                benchAPR := decimal.NewFromFloat(pow(onePlusROIF, exponent) - 1).Mul(decimal.NewFromInt(100))
+                dto.BenchmarkAPRPercent = &benchAPR
+            }
+        }
+    }
+}
 // pow is a simple helper using math.Pow on floats
 func pow(a, b float64) float64 {
 	// defer to math.Pow to avoid importing in many places
@@ -190,12 +383,16 @@ func (h *VaultHandler) HandleVaults(w http.ResponseWriter, r *http.Request) {
 			depositDate = time.Now()
 		}
 
-		// Create stake transaction
-		qty := decimal.NewFromFloat(body.DepositQty)
-		unitPriceLocal := decimal.NewFromFloat(0)
-		if body.DepositQty > 0 {
-			unitPriceLocal = decimal.NewFromFloat(body.DepositCost).Div(decimal.NewFromFloat(body.DepositQty))
-		}
+        // Create stake transaction
+        // Special handling for USD-only vaults: treat quantity in USD with unit price = 1
+        qty := decimal.NewFromFloat(body.DepositQty)
+        unitPriceLocal := decimal.NewFromFloat(0)
+        if strings.ToUpper(body.Asset) == "USD" {
+            qty = decimal.NewFromFloat(body.DepositCost)
+            unitPriceLocal = decimal.NewFromInt(1)
+        } else if body.DepositQty > 0 {
+            unitPriceLocal = decimal.NewFromFloat(body.DepositCost).Div(decimal.NewFromFloat(body.DepositQty))
+        }
 
 		stakeTx := &models.Transaction{
 			Date:       depositDate,
@@ -266,7 +463,11 @@ func (h *VaultHandler) HandleVault(w http.ResponseWriter, r *http.Request) {
 		}
 		inv.RealizedPnL = inv.PnL
 		inv.RemainingQty = inv.DepositQty.Sub(inv.WithdrawalQty)
-		json.NewEncoder(w).Encode(mapInvestmentToVaultDTO(inv))
+    dto := mapInvestmentToVaultDTO(inv)
+    if r.URL.Query().Get("enrich") == "true" {
+        h.enrichVaultWithLiveMetrics(r, inv, dto)
+    }
+    json.NewEncoder(w).Encode(dto)
 		return
 
 	case http.MethodPost:
@@ -279,6 +480,9 @@ func (h *VaultHandler) HandleVault(w http.ResponseWriter, r *http.Request) {
 			return
 		case "end":
 			h.handleEnd(w, r, idOrName)
+			return
+		case "refresh":
+			h.handleRefresh(w, r, idOrName)
 			return
 		case "delete":
 			h.handleDelete(w, r, idOrName)
@@ -326,11 +530,15 @@ func (h *VaultHandler) handleDeposit(w http.ResponseWriter, r *http.Request, id 
 		return
 	}
 
-	qty := decimal.NewFromFloat(body.Quantity)
-	unitPriceLocal := decimal.NewFromFloat(0)
-	if body.Quantity > 0 {
-		unitPriceLocal = decimal.NewFromFloat(body.Cost).Div(decimal.NewFromFloat(body.Quantity))
-	}
+    qty := decimal.NewFromFloat(body.Quantity)
+    unitPriceLocal := decimal.NewFromFloat(0)
+    if strings.ToUpper(inv.Asset) == "USD" {
+        // For USD vaults, quantity is USD and unit price is 1
+        qty = decimal.NewFromFloat(body.Cost)
+        unitPriceLocal = decimal.NewFromInt(1)
+    } else if body.Quantity > 0 {
+        unitPriceLocal = decimal.NewFromFloat(body.Cost).Div(decimal.NewFromFloat(body.Quantity))
+    }
 
 	stakeTx := &models.Transaction{
 		Date:         time.Now(),
@@ -354,10 +562,12 @@ func (h *VaultHandler) handleDeposit(w http.ResponseWriter, r *http.Request, id 
 		http.Error(w, "Failed to process deposit: "+err.Error(), http.StatusBadRequest)
 		return
 	}
-	updated.RealizedPnL = updated.PnL
-	updated.RemainingQty = updated.DepositQty.Sub(updated.WithdrawalQty)
-	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(mapInvestmentToVaultDTO(updated))
+    updated.RealizedPnL = updated.PnL
+    updated.RemainingQty = updated.DepositQty.Sub(updated.WithdrawalQty)
+    dto := mapInvestmentToVaultDTO(updated)
+    h.enrichVaultWithLiveMetrics(r, updated, dto)
+    w.WriteHeader(http.StatusCreated)
+    json.NewEncoder(w).Encode(dto)
 }
 
 func (h *VaultHandler) handleWithdraw(w http.ResponseWriter, r *http.Request, id string) {
@@ -381,11 +591,15 @@ func (h *VaultHandler) handleWithdraw(w http.ResponseWriter, r *http.Request, id
 		return
 	}
 
-	qty := decimal.NewFromFloat(body.Quantity)
-	unitPriceLocal := decimal.NewFromFloat(0)
-	if body.Quantity > 0 {
-		unitPriceLocal = decimal.NewFromFloat(body.Value).Div(decimal.NewFromFloat(body.Quantity))
-	}
+    qty := decimal.NewFromFloat(body.Quantity)
+    unitPriceLocal := decimal.NewFromFloat(0)
+    if strings.ToUpper(inv.Asset) == "USD" {
+        // For USD vaults, quantity is USD and unit price is 1
+        qty = decimal.NewFromFloat(body.Value)
+        unitPriceLocal = decimal.NewFromInt(1)
+    } else if body.Quantity > 0 {
+        unitPriceLocal = decimal.NewFromFloat(body.Value).Div(decimal.NewFromFloat(body.Quantity))
+    }
 
 	unstakeTx := &models.Transaction{
 		Date:         time.Now(),
@@ -409,10 +623,12 @@ func (h *VaultHandler) handleWithdraw(w http.ResponseWriter, r *http.Request, id
 		http.Error(w, "Failed to process withdrawal: "+err.Error(), http.StatusBadRequest)
 		return
 	}
-	updated.RealizedPnL = updated.PnL
-	updated.RemainingQty = updated.DepositQty.Sub(updated.WithdrawalQty)
-	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(mapInvestmentToVaultDTO(updated))
+    updated.RealizedPnL = updated.PnL
+    updated.RemainingQty = updated.DepositQty.Sub(updated.WithdrawalQty)
+    dto := mapInvestmentToVaultDTO(updated)
+    h.enrichVaultWithLiveMetrics(r, updated, dto)
+    w.WriteHeader(http.StatusCreated)
+    json.NewEncoder(w).Encode(dto)
 }
 
 func (h *VaultHandler) handleEnd(w http.ResponseWriter, r *http.Request, id string) {
@@ -423,7 +639,9 @@ func (h *VaultHandler) handleEnd(w http.ResponseWriter, r *http.Request, id stri
 	}
 	updated.RealizedPnL = updated.PnL
 	updated.RemainingQty = updated.DepositQty.Sub(updated.WithdrawalQty)
-	json.NewEncoder(w).Encode(mapInvestmentToVaultDTO(updated))
+    dto := mapInvestmentToVaultDTO(updated)
+    h.enrichVaultWithLiveMetrics(r, updated, dto)
+    json.NewEncoder(w).Encode(dto)
 }
 
 func (h *VaultHandler) handleDelete(w http.ResponseWriter, r *http.Request, id string) {
@@ -432,4 +650,62 @@ func (h *VaultHandler) handleDelete(w http.ResponseWriter, r *http.Request, id s
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// handleRefresh recomputes live metrics as of now without mutating the investment
+func (h *VaultHandler) handleRefresh(w http.ResponseWriter, r *http.Request, id string) {
+    if h.priceService == nil {
+        http.Error(w, "price service not available", http.StatusServiceUnavailable)
+        return
+    }
+
+    // Optional manual override from body or query
+    var manualBody struct {
+        CurrentValueUSD     *float64 `json:"current_value_usd"`
+        CurrentUnitPriceUSD *float64 `json:"current_unit_price_usd"`
+        Benchmark           *string  `json:"benchmark"`
+        Currency            *string  `json:"currency"`
+    }
+    // best-effort decode; ignore errors when no body
+    _ = json.NewDecoder(r.Body).Decode(&manualBody)
+    q := r.URL.Query()
+    if manualBody.CurrentValueUSD == nil {
+        if v := q.Get("value_usd"); v != "" {
+            if f, err := strconv.ParseFloat(v, 64); err == nil {
+                manualBody.CurrentValueUSD = &f
+            }
+        }
+    }
+    if manualBody.CurrentUnitPriceUSD == nil {
+        if v := q.Get("unit_price_usd"); v != "" {
+            if f, err := strconv.ParseFloat(v, 64); err == nil {
+                manualBody.CurrentUnitPriceUSD = &f
+            }
+        }
+    }
+    if manualBody.Currency == nil {
+        if v := q.Get("currency"); v != "" {
+            manualBody.Currency = &v
+        }
+    }
+    if manualBody.Benchmark == nil {
+        if v := q.Get("benchmark"); v != "" {
+            manualBody.Benchmark = &v
+        }
+    }
+
+    inv, err := h.investmentService.GetInvestmentByID(r.Context(), id)
+    if err != nil {
+        http.Error(w, "Vault not found: "+err.Error(), http.StatusNotFound)
+        return
+    }
+    inv.RealizedPnL = inv.PnL
+    inv.RemainingQty = inv.DepositQty.Sub(inv.WithdrawalQty)
+    dto := mapInvestmentToVaultDTO(inv)
+    if manualBody.CurrentValueUSD != nil || manualBody.CurrentUnitPriceUSD != nil {
+        h.enrichVaultWithManualMetrics(r, inv, dto, manualBody)
+    } else {
+        h.enrichVaultWithLiveMetrics(r, inv, dto)
+    }
+    json.NewEncoder(w).Encode(dto)
 }

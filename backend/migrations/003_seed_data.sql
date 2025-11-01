@@ -29,7 +29,7 @@ INSERT INTO accounts (name, type) VALUES
 ('Bank', 'Bank'),
 ('CreditCard', 'CreditCard'),
 ('Binance Spot', 'Exchange'),
-('Vault', 'Investment'),
+('Kyberswap', 'Defi'),
 ('Friend A Loan', 'Peer')
 ON CONFLICT (name) DO NOTHING;
 

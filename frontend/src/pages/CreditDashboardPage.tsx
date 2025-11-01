@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import CreditCardSummary from '../components/CreditCardSummary';
 import DataTable from '../components/ui/DataTable';
 import { useBackendStatus } from '../context/BackendStatusContext';
-import { reportsApi, transactionApi } from '../services/api';
+import { adminApi, transactionApi } from '../services/api';
 
 interface CreditCard {
   id: string;
@@ -21,37 +21,77 @@ const CreditDashboardPage: React.FC = () => {
   const [creditTransactions, setCreditTransactions] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [creditAccounts, setCreditAccounts] = useState<string[]>([]);
 
   const { isOnline } = useBackendStatus() as { isOnline: boolean };
 
   useEffect(() => {
     if (isOnline) {
-      fetchCreditData();
+      loadAccountsAndData();
     }
   }, [isOnline]);
 
-  const fetchCreditData = async () => {
+  const loadAccountsAndData = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const accounts = (await adminApi.listAccounts()) as any[] | null;
+      const cardNames = (accounts || [])
+        .filter((a: any) => (a?.type || '').toLowerCase() === 'creditcard')
+        .map((a: any) => a.name);
+      setCreditAccounts(cardNames);
+
+      // If there are no credit card accounts configured, show empty state
+      if (!cardNames || cardNames.length === 0) {
+        setCreditCards([]);
+        setCreditTransactions([]);
+        setLoading(false);
+        return;
+      }
+
+      await fetchCreditData(cardNames);
+    } catch (err: any) {
+      setError(err.message || 'Failed to load credit accounts');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchCreditData = async (accountsFilter?: string[]) => {
     setLoading(true);
     setError(null);
 
     try {
-      // Fetch credit transactions (expenses and repay_borrow)
+      // Fetch credit transactions (expenses and repay_borrow) scoped to credit card accounts
+      const accountsParam = (accountsFilter && accountsFilter.length > 0)
+        ? { accounts: accountsFilter }
+        : {};
+
       const [expensesResponseRaw, repayResponseRaw] = await Promise.all([
-        transactionApi.list({ type: 'expense', limit: 100 }),
-        transactionApi.list({ type: 'repay_borrow', limit: 100 })
+        transactionApi.list({ types: 'expense', limit: 100, ...accountsParam }),
+        transactionApi.list({ types: 'repay_borrow', limit: 100, ...accountsParam })
       ]);
 
       const expensesResponse = (expensesResponseRaw as any[] | null) ?? [];
       const repayResponse = (repayResponseRaw as any[] | null) ?? [];
 
+      // Client-side safety filter in case backend filter is unavailable
+      const allowedAccounts = accountsFilter || creditAccounts;
+      const filteredExpenses = allowedAccounts && allowedAccounts.length > 0
+        ? expensesResponse.filter((t: any) => allowedAccounts.includes(t.account))
+        : [];
+      const filteredRepay = allowedAccounts && allowedAccounts.length > 0
+        ? repayResponse.filter((t: any) => allowedAccounts.includes(t.account))
+        : [];
+
       // Process transactions to group by credit card account
-      const creditAccounts = processCreditAccounts(expensesResponse, repayResponse);
-      setCreditCards(creditAccounts);
+      const cards = processCreditAccounts(filteredExpenses, filteredRepay);
+      setCreditCards(cards);
 
       // Combine recent credit transactions
       const allCreditTransactions = [
-        ...expensesResponse,
-        ...repayResponse
+        ...filteredExpenses,
+        ...filteredRepay
       ].sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, 50);
 
       setCreditTransactions(allCreditTransactions);

@@ -27,10 +27,10 @@ func TestVault_End_ClosesInvestment(t *testing.T) {
 	invRepo := repositories.NewInvestmentRepository(tdb.database)
 	invSvc := services.NewInvestmentService(invRepo, txRepo)
 	invHandler := handlers.NewInvestmentHandler(invSvc)
-	vaultHandler := handlers.NewVaultHandler(invSvc)
+	vaultHandler := handlers.NewVaultHandler(invSvc, nil)
 
 	// Seed: create a stake investment
-	seed := makeStakeTx(time.Now().Add(-24*time.Hour), "USDT", "Vault", 10, 1)
+	seed := makeStakeTx(time.Now().Add(-24*time.Hour), "USDT", "Kyberswap", 10, 1)
 	b, _ := json.Marshal(seed)
 	req := httptest.NewRequest(http.MethodPost, "/api/investments/stake", bytes.NewReader(b))
 	rr := httptest.NewRecorder()
@@ -75,11 +75,11 @@ func TestVault_Delete_RemovesInvestmentAndTransactions(t *testing.T) {
 	invRepo := repositories.NewInvestmentRepository(tdb.database)
 	invSvc := services.NewInvestmentService(invRepo, txRepo)
 	invHandler := handlers.NewInvestmentHandler(invSvc)
-	vaultHandler := handlers.NewVaultHandler(invSvc)
+	vaultHandler := handlers.NewVaultHandler(invSvc, nil)
 	txService := services.NewTransactionService(tdb.database)
 
 	// Seed: create a stake investment
-	seed := makeStakeTx(time.Now(), "BTC", "Vault", 5, 2)
+	seed := makeStakeTx(time.Now(), "BTC", "Kyberswap", 5, 2)
 	b, _ := json.Marshal(seed)
 	req := httptest.NewRequest(http.MethodPost, "/api/investments/stake", bytes.NewReader(b))
 	rr := httptest.NewRecorder()

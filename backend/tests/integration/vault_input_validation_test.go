@@ -25,10 +25,10 @@ func TestVault_DepositValidation(t *testing.T) {
 	invRepo := repositories.NewInvestmentRepository(tdb.database)
 	invSvc := services.NewInvestmentService(invRepo, txRepo)
 	invHandler := handlers.NewInvestmentHandler(invSvc)
-	vaultHandler := handlers.NewVaultHandler(invSvc)
+    vaultHandler := handlers.NewVaultHandler(invSvc, nil)
 
 	// Seed an investment via stake
-	seed := makeStakeTx(time.Now(), "USDT", "Vault", 10, 1)
+    seed := makeStakeTx(time.Now(), "USDT", "Kyberswap", 10, 1)
 	b, _ := json.Marshal(seed)
 	req := httptest.NewRequest(http.MethodPost, "/api/investments/stake", bytes.NewReader(b))
 	rr := httptest.NewRecorder()
@@ -88,10 +88,10 @@ func TestVault_WithdrawValidation(t *testing.T) {
 	invRepo := repositories.NewInvestmentRepository(tdb.database)
 	invSvc := services.NewInvestmentService(invRepo, txRepo)
 	invHandler := handlers.NewInvestmentHandler(invSvc)
-	vaultHandler := handlers.NewVaultHandler(invSvc)
+    vaultHandler := handlers.NewVaultHandler(invSvc, nil)
 
 	// Seed an investment via stake
-	seed := makeStakeTx(time.Now(), "BTC", "Vault", 5, 2)
+    seed := makeStakeTx(time.Now(), "BTC", "Kyberswap", 5, 2)
 	b, _ := json.Marshal(seed)
 	req := httptest.NewRequest(http.MethodPost, "/api/investments/stake", bytes.NewReader(b))
 	rr := httptest.NewRecorder()
@@ -160,7 +160,7 @@ func TestVault_RouteMisuseAndUnknownActions(t *testing.T) {
 	txRepo := repositories.NewTransactionRepository(tdb.database)
 	invRepo := repositories.NewInvestmentRepository(tdb.database)
 	invSvc := services.NewInvestmentService(invRepo, txRepo)
-	vaultHandler := handlers.NewVaultHandler(invSvc)
+    vaultHandler := handlers.NewVaultHandler(invSvc, nil)
 
 	// POST on GET-only route
 	r := httptest.NewRequest(http.MethodPost, "/api/vaults", nil)
@@ -195,10 +195,10 @@ func TestVault_EndZeroROI_APRAbsent(t *testing.T) {
 	invRepo := repositories.NewInvestmentRepository(tdb.database)
 	invSvc := services.NewInvestmentService(invRepo, txRepo)
 	invHandler := handlers.NewInvestmentHandler(invSvc)
-	vaultHandler := handlers.NewVaultHandler(invSvc)
+    vaultHandler := handlers.NewVaultHandler(invSvc, nil)
 
 	// Stake 10 @ $1
-	seed := makeStakeTx(time.Now().Add(-24*time.Hour), "USDT", "Vault", 10, 1)
+    seed := makeStakeTx(time.Now().Add(-24*time.Hour), "USDT", "Kyberswap", 10, 1)
 	b, _ := json.Marshal(seed)
 	req := httptest.NewRequest(http.MethodPost, "/api/investments/stake", bytes.NewReader(b))
 	rr := httptest.NewRecorder()
@@ -255,11 +255,11 @@ func TestVault_ListFilter_IsOpen(t *testing.T) {
 	invRepo := repositories.NewInvestmentRepository(tdb.database)
 	invSvc := services.NewInvestmentService(invRepo, txRepo)
 	invHandler := handlers.NewInvestmentHandler(invSvc)
-	vaultHandler := handlers.NewVaultHandler(invSvc)
+    vaultHandler := handlers.NewVaultHandler(invSvc, nil)
 
 	// Seed two investments
 	// Open one (no withdraw)
-	seedOpen := makeStakeTx(time.Now().Add(-24*time.Hour), "USDT", "Vault", 10, 1)
+    seedOpen := makeStakeTx(time.Now().Add(-24*time.Hour), "USDT", "Kyberswap", 10, 1)
 	b1, _ := json.Marshal(seedOpen)
 	r1 := httptest.NewRequest(http.MethodPost, "/api/investments/stake", bytes.NewReader(b1))
 	w1 := httptest.NewRecorder()
@@ -269,7 +269,7 @@ func TestVault_ListFilter_IsOpen(t *testing.T) {
 	}
 
 	// Closed one (withdraw all then end)
-	seedClosed := makeStakeTx(time.Now().Add(-24*time.Hour), "BTC", "Vault", 5, 2)
+    seedClosed := makeStakeTx(time.Now().Add(-24*time.Hour), "BTC", "Kyberswap", 5, 2)
 	b2, _ := json.Marshal(seedClosed)
 	r2 := httptest.NewRequest(http.MethodPost, "/api/investments/stake", bytes.NewReader(b2))
 	w2 := httptest.NewRecorder()
@@ -346,10 +346,10 @@ func TestVault_OverWithdraw_CorrectPnL(t *testing.T) {
 	invRepo := repositories.NewInvestmentRepository(tdb.database)
 	invSvc := services.NewInvestmentService(invRepo, txRepo)
 	invHandler := handlers.NewInvestmentHandler(invSvc)
-	vaultHandler := handlers.NewVaultHandler(invSvc)
+    vaultHandler := handlers.NewVaultHandler(invSvc, nil)
 
 	// Stake 10 @ $1, then deposit +5 @ $1 (total cost 15)
-	seed := makeStakeTx(time.Now().Add(-48*time.Hour), "USDT", "Vault", 10, 1)
+    seed := makeStakeTx(time.Now().Add(-48*time.Hour), "USDT", "Kyberswap", 10, 1)
 	b, _ := json.Marshal(seed)
 	req := httptest.NewRequest(http.MethodPost, "/api/investments/stake", bytes.NewReader(b))
 	rr := httptest.NewRecorder()
@@ -407,10 +407,10 @@ func TestVaultPnLAndROI_ComputesCorrectly_OnFullExit(t *testing.T) {
 	invRepo := repositories.NewInvestmentRepository(tdb.database)
 	invSvc := services.NewInvestmentService(invRepo, txRepo)
 	invHandler := handlers.NewInvestmentHandler(invSvc)
-	vaultHandler := handlers.NewVaultHandler(invSvc)
+    vaultHandler := handlers.NewVaultHandler(invSvc, nil)
 
 	// Seed: deposit 10 @ $1 (USD) two days ago
-	seed := makeStakeTx(time.Now().Add(-48*time.Hour), "USDT", "Vault", 10, 1)
+    seed := makeStakeTx(time.Now().Add(-48*time.Hour), "USDT", "Kyberswap", 10, 1)
 	b, _ := json.Marshal(seed)
 	req := httptest.NewRequest(http.MethodPost, "/api/investments/stake", bytes.NewReader(b))
 	rr := httptest.NewRecorder()
@@ -482,10 +482,10 @@ func TestVaultPnL_RemainsZero_OnPartialWhileOpen(t *testing.T) {
 	invRepo := repositories.NewInvestmentRepository(tdb.database)
 	invSvc := services.NewInvestmentService(invRepo, txRepo)
 	invHandler := handlers.NewInvestmentHandler(invSvc)
-	vaultHandler := handlers.NewVaultHandler(invSvc)
+    vaultHandler := handlers.NewVaultHandler(invSvc, nil)
 
 	// One deposit 10 @ $2
-	seed := makeStakeTx(time.Now().Add(-24*time.Hour), "BTC", "Vault", 10, 2)
+    seed := makeStakeTx(time.Now().Add(-24*time.Hour), "BTC", "Kyberswap", 10, 2)
 	b, _ := json.Marshal(seed)
 	req := httptest.NewRequest(http.MethodPost, "/api/investments/stake", bytes.NewReader(b))
 	rr := httptest.NewRecorder()

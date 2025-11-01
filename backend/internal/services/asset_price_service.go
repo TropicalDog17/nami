@@ -2,6 +2,7 @@ package services
 
 import (
     "context"
+    "fmt"
     "time"
 
     "github.com/tropicaldog17/nami/internal/models"
@@ -51,6 +52,27 @@ func (s *AssetPriceServiceImpl) GetRange(ctx context.Context, symbol, currency s
         prices = append(prices, ap)
     }
     return prices, nil
+}
+
+// GetLatest fetches the latest spot price and returns it as an AssetPrice with second-level timestamp
+func (s *AssetPriceServiceImpl) GetLatest(ctx context.Context, symbol, currency string) (*models.AssetPrice, error) {
+    if s.provider == nil {
+        return nil, fmt.Errorf("no price provider configured")
+    }
+    price, err := s.provider.GetLatest(ctx, symbol, currency)
+    if err != nil {
+        return nil, err
+    }
+    now := time.Now().UTC().Truncate(time.Second)
+    ap := &models.AssetPrice{
+        Symbol:    symbol,
+        Currency:  currency,
+        Price:     price,
+        Date:      now,
+        Source:    "coingecko",
+        CreatedAt: now,
+    }
+    return ap, nil
 }
 
 
