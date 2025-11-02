@@ -55,3 +55,13 @@ type ReportingRepository interface {
 	GetPnL(ctx context.Context, period models.Period) (*models.PnLReport, error)
 	GetExpectedBorrowOutflows(ctx context.Context, asOf time.Time) ([]*models.OutflowProjection, error)
 }
+
+// AIPendingActionRepository defines data operations for AI pending actions
+type AIPendingActionRepository interface {
+    Create(ctx context.Context, a *models.AIPendingAction) error
+    GetByID(ctx context.Context, id string) (*models.AIPendingAction, error)
+    List(ctx context.Context, status string, limit, offset int) ([]*models.AIPendingAction, error)
+    Update(ctx context.Context, a *models.AIPendingAction) error
+    SetAccepted(ctx context.Context, id string, createdTxIDs []string) error
+    SetRejected(ctx context.Context, id string, reason string) error
+}

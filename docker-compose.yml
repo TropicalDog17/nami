@@ -19,5 +19,22 @@ services:
       timeout: 5s
       retries: 5
 
+  ai-service:
+    build:
+      context: ./ai-service
+    container_name: nami-ai-service
+    environment:
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - BACKEND_BASE_URL=${BACKEND_BASE_URL:-http://host.docker.internal:8080/api}
+      - BACKEND_SIGNING_SECRET=${BACKEND_SIGNING_SECRET}
+      - PORT=8081
+      - SERVICE_BASE_URL=${SERVICE_BASE_URL:-http://localhost:8081}
+      - ALLOWED_CHAT_IDS=${ALLOWED_CHAT_IDS:-}
+      - DEFAULT_TIMEZONE=${DEFAULT_TIMEZONE:-Asia/Ho_Chi_Minh}
+    ports:
+      - "8081:8081"
+    restart: unless-stopped
+
 volumes:
   postgres_data:

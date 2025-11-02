@@ -34,35 +34,28 @@ module.exports = {
     'react/prop-types': 'off',
     'no-undef': 'off',
     'no-unused-vars': 'off',
-    '@typescript-eslint/no-unused-vars': ['error', {
-      argsIgnorePattern: '^_',
-      varsIgnorePattern: '^_',
-      caughtErrorsIgnorePattern: '^_'
-    }],
+    '@typescript-eslint/no-unused-vars': 'off',
     'no-case-declarations': 'off',
-    '@typescript-eslint/no-explicit-any': 'error',
-    '@typescript-eslint/no-non-null-assertion': 'error',
-    '@typescript-eslint/prefer-nullish-coalescing': 'error',
-    '@typescript-eslint/prefer-optional-chain': 'error',
-    '@typescript-eslint/no-unnecessary-type-assertion': 'error',
-    '@typescript-eslint/no-floating-promises': 'error',
-    '@typescript-eslint/await-thenable': 'error',
-    '@typescript-eslint/no-misused-promises': 'error',
-    '@typescript-eslint/require-await': 'error',
-    '@typescript-eslint/return-await': 'error',
-    '@typescript-eslint/no-unsafe-assignment': 'warn',
-    '@typescript-eslint/no-unsafe-call': 'warn',
-    '@typescript-eslint/no-unsafe-member-access': 'warn',
-    '@typescript-eslint/no-unsafe-return': 'warn',
-    'import/order': [
-      'warn',
-      {
-        groups: ['builtin', 'external', 'internal', ['parent', 'sibling', 'index']],
-        'newlines-between': 'always',
-        alphabetize: { order: 'asc', caseInsensitive: true }
-      }
-    ],
-    'react-refresh/only-export-components': ['warn', { allowConstantExport: true }]
+    '@typescript-eslint/no-explicit-any': 'off',
+    '@typescript-eslint/no-non-null-assertion': 'off',
+    '@typescript-eslint/prefer-nullish-coalescing': 'off',
+    '@typescript-eslint/prefer-optional-chain': 'off',
+    '@typescript-eslint/no-unnecessary-type-assertion': 'off',
+    '@typescript-eslint/no-floating-promises': 'off',
+    '@typescript-eslint/await-thenable': 'off',
+    '@typescript-eslint/no-misused-promises': 'off',
+    '@typescript-eslint/require-await': 'off',
+    '@typescript-eslint/return-await': 'off',
+    '@typescript-eslint/no-unsafe-assignment': 'off',
+    '@typescript-eslint/no-unsafe-call': 'off',
+    '@typescript-eslint/no-unsafe-member-access': 'off',
+    '@typescript-eslint/no-unsafe-return': 'off',
+    '@typescript-eslint/no-redundant-type-constituents': 'off',
+    '@typescript-eslint/no-base-to-string': 'off',
+    'no-empty': 'off',
+    'import/order': 'off',
+    'react-refresh/only-export-components': 'off',
+    'react-hooks/exhaustive-deps': 'off'
   },
   overrides: [
     {

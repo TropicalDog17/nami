@@ -279,7 +279,7 @@ const ReportsPage = () => {
         pagination={true}
         onRowClick={(row: any) => {
           // Navigate to vault detail when a vault holding (with id) is clicked
-          if (row && row.id) {
+          if (row?.id) {
             navigate(`/vault/${encodeURIComponent(row.id)}`);
           }
         }}

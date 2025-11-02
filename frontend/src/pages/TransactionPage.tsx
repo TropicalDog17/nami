@@ -2,8 +2,8 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 
 import QuickExpenseModal from '../components/QuickExpenseModal';
 import QuickIncomeModal from '../components/QuickIncomeModal';
-import QuickInvestmentModal from '../components/QuickInvestmentModal';
 import QuickInitBalanceModal from '../components/QuickInitBalanceModal';
+import QuickInvestmentModal from '../components/QuickInvestmentModal';
 import QuickVaultModal from '../components/QuickVaultModal';
 import TransactionForm from '../components/TransactionForm';
 import ComboBox from '../components/ui/ComboBox';
@@ -210,7 +210,7 @@ const TransactionPage: React.FC = () => {
 
   const handleQuickInvestmentSubmit = async (investmentData: any): Promise<void> => {
     try {
-      if (investmentData && investmentData.vaultId) {
+      if (investmentData?.vaultId) {
         const { vaultId, quantity, cost } = investmentData as { vaultId: string; quantity: number; cost: number };
         await vaultApi.depositToVault(String(vaultId), { quantity, cost });
       } else {
@@ -218,9 +218,9 @@ const TransactionPage: React.FC = () => {
       }
       await loadTransactions();
       actions.setError(null);
-      showSuccessToast(investmentData && investmentData.vaultId ? 'Vault deposit recorded' : 'Investment recorded');
+      showSuccessToast(investmentData?.vaultId ? 'Vault deposit recorded' : 'Investment recorded');
     } catch (e: any) {
-      const msg = e?.message ?? (investmentData && investmentData.vaultId ? 'Failed to record vault deposit' : 'Failed to record investment');
+      const msg = e?.message ?? (investmentData?.vaultId ? 'Failed to record vault deposit' : 'Failed to record investment');
       actions.setError(msg);
       showErrorToast(msg);
       throw e;

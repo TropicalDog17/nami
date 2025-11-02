@@ -74,13 +74,18 @@ func main() {
 	reportingService := services.NewReportingService(database)
 	linkService := services.NewLinkService(database)
 	investmentService := services.NewInvestmentService(investmentRepo, transactionRepo)
-	actionService := services.NewActionServiceWithInvestments(database, transactionService, linkService, assetPriceService, investmentService)
+    actionService := services.NewActionServiceWithInvestments(database, transactionService, linkService, assetPriceService, investmentService)
+    // AI Pending actions repo/service/handler
+    aiPendingRepo := repositories.NewAIPendingActionRepository(database)
+    aiPendingService := services.NewAIPendingService(database, aiPendingRepo, actionService)
 
 	// Initialize handlers
 	transactionHandler := handlers.NewTransactionHandler(transactionService)
 	adminHandler := handlers.NewAdminHandlerWithTx(adminService, transactionService)
 	reportingHandler := handlers.NewReportingHandler(reportingService)
-	actionHandler := handlers.NewActionHandler(actionService)
+    actionHandler := handlers.NewActionHandler(actionService)
+    aiSecret := os.Getenv("BACKEND_SIGNING_SECRET")
+    aiPendingHandler := handlers.NewAIPendingHandler(aiPendingService, aiSecret)
 	fxHandler := handlers.NewFXHandler(fxHistoryService)
 	priceHandler := handlers.NewPriceHandler(assetPriceService, priceMappingResolver, fxHistoryService)
 	investmentHandler := handlers.NewInvestmentHandler(investmentService)
@@ -175,6 +180,20 @@ func main() {
 			adminHandler.HandleTags(w, r)
 		}
 	})
+
+    // AI pending actions endpoints
+    mux.HandleFunc("/api/admin/pending-actions", aiPendingHandler.HandlePendingActions)
+    mux.HandleFunc("/api/admin/pending-actions/", func(w http.ResponseWriter, r *http.Request) {
+        path := strings.TrimPrefix(r.URL.Path, "/api/admin/pending-actions/")
+        switch {
+        case strings.HasSuffix(path, "/accept"):
+            aiPendingHandler.HandleAccept(w, r)
+        case strings.HasSuffix(path, "/reject"):
+            aiPendingHandler.HandleReject(w, r)
+        default:
+            aiPendingHandler.HandlePendingAction(w, r)
+        }
+    })
 
 	// Maintenance endpoints
 	mux.HandleFunc("/api/admin/maintenance/recalc-fx", adminHandler.HandleMaintenance)
