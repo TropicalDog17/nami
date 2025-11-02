@@ -14,6 +14,7 @@ type Period struct {
 
 // Holding represents current asset holdings
 type Holding struct {
+	ID          string          `json:"id,omitempty" db:"id"`
 	Asset       string          `json:"asset" db:"asset"`
 	Account     string          `json:"account" db:"account"`
 	Quantity    decimal.Decimal `json:"quantity" db:"quantity"`
@@ -21,6 +22,7 @@ type Holding struct {
 	ValueVND    decimal.Decimal `json:"value_vnd" db:"value_vnd"`
 	Percentage  decimal.Decimal `json:"percentage"` // Percentage of total portfolio value
 	LastUpdated time.Time       `json:"last_updated" db:"last_updated"`
+	IsVault     bool            `json:"is_vault,omitempty" db:"-"`
 }
 
 // OutflowProjection represents expected cash out for a borrow

@@ -22,34 +22,42 @@ func NewReportingService(database *db.DB) ReportingService {
 // GetHoldings retrieves current holdings and includes open investment (vault) holdings.
 // Percentages are computed over the combined set based on USD value.
 func (s *reportingService) GetHoldings(ctx context.Context, asOf time.Time) ([]*models.Holding, error) {
-    // Base holdings from transactions view
-    baseHoldings, err := s.reportRepo.GetHoldings(ctx, asOf)
-    if err != nil {
-        return nil, err
-    }
+	// Base holdings from transactions view
+	baseHoldings, err := s.reportRepo.GetHoldings(ctx, asOf)
+	if err != nil {
+		return nil, err
+	}
 
-    // Vault holdings (open investments) labeled as "asset (vault)"
-    vaultHoldings, err := s.reportRepo.GetOpenInvestmentHoldings(ctx, asOf)
-    if err != nil {
-        return nil, err
-    }
+	// Vault holdings (open investments) labeled as "asset (vault)"
+	vaultHoldings, err := s.reportRepo.GetOpenInvestmentHoldings(ctx, asOf)
+	if err != nil {
+		return nil, err
+	}
 
-    // Combine both sets
-    all := append([]*models.Holding{}, baseHoldings...)
-    all = append(all, vaultHoldings...)
+	// Combine both sets
+	all := append([]*models.Holding{}, baseHoldings...)
+	all = append(all, vaultHoldings...)
 
-    // Compute portfolio percentages
-    var totalUSD decimal.Decimal
-    for _, h := range all {
-        totalUSD = totalUSD.Add(h.ValueUSD)
-    }
-    if !totalUSD.IsZero() {
-        for _, h := range all {
-            h.Percentage = h.ValueUSD.Div(totalUSD).Mul(decimal.NewFromInt(100))
-        }
-    }
+	// Filter out any rows with zero quantity (e.g., fully moved/closed positions)
+	filtered := make([]*models.Holding, 0, len(all))
+	for _, h := range all {
+		if !h.Quantity.IsZero() {
+			filtered = append(filtered, h)
+		}
+	}
 
-    return all, nil
+	// Compute portfolio percentages
+	var totalUSD decimal.Decimal
+	for _, h := range filtered {
+		totalUSD = totalUSD.Add(h.ValueUSD)
+	}
+	if !totalUSD.IsZero() {
+		for _, h := range filtered {
+			h.Percentage = h.ValueUSD.Div(totalUSD).Mul(decimal.NewFromInt(100))
+		}
+	}
+
+	return filtered, nil
 }
 
 // GetCashFlow retrieves cash flow analysis for a period
@@ -89,46 +97,46 @@ func (s *reportingService) GetHoldingsByAccount(ctx context.Context, asOf time.T
 
 // GetHoldingsByAsset retrieves holdings grouped by asset
 func (s *reportingService) GetHoldingsByAsset(ctx context.Context, asOf time.Time) (map[string]*models.Holding, error) {
-    // Use combined holdings (transactions + open investments)
-    all, err := s.GetHoldings(ctx, asOf)
-    if err != nil {
-        return nil, err
-    }
+	// Use combined holdings (transactions + open investments)
+	all, err := s.GetHoldings(ctx, asOf)
+	if err != nil {
+		return nil, err
+	}
 
-    // Aggregate by asset label
-    result := make(map[string]*models.Holding)
-    for _, holding := range all {
-        if existing, exists := result[holding.Asset]; exists {
-            existing.Quantity = existing.Quantity.Add(holding.Quantity)
-            existing.ValueUSD = existing.ValueUSD.Add(holding.ValueUSD)
-            existing.ValueVND = existing.ValueVND.Add(holding.ValueVND)
-            if holding.LastUpdated.After(existing.LastUpdated) {
-                existing.LastUpdated = holding.LastUpdated
-            }
-        } else {
-            result[holding.Asset] = &models.Holding{
-                Asset:       holding.Asset,
-                Account:     "All Accounts",
-                Quantity:    holding.Quantity,
-                ValueUSD:    holding.ValueUSD,
-                ValueVND:    holding.ValueVND,
-                LastUpdated: holding.LastUpdated,
-            }
-        }
-    }
+	// Aggregate by asset label
+	result := make(map[string]*models.Holding)
+	for _, holding := range all {
+		if existing, exists := result[holding.Asset]; exists {
+			existing.Quantity = existing.Quantity.Add(holding.Quantity)
+			existing.ValueUSD = existing.ValueUSD.Add(holding.ValueUSD)
+			existing.ValueVND = existing.ValueVND.Add(holding.ValueVND)
+			if holding.LastUpdated.After(existing.LastUpdated) {
+				existing.LastUpdated = holding.LastUpdated
+			}
+		} else {
+			result[holding.Asset] = &models.Holding{
+				Asset:       holding.Asset,
+				Account:     "All Accounts",
+				Quantity:    holding.Quantity,
+				ValueUSD:    holding.ValueUSD,
+				ValueVND:    holding.ValueVND,
+				LastUpdated: holding.LastUpdated,
+			}
+		}
+	}
 
-    // Calculate percentages for aggregated holdings
-    var totalValueUSD decimal.Decimal
-    for _, holding := range result {
-        totalValueUSD = totalValueUSD.Add(holding.ValueUSD)
-    }
-    if !totalValueUSD.IsZero() {
-        for _, holding := range result {
-            holding.Percentage = holding.ValueUSD.Div(totalValueUSD).Mul(decimal.NewFromInt(100))
-        }
-    }
+	// Calculate percentages for aggregated holdings
+	var totalValueUSD decimal.Decimal
+	for _, holding := range result {
+		totalValueUSD = totalValueUSD.Add(holding.ValueUSD)
+	}
+	if !totalValueUSD.IsZero() {
+		for _, holding := range result {
+			holding.Percentage = holding.ValueUSD.Div(totalValueUSD).Mul(decimal.NewFromInt(100))
+		}
+	}
 
-    return result, nil
+	return result, nil
 }
 
 // GetExpectedBorrowOutflows returns projected principal+interest outflows for active borrows as of a date
