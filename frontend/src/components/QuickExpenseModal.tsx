@@ -1,11 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 
 import { useApp } from '../context/AppContext';
 
 interface QuickExpenseModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSubmit: (transactionData: any) => void;
+  onSubmit: (transactionData: unknown) => Promise<void>;
 }
 
 const QuickExpenseModal: React.FC<QuickExpenseModalProps> = ({
@@ -87,7 +87,7 @@ const QuickExpenseModal: React.FC<QuickExpenseModalProps> = ({
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={(e) => void handleSubmit(e)} className="space-y-4">
           <div className="grid grid-cols-1 gap-3">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Date</label>
@@ -122,9 +122,13 @@ const QuickExpenseModal: React.FC<QuickExpenseModalProps> = ({
                 required
               >
                 <option value="">Select account</option>
-                {accounts?.filter((a: any) => a.is_active).map((a: any) => (
-                  <option key={a.name} value={a.name}>{a.name}</option>
-                ))}
+                {(accounts ?? []).filter((a: unknown) => {
+                  const typedA = a as { is_active: boolean; name: string };
+                  return typedA.is_active;
+                }).map((a: unknown) => {
+                  const typedA = a as { name: string };
+                  return <option key={typedA.name} value={typedA.name}>{typedA.name}</option>;
+                })}
               </select>
             </div>
 
@@ -135,9 +139,13 @@ const QuickExpenseModal: React.FC<QuickExpenseModalProps> = ({
                 onChange={(e) => handleInputChange('asset', e.target.value)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
-                {(assets || []).filter((as: any) => as.is_active).map((as: any) => (
-                  <option key={as.symbol} value={as.symbol}>{as.symbol}{as.name ? ` - ${as.name}` : ''}</option>
-                ))}
+                {(assets ?? []).filter((as: unknown) => {
+                  const typedAs = as as { is_active: boolean };
+                  return typedAs.is_active;
+                }).map((as: unknown) => {
+                  const typedAs = as as { symbol: string; name?: string };
+                  return <option key={typedAs.symbol} value={typedAs.symbol}>{typedAs.symbol}{typedAs.name ? ` - ${typedAs.name}` : ''}</option>;
+                })}
               </select>
             </div>
 

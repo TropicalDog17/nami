@@ -1,24 +1,70 @@
-import React, { createContext, useContext, useReducer, useEffect } from 'react';
+/* eslint-disable react-refresh/only-export-components */
+import React, { createContext, useContext, useReducer, useEffect, useCallback, useMemo } from 'react';
 
 import { adminApi } from '../services/api';
 
-// Initial state
-const initialState = {
+type TransactionType = {
+  id?: string | number;
+  name: string;
+  description?: string;
+  is_active: boolean;
+};
+
+type Account = {
+  id?: string | number;
+  name: string;
+  type?: string;
+  is_active: boolean;
+};
+
+type Asset = {
+  id?: string | number;
+  symbol: string;
+  name?: string;
+  is_active: boolean;
+};
+
+type Tag = {
+  id?: string | number;
+  name: string;
+  category?: string;
+  is_active: boolean;
+};
+
+type AppState = {
   // Master data
+  transactionTypes: TransactionType[];
+  accounts: Account[];
+  assets: Asset[];
+  tags: Tag[];
+
+  // UI state
+  loading: boolean;
+  error: string | null;
+  success: string | null;
+
+  // Settings
+  currency: 'USD' | 'VND'; // 'USD' or 'VND'
+
+  // Cache timestamps
+  lastUpdated: {
+    transactionTypes: Date | null;
+    accounts: Date | null;
+    assets: Date | null;
+    tags: Date | null;
+  };
+};
+
+// Initial state
+const initialState: AppState = {
   transactionTypes: [],
   accounts: [],
   assets: [],
   tags: [],
-
-  // UI state
   loading: false,
   error: null,
   success: null,
-
-  // Settings
-  currency: 'USD', // 'USD' or 'VND'
-
-  // Cache timestamps
+  currency: 'USD',
   lastUpdated: {
     transactionTypes: null,
     accounts: null,
@@ -51,10 +97,34 @@ const ActionTypes = {
   ADD_TAG: 'ADD_TAG',
   UPDATE_TAG: 'UPDATE_TAG',
   DELETE_TAG: 'DELETE_TAG',
-};
+} as const;
+
+type Action =
+  | { type: 'SET_LOADING'; payload: boolean }
+  | { type: 'SET_ERROR'; payload: string | null }
+  | { type: 'CLEAR_ERROR' }
+  | { type: 'SET_SUCCESS'; payload: string | null }
+  | { type: 'CLEAR_SUCCESS' }
+  | { type: 'SET_CURRENCY'; payload: 'USD' | 'VND' }
+  | { type: 'SET_TRANSACTION_TYPES'; payload: TransactionType[] }
+  | { type: 'SET_ACCOUNTS'; payload: Account[] }
+  | { type: 'SET_ASSETS'; payload: Asset[] }
+  | { type: 'SET_TAGS'; payload: Tag[] }
+  | { type: 'ADD_TRANSACTION_TYPE'; payload: TransactionType }
+  | { type: 'UPDATE_TRANSACTION_TYPE'; payload: TransactionType & { id?: string | number } }
+  | { type: 'DELETE_TRANSACTION_TYPE'; payload: string | number }
+  | { type: 'ADD_ACCOUNT'; payload: Account }
+  | { type: 'UPDATE_ACCOUNT'; payload: Account & { id?: string | number } }
+  | { type: 'DELETE_ACCOUNT'; payload: string | number }
+  | { type: 'ADD_ASSET'; payload: Asset }
+  | { type: 'UPDATE_ASSET'; payload: Asset & { id?: string | number } }
+  | { type: 'DELETE_ASSET'; payload: string | number }
+  | { type: 'ADD_TAG'; payload: Tag }
+  | { type: 'UPDATE_TAG'; payload: Tag & { id?: string | number } }
+  | { type: 'DELETE_TAG'; payload: string | number };
 
 // Reducer
-function appReducer(state, action) {
+function appReducer(state: AppState, action: Action): AppState {
   switch (action.type) {
     case ActionTypes.SET_LOADING:
       return { ...state, loading: action.payload };
@@ -112,7 +182,7 @@ function appReducer(state, action) {
       return {
         ...state,
         transactionTypes: state.transactionTypes.map((type) =>
-          type.id === action.payload.id ? action.payload : type
+          type.id === (action.payload as TransactionType & { id: string | number }).id ? action.payload : type
         ),
       };
 
@@ -134,7 +204,7 @@ function appReducer(state, action) {
       return {
         ...state,
         accounts: state.accounts.map((account) =>
-          account.id === action.payload.id ? action.payload : account
+          account.id === (action.payload as Account & { id: string | number }).id ? action.payload : account
         ),
       };
 
@@ -156,7 +226,7 @@ function appReducer(state, action) {
       return {
         ...state,
         assets: state.assets.map((asset) =>
-          asset.id === action.payload.id ? action.payload : asset
+          asset.id === (action.payload as Asset & { id: string | number }).id ? action.payload : asset
         ),
       };
 
@@ -176,7 +246,7 @@ function appReducer(state, action) {
       return {
         ...state,
         tags: state.tags.map((tag) =>
-          tag.id === action.payload.id ? action.payload : tag
+          tag.id === (action.payload as Tag & { id: string | number }).id ? action.payload : tag
         ),
       };
 
@@ -191,19 +261,47 @@ function appReducer(state, action) {
   }
 }
 
+type Actions = {
+  setLoading: (loading: boolean) => void;
+  setError: (msg: string | null) => void;
+  clearError: () => void;
+  setSuccess: (msg: string | null) => void;
+  clearSuccess: () => void;
+  setCurrency: (currency: 'USD' | 'VND') => void;
+  loadTransactionTypes: () => Promise<void>;
+  loadAccounts: () => Promise<void>;
+  loadAssets: () => Promise<void>;
+  loadTags: () => Promise<void>;
+  loadAllMasterData: () => Promise<void>;
+  createTransactionType: (type: TransactionType) => Promise<TransactionType>;
+  updateTransactionType: (id: string | number, type: TransactionType) => Promise<TransactionType & { id: string | number }>;
+  deleteTransactionType: (id: string | number) => Promise<void>;
+  createAccount: (account: Account) => Promise<Account>;
+  updateAccount: (id: string | number, account: Account) => Promise<Account & { id: string | number }>;
+  deleteAccount: (id: string | number) => Promise<void>;
+  createAsset: (asset: Asset) => Promise<Asset>;
+  updateAsset: (id: string | number, asset: Asset) => Promise<Asset & { id: string | number }>;
+  deleteAsset: (id: string | number) => Promise<void>;
+  createTag: (tag: Tag) => Promise<Tag>;
+  updateTag: (id: string | number, tag: Tag) => Promise<Tag & { id: string | number }>;
+  deleteTag: (id: string | number) => Promise<void>;
+};
+
+type AppContextValue = AppState & { actions: Actions };
+
 // Context
-const AppContext = createContext();
+const AppContext = createContext<AppContextValue | undefined>(undefined);
 
 // Provider component
-export function AppProvider({ children }) {
+export function AppProvider({ children }: { children: React.ReactNode }) {
   const [state, dispatch] = useReducer(appReducer, initialState);
 
   // Action creators
-  const actions = {
+  const actions: Actions = useMemo(() => ({
     setLoading: (loading) =>
       dispatch({ type: ActionTypes.SET_LOADING, payload: loading }),
-    setError: (error) =>
-      dispatch({ type: ActionTypes.SET_ERROR, payload: error }),
+    setError: (msg) =>
+      dispatch({ type: ActionTypes.SET_ERROR, payload: msg }),
     clearError: () => dispatch({ type: ActionTypes.CLEAR_ERROR }),
     setSuccess: (message) =>
       dispatch({ type: ActionTypes.SET_SUCCESS, payload: message }),
@@ -214,218 +312,233 @@ export function AppProvider({ children }) {
     // Load master data
     loadTransactionTypes: async () => {
       try {
-        actions.setLoading(true);
-        const types = await adminApi.listTypes();
-        dispatch({
-          type: ActionTypes.SET_TRANSACTION_TYPES,
-          payload: types || [],
-        });
-      } catch (error) {
-        actions.setError(error.message);
+        dispatch({ type: ActionTypes.SET_LOADING, payload: true });
+        const types = await adminApi.listTypes() as TransactionType[];
+        dispatch({ type: ActionTypes.SET_TRANSACTION_TYPES, payload: types });
+      } catch (err: unknown) {
+        const msg = (err as Error)?.message ?? 'Failed to load types';
+        dispatch({ type: ActionTypes.SET_ERROR, payload: msg });
       } finally {
-        actions.setLoading(false);
+        dispatch({ type: ActionTypes.SET_LOADING, payload: false });
       }
     },
 
     loadAccounts: async () => {
       try {
-        actions.setLoading(true);
-        const accounts = await adminApi.listAccounts();
-        dispatch({ type: ActionTypes.SET_ACCOUNTS, payload: accounts || [] });
-      } catch (error) {
-        actions.setError(error.message);
+        dispatch({ type: ActionTypes.SET_LOADING, payload: true });
+        const accountsData = await adminApi.listAccounts() as Account[];
+        dispatch({ type: ActionTypes.SET_ACCOUNTS, payload: accountsData });
+      } catch (err: unknown) {
+        const msg = (err as Error)?.message ?? 'Failed to load accounts';
+        dispatch({ type: ActionTypes.SET_ERROR, payload: msg });
       } finally {
-        actions.setLoading(false);
+        dispatch({ type: ActionTypes.SET_LOADING, payload: false });
       }
     },
 
     loadAssets: async () => {
       try {
-        actions.setLoading(true);
-        const assets = await adminApi.listAssets();
-        dispatch({ type: ActionTypes.SET_ASSETS, payload: assets || [] });
-      } catch (error) {
-        actions.setError(error.message);
+        dispatch({ type: ActionTypes.SET_LOADING, payload: true });
+        const assetsData = await adminApi.listAssets() as Asset[];
+        dispatch({ type: ActionTypes.SET_ASSETS, payload: assetsData });
+      } catch (err: unknown) {
+        const msg = (err as Error)?.message ?? 'Failed to load assets';
+        dispatch({ type: ActionTypes.SET_ERROR, payload: msg });
       } finally {
-        actions.setLoading(false);
+        dispatch({ type: ActionTypes.SET_LOADING, payload: false });
       }
     },
 
     loadTags: async () => {
       try {
-        actions.setLoading(true);
-        const tags = await adminApi.listTags();
-        dispatch({ type: ActionTypes.SET_TAGS, payload: tags || [] });
-      } catch (error) {
-        actions.setError(error.message);
+        dispatch({ type: ActionTypes.SET_LOADING, payload: true });
+        const tagsData = await adminApi.listTags() as Tag[];
+        dispatch({ type: ActionTypes.SET_TAGS, payload: tagsData });
+      } catch (err: unknown) {
+        const msg = (err as Error)?.message ?? 'Failed to load tags';
+        dispatch({ type: ActionTypes.SET_ERROR, payload: msg });
       } finally {
-        actions.setLoading(false);
+        dispatch({ type: ActionTypes.SET_LOADING, payload: false });
       }
     },
 
     loadAllMasterData: async () => {
       try {
-        actions.setLoading(true);
+        dispatch({ type: ActionTypes.SET_LOADING, payload: true });
         const [types, accounts, assets, tags] = await Promise.all([
-          adminApi.listTypes(),
-          adminApi.listAccounts(),
-          adminApi.listAssets(),
-          adminApi.listTags(),
+          adminApi.listTypes() as Promise<TransactionType[]>,
+          adminApi.listAccounts() as Promise<Account[]>,
+          adminApi.listAssets() as Promise<Asset[]>,
+          adminApi.listTags() as Promise<Tag[]>,
         ]);
 
-        dispatch({
-          type: ActionTypes.SET_TRANSACTION_TYPES,
-          payload: types || [],
-        });
-        dispatch({ type: ActionTypes.SET_ACCOUNTS, payload: accounts || [] });
-        dispatch({ type: ActionTypes.SET_ASSETS, payload: assets || [] });
-        dispatch({ type: ActionTypes.SET_TAGS, payload: tags || [] });
-      } catch (error) {
-        actions.setError(error.message);
+        dispatch({ type: ActionTypes.SET_TRANSACTION_TYPES, payload: types });
+        dispatch({ type: ActionTypes.SET_ACCOUNTS, payload: accounts });
+        dispatch({ type: ActionTypes.SET_ASSETS, payload: assets });
+        dispatch({ type: ActionTypes.SET_TAGS, payload: tags });
+      } catch (err: unknown) {
+        const msg = (err as Error)?.message ?? 'Failed to load data';
+        dispatch({ type: ActionTypes.SET_ERROR, payload: msg });
       } finally {
-        actions.setLoading(false);
+        dispatch({ type: ActionTypes.SET_LOADING, payload: false });
       }
     },
 
     // CRUD operations
-    createTransactionType: async (type) => {
+    createTransactionType: async (type: TransactionType) => {
       try {
-        const newType = await adminApi.createType(type);
+        const newType = await adminApi.createType(type) as TransactionType;
         dispatch({ type: ActionTypes.ADD_TRANSACTION_TYPE, payload: newType });
         return newType;
-      } catch (error) {
-        actions.setError(error.message);
-        throw error;
+      } catch (err: unknown) {
+        const msg = (err as Error)?.message ?? 'Failed to create type';
+        dispatch({ type: ActionTypes.SET_ERROR, payload: msg });
+        throw err;
       }
     },
 
-    updateTransactionType: async (id, type) => {
+    updateTransactionType: async (id: string | number, type: TransactionType) => {
       try {
-        const updatedType = await adminApi.updateType(id, type);
+        const updatedType = await adminApi.updateType(id, type) as TransactionType & { id: string | number };
         dispatch({
           type: ActionTypes.UPDATE_TRANSACTION_TYPE,
           payload: updatedType,
         });
         return updatedType;
-      } catch (error) {
-        actions.setError(error.message);
-        throw error;
+      } catch (err: unknown) {
+        const msg = (err as Error)?.message ?? 'Failed to update type';
+        dispatch({ type: ActionTypes.SET_ERROR, payload: msg });
+        throw err;
       }
     },
 
-    deleteTransactionType: async (id) => {
+    deleteTransactionType: async (id: string | number) => {
       try {
         await adminApi.deleteType(id);
         dispatch({ type: ActionTypes.DELETE_TRANSACTION_TYPE, payload: id });
-      } catch (error) {
-        actions.setError(error.message);
-        throw error;
+      } catch (err: unknown) {
+        const msg = (err as Error)?.message ?? 'Failed to delete type';
+        dispatch({ type: ActionTypes.SET_ERROR, payload: msg });
+        throw err;
       }
     },
 
-    createAccount: async (account) => {
+    createAccount: async (account: Account) => {
       try {
-        const newAccount = await adminApi.createAccount(account);
+        const newAccount = await adminApi.createAccount(account) as Account;
         dispatch({ type: ActionTypes.ADD_ACCOUNT, payload: newAccount });
         return newAccount;
-      } catch (error) {
-        actions.setError(error.message);
-        throw error;
+      } catch (err: unknown) {
+        const msg = (err as Error)?.message ?? 'Failed to create account';
+        dispatch({ type: ActionTypes.SET_ERROR, payload: msg });
+        throw err;
       }
     },
 
-    updateAccount: async (id, account) => {
+    updateAccount: async (id: string | number, account: Account) => {
       try {
-        const updatedAccount = await adminApi.updateAccount(id, account);
+        const updatedAccount = await adminApi.updateAccount(id, account) as Account & { id: string | number };
         dispatch({ type: ActionTypes.UPDATE_ACCOUNT, payload: updatedAccount });
         return updatedAccount;
-      } catch (error) {
-        actions.setError(error.message);
-        throw error;
+      } catch (err: unknown) {
+        const msg = (err as Error)?.message ?? 'Failed to update account';
+        dispatch({ type: ActionTypes.SET_ERROR, payload: msg });
+        throw err;
       }
     },
 
-    deleteAccount: async (id) => {
+    deleteAccount: async (id: string | number) => {
       try {
         await adminApi.deleteAccount(id);
         dispatch({ type: ActionTypes.DELETE_ACCOUNT, payload: id });
-      } catch (error) {
-        actions.setError(error.message);
-        throw error;
+      } catch (err: unknown) {
+        const msg = (err as Error)?.message ?? 'Failed to delete account';
+        dispatch({ type: ActionTypes.SET_ERROR, payload: msg });
+        throw err;
       }
     },
 
-    createAsset: async (asset) => {
+    createAsset: async (asset: Asset) => {
       try {
-        const newAsset = await adminApi.createAsset(asset);
+        const newAsset = await adminApi.createAsset(asset) as Asset;
         dispatch({ type: ActionTypes.ADD_ASSET, payload: newAsset });
         return newAsset;
-      } catch (error) {
-        actions.setError(error.message);
-        throw error;
+      } catch (err: unknown) {
+        const msg = (err as Error)?.message ?? 'Failed to create asset';
+        dispatch({ type: ActionTypes.SET_ERROR, payload: msg });
+        throw err;
       }
     },
 
-    updateAsset: async (id, asset) => {
+    updateAsset: async (id: string | number, asset: Asset) => {
       try {
-        const updatedAsset = await adminApi.updateAsset(id, asset);
+        const updatedAsset = await adminApi.updateAsset(id, asset) as Asset & { id: string | number };
         dispatch({ type: ActionTypes.UPDATE_ASSET, payload: updatedAsset });
         return updatedAsset;
-      } catch (error) {
-        actions.setError(error.message);
-        throw error;
+      } catch (err: unknown) {
+        const msg = (err as Error)?.message ?? 'Failed to update asset';
+        dispatch({ type: ActionTypes.SET_ERROR, payload: msg });
+        throw err;
       }
     },
 
-    deleteAsset: async (id) => {
+    deleteAsset: async (id: string | number) => {
       try {
         await adminApi.deleteAsset(id);
         dispatch({ type: ActionTypes.DELETE_ASSET, payload: id });
-      } catch (error) {
-        actions.setError(error.message);
-        throw error;
+      } catch (err: unknown) {
+        const msg = (err as Error)?.message ?? 'Failed to delete asset';
+        dispatch({ type: ActionTypes.SET_ERROR, payload: msg });
+        throw err;
       }
     },
 
-    createTag: async (tag) => {
+    createTag: async (tag: Tag) => {
       try {
-        const newTag = await adminApi.createTag(tag);
+        const newTag = await adminApi.createTag(tag) as Tag;
         dispatch({ type: ActionTypes.ADD_TAG, payload: newTag });
         return newTag;
-      } catch (error) {
-        actions.setError(error.message);
-        throw error;
+      } catch (err: unknown) {
+        const msg = (err as Error)?.message ?? 'Failed to create tag';
+        dispatch({ type: ActionTypes.SET_ERROR, payload: msg });
+        throw err;
       }
     },
 
-    updateTag: async (id, tag) => {
+    updateTag: async (id: string | number, tag: Tag) => {
       try {
-        const updatedTag = await adminApi.updateTag(id, tag);
+        const updatedTag = await adminApi.updateTag(id, tag) as Tag & { id: string | number };
         dispatch({ type: ActionTypes.UPDATE_TAG, payload: updatedTag });
         return updatedTag;
-      } catch (error) {
-        actions.setError(error.message);
-        throw error;
+      } catch (err: unknown) {
+        const msg = (err as Error)?.message ?? 'Failed to update tag';
+        dispatch({ type: ActionTypes.SET_ERROR, payload: msg });
+        throw err;
       }
     },
 
-    deleteTag: async (id) => {
+    deleteTag: async (id: string | number) => {
       try {
         await adminApi.deleteTag(id);
         dispatch({ type: ActionTypes.DELETE_TAG, payload: id });
-      } catch (error) {
-        actions.setError(error.message);
-        throw error;
+      } catch (err: unknown) {
+        const msg = (err as Error)?.message ?? 'Failed to delete tag';
+        dispatch({ type: ActionTypes.SET_ERROR, payload: msg });
+        throw err;
       }
     },
-  };
+  }), [dispatch]);
 
   // Load master data on mount
-  useEffect(() => {
-    actions.loadAllMasterData();
-  }, []);
+  const loadAllMasterData = useCallback(async () => {
+    await actions.loadAllMasterData();
+  }, [actions]);
 
-  const value = {
+  useEffect(() => {
+    void loadAllMasterData();
+  }, [loadAllMasterData]);
+
+  const value: AppContextValue = {
     ...state,
     actions,
   };

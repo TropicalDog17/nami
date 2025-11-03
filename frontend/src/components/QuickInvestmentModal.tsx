@@ -6,7 +6,7 @@ import { vaultApi } from '../services/api';
 interface QuickInvestmentModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSubmit: (investmentData: any) => void;
+  onSubmit: (investmentData: unknown) => void;
 }
 
 const QuickInvestmentModal: React.FC<QuickInvestmentModalProps> = ({ isOpen, onClose, onSubmit }) => {
@@ -23,7 +23,7 @@ const QuickInvestmentModal: React.FC<QuickInvestmentModalProps> = ({ isOpen, onC
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [vaultOptions, setVaultOptions] = useState<{ value: string; label: string }[]>([]);
-  const [vaultIdToInfo, setVaultIdToInfo] = useState<Record<string, any>>({});
+  const [vaultIdToInfo, setVaultIdToInfo] = useState<Record<string, unknown>>({});
   const [isUsdOnly, setIsUsdOnly] = useState(false);
   const [usdAmount, setUsdAmount] = useState('');
 
@@ -33,31 +33,42 @@ const QuickInvestmentModal: React.FC<QuickInvestmentModalProps> = ({ isOpen, onC
   useEffect(() => {
     const loadVaults = async () => {
       try {
-        const data = (await vaultApi.getActiveVaults()) as any[] | null;
-        const byId: Record<string, any> = {};
-        const opts = (data || [])
-          .filter((v) => v && (v.is_open === true || v.is_open === undefined))
+        const data = await vaultApi.getActiveVaults() as unknown[];
+        const byId: Record<string, unknown> = {};
+        const opts = data
+          .filter((v) => {
+            const typedV = v as { is_open?: boolean };
+            return typedV && (typedV.is_open === true || typedV.is_open === undefined);
+          })
           .map((v) => {
-            byId[v.id] = v;
-            const horizon = v.horizon ? ` · ${v.horizon}` : '';
-            return { value: v.id, label: `${v.asset} @ ${v.account}${horizon}` };
+            const typedV = v as { id: string; asset: string; account: string; horizon?: string };
+            byId[typedV.id] = typedV;
+            const horizon = typedV.horizon ? ` · ${typedV.horizon}` : '';
+            return { value: typedV.id, label: `${typedV.asset} @ ${typedV.account}${horizon}` };
           });
         setVaultIdToInfo(byId);
-        setVaultOptions(opts);
-      } catch (e) {
+        setVaultOptions(opts as { value: string; label: string }[]);
+      } catch (_e) {
         setVaultOptions([]);
       }
     };
-    if (isOpen) loadVaults();
+    if (isOpen) void loadVaults();
   }, [isOpen]);
 
   // When vault changes, reflect asset/account for user clarity
-  const selectedVault = useMemo(() => (formData.vaultId ? vaultIdToInfo[formData.vaultId] : null), [formData.vaultId, vaultIdToInfo]);
+  const selectedVault = useMemo(() => {
+    const info = formData.vaultId ? vaultIdToInfo[formData.vaultId] : null;
+    return info ? (info as { asset?: string; account?: string; horizon?: string }) : null;
+  }, [formData.vaultId, vaultIdToInfo]);
   useEffect(() => {
     if (selectedVault) {
-      setFormData((s) => ({ ...s, asset: selectedVault.asset || 'USD', account: selectedVault.account || '' }));
+      setFormData((s) => ({ 
+        ...s, 
+        asset: selectedVault.asset ?? 'USD', 
+        account: selectedVault.account ?? '' 
+      }));
       // Auto-enable USD-only mode when vault asset is USD
-      if (String(selectedVault.asset || '').toUpperCase() === 'USD') {
+      if ((selectedVault.asset ?? '').toUpperCase() === 'USD') {
         setIsUsdOnly(true);
       } else {
         setIsUsdOnly(false);
@@ -72,12 +83,12 @@ const QuickInvestmentModal: React.FC<QuickInvestmentModalProps> = ({ isOpen, onC
       if (!formData.vaultId) {
         throw new Error('Select a vault');
       }
-      const qty = isUsdOnly ? 1 : parseFloat(formData.quantity || '0');
-      const cost = isUsdOnly ? parseFloat(usdAmount || '0') : parseFloat(formData.quantity || '0') * parseFloat(formData.price_local || '1');
+      const qty = isUsdOnly ? 1 : parseFloat(formData.quantity ?? '0');
+      const cost = isUsdOnly ? parseFloat(usdAmount ?? '0') : parseFloat(formData.quantity ?? '0') * parseFloat(formData.price_local ?? '1');
       if (!cost || cost <= 0) {
         throw new Error('Enter a valid amount');
       }
-      await onSubmit({
+      onSubmit({  // removed await
         vaultId: formData.vaultId,
         quantity: qty,
         cost,
@@ -99,7 +110,7 @@ const QuickInvestmentModal: React.FC<QuickInvestmentModalProps> = ({ isOpen, onC
           <h3 className="text-lg font-medium text-gray-900">Deposit to Vault</h3>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600">×</button>
         </div>
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={(e) => void handleSubmit(e)} className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Vault</label>
             <ComboBox

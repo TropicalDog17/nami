@@ -108,7 +108,7 @@ export const AssetFormAdvanced: React.FC<AssetFormAdvancedProps> = ({ onSubmit, 
       quote_currency: 'USD',
       is_popular: false,
       api_endpoint: template.api_endpoint,
-      api_config: template.api_config,
+      api_config: template.api_config as PriceMappingData['api_config'],
       response_path: template.response_path,
       auto_populate: false,
     });
@@ -136,8 +136,8 @@ export const AssetFormAdvanced: React.FC<AssetFormAdvancedProps> = ({ onSubmit, 
       // Parse API config JSON if in advanced mode
       if (showAdvanced && apiConfigJson.trim()) {
         try {
-          finalMapping.api_config = JSON.parse(apiConfigJson);
-        } catch (err) {
+          finalMapping.api_config = JSON.parse(apiConfigJson) as NonNullable<PriceMappingData['api_config']>;
+        } catch (_err) {
           alert('Invalid JSON in API Configuration');
           return;
         }
@@ -310,7 +310,7 @@ export const AssetFormAdvanced: React.FC<AssetFormAdvancedProps> = ({ onSubmit, 
                   <input
                     type="date"
                     name="populate_from_date"
-                    value={mappingData.populate_from_date || ''}
+                    value={mappingData.populate_from_date ?? ''}
                     onChange={handleMappingChange}
                     className="w-full border border-gray-300 rounded px-3 py-2"
                   />
@@ -341,7 +341,7 @@ export const AssetFormAdvanced: React.FC<AssetFormAdvancedProps> = ({ onSubmit, 
                   <input
                     type="text"
                     name="api_endpoint"
-                    value={mappingData.api_endpoint || ''}
+                    value={mappingData.api_endpoint ?? ''}
                     onChange={handleMappingChange}
                     className="w-full border border-gray-300 rounded px-3 py-2 font-mono text-sm"
                     placeholder="https://api.example.com/{date}"
@@ -358,7 +358,7 @@ export const AssetFormAdvanced: React.FC<AssetFormAdvancedProps> = ({ onSubmit, 
                   <input
                     type="text"
                     name="response_path"
-                    value={mappingData.response_path || ''}
+                    value={mappingData.response_path ?? ''}
                     onChange={handleMappingChange}
                     className="w-full border border-gray-300 rounded px-3 py-2 font-mono text-sm"
                     placeholder="data.price"

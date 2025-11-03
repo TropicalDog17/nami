@@ -1,40 +1,40 @@
 import React, { useState, useMemo } from 'react';
 
-type Row = { id?: string | number; [key: string]: any };
-type Column = {
+export type TableRowBase = { id?: string | number } & Record<string, unknown>;
+export type TableColumn<TRow extends TableRowBase> = {
   key: string;
   title: string;
   width?: number | string;
-  type?: 'date' | 'datetime' | 'currency' | 'number' | 'text' | string;
+  type?: 'date' | 'datetime' | 'currency' | 'number' | 'text' | (string & {});
   currency?: string;
   editable?: boolean;
-  editType?: 'select' | 'date' | 'number' | 'text' | string;
+  editType?: 'select' | 'date' | 'number' | 'text' | (string & {});
   decimals?: number;
-  render?: (value: any, column: Column, row: Row) => React.ReactNode;
+  render?: (value: unknown, column: TableColumn<TRow>, row: TRow) => React.ReactNode;
 };
 type Option = { value: string; label: string };
 type MasterData = Record<string, Option[]>;
 
-type Props = {
-  data?: Row[];
-  columns?: Column[];
+type Props<TRow extends TableRowBase> = {
+  data?: TRow[];
+  columns?: TableColumn<TRow>[];
   loading?: boolean;
-  error?: any;
+  error?: unknown;
   sortable?: boolean;
   filterable?: boolean;
   pagination?: boolean;
   pageSize?: number;
-  onRowClick?: ((row: Row) => void) | null;
+  onRowClick?: ((row: TRow) => void) | null;
   className?: string;
   emptyMessage?: string;
   editable?: boolean;
-  onCellEdit?: ((rowId: string | number, columnKey: string, newValue: any) => Promise<void>) | null;
+  onCellEdit?: ((rowId: string | number, columnKey: string, newValue: unknown) => Promise<void>) | null;
   masterData?: MasterData;
-  actions?: Array<'view' | 'edit' | 'delete' | 'recalc' | string>;
-  onEdit?: ((row: Row) => void) | null;
+  actions?: Array<'view' | 'edit' | 'delete' | 'recalc' | (string & {})>;
+  onEdit?: ((row: TRow) => void) | null;
   onDelete?: ((id: string | number) => void | Promise<void>) | null;
-  onRecalc?: ((row: Row) => void | Promise<void>) | null;
-  onView?: ((row: Row) => void) | null;
+  onRecalc?: ((row: TRow) => void | Promise<void>) | null;
+  onView?: ((row: TRow) => void) | null;
   busyRowIds?: Set<string | number>;
   // Selection for bulk actions
   selectableRows?: boolean;
@@ -43,7 +43,7 @@ type Props = {
   onToggleAll?: (checked: boolean, visibleIds: Array<string | number>) => void;
 };
 
-const DataTable: React.FC<Props> = ({
+const DataTable = <TRow extends TableRowBase>({
   data = [],
   columns = [],
   loading = false,
@@ -68,50 +68,88 @@ const DataTable: React.FC<Props> = ({
   selectedIds = new Set(),
   onToggleRow,
   onToggleAll,
-}) => {
-  const [sortConfig, setSortConfig] = useState({ key: null, direction: 'asc' });
+}: Props<TRow>) => {
+  const [sortConfig, setSortConfig] = useState<{ key: string | null; direction: 'asc' | 'desc' }>({ key: null, direction: 'asc' });
   const [filterText, setFilterText] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
-  const [editingCell, setEditingCell] = useState(null);
+  const [editingCell, setEditingCell] = useState<{ rowId: string | number; columnKey: string } | null>(null);
   const [editValue, setEditValue] = useState('');
 
   // Helper function to get nested values
-  const getNestedValue = (obj: Record<string, any>, path: string) => {
-    return path.split('.').reduce((current, key) => current?.[key], obj);
+  const getNestedValue = (obj: Record<string, unknown>, path: string): unknown => {
+    return path.split('.').reduce<unknown>((current: unknown, key: string) => {
+      if (current && typeof current === 'object' && key in (current as Record<string, unknown>)) {
+        return (current as Record<string, unknown>)[key];
+      }
+      return undefined;
+    }, obj);
   };
 
   // Sort data
-  const sortedData = useMemo<Row[]>(() => {
+  const sortedData = useMemo<TRow[]>(() => {
     if (!sortConfig.key) return data;
 
     return [...data].sort((a, b) => {
-      const aValue = getNestedValue(a, sortConfig.key);
-      const bValue = getNestedValue(b, sortConfig.key);
+      const aValue = getNestedValue(a as Record<string, unknown>, sortConfig.key as string);
+      const bValue = getNestedValue(b as Record<string, unknown>, sortConfig.key as string);
 
       if (aValue === null) return 1;
       if (bValue === null) return -1;
       if (aValue === bValue) return 0;
 
-      const comparison = aValue < bValue ? -1 : 1;
+      let comparison = 0;
+      if (typeof aValue === 'number' && typeof bValue === 'number') {
+        comparison = aValue < bValue ? -1 : 1;
+      } else if (typeof aValue === 'string' && typeof bValue === 'string') {
+        comparison = aValue.localeCompare(bValue);
+      } else if (aValue instanceof Date && bValue instanceof Date) {
+        comparison = aValue.getTime() < bValue.getTime() ? -1 : 1;
+      } else {
+        const aStr =
+          typeof aValue === 'object'
+            ? JSON.stringify(aValue)
+            : typeof aValue === 'string'
+              ? aValue
+              : typeof aValue === 'number'
+                ? String(aValue)
+                : typeof aValue === 'boolean'
+                  ? (aValue ? 'true' : 'false')
+                  : '';
+        const bStr =
+          typeof bValue === 'object'
+            ? JSON.stringify(bValue)
+            : typeof bValue === 'string'
+              ? bValue
+              : typeof bValue === 'number'
+                ? String(bValue)
+                : typeof bValue === 'boolean'
+                  ? (bValue ? 'true' : 'false')
+                  : '';
+        comparison = aStr < bStr ? -1 : 1;
+      }
       return sortConfig.direction === 'desc' ? comparison * -1 : comparison;
     });
   }, [data, sortConfig]);
 
   // Filter data
-  const filteredData = useMemo<Row[]>(() => {
+  const filteredData = useMemo<TRow[]>(() => {
     if (!filterText) return sortedData;
 
     const searchTerm = filterText.toLowerCase();
     return sortedData.filter((row) =>
       columns.some((column) => {
-        const value = getNestedValue(row, column.key);
-        return value && value.toString().toLowerCase().includes(searchTerm);
+        const value = getNestedValue(row as Record<string, unknown>, column.key);
+        if (value === null || value === undefined) return false;
+        if (typeof value === 'string') return value.toLowerCase().includes(searchTerm);
+        if (typeof value === 'number' || typeof value === 'boolean') return String(value).toLowerCase().includes(searchTerm);
+        if (value instanceof Date) return value.toISOString().toLowerCase().includes(searchTerm);
+        return JSON.stringify(value).toLowerCase().includes(searchTerm);
       })
     );
   }, [sortedData, filterText, columns]);
 
   // Paginate data
-  const paginatedData = useMemo<Row[]>(() => {
+  const paginatedData = useMemo<TRow[]>(() => {
     if (!pagination) return filteredData;
 
     const startIndex = (currentPage - 1) * pageSize;
@@ -121,10 +159,16 @@ const DataTable: React.FC<Props> = ({
   const totalPages = Math.ceil(filteredData.length / pageSize);
 
   // Handle inline editing
-  const startEditing = (rowId: string | number, columnKey: string, currentValue: any) => {
+  const startEditing = (rowId: string | number, columnKey: string, currentValue: unknown) => {
     if (!editable) return;
     setEditingCell({ rowId, columnKey });
-    setEditValue(currentValue || '');
+    const toInputString = (v: unknown): string => {
+      if (typeof v === 'string') return v;
+      if (typeof v === 'number' || typeof v === 'boolean') return String(v);
+      if (v instanceof Date) return v.toISOString();
+      return '';
+    };
+    setEditValue(toInputString(currentValue));
   };
 
   const cancelEditing = () => {
@@ -148,7 +192,7 @@ const DataTable: React.FC<Props> = ({
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement | HTMLSelectElement>) => {
     if (e.key === 'Enter') {
       e.preventDefault();
-      saveEditing();
+      void saveEditing();
     } else if (e.key === 'Escape') {
       e.preventDefault();
       cancelEditing();
@@ -156,10 +200,10 @@ const DataTable: React.FC<Props> = ({
   };
 
   // Render edit input based on editType
-  const renderEditInput = (column: Column, currentValue: any) => {
+  const renderEditInput = (column: TableColumn<TRow>, _currentValue: unknown) => {
     const commonProps = {
       value: editValue,
-      onChange: (e) => setEditValue(e.target.value),
+      onChange: (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setEditValue(e.target.value),
       onKeyDown: handleKeyDown,
       autoFocus: true,
       className: 'w-full px-2 py-1 text-sm border border-blue-500 rounded focus:outline-none focus:ring-2 focus:ring-blue-500',
@@ -217,38 +261,54 @@ const DataTable: React.FC<Props> = ({
   };
 
   // Format cell value
-  const formatCellValue = (value: any, column: Column, row: Row) => {
-    // Always prefer custom renderers, even when value is null/undefined
+  const formatCellValue = (value: unknown, column: TableColumn<TRow>, row: TRow) => {
     if (column.render) {
       return column.render(value, column, row);
     }
 
-    if (value === null || value === undefined) return '-';
+    if (value == null) return '-';
+
+    if (typeof value === 'object' && value !== null) {
+      return JSON.stringify(value);
+    }
 
     if (column.type === 'datetime') {
-      return new Date(value).toLocaleString();
+      if (typeof value !== 'string' && !(value instanceof Date)) return '-';
+      const dateVal = value instanceof Date ? value : new Date(value);
+      if (isNaN(dateVal.getTime())) return '-';
+      return dateVal.toLocaleString();
     }
 
     if (column.type === 'date') {
-      return new Date(value).toLocaleDateString();
+      if (typeof value !== 'string' && !(value instanceof Date)) return '-';
+      const dateVal = value instanceof Date ? value : new Date(value);
+      if (isNaN(dateVal.getTime())) return '-';
+      return dateVal.toLocaleDateString();
     }
 
     if (column.type === 'currency') {
+      const num = Number(value);
+      if (isNaN(num)) return '-';
       return new Intl.NumberFormat('en-US', {
         style: 'currency',
-        currency: column.currency || 'USD',
-      }).format(value);
+        currency: column.currency ?? 'USD',
+      }).format(num);
     }
 
     if (column.type === 'number') {
-      return typeof value === 'number' ? value.toLocaleString() : value;
+      const num = Number(value);
+      if (isNaN(num)) return '-';
+      return num.toLocaleString(undefined, { 
+        minimumFractionDigits: column.decimals ?? 0, 
+        maximumFractionDigits: column.decimals ?? 0 
+      });
     }
 
-    return value.toString();
+    return (value as string | number | bigint | boolean | symbol).toString();
   };
 
   // Render action buttons
-  const renderActions = (row: Row) => {
+  const renderActions = (row: TRow) => {
     if (!actions || actions.length === 0) return null;
 
     return (
@@ -286,7 +346,8 @@ const DataTable: React.FC<Props> = ({
             <button
               onClick={(e) => {
                 e.stopPropagation();
-                onDelete(row.id as string | number);
+                const rowId = row.id;
+                if (rowId !== undefined) void onDelete(rowId);
               }}
               className="text-red-600 hover:text-red-900"
               title="Delete"
@@ -301,14 +362,14 @@ const DataTable: React.FC<Props> = ({
             <button
               onClick={(e) => {
                 e.stopPropagation();
-                onRecalc(row);
+                void onRecalc(row);
               }}
-              className={`text-gray-600 hover:text-gray-900 ${busyRowIds?.has?.(row.id) ? 'opacity-50 cursor-not-allowed' : ''}`}
-              disabled={!!busyRowIds?.has?.(row.id)}
+              className={`text-gray-600 hover:text-gray-900 ${row.id !== undefined && busyRowIds?.has(row.id) ? 'opacity-50 cursor-not-allowed' : ''}`}
+              disabled={row.id !== undefined && busyRowIds?.has(row.id)}
               title="Refresh"
               data-testid="datatable-recalc-button"
             >
-              {busyRowIds?.has?.(row.id) ? (
+              {row.id !== undefined && busyRowIds?.has(row.id) ? (
                 <svg className="w-5 h-5 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor">
                   <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                   <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
@@ -347,7 +408,14 @@ const DataTable: React.FC<Props> = ({
               Error loading data
             </h3>
             <div className="mt-2 text-sm text-red-700">
-              {error.message || error}
+              {(() => {
+                if (typeof error === 'string') return error;
+                if (error && typeof error === 'object' && 'message' in (error as Record<string, unknown>)) {
+                  const err = error as { message?: unknown };
+                  return typeof err.message === 'string' ? err.message : JSON.stringify(err.message ?? '');
+                }
+                return 'An error occurred';
+              })()}
             </div>
           </div>
         </div>
@@ -401,8 +469,21 @@ const DataTable: React.FC<Props> = ({
                   <input
                     type="checkbox"
                     aria-label="Select all"
-                    checked={paginatedData.length > 0 && paginatedData.every((r) => selectedIds.has(r.id as any))}
-                    onChange={(e) => onToggleAll?.(e.target.checked, paginatedData.map((r) => r.id as any))}
+                    checked={
+                      paginatedData.length > 0 &&
+                      paginatedData.every((r) => {
+                        const id = r.id;
+                        return id !== undefined && selectedIds.has(id);
+                      })
+                    }
+                    onChange={(e) =>
+                      onToggleAll?.(
+                        e.target.checked,
+                        paginatedData
+                          .map((r) => r.id)
+                          .filter((id): id is string | number => Boolean(id) && (typeof id === 'string' || typeof id === 'number'))
+                      )
+                    }
                   />
                 </th>
               )}
@@ -487,17 +568,20 @@ const DataTable: React.FC<Props> = ({
             ) : (
               paginatedData.map((row, rowIndex) => (
                 <tr
-                  key={row.id || rowIndex}
+                  key={row.id ?? rowIndex}
                   className={`hover:bg-gray-50 ${onRowClick ? 'cursor-pointer' : ''}`}
-                  onClick={() => onRowClick && onRowClick(row)}
+                  onClick={() => onRowClick?.(row)}
                 >
                   {selectableRows && (
                     <td className="px-4 py-4 text-center">
                       <input
                         type="checkbox"
                         aria-label={`Select row ${String(row.id)}`}
-                        checked={selectedIds.has(row.id as any)}
-                        onChange={(e) => onToggleRow?.(row.id as any, e.target.checked)}
+                        checked={Boolean(row.id !== undefined && selectedIds.has(row.id))}
+                        onChange={(e) => {
+                          const id = row.id;
+                          if (id !== undefined) onToggleRow?.(id, e.target.checked);
+                        }}
                         onClick={(e) => e.stopPropagation()}
                       />
                     </td>
@@ -513,7 +597,12 @@ const DataTable: React.FC<Props> = ({
                         className={`px-6 py-4 whitespace-nowrap text-sm text-gray-900 group ${
                           isEditable ? 'cursor-pointer hover:bg-blue-50' : ''
                         }`}
-                        onClick={() => isEditable && !isEditing && startEditing(row.id, column.key, cellValue)}
+                        onClick={() => {
+                          if (isEditable && !isEditing) {
+                            const id = row.id;
+                            if (id !== undefined) startEditing(id, column.key, cellValue);
+                          }
+                        }}
                       >
                         {isEditing ? (
                           renderEditInput(column, cellValue)

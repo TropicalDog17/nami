@@ -1,22 +1,28 @@
-import React from 'react'
+import { Component } from 'react'
 
-class ErrorBoundary extends React.Component {
-  constructor(props) {
+type ErrorBoundaryState = {
+  hasError: boolean
+  error: unknown
+  errorInfo: React.ErrorInfo | null
+}
+
+class ErrorBoundary extends Component<React.PropsWithChildren, ErrorBoundaryState> {
+  constructor(props: React.PropsWithChildren) {
     super(props)
     this.state = { hasError: false, error: null, errorInfo: null }
   }
 
-  static getDerivedStateFromError(error) {
+  static getDerivedStateFromError(_error: unknown) {
     // Update state so the next render will show the fallback UI
     return { hasError: true }
   }
 
-  componentDidCatch(error, errorInfo) {
+  componentDidCatch(error: unknown, errorInfo: React.ErrorInfo) {
     // Log error details
     console.error('ErrorBoundary caught an error:', error, errorInfo)
     this.setState({
-      error: error,
-      errorInfo: errorInfo
+      error,
+      errorInfo
     })
   }
 
@@ -50,7 +56,10 @@ class ErrorBoundary extends React.Component {
                   </summary>
                   <div className="mt-2 text-xs text-gray-600 bg-gray-100 p-3 rounded font-mono overflow-auto max-h-40">
                     <div className="mb-2">
-                      <strong>Error:</strong> {this.state.error.toString()}
+                      <strong>Error:</strong> {(() => {
+                        const e = this.state.error
+                        return e instanceof Error ? e.message : 'An unknown error occurred'
+                      })()}
                     </div>
                     {this.state.errorInfo && (
                       <div>

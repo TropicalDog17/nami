@@ -1,25 +1,35 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 import AssetAllocationChart from '../components/reports/AssetAllocationChart';
 import CashFlowChart from '../components/reports/CashFlowChart';
-import { HoldingsChart, PnLChart, SpendingChart, DailySpendingChart } from '../components/reports/Charts';
-import DataTable from '../components/ui/DataTable';
+import { PnLChart, SpendingChart, DailySpendingChart } from '../components/reports/Charts';
+import DataTable, { TableColumn, TableRowBase } from '../components/ui/DataTable';
 import DateInput from '../components/ui/DateInput';
 import { useBackendStatus } from '../context/BackendStatusContext';
 import { reportsApi, investmentsApi } from '../services/api';
 
 const ReportsPage = () => {
   const [activeTab, setActiveTab] = useState('holdings');
-  const [currency, setCurrency] = useState('USD');
+  const [currency, setCurrency] = useState<'USD' | 'VND'>('USD');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [data, setData] = useState<any>({});
+  const [data, setData] = useState<Record<string, unknown>>({});
 
   const navigate = useNavigate();
 
   // Filters
-  const [filters, setFilters] = useState({
+  type Filters = {
+    startDate: string;
+    endDate: string;
+    asOf: string;
+    period: string;
+    asset: string;
+    account: string;
+    tag: string;
+    type: string;
+  };
+  const [filters, setFilters] = useState<Filters>({
     startDate: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
       .toISOString()
       .split('T')[0], // 30 days ago
@@ -32,7 +42,7 @@ const ReportsPage = () => {
     type: '',
   });
 
-  const { isOnline } = useBackendStatus() as any;
+  const { isOnline } = useBackendStatus();
 
   const tabs = [
     { id: 'holdings', name: 'Holdings', icon: '📊' },
@@ -43,18 +53,12 @@ const ReportsPage = () => {
     { id: 'pnl', name: 'P&L', icon: '📈' },
   ];
 
-  useEffect(() => {
-    if (isOnline) {
-      fetchData();
-    }
-  }, [activeTab, filters, currency, isOnline]);
-
-  const fetchData = async () => {
+  const fetchData = useCallback(async (): Promise<void> => {
     setLoading(true);
     setError(null);
 
     try {
-      let result = null;
+      let result: unknown = null;
 
       switch (activeTab) {
         case 'holdings':
@@ -86,20 +90,24 @@ const ReportsPage = () => {
           break;
       }
 
-      setData((prev: any) => ({ ...prev, [activeTab]: result }));
-    } catch (err) {
+      setData((prev) => ({ ...prev, [activeTab]: result }));
+    } catch (err: unknown) {
       const message =
-        err && typeof err === 'object' && 'message' in (err as any)
-          ? String((err as any).message)
-          : String(err);
+        err instanceof Error ? err.message : 'Unknown error';
       setError(`Failed to load ${activeTab}: ${message}`);
       console.error('Reports fetch error:', err);
     } finally {
       setLoading(false);
     }
-  };
+  }, [activeTab, filters]);
 
-  const handleFilterChange = (key: any, value: any) => {
+  useEffect(() => {
+    if (isOnline) {
+      void fetchData();
+    }
+  }, [isOnline, fetchData]);
+
+  const handleFilterChange = <K extends keyof Filters>(key: K, value: Filters[K]) => {
     setFilters((prev) => ({ ...prev, [key]: value }));
   };
 
@@ -220,18 +228,28 @@ const ReportsPage = () => {
   };
 
   const renderHoldingsTable = () => {
-    const holdings = (data).holdings || [];
+    type HoldingRow = TableRowBase & {
+      asset?: string;
+      account?: string;
+      quantity?: number | string;
+      value_usd?: number | string;
+      value_vnd?: number | string;
+      percentage?: number | string;
+      last_updated?: string;
+      horizon?: string;
+    };
+    const rawHoldings = data.holdings as HoldingRow[] ?? [];
+    const displayHoldings: HoldingRow[] = Array.isArray(rawHoldings) ? rawHoldings : [];
 
-    // Display all holdings and convert values to the selected currency
-    const displayHoldings = Array.isArray(holdings) ? holdings : [];
-
-    const columns = [
+    const columns: TableColumn<HoldingRow>[] = [
       {
         key: 'vault_name',
         title: 'Vault',
-        render: (_: any, __: any, row: any) => {
-          const horizon = row.horizon ? ` [${row.horizon}]` : '';
-          return `${row.asset} @ ${row.account}${horizon}`;
+        render: (_value, _col, row) => {
+          const horizon = row.horizon ? ` [${String(row.horizon ?? '')}]` : '';
+          const a = String(row.asset as string ?? '');
+          const acc = String(row.account as string ?? '');
+          return `${a} @ ${acc}${horizon}`;
         },
       },
       { key: 'asset', title: 'Asset' },
@@ -240,15 +258,19 @@ const ReportsPage = () => {
         key: 'quantity',
         title: 'Quantity',
         type: 'number',
-        render: (value: any) => parseFloat(value || 0).toLocaleString(),
+        render: (value) => {
+          const val = value as number | string | undefined;
+          return parseFloat(String(val ?? 0)).toLocaleString();
+        },
       },
       {
         key: currency === 'USD' ? 'value_usd' : 'value_vnd',
         title: `Value (${currency})`,
         type: 'currency',
         currency: currency,
-        render: (value: any) => {
-          const num = parseFloat(value || 0);
+        render: (value) => {
+          const val = value as number | string | undefined;
+          const num = parseFloat(String(val ?? 0));
           return currency === 'USD'
             ? `$${num.toLocaleString()}`
             : `₫${num.toLocaleString()}`;
@@ -258,13 +280,16 @@ const ReportsPage = () => {
         key: 'percentage',
         title: 'Portfolio %',
         type: 'percentage',
-        render: (value: any) => `${parseFloat(value || 0).toFixed(2)}%`,
+        render: (value) => {
+          const val = value as number | string | undefined;
+          return `${parseFloat(String(val ?? 0)).toFixed(2)}%`;
+        },
       },
       {
         key: 'last_updated',
         title: 'Last Updated',
         type: 'date',
-        render: (value: any) => new Date(value).toLocaleDateString(),
+        render: (value) => new Date(String(value as string ?? '')).toLocaleDateString(),
       },
     ];
 
@@ -277,10 +302,9 @@ const ReportsPage = () => {
         filterable={true}
         sortable={true}
         pagination={true}
-        onRowClick={(row: any) => {
-          // Navigate to vault detail when a vault holding (with id) is clicked
+        onRowClick={(row) => {
           if (row?.id) {
-            navigate(`/vault/${encodeURIComponent(row.id)}`);
+            navigate(`/vault/${encodeURIComponent(String(row.id))}`);
           }
         }}
       />
@@ -288,7 +312,7 @@ const ReportsPage = () => {
   };
 
   const renderAssetAllocation = () => {
-    const allocationData = (data).allocation || {};
+    const allocationData = data.allocation as { by_asset?: Record<string, { value_usd?: number | string; value_vnd?: number | string }> } ?? {};
 
     if (
       !allocationData.by_asset ||
@@ -301,41 +325,62 @@ const ReportsPage = () => {
       );
     }
 
-    return <AssetAllocationChart data={allocationData} currency={currency} />;
+    const allocData = allocationData as { by_asset: Record<string, { quantity: number; value_usd?: number; value_vnd?: number; percentage: number }>; total_value_usd?: number; total_value_vnd?: number };
+    return <AssetAllocationChart data={allocData} currency={currency} />;
   };
 
   const renderInvestmentsTable = () => {
-    const investments = (data).investments || [];
-    const displayInvestments = Array.isArray(investments) ? investments : [];
+    type InvestmentRow = TableRowBase & {
+      asset?: string;
+      account?: string;
+      horizon?: string;
+      deposit_date?: string;
+      deposit_qty?: number | string;
+      remaining_qty?: number | string;
+      deposit_cost?: number | string;
+      current_price?: number | string;
+      deposit_unit_cost?: number | string;
+      realized_pnl?: number | string;
+      is_open?: boolean;
+    };
+    const rawInvestments = data.investments as InvestmentRow[] ?? [];
+    const displayInvestments: InvestmentRow[] = Array.isArray(rawInvestments) ? rawInvestments : [];
 
-    const columns = [
+    const columns: TableColumn<InvestmentRow>[] = [
       { key: 'asset', title: 'Asset' },
       { key: 'account', title: 'Account' },
-      { key: 'horizon', title: 'Horizon', render: (value: any) => value || 'N/A' },
+      { key: 'horizon', title: 'Horizon', render: (value) => String(value as string ?? 'N/A') },
       {
         key: 'deposit_date',
         title: 'Deposit Date',
         type: 'date',
-        render: (value: any) => new Date(value).toLocaleDateString(),
+        render: (value) => new Date(String(value as string ?? '')).toLocaleDateString(),
       },
       {
         key: 'deposit_qty',
         title: 'Deposit Qty',
         type: 'number',
-        render: (value: any) => parseFloat(value || 0).toLocaleString(),
+        render: (value) => {
+          const val = value as number | string | undefined;
+          return parseFloat(String(val ?? 0)).toLocaleString();
+        },
       },
       {
         key: 'remaining_qty',
         title: 'Remaining Qty',
         type: 'number',
-        render: (value: any) => parseFloat(value || 0).toLocaleString(),
+        render: (value) => {
+          const val = value as number | string | undefined;
+          return parseFloat(String(val ?? 0)).toLocaleString();
+        },
       },
       {
         key: 'deposit_cost',
         title: `Deposit Cost (${currency})`,
         type: 'currency',
-        render: (value: any) => {
-          const num = parseFloat(value || 0);
+        render: (value) => {
+          const val = value as number | string | undefined;
+          const num = parseFloat(String(val ?? 0));
           return currency === 'USD'
             ? `$${num.toLocaleString()}`
             : `₫${num.toLocaleString()}`;
@@ -345,10 +390,10 @@ const ReportsPage = () => {
         key: 'current_value',
         title: `Current Value (${currency})`,
         type: 'currency',
-        render: (value: any, row: any) => {
-          const currentPrice = row.current_price || row.deposit_unit_cost || 1;
-          const remainingQty = parseFloat(row.remaining_qty || 0);
-          const currentValue = remainingQty * parseFloat(currentPrice);
+        render: (_value, _col, row) => {
+          const currentPrice = Number(row.current_price as string ?? row.deposit_unit_cost as string ?? '1');
+          const remainingQty = Number(row.remaining_qty as string ?? '0');
+          const currentValue = remainingQty * currentPrice;
           return currency === 'USD'
             ? `$${currentValue.toLocaleString()}`
             : `₫${currentValue.toLocaleString()}`;
@@ -358,8 +403,9 @@ const ReportsPage = () => {
         key: 'realized_pnl',
         title: `Realized P&L (${currency})`,
         type: 'currency',
-        render: (value: any) => {
-          const num = parseFloat(value || 0);
+        render: (value) => {
+          const val = value as number | string | undefined;
+          const num = parseFloat(String(val ?? 0));
           const formatted = currency === 'USD'
             ? `$${Math.abs(num).toLocaleString()}`
             : `₫${Math.abs(num).toLocaleString()}`;
@@ -371,11 +417,11 @@ const ReportsPage = () => {
         key: 'pnl_percent',
         title: 'P&L %',
         type: 'percentage',
-        render: (value: any, row: any) => {
-          const currentPrice = row.current_price || row.deposit_unit_cost || 1;
-          const depositUnitCost = parseFloat(row.deposit_unit_cost || 0);
+        render: (_value, _col, row) => {
+          const currentPrice = Number(row.current_price as string ?? row.deposit_unit_cost as string ?? '1');
+          const depositUnitCost = Number(row.deposit_unit_cost as string ?? '0');
           if (depositUnitCost === 0) return '0.00%';
-          const pnlPercent = ((parseFloat(currentPrice) - depositUnitCost) / depositUnitCost) * 100;
+          const pnlPercent = ((currentPrice - depositUnitCost) / depositUnitCost) * 100;
           const sign = pnlPercent >= 0 ? '+' : '';
           return `${sign}${pnlPercent.toFixed(2)}%`;
         },
@@ -383,7 +429,7 @@ const ReportsPage = () => {
       {
         key: 'is_open',
         title: 'Status',
-        render: (value: any) => (
+        render: (value) => (
           <span className={`px-2 py-1 text-xs rounded-full ${value ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
             }`}>
             {value ? 'Open' : 'Closed'}
@@ -394,15 +440,15 @@ const ReportsPage = () => {
 
     // Calculate summary stats
     const totalDepositCost = displayInvestments.reduce(
-      (sum: number, inv: any) => sum + parseFloat(inv.deposit_cost || 0), 0
+      (sum: number, inv: unknown) => sum + parseFloat(String(((inv as { deposit_cost?: number | string }).deposit_cost ?? 0))), 0
     );
-    const totalRemainingValue = displayInvestments.reduce((sum: number, inv: any) => {
-      const currentPrice = inv.current_price || inv.deposit_unit_cost || 1;
-      const remainingQty = parseFloat(inv.remaining_qty || 0);
-      return sum + (remainingQty * parseFloat(currentPrice));
+    const totalRemainingValue = displayInvestments.reduce((sum: number, inv: unknown) => {
+      const currentPrice = Number((inv as { current_price?: unknown }).current_price ?? (inv as { deposit_unit_cost?: unknown }).deposit_unit_cost ?? '1');
+      const remainingQty = Number((inv as { remaining_qty?: unknown }).remaining_qty ?? '0');
+      return sum + (remainingQty * currentPrice);
     }, 0);
     const totalRealizedPnl = displayInvestments.reduce(
-      (sum: number, inv: any) => sum + parseFloat(inv.realized_pnl || 0), 0
+      (sum: number, inv: unknown) => sum + parseFloat(String(((inv as { realized_pnl?: number | string }).realized_pnl ?? 0))), 0
     );
     // Unrealized P&L removed
 
@@ -453,8 +499,44 @@ const ReportsPage = () => {
 
   
   const renderCashFlowTable = () => {
-    const cashFlow: any = (data).cashflow || {};
-    type CashRow = {
+    type CashFlowData = {
+      combined_in_usd?: number;
+      combined_in_vnd?: number;
+      combined_out_usd?: number;
+      combined_out_vnd?: number;
+      combined_net_usd?: number;
+      combined_net_vnd?: number;
+      total_in_usd?: number;
+      total_out_usd?: number;
+      net_usd?: number;
+      total_in_vnd?: number;
+      total_out_vnd?: number;
+      net_vnd?: number;
+      operating_in_usd?: number;
+      operating_in_vnd?: number;
+      operating_out_usd?: number;
+      operating_out_vnd?: number;
+      operating_net_usd?: number;
+      operating_net_vnd?: number;
+      financing_in_usd?: number;
+      financing_in_vnd?: number;
+      financing_out_usd?: number;
+      financing_out_vnd?: number;
+      financing_net_usd?: number;
+      financing_net_vnd?: number;
+      by_type?: Record<string, {
+        inflow_usd?: number;
+        outflow_usd?: number;
+        net_usd?: number;
+        inflow_vnd?: number;
+        outflow_vnd?: number;
+        net_vnd?: number;
+        count?: number;
+      }>;
+    };
+    const rawCashFlow = data.cashflow as CashFlowData ?? {};
+    const cashFlow: CashFlowData = typeof rawCashFlow === 'object' ? rawCashFlow : {};
+    type CashRow = TableRowBase & {
       type: string;
       inflow_usd?: number | string;
       outflow_usd?: number | string;
@@ -463,21 +545,17 @@ const ReportsPage = () => {
       outflow_vnd?: number | string;
       net_vnd?: number | string;
       count?: number;
-      [key: string]: any;
+      [key: string]: unknown;
     };
-    let allRows: CashRow[] = Object.entries(cashFlow.by_type || {}).map(
-      ([type, d]: [string, any]) => ({ type, ...(d) })
-    );
+    const byTypeObj = cashFlow.by_type as Record<string, Record<string, unknown>> ?? {};
+    const byTypeEntries = Object.entries(byTypeObj);
+    let allRows: CashRow[] = byTypeEntries.map(([type, d]) => ({ type, ...(d) } as CashRow));
 
     // For borrow, inflow is tracked in amount fields not cashflow; override so the row reflects real inflow
     allRows = allRows.map((row) => {
       if (row.type === 'borrow') {
-        const inflowUSD = parseFloat(
-          String((cashFlow).financing_in_usd ?? 0)
-        );
-        const inflowVND = parseFloat(
-          String((cashFlow).financing_in_vnd ?? 0)
-        );
+        const inflowUSD = parseFloat(String(cashFlow.financing_in_usd ?? 0));
+        const inflowVND = parseFloat(String(cashFlow.financing_in_vnd ?? 0));
         return {
           ...row,
           inflow_usd: inflowUSD,
@@ -511,24 +589,25 @@ const ReportsPage = () => {
           acc: { inflow: number; outflow: number; net: number; count: number },
           r: CashRow
         ) => ({
-          inflow: acc.inflow + parseFloat(String(r[keyIn] ?? 0)),
-          outflow: acc.outflow + parseFloat(String(r[keyOut] ?? 0)),
-          net: acc.net + parseFloat(String(r[keyNet] ?? 0)),
-          count: acc.count + (r.count || 0),
+          inflow: acc.inflow + parseFloat(String((r[keyIn as keyof CashRow] as number | string ?? 0))),
+          outflow: acc.outflow + parseFloat(String((r[keyOut as keyof CashRow] as number | string ?? 0))),
+          net: acc.net + parseFloat(String((r[keyNet as keyof CashRow] as number | string ?? 0))),
+          count: acc.count + (r.count as number ?? 0),
         }),
         { inflow: 0, outflow: 0, net: 0, count: 0 }
       );
       return totals;
     };
 
-    const columns = [
+    const columns: TableColumn<CashRow>[] = [
       { key: 'type', title: 'Transaction Type' },
       {
         key: currency === 'USD' ? 'inflow_usd' : 'inflow_vnd',
         title: `Inflow (${currency})`,
         type: 'currency',
-        render: (value: any) => {
-          const num = parseFloat(value || 0);
+        render: (value) => {
+          const val = value as number | string | undefined;
+          const num = parseFloat(String(val ?? 0));
           return currency === 'USD'
             ? `$${num.toLocaleString()}`
             : `₫${num.toLocaleString()}`;
@@ -538,8 +617,9 @@ const ReportsPage = () => {
         key: currency === 'USD' ? 'outflow_usd' : 'outflow_vnd',
         title: `Outflow (${currency})`,
         type: 'currency',
-        render: (value: any) => {
-          const num = parseFloat(value || 0);
+        render: (value) => {
+          const val = value as number | string | undefined;
+          const num = parseFloat(String(val ?? 0));
           return currency === 'USD'
             ? `$${num.toLocaleString()}`
             : `₫${num.toLocaleString()}`;
@@ -549,8 +629,9 @@ const ReportsPage = () => {
         key: currency === 'USD' ? 'net_usd' : 'net_vnd',
         title: `Net (${currency})`,
         type: 'currency',
-        render: (value: any) => {
-          const num = parseFloat(value || 0);
+        render: (value) => {
+          const val = value as number | string | undefined;
+          const num = parseFloat(String(val ?? 0));
           const formatted =
             currency === 'USD'
               ? `$${Math.abs(num).toLocaleString()}`
@@ -579,8 +660,8 @@ const ReportsPage = () => {
               </h4>
               <p className="text-2xl font-bold text-green-900">
                 {currency === 'USD'
-                  ? `$${parseFloat((cashFlow.combined_in_usd ?? cashFlow.total_in_usd) || 0).toLocaleString()}`
-                  : `₫${parseFloat((cashFlow.combined_in_vnd ?? cashFlow.total_in_vnd) || 0).toLocaleString()}`}
+                  ? `$${parseFloat(String(cashFlow.combined_in_usd ?? cashFlow.total_in_usd ?? 0)).toLocaleString()}`
+                  : `₫${parseFloat(String(cashFlow.combined_in_vnd ?? cashFlow.total_in_vnd ?? 0)).toLocaleString()}`}
               </p>
             </div>
             <div className="bg-red-50 p-4 rounded-lg">
@@ -589,8 +670,8 @@ const ReportsPage = () => {
               </h4>
               <p className="text-2xl font-bold text-red-900">
                 {currency === 'USD'
-                  ? `$${parseFloat((cashFlow.combined_out_usd ?? cashFlow.total_out_usd) || 0).toLocaleString()}`
-                  : `₫${parseFloat((cashFlow.combined_out_vnd ?? cashFlow.total_out_vnd) || 0).toLocaleString()}`}
+                  ? `$${parseFloat(String(cashFlow.combined_out_usd ?? cashFlow.total_out_usd ?? 0)).toLocaleString()}`
+                  : `₫${parseFloat(String(cashFlow.combined_out_vnd ?? cashFlow.total_out_vnd ?? 0)).toLocaleString()}`}
               </p>
             </div>
             <div className="bg-blue-50 p-4 rounded-lg">
@@ -599,8 +680,8 @@ const ReportsPage = () => {
               </h4>
               <p className="text-2xl font-bold text-blue-900">
                 {currency === 'USD'
-                  ? `$${parseFloat((cashFlow.combined_net_usd ?? cashFlow.net_usd) || 0).toLocaleString()}`
-                  : `₫${parseFloat((cashFlow.combined_net_vnd ?? cashFlow.net_vnd) || 0).toLocaleString()}`}
+                  ? `$${parseFloat(String(cashFlow.combined_net_usd ?? cashFlow.net_usd ?? 0)).toLocaleString()}`
+                  : `₫${parseFloat(String(cashFlow.combined_net_vnd ?? cashFlow.net_vnd ?? 0)).toLocaleString()}`}
               </p>
             </div>
           </div>
@@ -617,24 +698,24 @@ const ReportsPage = () => {
                 <span>Inflow</span>
                 <span>
                   {currency === 'USD'
-                    ? `$${parseFloat(cashFlow.operating_in_usd || 0).toLocaleString()}`
-                    : `₫${parseFloat(cashFlow.operating_in_vnd || 0).toLocaleString()}`}
+                    ? `$${parseFloat(String(cashFlow.operating_in_usd ?? 0)).toLocaleString()}`
+                    : `₫${parseFloat(String(cashFlow.operating_in_vnd ?? 0)).toLocaleString()}`}
                 </span>
               </div>
               <div className="flex items-center justify-between text-sm">
                 <span>Outflow</span>
                 <span>
                   {currency === 'USD'
-                    ? `$${parseFloat(cashFlow.operating_out_usd || 0).toLocaleString()}`
-                    : `₫${parseFloat(cashFlow.operating_out_vnd || 0).toLocaleString()}`}
+                    ? `$${parseFloat(String(cashFlow.operating_out_usd ?? 0)).toLocaleString()}`
+                    : `₫${parseFloat(String(cashFlow.operating_out_vnd ?? 0)).toLocaleString()}`}
                 </span>
               </div>
               <div className="flex items-center justify-between font-semibold">
                 <span>Net</span>
                 <span>
                   {currency === 'USD'
-                    ? `$${parseFloat(cashFlow.operating_net_usd || 0).toLocaleString()}`
-                    : `₫${parseFloat(cashFlow.operating_net_vnd || 0).toLocaleString()}`}
+                    ? `$${parseFloat(String(cashFlow.operating_net_usd ?? 0)).toLocaleString()}`
+                    : `₫${parseFloat(String(cashFlow.operating_net_vnd ?? 0)).toLocaleString()}`}
                 </span>
               </div>
             </div>
@@ -647,24 +728,24 @@ const ReportsPage = () => {
                 <span>Inflow (Borrow)</span>
                 <span>
                   {currency === 'USD'
-                    ? `$${parseFloat(cashFlow.financing_in_usd || 0).toLocaleString()}`
-                    : `₫${parseFloat(cashFlow.financing_in_vnd || 0).toLocaleString()}`}
+                    ? `$${parseFloat(String(cashFlow.financing_in_usd ?? 0)).toLocaleString()}`
+                    : `₫${parseFloat(String(cashFlow.financing_in_vnd ?? 0)).toLocaleString()}`}
                 </span>
               </div>
               <div className="flex items-center justify-between text-sm">
                 <span>Outflow (Repay + Interest)</span>
                 <span>
                   {currency === 'USD'
-                    ? `$${parseFloat(cashFlow.financing_out_usd || 0).toLocaleString()}`
-                    : `₫${parseFloat(cashFlow.financing_out_vnd || 0).toLocaleString()}`}
+                    ? `$${parseFloat(String(cashFlow.financing_out_usd ?? 0)).toLocaleString()}`
+                    : `₫${parseFloat(String(cashFlow.financing_out_vnd ?? 0)).toLocaleString()}`}
                 </span>
               </div>
               <div className="flex items-center justify-between font-semibold">
                 <span>Net</span>
                 <span>
                   {currency === 'USD'
-                    ? `$${parseFloat(cashFlow.financing_net_usd || 0).toLocaleString()}`
-                    : `₫${parseFloat(cashFlow.financing_net_vnd || 0).toLocaleString()}`}
+                    ? `$${parseFloat(String(cashFlow.financing_net_usd ?? 0)).toLocaleString()}`
+                    : `₫${parseFloat(String(cashFlow.financing_net_vnd ?? 0)).toLocaleString()}`}
                 </span>
               </div>
             </div>
@@ -749,22 +830,25 @@ const ReportsPage = () => {
   };
 
   const renderSpendingTable = () => {
-    const spending: any = (data).spending || {};
-    const byTag = Object.entries(spending.by_tag || {}).map(
-      ([tag, data]: [string, any]) => ({
+    const rawSpending = data.spending as Record<string, unknown> ?? {};
+    const spending = typeof rawSpending === 'object' ? rawSpending : {};
+    const byTag = Object.entries(spending.by_tag as Record<string, unknown> ?? {}).map(
+      ([tag, d]) => ({
         tag,
-        ...data,
+        ...(d as Record<string, unknown>),
       })
-    );
+    ) as SpendingRow[];
 
-    const columns = [
+    type SpendingRow = TableRowBase & { tag: string; amount_usd?: number | string; amount_vnd?: number | string; percentage?: number | string; count?: number };
+    const columns: TableColumn<SpendingRow>[] = [
       { key: 'tag', title: 'Tag' },
       {
         key: currency === 'USD' ? 'amount_usd' : 'amount_vnd',
         title: `Amount (${currency})`,
         type: 'currency',
-        render: (value: any) => {
-          const num = parseFloat(value || 0);
+        render: (value) => {
+          const val = value as number | string | undefined;
+          const num = parseFloat(String(val ?? 0));
           return currency === 'USD'
             ? `$${num.toLocaleString()}`
             : `₫${num.toLocaleString()}`;
@@ -773,7 +857,10 @@ const ReportsPage = () => {
       {
         key: 'percentage',
         title: 'Percentage',
-        render: (value: any) => `${parseFloat(value || 0).toFixed(1)}%`,
+        render: (value) => {
+          const val = value as number | string | undefined;
+          return `${parseFloat(String(val ?? 0)).toFixed(1)}%`;
+        },
       },
       {
         key: 'count',
@@ -808,8 +895,8 @@ const ReportsPage = () => {
             <h4 className="text-sm font-medium text-orange-800">Total Spending</h4>
             <p className="text-3xl font-bold text-orange-900">
               {currency === 'USD'
-                ? `$${parseFloat(spending.total_usd || 0).toLocaleString()}`
-                : `₫${parseFloat(spending.total_vnd || 0).toLocaleString()}`}
+                ? `$${parseFloat(String(spending.total_usd as string ?? '0')).toLocaleString()}`
+                : `₫${parseFloat(String(spending.total_vnd as string ?? '0')).toLocaleString()}`}
             </p>
           </div>
         )}
@@ -829,25 +916,27 @@ const ReportsPage = () => {
   };
 
   const renderPnLTable = () => {
-    const pnl: any = (data).pnl || {};
-    const realizedPnL = parseFloat(currency === 'USD' ? (pnl.realized_pnl_usd || 0) : (pnl.realized_pnl_vnd || 0));
+    const rawPnl = data.pnl as Record<string, unknown> ?? {};
+    const pnl = typeof rawPnl === 'object' ? rawPnl : {};
+    const realizedPnL = parseFloat(String(currency === 'USD' ? ((pnl).realized_pnl_usd as number ?? 0) : ((pnl).realized_pnl_vnd as number ?? 0)));
     // Unrealized removed
-    const totalPnL = parseFloat(currency === 'USD' ? (pnl.total_pnl_usd || 0) : (pnl.total_pnl_vnd || 0));
+    const totalPnL = parseFloat(String(currency === 'USD' ? ((pnl).total_pnl_usd as number ?? 0) : ((pnl).total_pnl_vnd as number ?? 0)));
 
     // Prepare by-asset breakdown (USD values as backend provides USD per asset)
-    const byAssetEntries = Object.entries(pnl.by_asset || {}).map(([asset, rec]: [string, any]) => ({
+    const byAssetEntries = Object.entries(pnl.by_asset as Record<string, unknown> ?? {}).map(([asset, rec]) => ({
       asset,
-      realized_usd: parseFloat((rec).realized_pnl_usd || 0),
-      total_usd: parseFloat((rec).total_pnl_usd || 0),
+      realized_usd: parseFloat(String((rec as Record<string, unknown>).realized_pnl_usd as number ?? 0)),
+      total_usd: parseFloat(String((rec as Record<string, unknown>).total_pnl_usd as number ?? 0)),
     })) as Array<{ asset: string; realized_usd: number; total_usd: number }>;
-    const assetColumns = [
+    const assetColumns: TableColumn<{ asset: string; realized_usd: number; total_usd: number }>[] = [
       { key: 'asset', title: 'Asset' },
       {
         key: 'realized_usd',
         title: 'Realized P&L (USD)',
         type: 'currency',
-        render: (value: any) => {
-          const num = parseFloat(value || 0);
+        render: (value) => {
+          const val = value as number | string | undefined;
+          const num = parseFloat(String(val ?? 0));
           const formatted = `$${Math.abs(num).toLocaleString()}`;
           return num >= 0 ? `+${formatted}` : `-${formatted}`;
         },
@@ -856,8 +945,9 @@ const ReportsPage = () => {
         key: 'total_usd',
         title: 'Total P&L (USD)',
         type: 'currency',
-        render: (value: any) => {
-          const num = parseFloat(value || 0);
+        render: (value) => {
+          const val = value as number | string | undefined;
+          const num = parseFloat(String(val ?? 0));
           const formatted = `$${Math.abs(num).toLocaleString()}`;
           return num >= 0 ? `+${formatted}` : `-${formatted}`;
         },
@@ -916,8 +1006,8 @@ const ReportsPage = () => {
                 <h4 className="text-sm font-medium text-gray-800">
                   Return on Investment (ROI)
                 </h4>
-                <p className={`text-xl font-bold ${parseFloat(pnl.roi_percent || 0) >= 0 ? 'text-green-900' : 'text-red-900'}`}>
-                  {parseFloat(pnl.roi_percent || 0).toFixed(2)}%
+                <p className={`text-xl font-bold ${parseFloat(String((pnl).roi_percent as number ?? 0)) >= 0 ? 'text-green-900' : 'text-red-900'}`}>
+                  {parseFloat(String((pnl).roi_percent as number ?? 0)).toFixed(2)}%
                 </p>
                 <p className="text-xs text-gray-600 mt-1">
                   Percentage return on invested capital
@@ -990,7 +1080,7 @@ const ReportsPage = () => {
         <div className="bg-red-50 border border-red-200 rounded-md p-4 text-center">
           <p className="text-red-800">{error}</p>
           <button
-            onClick={fetchData}
+            onClick={() => { void fetchData(); }}
             className="mt-2 bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700"
           >
             Retry

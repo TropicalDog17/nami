@@ -1,51 +1,18 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 
 import { AdminAssetsTab } from '../components/AdminAssetsTab';
 import DataTable from '../components/ui/DataTable';
 import { useApp } from '../context/AppContext';
 import { adminApi } from '../services/api';
 
-const PopularExpenseCategories = () => {
-  const { tags, actions } = useApp();
-  const popularCategories = ['Food', 'Transport', 'Shopping', 'Entertainment', 'Bills', 'Healthcare'];
-
-  const ensurePopularCategories = async () => {
-    for (const category of popularCategories) {
-      const exists = tags.some(tag => tag.name === category);
-      if (!exists) {
-        await actions.createTag({
-          name: category,
-          category: 'expense',
-          is_active: true
-        });
-      }
-    }
-  };
-
-  useEffect(() => {
-    ensurePopularCategories();
-  }, []);
-
-  return (
-    <div className="bg-white p-6 rounded-lg border border-gray-200">
-      <h3 className="text-lg font-medium text-gray-900 mb-4">Quick Expense Categories</h3>
-      <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-        {popularCategories.map(category => (
-          <div key={category} className="p-3 bg-gray-50 rounded text-center">
-            {category}
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-};
+// Removed unused PopularExpenseCategories widget
 
 const AdminPage = () => {
   const { actions, error, success } = useApp();
   const [activeTab, setActiveTab] = useState('types');
   const [loading, setLoading] = useState(false);
   const [showForm, setShowForm] = useState(false);
-  const [editingItem, setEditingItem] = useState(null);
+  const [editingItem, setEditingItem] = useState<Record<string, unknown> | null>(null);
   const [showInactive, setShowInactive] = useState(false);
 
   // Data states
@@ -71,7 +38,7 @@ const AdminPage = () => {
   }, [success, actions]);
 
   // Update loadData to respect showInactive filter
-  const loadData = async () => {
+  const loadData = useCallback(async (): Promise<void> => {
     setLoading(true);
     try {
       switch (activeTab) {
@@ -92,17 +59,18 @@ const AdminPage = () => {
           setTags(tgs);
           break;
       }
-    } catch (error) {
-      actions.setError(`Failed to load ${activeTab}: ${error.message}`);
+    } catch (err: unknown) {
+      const msg = (err as { message?: string } | null)?.message ?? 'Unknown error';
+      actions.setError(`Failed to load ${activeTab}: ${msg}`);
     } finally {
       setLoading(false);
     }
-  };
+  }, [activeTab, actions]);
 
   // Load data on tab change
   useEffect(() => {
-    loadData();
-  }, [activeTab]);
+    void loadData();
+  }, [activeTab, loadData]);
 
   // Add filtered data computation
   const getFilteredData = () => {
@@ -133,12 +101,12 @@ const AdminPage = () => {
     setShowForm(true);
   };
 
-  const handleEdit = (item) => {
+  const handleEdit = (item: Record<string, unknown>) => {
     setEditingItem(item);
     setShowForm(true);
   };
 
-  const handleDelete = async (id) => {
+  const handleDelete = async (id: string | number) => {
     if (!confirm('Are you sure you want to delete this item?')) return;
 
     try {
@@ -159,12 +127,13 @@ const AdminPage = () => {
 
       actions.setSuccess(`${activeTab.slice(0, -1)} deleted successfully`);
       await loadData(); // Reload data to reflect the changes
-    } catch (error) {
-      actions.setError(`Failed to delete: ${error.message}`);
+    } catch (err: unknown) {
+      const msg = (err as { message?: string } | null)?.message ?? 'Unknown error';
+      actions.setError(`Failed to delete: ${msg}`);
     }
   };
 
-  const handleSubmit = async (formData) => {
+  const handleSubmit = async (formData: Record<string, unknown>) => {
     console.log('Form submission started', {
       formData,
       activeTab,
@@ -223,7 +192,7 @@ const AdminPage = () => {
       try {
         await loadData();
         console.log('Data reloaded successfully');
-      } catch (reloadError) {
+      } catch (reloadError: unknown) {
         console.warn(
           'Failed to reload data after form submission:',
           reloadError
@@ -231,9 +200,10 @@ const AdminPage = () => {
         // Don't show error to user since the main operation succeeded
       }
       console.log('Form submission completed successfully');
-    } catch (error) {
-      console.error('Form submission error:', error);
-      actions.setError(`Failed to save: ${error.message}`);
+    } catch (err: unknown) {
+      console.error('Form submission error:', err);
+      const msg = (err as { message?: string } | null)?.message ?? 'Unknown error';
+      actions.setError(`Failed to save: ${msg}`);
     }
   };
 
@@ -467,8 +437,8 @@ const AdminPage = () => {
 };
 
 // Form component for CRUD operations
-const AdminForm = ({ type, item, onSubmit, onCancel }) => {
-  const [formData, setFormData] = useState({});
+const AdminForm: React.FC<{ type: 'types' | 'accounts' | 'assets' | 'tags'; item: Record<string, unknown> | null; onSubmit: (data: Record<string, unknown>) => Promise<void> | void; onCancel: () => void }> = ({ type, item, onSubmit, onCancel }) => {
+  const [formData, setFormData] = useState<Record<string, unknown>>({});
 
   useEffect(() => {
     if (item) {
@@ -492,22 +462,22 @@ const AdminForm = ({ type, item, onSubmit, onCancel }) => {
     }
   }, [item, type]);
 
-  const handleChange = (e) => {
-    const { name, value, type: inputType, checked } = e.target;
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
+    const { name, value, type: inputType, checked } = e.target as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement;
     setFormData((prev) => ({
       ...prev,
       [name]:
         inputType === 'checkbox'
           ? checked
           : inputType === 'number'
-            ? parseInt(value)
-            : value,
+            ? parseInt(String(value))
+            : (value),
     }));
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    onSubmit(formData);
+    void onSubmit(formData);
   };
 
   const renderFields = () => {
@@ -522,7 +492,7 @@ const AdminForm = ({ type, item, onSubmit, onCancel }) => {
               <input
                 type="text"
                 name="name"
-                value={formData.name || ''}
+                value={String(formData.name as string ?? '')}
                 onChange={handleChange}
                 required
                 className="w-full border border-gray-300 rounded px-3 py-2"
@@ -535,7 +505,7 @@ const AdminForm = ({ type, item, onSubmit, onCancel }) => {
               </label>
               <textarea
                 name="description"
-                value={formData.description || ''}
+                value={String(formData.description as string ?? '')}
                 onChange={handleChange}
                 rows={3}
                 className="w-full border border-gray-300 rounded px-3 py-2"
@@ -555,7 +525,7 @@ const AdminForm = ({ type, item, onSubmit, onCancel }) => {
               <input
                 type="text"
                 name="name"
-                value={formData.name || ''}
+                value={String(formData.name as string ?? '')}
                 onChange={handleChange}
                 required
                 className="w-full border border-gray-300 rounded px-3 py-2"
@@ -568,7 +538,7 @@ const AdminForm = ({ type, item, onSubmit, onCancel }) => {
               </label>
               <select
                 name="type"
-                value={formData.type || ''}
+                value={String(formData.type as string ?? '')}
                 onChange={handleChange}
                 className="w-full border border-gray-300 rounded px-3 py-2"
               >
@@ -594,7 +564,7 @@ const AdminForm = ({ type, item, onSubmit, onCancel }) => {
               <input
                 type="text"
                 name="symbol"
-                value={formData.symbol || ''}
+                value={String(formData.symbol as string ?? '')}
                 onChange={handleChange}
                 required
                 className="w-full border border-gray-300 rounded px-3 py-2"
@@ -608,7 +578,7 @@ const AdminForm = ({ type, item, onSubmit, onCancel }) => {
               <input
                 type="text"
                 name="name"
-                value={formData.name || ''}
+                value={String(formData.name as string ?? '')}
                 onChange={handleChange}
                 className="w-full border border-gray-300 rounded px-3 py-2"
                 placeholder="e.g., US Dollar, Bitcoin"
@@ -621,7 +591,7 @@ const AdminForm = ({ type, item, onSubmit, onCancel }) => {
               <input
                 type="number"
                 name="decimals"
-                value={formData.decimals || 8}
+                value={Number(formData.decimals as number ?? 8)}
                 onChange={handleChange}
                 min="0"
                 max="18"
@@ -641,7 +611,7 @@ const AdminForm = ({ type, item, onSubmit, onCancel }) => {
               <input
                 type="text"
                 name="name"
-                value={formData.name || ''}
+                value={String(formData.name as string ?? '')}
                 onChange={handleChange}
                 required
                 className="w-full border border-gray-300 rounded px-3 py-2"
@@ -654,7 +624,7 @@ const AdminForm = ({ type, item, onSubmit, onCancel }) => {
               </label>
               <select
                 name="category"
-                value={formData.category || ''}
+                value={String(formData.category as string ?? '')}
                 onChange={handleChange}
                 className="w-full border border-gray-300 rounded px-3 py-2"
               >
@@ -687,7 +657,7 @@ const AdminForm = ({ type, item, onSubmit, onCancel }) => {
             <input
               type="checkbox"
               name="is_active"
-              checked={formData.is_active || false}
+              checked={Boolean((formData).is_active)}
               onChange={handleChange}
               className="mr-2"
             />

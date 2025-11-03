@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 
 import CreditCardSummary from '../components/CreditCardSummary';
-import DataTable from '../components/ui/DataTable';
+import DataTable, { TableColumn } from '../components/ui/DataTable';
 import { useBackendStatus } from '../context/BackendStatusContext';
 import { adminApi, transactionApi } from '../services/api';
 
@@ -18,27 +18,85 @@ interface CreditCard {
 
 const CreditDashboardPage: React.FC = () => {
   const [creditCards, setCreditCards] = useState<CreditCard[]>([]);
-  const [creditTransactions, setCreditTransactions] = useState<any[]>([]);
+  const [creditTransactions, setCreditTransactions] = useState<Array<Record<string, unknown>>>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [creditAccounts, setCreditAccounts] = useState<string[]>([]);
 
-  const { isOnline } = useBackendStatus() as { isOnline: boolean };
+  const { isOnline } = useBackendStatus();
 
   useEffect(() => {
     if (isOnline) {
-      loadAccountsAndData();
+      void loadAccountsAndData();
     }
   }, [isOnline]);
 
-  const loadAccountsAndData = async () => {
+  const fetchCreditData = useCallback(async (accountsFilter?: string[]) => {
+    setLoading(true);
+    setError(null);
+
+    try {
+      // Fetch credit transactions (expenses and repay_borrow) scoped to credit card accounts
+      const accountsParam = (accountsFilter?.length > 0)
+        ? { accounts: accountsFilter }
+        : {} as Record<string, unknown>;
+
+      const [expensesResponseRaw, repayResponseRaw] = await Promise.all([
+        transactionApi.list({ types: 'expense', limit: 100, ...accountsParam }),
+        transactionApi.list({ types: 'repay_borrow', limit: 100, ...accountsParam })
+      ]);
+
+      const expensesResponse = (expensesResponseRaw as Record<string, unknown>[]) ?? [];
+      const repayResponse = (repayResponseRaw as Record<string, unknown>[]) ?? [];
+
+      // Client-side safety filter
+      const allowedAccounts = accountsFilter ?? creditAccounts;
+      const filteredExpenses = allowedAccounts && allowedAccounts.length > 0
+        ? expensesResponse.filter((t: unknown) => {
+            const typedT = t as { account?: string };
+            return allowedAccounts.includes(String((typedT.account ?? '')));
+          })
+        : [];
+      const filteredRepay = allowedAccounts && allowedAccounts.length > 0
+        ? repayResponse.filter((t: unknown) => {
+            const typedT = t as { account?: string };
+            return allowedAccounts.includes(String((typedT.account ?? '')));
+          })
+        : [];
+
+      // Process transactions
+      const allCreditTransactions = [
+        ...filteredExpenses,
+        ...filteredRepay
+      ].sort((a: unknown, b: unknown) => {
+        const typedA = a as { date: string };
+        const typedB = b as { date: string };
+        return new Date(String(typedA.date ?? '')).getTime() - new Date(String(typedB.date ?? '')).getTime();
+      }).slice(0, 50);
+
+      setCreditTransactions(allCreditTransactions);
+    } catch (err: unknown) {
+      const msg = (err as { message?: string } | null)?.message ?? 'Failed to fetch credit data';
+      setError(msg);
+    } finally {
+      setLoading(false);
+    }
+  }, [creditAccounts]);
+
+  const loadAccountsAndData = useCallback(async (): Promise<void> => {
     setLoading(true);
     setError(null);
     try {
-      const accounts = (await adminApi.listAccounts()) as any[] | null;
-      const cardNames = (accounts || [])
-        .filter((a: any) => (a?.type || '').toLowerCase() === 'creditcard')
-        .map((a: any) => a.name);
+      const accounts = await adminApi.listAccounts() as Array<{ type?: string; name: string }>;
+      const cardNames = accounts
+        .filter((a: unknown) => {
+          const typedA = a as { type?: string };
+          return String(typedA.type ?? '').toLowerCase() === 'creditcard';
+        })
+        .map((a: unknown) => {
+          const typedA = a as { name: string };
+          return String((typedA.name ?? ''));
+        });
       setCreditAccounts(cardNames);
 
       // If there are no credit card accounts configured, show empty state
@@ -50,115 +108,25 @@ const CreditDashboardPage: React.FC = () => {
       }
 
       await fetchCreditData(cardNames);
-    } catch (err: any) {
-      setError(err.message || 'Failed to load credit accounts');
+    } catch (err: unknown) {
+      const msg = (err as { message?: string } | null)?.message ?? 'Failed to load credit accounts';
+      setError(msg);
     } finally {
       setLoading(false);
     }
-  };
+  }, [fetchCreditData]);
 
-  const fetchCreditData = async (accountsFilter?: string[]) => {
-    setLoading(true);
-    setError(null);
-
-    try {
-      // Fetch credit transactions (expenses and repay_borrow) scoped to credit card accounts
-      const accountsParam = (accountsFilter && accountsFilter.length > 0)
-        ? { accounts: accountsFilter }
-        : {};
-
-      const [expensesResponseRaw, repayResponseRaw] = await Promise.all([
-        transactionApi.list({ types: 'expense', limit: 100, ...accountsParam }),
-        transactionApi.list({ types: 'repay_borrow', limit: 100, ...accountsParam })
-      ]);
-
-      const expensesResponse = (expensesResponseRaw as any[] | null) ?? [];
-      const repayResponse = (repayResponseRaw as any[] | null) ?? [];
-
-      // Client-side safety filter in case backend filter is unavailable
-      const allowedAccounts = accountsFilter || creditAccounts;
-      const filteredExpenses = allowedAccounts && allowedAccounts.length > 0
-        ? expensesResponse.filter((t: any) => allowedAccounts.includes(t.account))
-        : [];
-      const filteredRepay = allowedAccounts && allowedAccounts.length > 0
-        ? repayResponse.filter((t: any) => allowedAccounts.includes(t.account))
-        : [];
-
-      // Process transactions to group by credit card account
-      const cards = processCreditAccounts(filteredExpenses, filteredRepay);
-      setCreditCards(cards);
-
-      // Combine recent credit transactions
-      const allCreditTransactions = [
-        ...filteredExpenses,
-        ...filteredRepay
-      ].sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, 50);
-
-      setCreditTransactions(allCreditTransactions);
-    } catch (err: any) {
-      setError(err.message || 'Failed to fetch credit data');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-
-  const processCreditAccounts = (expenses: any[], repayments: any[]): CreditCard[] => {
-    // Group transactions by account and calculate balances
-    const accountBalances: { [key: string]: CreditCard } = {};
-
-    // Process expenses (charges)
-    expenses.forEach(expense => {
-      const account = expense.account;
-      if (!accountBalances[account]) {
-        accountBalances[account] = {
-          id: account,
-          name: account,
-          outstandingBalance: 0,
-          availableCredit: 5000, // Default - should be configurable
-          creditLimit: 5000,
-          minimumPayment: 0,
-          dueDate: getNextDueDate(),
-          apr: 0.19 // Default APR
-        };
-      }
-      accountBalances[account].outstandingBalance += parseFloat(expense.amount_usd || 0);
-    });
-
-    // Process repayments
-    repayments.forEach(payment => {
-      const account = payment.account;
-      if (accountBalances[account]) {
-        accountBalances[account].outstandingBalance -= parseFloat(payment.amount_usd || 0);
-      }
-    });
-
-    // Calculate minimum payments (2% of balance or $25 minimum)
-    Object.values(accountBalances).forEach(card => {
-      card.minimumPayment = Math.max(card.outstandingBalance * 0.02, 25);
-      card.availableCredit = card.creditLimit - card.outstandingBalance;
-    });
-
-    return Object.values(accountBalances);
-  };
-
-  const getNextDueDate = () => {
-    const date = new Date();
-    date.setDate(date.getDate() + 15); // Due in 15 days from today
-    return date.toISOString().split('T')[0];
-  };
-
-  const transactionColumns = [
-    { key: 'date', title: 'Date', render: (value: any) => new Date(value).toLocaleDateString() },
-    { key: 'type', title: 'Type', render: (value: any) => value === 'expense' ? 'Charge' : 'Payment' },
+  const transactionColumns: TableColumn<Record<string, unknown>>[] = [
+    { key: 'date', title: 'Date', render: (value) => new Date(String(value)).toLocaleDateString() },
+    { key: 'type', title: 'Type', render: (value) => String(value) === 'expense' ? 'Charge' : 'Payment' },
     { key: 'account', title: 'Card' },
     { key: 'counterparty', title: 'Merchant' },
     {
       key: 'amount_usd',
       title: 'Amount',
-      render: (value: any, row: any) => {
-        const amount = parseFloat(value || 0);
-        const sign = row.type === 'expense' ? '-' : '+';
+      render: (value: unknown, _col: TableColumn<Record<string, unknown>>, row: Record<string, unknown>) => {
+        const amount = parseFloat(String((value as number ?? 0)));
+        const sign = String((row.type as string) ?? '') === 'expense' ? '-' : '+';
         return `${sign}$${Math.abs(amount).toLocaleString()}`;
       }
     },
@@ -178,7 +146,7 @@ const CreditDashboardPage: React.FC = () => {
       <div className="bg-red-50 border border-red-200 rounded-md p-4 text-center">
         <p className="text-red-800">{error}</p>
         <button
-          onClick={fetchCreditData}
+          onClick={() => { void fetchCreditData(); }}
           className="mt-2 bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700"
         >
           Retry

@@ -2,17 +2,26 @@ import React, { useState } from 'react';
 
 import { useApp } from '../context/AppContext';
 
-interface QuickIncomeModalProps {
-  isOpen: boolean;
-  onClose: () => void;
-  onSubmit: (transactionData: any) => void;
+interface FormData {
+  date: string;
+  amount: string;
+  note: string;
+  account: string;
+  asset: string;
+  payer: string;
 }
 
-const QuickIncomeModal: React.FC<QuickIncomeModalProps> = ({ isOpen, onClose, onSubmit }) => {
-  const { accounts, assets } = useApp() as any;
+interface Props {
+  isOpen: boolean;
+  onClose: () => void;
+  onSubmit: (data: Record<string, unknown>) => Promise<void>;  // Changed to Record to match transactionData
+}
+
+const QuickIncomeModal = ({ isOpen, onClose, onSubmit }: Props) => {
+  const { accounts, assets } = useApp() as { accounts: Array<{ is_active: boolean; name: string; type?: string }>; assets: Array<{ is_active: boolean; symbol: string; name?: string }> };
   const today = new Date().toISOString().split('T')[0];
 
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<FormData>({
     date: today,
     amount: '',
     note: '',
@@ -50,13 +59,14 @@ const QuickIncomeModal: React.FC<QuickIncomeModalProps> = ({ isOpen, onClose, on
         fx_to_usd: '1.0',
         fx_to_vnd: '24000.0',
         amount_usd: formData.amount,
-        amount_vnd: (parseFloat(formData.amount || '0') * 24000).toFixed(2),
+        amount_vnd: (parseFloat(formData.amount ?? '0') * 24000).toFixed(2),
         fee_usd: '0',
         fee_vnd: '0',
       };
-      await onSubmit(transactionData);
+      await onSubmit(transactionData as Record<string, unknown>);
       onClose();
-    } catch (err) {
+    } catch (_err) {
+      // Handle error or ignore
     } finally {
       setIsSubmitting(false);
     }
@@ -71,7 +81,7 @@ const QuickIncomeModal: React.FC<QuickIncomeModalProps> = ({ isOpen, onClose, on
           <h3 className="text-lg font-medium text-gray-900">Quick Income Entry</h3>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600">×</button>
         </div>
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={(e) => void handleSubmit(e)} className="space-y-4">
           <div className="grid grid-cols-1 gap-3">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Date</label>
@@ -85,16 +95,20 @@ const QuickIncomeModal: React.FC<QuickIncomeModalProps> = ({ isOpen, onClose, on
               <label className="block text-sm font-medium text-gray-700 mb-1">Receiving Account</label>
               <select value={formData.account} onChange={(e) => handleInputChange('account', e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" required>
                 <option value="">Select account</option>
-                {accounts?.filter((a: any) => a.is_active).map((a: any) => (
-                  <option key={a.name} value={a.name}>{a.name}</option>
+                {accounts.filter(a => a.is_active).map(a => (
+                  <option key={a.name} value={a.name}>
+                    {a.name} ({a.type ?? 'Unknown'})
+                  </option>
                 ))}
               </select>
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Currency</label>
               <select value={formData.asset} onChange={(e) => handleInputChange('asset', e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
-                {(assets || []).filter((as: any) => as.is_active).map((as: any) => (
-                  <option key={as.symbol} value={as.symbol}>{as.symbol} {as.name ? `- ${as.name}` : ''}</option>
+                {assets.filter(a => a.is_active).map(a => (
+                  <option key={a.symbol} value={a.symbol}>
+                    {a.symbol} - {a.name ?? ''}
+                  </option>
                 ))}
               </select>
             </div>

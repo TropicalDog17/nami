@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 
 import QuickExpenseModal from '../components/QuickExpenseModal';
 import QuickIncomeModal from '../components/QuickIncomeModal';
@@ -7,36 +7,25 @@ import QuickInvestmentModal from '../components/QuickInvestmentModal';
 import QuickVaultModal from '../components/QuickVaultModal';
 import TransactionForm from '../components/TransactionForm';
 import ComboBox from '../components/ui/ComboBox';
-import DataTable from '../components/ui/DataTable';
+import DataTable, { TableColumn, TableRowBase } from '../components/ui/DataTable';
 import DateInput from '../components/ui/DateInput';
 import { useToast } from '../components/ui/Toast';
 import { useApp } from '../context/AppContext';
-import { useBackendStatus } from '../context/BackendStatusContext';
+// import { useBackendStatus } from '../context/BackendStatusContext';
 import { useQuickCreate } from '../hooks/useQuickCreate';
 import {
   transactionApi,
   adminApi,
   actionsApi,
-  pricesApi,
   investmentsApi,
   vaultApi,
 } from '../services/api';
 
 type IdType = string | number;
-type Transaction = { id: IdType;[key: string]: any };
+type Transaction = TableRowBase & Record<string, unknown>;
 type Option = { value: string; label: string };
 type MasterData = Record<string, Option[]>;
-type Column = {
-  key: string;
-  title: string;
-  type?: 'date' | 'datetime' | 'currency' | 'number' | 'text' | string;
-  width?: number | string;
-  editable?: boolean;
-  editType?: 'select' | 'date' | 'number' | 'text' | string;
-  render?: (value: any, column: any, row: any) => React.ReactNode;
-  decimals?: number;
-  currency?: string;
-};
+// Columns now use the generic TableColumn<Transaction>
 
 const TransactionPage: React.FC = () => {
   const { currency, actions } = useApp() as unknown as {
@@ -46,7 +35,6 @@ const TransactionPage: React.FC = () => {
       setError: (m: string | null) => void;
     };
   };
-  const { isOnline } = useBackendStatus() as unknown as { isOnline: boolean };
   const { error: showErrorToast, success: showSuccessToast } =
     useToast() as unknown as {
       error: (m: string) => void;
@@ -54,12 +42,12 @@ const TransactionPage: React.FC = () => {
     };
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
-  const [error, setError] = useState<any>(null);
+  const [error, setError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState<boolean>(false);
   const [showQuickAdd, setShowQuickAdd] = useState<boolean>(false);
   const [editingTransaction, setEditingTransaction] =
     useState<Transaction | null>(null);
-  const [filters, setFilters] = useState<Record<string, any>>({});
+  const [filters] = useState<Record<string, unknown>>({});
   const [masterData, setMasterData] = useState<MasterData>({});
   const [bulkRefreshing, setBulkRefreshing] = useState<boolean>(false);
   const [busyRowIds, setBusyRowIds] = useState<Set<IdType>>(new Set<IdType>());
@@ -72,7 +60,7 @@ const TransactionPage: React.FC = () => {
   const [isQuickMenuOpen, setIsQuickMenuOpen] = useState(false);
   const quickMenuRef = useRef<HTMLDivElement | null>(null);
 
-  const { createExpense, createIncome, createVault, createInvestment, isLoading: isQuickLoading, error: quickError } = useQuickCreate();
+  const { createExpense, createIncome, createVault, createInvestment, isLoading: _isQuickLoading, error: quickError } = useQuickCreate();
 
   const todayStr = useMemo(() => new Date().toISOString().split('T')[0], []);
 
@@ -86,10 +74,59 @@ const TransactionPage: React.FC = () => {
   };
 
   // Load transactions and master data on mount
+  const loadMasterData = useCallback(async (): Promise<void> => {
+    try {
+      const [types, accounts, assets, tags] = await Promise.all([
+        adminApi.listTypes(),
+        adminApi.listAccounts(),
+        adminApi.listAssets(),
+        adminApi.listTags(),
+      ]) as [unknown[], unknown[], unknown[], unknown[]];
+
+      setMasterData({
+        type: (types ?? []).map((t: unknown) => ({
+          value: String((t as { name: string }).name),
+          label: (t as { description?: string }).description ?? String((t as { name: string }).name),
+        })),
+        account: (accounts ?? []).map((a: unknown) => ({
+          value: String((a as { name: string }).name),
+          label: `${String((a as { name: string }).name)} (${String((a as { type: string }).type)})`,
+        })),
+        asset: (assets ?? []).map((a: unknown) => ({
+          value: String((a as { symbol: string }).symbol),
+          label: `${String((a as { symbol: string }).symbol)} - ${String((a as { name?: string }).name ?? '')}`,
+        })),
+        tag: (tags ?? []).map((t: unknown) => ({
+          value: String((t as { name: string }).name),
+          label: `${String((t as { name: string }).name)} (${String((t as { category?: string }).category ?? '')})`,
+        })),
+        counterparty: [],
+      });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to load master data';
+      console.error(message);
+    }
+  }, []);
+
+  const loadTransactions = useCallback(async (): Promise<void> => {
+    try {
+      setLoading(true);
+      setError(null);
+      const data = await transactionApi.list(filters) as unknown[];
+      setTransactions(data as Transaction[]);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Unknown error';
+      setError(message);
+      actions.setError(message);
+    } finally {
+      setLoading(false);
+    }
+  }, [filters, actions]);
+
   useEffect(() => {
-    loadTransactions();
-    loadMasterData();
-  }, [filters]);
+    void loadTransactions();
+    void loadMasterData();
+  }, [loadTransactions, loadMasterData]);
 
   // Global keyboard shortcut: 'n' to toggle Quick Add menu
   useEffect(() => {
@@ -119,122 +156,81 @@ const TransactionPage: React.FC = () => {
 
   // Removed legacy spot_buy auto price hook (Quick Add handles simple flows)
 
-  const loadMasterData = async (): Promise<void> => {
-    try {
-      const [types, accounts, assets, tags] = (await Promise.all([
-        adminApi.listTypes(),
-        adminApi.listAccounts(),
-        adminApi.listAssets(),
-        adminApi.listTags(),
-      ])) as [any[], any[], any[], any[]];
 
-      setMasterData({
-        type: (types || []).map((t: any) => ({
-          value: t.name,
-          label: t.description || t.name,
-        })),
-        account: (accounts || []).map((a: any) => ({
-          value: a.name,
-          label: `${a.name} (${a.type})`,
-        })),
-        asset: (assets || []).map((a: any) => ({
-          value: a.symbol,
-          label: `${a.symbol} - ${a.name}`,
-        })),
-        tag: (tags || []).map((t: any) => ({
-          value: t.name,
-          label: `${t.name} (${t.category})`,
-        })),
-        counterparty: [], // This could be populated from recent counterparties
-      });
-      console.log('Master data loaded:', { types, accounts, assets, tags });
-    } catch (err: any) {
-      console.error('Failed to load master data:', err);
-    }
-  };
-
-  const loadTransactions = async (): Promise<void> => {
-    try {
-      setLoading(true);
-      setError(null);
-      const data = (await transactionApi.list(filters)) as any[];
-      setTransactions((data || []) as Transaction[]);
-    } catch (err: any) {
-      setError(err);
-      actions.setError(err?.message ?? 'Unknown error');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleQuickExpenseSubmit = async (transactionData: any): Promise<void> => {
+  const handleQuickExpenseSubmit = async (data: unknown): Promise<void> => {
+    const transactionData = data as Record<string, unknown>;
     try {
       await createExpense(transactionData);
       await loadTransactions();
       actions.setError(null);
       showSuccessToast('Expense added');
-    } catch (e: any) {
-      const msg = e?.message ?? 'Failed to add expense';
+    } catch (e: unknown) {
+      const msg = (e as { message?: string } | null)?.message ?? 'Failed to add expense';
       actions.setError(msg);
       showErrorToast(msg);
       throw e;
     }
   };
 
-  const handleQuickIncomeSubmit = async (transactionData: any): Promise<void> => {
+  const handleQuickIncomeSubmit = async (data: unknown): Promise<void> => {
+    const transactionData = data as Record<string, unknown>;
     try {
       await createIncome(transactionData);
       await loadTransactions();
       actions.setError(null);
       showSuccessToast('Income added');
-    } catch (e: any) {
-      const msg = e?.message ?? 'Failed to add income';
+    } catch (e: unknown) {
+      const msg = (e as { message?: string } | null)?.message ?? 'Failed to add income';
       actions.setError(msg);
       showErrorToast(msg);
       throw e;
     }
   };
 
-  const handleQuickVaultSubmit = async (vaultData: any): Promise<void> => {
+  const handleQuickVaultSubmit = async (data: unknown): Promise<void> => {
+    const vaultData = data as Record<string, unknown>;
     try {
       await createVault(vaultData);
       showSuccessToast('Vault created');
       actions.setError(null);
-    } catch (e: any) {
-      const msg = e?.message ?? 'Failed to create vault';
+    } catch (e: unknown) {
+      const msg = (e as { message?: string } | null)?.message ?? 'Failed to create vault';
       actions.setError(msg);
       showErrorToast(msg);
       throw e;
     }
   };
 
-  const handleQuickInvestmentSubmit = async (investmentData: any): Promise<void> => {
+  const handleQuickInvestmentSubmit = async (data: unknown): Promise<void> => {
+    const investmentData = data as Record<string, unknown>;
     try {
-      if (investmentData?.vaultId) {
-        const { vaultId, quantity, cost } = investmentData as { vaultId: string; quantity: number; cost: number };
-        await vaultApi.depositToVault(String(vaultId), { quantity, cost });
+      const vaultId = investmentData.vaultId as string | undefined;
+      if (vaultId) {
+        const { quantity, cost } = investmentData as { quantity: number; cost: number };
+        await vaultApi.depositToVault(vaultId, { quantity, cost });
       } else {
         await createInvestment(investmentData);
       }
       await loadTransactions();
       actions.setError(null);
-      showSuccessToast(investmentData?.vaultId ? 'Vault deposit recorded' : 'Investment recorded');
-    } catch (e: any) {
-      const msg = e?.message ?? (investmentData?.vaultId ? 'Failed to record vault deposit' : 'Failed to record investment');
+      showSuccessToast(vaultId ? 'Vault deposit recorded' : 'Investment recorded');
+    } catch (e: unknown) {
+      const msg = (e as { message?: string } | null)?.message ?? ((investmentData.vaultId ? 'Failed to record vault deposit' : 'Failed to record investment') as string);
       actions.setError(msg);
       showErrorToast(msg);
       throw e;
     }
   };
 
-  const handleQuickInitSubmit = async (params: any): Promise<void> => {
+  const handleQuickInitSubmit = async (data: unknown): Promise<void> => {
+    const params = data as Record<string, unknown>;
     try {
       await actionsApi.perform('init_balance', params);
       await loadTransactions();
       actions.setError(null);
       showSuccessToast('Balance initialized');
-    } catch (e: any) {
-      const msg = e?.message ?? 'Failed to initialize balance';
+    } catch (e: unknown) {
+      const msg = (e as { message?: string } | null)?.message ?? 'Failed to initialize balance';
       actions.setError(msg);
       showErrorToast(msg);
       throw e;
@@ -256,7 +252,7 @@ const TransactionPage: React.FC = () => {
     internal_flow?: boolean;
   };
 
-  const QuickAddForm: React.FC<{ onCreated: (tx: any) => void }> = ({ onCreated }) => {
+  const QuickAddForm: React.FC<{ onCreated: (tx: Transaction) => void }> = ({ onCreated }) => {
     const [qa, setQa] = useState<QuickAddData>({
       date: todayStr,
       type: 'expense',
@@ -298,14 +294,14 @@ const TransactionPage: React.FC = () => {
       };
       window.addEventListener('keydown', handler);
       return () => window.removeEventListener('keydown', handler);
-    }, [showQuickAdd]);
+    }, []);
 
     const validate = (): string | null => {
       if (!qa.date) return 'Date is required';
       if (!qa.type) return 'Type is required';
       if (!qa.asset) return 'Asset is required';
       if (!qa.account) return 'Account is required';
-      if (!qa.quantity || isNaN(number(qa.quantity)) || number(qa.quantity) <= 0) return 'Valid quantity is required';
+      if (!qa.quantity || isNaN(number(qa.quantity)) || number(qa.quantity ?? 0) <= 0) return 'Valid quantity is required';
       const t = String(qa.type || '').toLowerCase();
       const needsPrice = t === 'buy' || t === 'sell';
       if (needsPrice && (!qa.price_local || isNaN(number(qa.price_local || '')) || number(qa.price_local || '') <= 0)) return 'Valid price is required';
@@ -332,7 +328,7 @@ const TransactionPage: React.FC = () => {
           // Stake: create an incoming stake via investment API
           const fxUSD = 1;
           const fxVND = 1;
-          const amtLocal = number(qa.quantity) * (number(qa.price_local || '1'));
+          const amtLocal = number(qa.quantity) * (number(qa.price_local ?? '1'));
           const amountUSD = amtLocal * fxUSD;
           const amountVND = amtLocal * fxVND;
           const stake = {
@@ -341,7 +337,7 @@ const TransactionPage: React.FC = () => {
             asset: qa.asset,
             account: invAccount,
             quantity: number(qa.quantity),
-            price_local: number(qa.price_local || '1'),
+            price_local: number(qa.price_local ?? '1'),
             fx_to_usd: fxUSD,
             fx_to_vnd: fxVND,
             amount_usd: amountUSD,
@@ -360,7 +356,7 @@ const TransactionPage: React.FC = () => {
           const unstakeQty = number(qa.quantity);
           const fxUSD = 1;
           const fxVND = 1;
-          const amtLocal = unstakeQty * (number(qa.price_local || '1'));
+          const amtLocal = unstakeQty * (number(qa.price_local ?? '1'));
           const amountUSD = amtLocal * fxUSD;
           const amountVND = amtLocal * fxVND;
           const unstake = {
@@ -369,7 +365,7 @@ const TransactionPage: React.FC = () => {
             asset: info.asset || qa.asset,
             account: info.account || invAccount,
             quantity: unstakeQty,
-            price_local: number(qa.price_local || '1'),
+            price_local: number(qa.price_local ?? '1'),
             fx_to_usd: fxUSD,
             fx_to_vnd: fxVND,
             amount_usd: amountUSD,
@@ -389,7 +385,7 @@ const TransactionPage: React.FC = () => {
             asset: qa.asset,
             account: qa.account,
             quantity: number(qa.quantity),
-            price_local: number(qa.price_local || '1'),
+            price_local: number(qa.price_local ?? '1'),
             counterparty: qa.counterparty || null,
             tag: qa.tag || null,
             note: qa.note || null,
@@ -408,7 +404,7 @@ const TransactionPage: React.FC = () => {
         actions.setError(null);
         showSuccessToast('Transaction created');
       } catch (e: any) {
-        setQaError(e?.message ?? 'Failed to create');
+        setQaError((e as { message?: string }).message ?? 'Failed to create');
         actions.setError(e?.message ?? 'Failed to create');
       } finally {
         setSubmitting(false);
@@ -416,15 +412,15 @@ const TransactionPage: React.FC = () => {
     };
 
     // Amount preview
-    const amountLocal = number(qa.quantity) * (number(qa.price_local || '1'));
+    const amountLocal = number(qa.quantity) * (number(qa.price_local ?? '1'));
 
     // Load open investments when entering unstake mode
     useEffect(() => {
       const loadOpen = async () => {
         try {
-          const list = (await investmentsApi.list({ is_open: true })) as any[];
+          const list = (await investmentsApi.list({ is_open: true })) as Array<{ id: string; deposit_date: string; asset: string; account: string; remaining_qty: number; horizon?: string }>;
           const idMap: Record<string, any> = {};
-          const options: Option[] = (list || []).map((inv: any) => {
+          const options: Option[] = list.map((inv) => {
             idMap[String(inv.id)] = inv;
             const dStr = (() => { const d = new Date(inv.deposit_date); return isNaN(d.getTime()) ? String(inv.deposit_date) : d.toISOString().split('T')[0]; })();
             const hz = inv.horizon ? ` [${inv.horizon}]` : '';
@@ -434,7 +430,7 @@ const TransactionPage: React.FC = () => {
           setInvOpenOptions(options);
         } catch {}
       };
-      if (invMode === 'unstake') loadOpen();
+      if (invMode === 'unstake') void loadOpen();
     }, [invMode]);
 
     return (
@@ -473,7 +469,7 @@ const TransactionPage: React.FC = () => {
           </select>
 
           <ComboBox
-            options={(masterData.account || []) as any}
+            options={masterData.account as Array<{ value: string; label: string }>}
             value={qa.account}
             onChange={(v) => setQa((s) => ({ ...s, account: v }))}
             placeholder="Account"
@@ -481,12 +477,12 @@ const TransactionPage: React.FC = () => {
             onCreate={async (name) => {
               await adminApi.createAccount({ name, type: 'bank', is_active: true });
               const accounts = await adminApi.listAccounts();
-              setMasterData((prev) => ({ ...prev, account: ((accounts as any[]) || []).map((a: any) => ({ value: a.name, label: `${a.name} (${a.type})` })) }));
+              setMasterData((prev) => ({ ...prev, account: ((accounts as Array<{ name: string; type: string }>) || []).map((a) => ({ value: a.name, label: `${a.name} (${a.type})` })) }));
             }}
           />
 
           <ComboBox
-            options={(masterData.asset || []) as any}
+            options={masterData.asset as Array<{ value: string; label: string }>}
             value={qa.asset}
             onChange={(v) => setQa((s) => ({ ...s, asset: v }))}
             placeholder="Asset"
@@ -494,7 +490,7 @@ const TransactionPage: React.FC = () => {
             onCreate={async (symbol) => {
               await adminApi.createAsset({ symbol, name: symbol, decimals: 0, is_active: true });
               const assets = await adminApi.listAssets();
-              setMasterData((prev) => ({ ...prev, asset: ((assets as any[]) || []).map((a: any) => ({ value: a.symbol, label: `${a.symbol} - ${a.name}` })) }));
+              setMasterData((prev) => ({ ...prev, asset: ((assets as Array<{ symbol: string; name: string }>) || []).map((a) => ({ value: a.symbol, label: `${a.symbol} - ${a.name}` })) }));
             }}
           />
         </div>
@@ -524,7 +520,7 @@ const TransactionPage: React.FC = () => {
           {invMode === 'stake' && (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               <ComboBox
-                options={(masterData.account || []) as any}
+                options={masterData.account.filter((a: unknown) => (a as { type: string }).type === 'investment') as Array<{ value: string; label: string }>}
                 value={invAccount}
                 onChange={(v) => setInvAccount(String(v))}
                 placeholder="Investment Account"
@@ -532,7 +528,7 @@ const TransactionPage: React.FC = () => {
                 onCreate={async (name) => {
                   await adminApi.createAccount({ name, type: 'investment', is_active: true });
                   const accounts = await adminApi.listAccounts();
-                  setMasterData((prev) => ({ ...prev, account: ((accounts as any[]) || []).map((a: any) => ({ value: a.name, label: `${a.name} (${a.type})` })) }));
+                  setMasterData((prev) => ({ ...prev, account: ((accounts as Array<{ name: string; type: string }>) || []).map((a) => ({ value: a.name, label: `${a.name} (${a.type})` })) }));
                 }}
               />
               <select className="px-3 py-2 border rounded" value={invHorizon} onChange={(e) => setInvHorizon(e.target.value)}>
@@ -562,7 +558,7 @@ const TransactionPage: React.FC = () => {
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mt-3">
           <ComboBox
-            options={(masterData.tag || []) as any}
+            options={masterData.tag as Array<{ value: string; label: string }>}
             value={qa.tag || ''}
             onChange={(v) => setQa((s) => ({ ...s, tag: v }))}
             placeholder="Tag (optional)"
@@ -570,7 +566,7 @@ const TransactionPage: React.FC = () => {
             onCreate={async (name) => {
               await adminApi.createTag({ name, category: 'General', is_active: true });
               const tags = await adminApi.listTags();
-              setMasterData((prev) => ({ ...prev, tag: ((tags as any[]) || []).map((t: any) => ({ value: t.name, label: `${t.name} (${t.category})` })) }));
+              setMasterData((prev) => ({ ...prev, tag: ((tags as Array<{ name: string; category: string }>) || []).map((t) => ({ value: t.name, label: `${t.name} (${t.category})` })) }));
             }}
           />
           <input className="px-3 py-2 border rounded" placeholder="Counterparty (optional)" value={qa.counterparty}
@@ -584,17 +580,17 @@ const TransactionPage: React.FC = () => {
           <div className="flex items-center gap-2">
             <button
               className={`px-4 py-2 text-sm rounded-md text-white ${submitting ? 'bg-gray-400' : 'bg-blue-600 hover:bg-blue-700'}`}
-              onClick={() => submit(false)}
+            onClick={() => { void submit(false); }}
               disabled={submitting}
             >Add</button>
             <button
               className={`px-4 py-2 text-sm rounded-md border ${submitting ? 'bg-gray-100' : 'bg-white hover:bg-gray-50'}`}
-              onClick={() => submit(true)}
+            onClick={() => { void submit(true); }}
               disabled={submitting}
             >Add & New</button>
             <button
               className="px-4 py-2 text-sm rounded-md border bg-white hover:bg-gray-50"
-              onClick={() => { setShowForm(true); setShowQuickAdd(false); }}
+            onClick={() => { setShowForm(true); setShowQuickAdd(false); }}
             >Advanced…</button>
           </div>
         </div>
@@ -605,7 +601,7 @@ const TransactionPage: React.FC = () => {
   // Removed legacy Quick Actions in favor of simplified Quick Add
 
   const handleCreateTransaction = async (
-    transactionData: Record<string, any>
+    transactionData: Record<string, unknown>
   ): Promise<void> => {
     try {
       const newTransaction = (await transactionApi.create(
@@ -615,18 +611,18 @@ const TransactionPage: React.FC = () => {
       setShowForm(false);
       actions.setError(null);
       showSuccessToast('Transaction created successfully');
-    } catch (err: any) {
-      const msg = err?.message ?? 'Failed to create transaction.';
+    } catch (err: unknown) {
+      const msg = (err as { message?: string } | null)?.message ?? 'Failed to create transaction.';
       actions.setError(msg);
       showErrorToast(msg);
     }
   };
 
   const handleUpdateTransaction = async (
-    transactionData: Record<string, any>
+    transactionData: Record<string, unknown>
   ): Promise<void> => {
     try {
-      if (!editingTransaction) return;
+      if (!editingTransaction || editingTransaction.id === undefined) return;
       const updatedTransaction = await transactionApi.update(
         editingTransaction.id,
         transactionData
@@ -642,8 +638,8 @@ const TransactionPage: React.FC = () => {
       setShowForm(false);
       actions.setError(null);
       showSuccessToast('Transaction updated successfully');
-    } catch (err: any) {
-      const msg = err?.message ?? 'Failed to update transaction.';
+    } catch (err: unknown) {
+      const msg = (err as { message?: string } | null)?.message ?? 'Failed to update transaction.';
       actions.setError(msg);
       showErrorToast(msg);
     }
@@ -657,8 +653,9 @@ const TransactionPage: React.FC = () => {
       setTransactions((prev) => prev.filter((tx) => tx.id !== id));
       actions.setError(null);
       showSuccessToast('Transaction deleted successfully');
-    } catch (err: any) {
-      actions.setError(err?.message ?? 'Unknown error');
+    } catch (err: unknown) {
+      const msg = (err as { message?: string } | null)?.message ?? 'Unknown error';
+      actions.setError(msg);
       showErrorToast('Failed to delete transaction. Please try again.');
     }
   };
@@ -670,7 +667,7 @@ const TransactionPage: React.FC = () => {
     try {
       const res = await transactionApi.deleteMany(ids);
       const deleted = (res as any)?.deleted ?? ids.length;
-      setTransactions((prev) => prev.filter((tx) => !selectedIds.has(tx.id)));
+      setTransactions((prev) => prev.filter((tx) => !(tx.id !== undefined && selectedIds.has(tx.id as IdType))));
       setSelectedIds(new Set());
       actions.setError(null);
       showSuccessToast(`Deleted ${deleted} transaction(s)`);
@@ -693,7 +690,7 @@ const TransactionPage: React.FC = () => {
   const handleInlineEdit = async (
     transactionId: IdType,
     field: string,
-    newValue: any
+    newValue: unknown
   ): Promise<void> => {
     try {
       // Find the transaction to update
@@ -716,23 +713,22 @@ const TransactionPage: React.FC = () => {
       );
 
       // Make API call to persist changes
-      const updateData = { [field]: newValue };
+      const updateData = { [field]: newValue } as Record<string, unknown>;
       await transactionApi.update(transactionId, updateData);
 
       actions.setError(null);
       showSuccessToast(`${field} updated successfully`);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Inline edit error:', err);
-      actions.setError(
-        `Failed to update ${field}: ${err?.message ?? 'Unknown error'}`
-      );
+      const msg = (err as { message?: string } | null)?.message ?? 'Unknown error';
+      actions.setError(`Failed to update ${field}: ${msg}`);
       showErrorToast(`Failed to update ${field}. Please try again.`);
       // Reload transactions to revert any optimistic updates
-      loadTransactions();
+      void loadTransactions();
     }
   };
 
-  const columns: Column[] = [
+  const columns: TableColumn<Transaction>[] = [
     {
       key: 'date',
       title: 'Date',
@@ -745,11 +741,11 @@ const TransactionPage: React.FC = () => {
       title: 'Type',
       editable: true,
       editType: 'select',
-      render: (value: any, _column: any, row?: any) => {
+      render: (value, _column, row) => {
         // Normalize value
-        const type = String(value || '').toLowerCase();
+        const type = String(value as string ?? '').toLowerCase();
         const isInternal =
-          Boolean(row?.internal_flow) &&
+          Boolean((row as Record<string, unknown>)?.internal_flow) &&
           (type === 'transfer_in' || type === 'transfer_out');
 
         // Categorize types for coloring
@@ -833,18 +829,18 @@ const TransactionPage: React.FC = () => {
       title: `Amount (${currency})`,
       type: 'currency',
       currency: currency,
-      render: (_value: any, _column: any, row: any) => {
+      render: (_value, _column, row) => {
         const numberFormatter = new Intl.NumberFormat('en-US', {
           style: 'currency',
           currency: currency,
         });
-        const type = String(row?.type || '').toLowerCase();
+        const type = String((row as Record<string, unknown>)?.type ?? '').toLowerCase();
         const isNeutral = ['deposit', 'withdraw', 'borrow'].includes(type);
         if (isNeutral) {
           const amt =
             currency === 'USD'
-              ? Number(row?.amount_usd || 0)
-              : Number(row?.amount_vnd || 0);
+              ? Number((row as Record<string, unknown>)?.amount_usd ?? 0)
+              : Number((row as Record<string, unknown>)?.amount_vnd ?? 0);
           if (!amt) return '-';
           return (
             <span className="font-medium text-gray-800">
@@ -854,8 +850,8 @@ const TransactionPage: React.FC = () => {
         }
         const cashflow =
           currency === 'USD'
-            ? Number(row?.cashflow_usd || 0)
-            : Number(row?.cashflow_vnd || 0);
+            ? Number((row as Record<string, unknown>)?.cashflow_usd ?? 0)
+            : Number((row as Record<string, unknown>)?.cashflow_vnd ?? 0);
         if (!cashflow) return '-';
         const isPositive = cashflow > 0;
         const formatted = numberFormatter.format(Math.abs(cashflow));
@@ -1071,7 +1067,7 @@ const TransactionPage: React.FC = () => {
       <div className="mb-6">
         <div className="inline-flex rounded-md shadow-sm">
           <button
-            onClick={() => actions.setCurrency('USD')}
+          onClick={() => actions.setCurrency('USD')}
             className={`px-4 py-2 text-sm font-medium border rounded-l-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${currency === 'USD'
               ? 'bg-blue-600 text-white border-blue-600'
               : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
@@ -1080,7 +1076,7 @@ const TransactionPage: React.FC = () => {
             USD View
           </button>
           <button
-            onClick={() => actions.setCurrency('VND')}
+          onClick={() => actions.setCurrency('VND')}
             className={`px-4 py-2 text-sm font-medium border-t border-b border-r rounded-r-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${currency === 'VND'
               ? 'bg-blue-600 text-white border-blue-600'
               : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
@@ -1095,21 +1091,21 @@ const TransactionPage: React.FC = () => {
 
       {/* Transactions Table */}
       <DataTable
-        data={transactions as any[]}
-        columns={columns as any[]}
+        data={transactions}
+        columns={columns}
         loading={loading}
         error={error}
         emptyMessage="No transactions found. Create your first transaction above."
         editable={true}
         onCellEdit={handleInlineEdit}
-        masterData={masterData as any}
+        masterData={masterData}
         onRowClick={null}
         actions={['edit', 'delete', 'recalc']}
-        onEdit={handleEditClick as any}
-        onDelete={handleDeleteTransaction as any}
-        busyRowIds={busyRowIds as any}
+        onEdit={handleEditClick}
+        onDelete={handleDeleteTransaction}
+        busyRowIds={busyRowIds}
         selectableRows={true}
-        selectedIds={selectedIds as any}
+        selectedIds={selectedIds}
         onToggleRow={(id, checked) => {
           setSelectedIds((s) => {
             const next = new Set(s);
@@ -1126,18 +1122,18 @@ const TransactionPage: React.FC = () => {
             return next;
           });
         }}
-        onRecalc={async (row: any) => {
+        onRecalc={async (row) => {
           try {
             setBusyRowIds((s) => {
               const next = new Set(s);
-              next.add(row.id as IdType);
+              next.add((row).id as IdType);
               return next;
             });
-            const updated = await transactionApi.recalc(row.id, false);
+            const updated = await transactionApi.recalc(String((row).id), false);
             if (updated) {
               setTransactions((prev) =>
                 prev.map((t) =>
-                  t.id === row.id ? (updated as Transaction) : t
+                  t.id === (row).id ? (updated as Transaction) : t
                 )
               );
               showSuccessToast('Row refreshed');
@@ -1149,7 +1145,7 @@ const TransactionPage: React.FC = () => {
           } finally {
             setBusyRowIds((s) => {
               const next = new Set(s);
-              next.delete(row.id as IdType);
+              next.delete((row).id as IdType);
               return next;
             });
           }

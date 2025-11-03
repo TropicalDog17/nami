@@ -25,14 +25,20 @@ ChartJS.register(
   LineElement
 )
 
+type Currency = 'USD' | 'VND'
+
+type HoldingsData = {
+  by_asset?: Record<string, { value_usd?: number | string; value_vnd?: number | string }>
+}
+
 // Holdings Pie Chart
-export const HoldingsChart = ({ data, currency = 'USD' }) => {
+export const HoldingsChart: React.FC<{ data: HoldingsData; currency?: Currency }> = ({ data, currency = 'USD' }) => {
   if (!data?.by_asset) return null
 
   const assets = Object.entries(data.by_asset)
   const labels = assets.map(([asset]) => asset)
   const values = assets.map(([, holding]) =>
-    Math.abs(parseFloat(currency === 'USD' ? holding.value_usd : holding.value_vnd))
+    Math.abs(parseFloat(String(currency === 'USD' ? (holding.value_usd ?? 0) : (holding.value_vnd ?? 0))))
   )
 
   const chartData = {
@@ -80,10 +86,10 @@ export const HoldingsChart = ({ data, currency = 'USD' }) => {
       },
       tooltip: {
         callbacks: {
-          label: function (context) {
-            const label = context.label || ''
+          label: function (context: { label?: string; parsed: number; dataset: { data: number[] } }) {
+            const label = context.label ?? ''
             const value = context.parsed
-            const total = context.dataset.data.reduce((a, b) => a + b, 0)
+            const total = context.dataset.data.reduce((a: number, b: number) => a + b, 0)
             const percentage = ((value / total) * 100).toFixed(1)
             return `${label}: ${value.toLocaleString()} ${currency} (${percentage}%)`
           }
@@ -95,17 +101,19 @@ export const HoldingsChart = ({ data, currency = 'USD' }) => {
   return <Doughnut data={chartData} options={options} />
 }
 
+type CashFlowByType = Record<string, { inflow_usd?: number | string; inflow_vnd?: number | string; outflow_usd?: number | string; outflow_vnd?: number | string }>
+
 // Cash Flow Bar Chart
-export const CashFlowChart = ({ data, currency = 'USD' }) => {
+export const CashFlowChart: React.FC<{ data: { by_type?: CashFlowByType }; currency?: Currency }> = ({ data, currency = 'USD' }) => {
   if (!data?.by_type) return null
 
   const types = Object.entries(data.by_type)
   const labels = types.map(([type]) => type)
   const inflows = types.map(([, flow]) =>
-    parseFloat(currency === 'USD' ? flow.inflow_usd : flow.inflow_vnd)
+    parseFloat(String(currency === 'USD' ? (flow.inflow_usd ?? 0) : (flow.inflow_vnd ?? 0)))
   )
   const outflows = types.map(([, flow]) =>
-    -parseFloat(currency === 'USD' ? flow.outflow_usd : flow.outflow_vnd)
+    -parseFloat(String(currency === 'USD' ? (flow.outflow_usd ?? 0) : (flow.outflow_vnd ?? 0)))
   )
 
   const chartData = {
@@ -144,9 +152,9 @@ export const CashFlowChart = ({ data, currency = 'USD' }) => {
       },
       tooltip: {
         callbacks: {
-          label: function (context) {
+          label: function (context: { parsed: { y: number }; dataset: { label?: string } }) {
             const value = Math.abs(context.parsed.y)
-            return `${context.dataset.label}: ${value.toLocaleString()} ${currency}`
+            return `${context.dataset.label ?? 'Value'}: ${value.toLocaleString()} ${currency}`
           }
         }
       }
@@ -156,8 +164,9 @@ export const CashFlowChart = ({ data, currency = 'USD' }) => {
         beginAtZero: true,
         ticks: {
           fontSize: 10,
-          callback: function (value) {
-            return Math.abs(value).toLocaleString()
+          callback: function (value: number | string) {
+            const n = typeof value === 'number' ? value : parseFloat(String(value))
+            return Math.abs(n).toLocaleString()
           }
         }
       },
@@ -172,17 +181,19 @@ export const CashFlowChart = ({ data, currency = 'USD' }) => {
   return <Bar data={chartData} options={options} />
 }
 
+type SpendingByTag = Record<string, { amount_usd?: number | string; amount_vnd?: number | string; percentage?: number | string }>
+
 // Spending Breakdown Chart
-export const SpendingChart = ({ data, currency = 'USD' }) => {
+export const SpendingChart: React.FC<{ data: { by_tag?: SpendingByTag }; currency?: Currency }> = ({ data, currency = 'USD' }) => {
   if (!data?.by_tag) return null
 
   const tags = Object.entries(data.by_tag)
-    .sort(([, a], [, b]) => parseFloat(b.amount_usd) - parseFloat(a.amount_usd))
+    .sort(([, a], [, b]) => parseFloat(String((b.amount_usd ?? 0))) - parseFloat(String((a.amount_usd ?? 0))))
     .slice(0, 10) // Top 10 spending categories
 
   const labels = tags.map(([tag]) => tag)
   const amounts = tags.map(([, spending]) =>
-    parseFloat(currency === 'USD' ? spending.amount_usd : spending.amount_vnd)
+    parseFloat(String(currency === 'USD' ? (spending.amount_usd ?? 0) : (spending.amount_vnd ?? 0)))
   )
 
   const chartData = {
@@ -214,10 +225,10 @@ export const SpendingChart = ({ data, currency = 'USD' }) => {
       },
       tooltip: {
         callbacks: {
-          label: function (context) {
-            const label = context.label || ''
+          label: function (context: { label?: string; parsed: number; dataIndex: number }) {
+            const label = context.label ?? ''
             const value = context.parsed
-            const percentage = parseFloat(tags[context.dataIndex][1].percentage).toFixed(1)
+            const percentage = parseFloat(String(tags[context.dataIndex][1].percentage ?? 0)).toFixed(1)
             return `${label}: ${value.toLocaleString()} ${currency} (${percentage}%)`
           }
         }
@@ -228,12 +239,14 @@ export const SpendingChart = ({ data, currency = 'USD' }) => {
   return <Doughnut data={chartData} options={options} />
 }
 
+type PnLData = { realized_pnl_usd?: number | string; realized_pnl_vnd?: number | string; total_pnl_usd?: number | string; total_pnl_vnd?: number | string }
+
 // P&L Chart (simple for now)
-export const PnLChart = ({ data, currency = 'USD' }) => {
+export const PnLChart: React.FC<{ data: PnLData; currency?: Currency }> = ({ data, currency = 'USD' }) => {
   if (!data) return null
 
-  const realizedPnL = parseFloat(currency === 'USD' ? data.realized_pnl_usd : data.realized_pnl_vnd)
-  const totalPnL = parseFloat(currency === 'USD' ? data.total_pnl_usd : data.total_pnl_vnd)
+  const realizedPnL = parseFloat(String(currency === 'USD' ? (data.realized_pnl_usd ?? 0) : (data.realized_pnl_vnd ?? 0)))
+  const totalPnL = parseFloat(String(currency === 'USD' ? (data.total_pnl_usd ?? 0) : (data.total_pnl_vnd ?? 0)))
 
   const chartData = {
     labels: ['Realized P&L', 'Total P&L'],
@@ -266,9 +279,9 @@ export const PnLChart = ({ data, currency = 'USD' }) => {
       },
       tooltip: {
         callbacks: {
-          label: function (context) {
+          label: function (context: { parsed: { y: number }; label?: string }) {
             const value = context.parsed.y
-            return `${context.label}: ${value.toLocaleString()} ${currency}`
+            return `${context.label ?? 'Value'}: ${value.toLocaleString()} ${currency}`
           }
         }
       }
@@ -277,8 +290,9 @@ export const PnLChart = ({ data, currency = 'USD' }) => {
       y: {
         beginAtZero: true,
         ticks: {
-          callback: function (value) {
-            return (value as number).toLocaleString()
+          callback: function (value: number | string) {
+            const n = typeof value === 'number' ? value : parseFloat(String(value))
+            return n.toLocaleString()
           }
         }
       },
@@ -291,17 +305,19 @@ export const PnLChart = ({ data, currency = 'USD' }) => {
   return <Bar data={chartData} options={options} />
 }
 
+type DailySpendingData = { by_day?: Record<string, { amount_usd?: number | string; amount_vnd?: number | string }> }
+
 // Daily Spending Line Chart
-export const DailySpendingChart = ({ data, currency = 'USD' }) => {
+export const DailySpendingChart: React.FC<{ data: DailySpendingData; currency?: Currency }> = ({ data, currency = 'USD' }) => {
   if (!data?.by_day) return null
 
   const entries = Object.entries(data.by_day)
-    .map(([day, d]: [string, any]) => ({ day, ...(d) }))
+    .map(([day, d]: [string, { amount_usd?: number | string; amount_vnd?: number | string }]) => ({ day, ...(d) }))
     .sort((a, b) => (a.day < b.day ? -1 : 1))
 
   const labels = entries.map((e) => e.day)
   const values = entries.map((e) =>
-    Math.abs(parseFloat(currency === 'USD' ? e.amount_usd : e.amount_vnd))
+    Math.abs(parseFloat(String(currency === 'USD' ? (e.amount_usd ?? 0) : (e.amount_vnd ?? 0))))
   )
 
   const chartData = {
@@ -326,7 +342,7 @@ export const DailySpendingChart = ({ data, currency = 'USD' }) => {
       legend: { position: 'top' },
       tooltip: {
         callbacks: {
-          label: function (context) {
+          label: function (context: { parsed: { y: number }; dataset: { label: string } }) {
             const value = Math.abs(context.parsed.y)
             return `${context.dataset.label}: ${value.toLocaleString()} ${currency}`
           }
@@ -337,8 +353,9 @@ export const DailySpendingChart = ({ data, currency = 'USD' }) => {
       y: {
         beginAtZero: true,
         ticks: {
-          callback: function (value: any) {
-            return Math.abs(value).toLocaleString()
+          callback: function (value: number | string) {
+            const n = typeof value === 'number' ? value : parseFloat(String(value))
+            return Math.abs(n).toLocaleString()
           }
         }
       }
@@ -349,7 +366,7 @@ export const DailySpendingChart = ({ data, currency = 'USD' }) => {
 }
 
 // Summary Stats Component
-export const SummaryStats = ({ title, stats, currency = 'USD' }) => {
+export const SummaryStats: React.FC<{ title: string; stats: Array<{ label: string; value: number | string }>; currency?: Currency }> = ({ title, stats, currency = 'USD' }) => {
   return (
     <div className="bg-white rounded-lg shadow p-6">
       <h3 className="text-lg font-medium text-gray-900 mb-4">{title}</h3>

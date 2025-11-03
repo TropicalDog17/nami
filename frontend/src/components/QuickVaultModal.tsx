@@ -7,7 +7,17 @@ import { adminApi } from '../services/api';
 interface QuickVaultModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSubmit: (vaultData: any) => void;
+  onSubmit: (vaultData: Record<string, unknown>) => void;
+}
+
+interface AssetLite {
+  symbol: string;
+  name?: string;
+}
+
+interface AccountLite {
+  name: string;
+  type?: string;
 }
 
 const QuickVaultModal: React.FC<QuickVaultModalProps> = ({ isOpen, onClose, onSubmit }) => {
@@ -33,10 +43,18 @@ const QuickVaultModal: React.FC<QuickVaultModalProps> = ({ isOpen, onClose, onSu
         const [assetsData, accountsData] = (await Promise.all([
           adminApi.listAssets(),
           adminApi.listAccounts(),
-        ])) as [any[], any[]];
-        setAssets((assetsData || []).map((a: any) => ({ value: a.symbol, label: `${a.symbol} - ${a.name || a.symbol}` })));
-        setAccounts((accountsData || []).map((a: any) => ({ value: a.name, label: `${a.name} (${a.type})` })));
-      } catch (e) {
+        ])) as [AssetLite[] | null, AccountLite[] | null];
+        setAssets(((assetsData ?? [])).map((a) => {
+          const symbol = String(a.symbol ?? '');
+          const name = String(a.name ?? symbol);
+          return { value: symbol, label: `${symbol} - ${name}` };
+        }));
+        setAccounts(((accountsData ?? [])).map((a) => {
+          const name = String(a.name ?? '');
+          const type = String(a.type ?? '');
+          return { value: name, label: `${name} (${type})` };
+        }));
+      } catch (_e) {
         setAssets([
           { value: 'BTC', label: 'BTC - Bitcoin' },
           { value: 'ETH', label: 'ETH - Ethereum' },
@@ -48,12 +66,12 @@ const QuickVaultModal: React.FC<QuickVaultModalProps> = ({ isOpen, onClose, onSu
         ]);
       }
     };
-    if (isOpen) load();
+    if (isOpen) void load();
   }, [isOpen]);
 
   const unitCost = useMemo(() => {
-    const qty = parseFloat(form.depositQty || '');
-    const cost = parseFloat(form.depositCost || '');
+    const qty = parseFloat(form.depositQty ?? '');
+    const cost = parseFloat(form.depositCost ?? '');
     if (!qty || !cost || qty <= 0 || cost <= 0) return null;
     return cost / qty;
   }, [form.depositQty, form.depositCost]);
@@ -67,7 +85,7 @@ const QuickVaultModal: React.FC<QuickVaultModalProps> = ({ isOpen, onClose, onSu
     return null;
   };
 
-  const submit = async (e: React.FormEvent) => {
+  const submit = (e: React.FormEvent) => {
     e.preventDefault();
     const err = validate();
     if (err) {
@@ -80,12 +98,12 @@ const QuickVaultModal: React.FC<QuickVaultModalProps> = ({ isOpen, onClose, onSu
       const payload = {
         asset: isUsdOnly ? 'USD' : form.asset,
         account: form.account,
-        horizon: form.horizon || null,
-        depositQty: isUsdOnly ? 1 : parseFloat(form.depositQty),
-        depositCost: parseFloat(form.depositCost),
+        horizon: form.horizon ?? null,
+        depositQty: isUsdOnly ? 1 : parseFloat(form.depositQty ?? ''),
+        depositCost: parseFloat(form.depositCost ?? ''),
         date: form.date,
       };
-      await onSubmit(payload);
+      onSubmit(payload);
       onClose();
       setForm({ asset: '', account: '', horizon: '', depositQty: '', depositCost: '', date: today });
       setIsUsdOnly(false);
@@ -106,7 +124,7 @@ const QuickVaultModal: React.FC<QuickVaultModalProps> = ({ isOpen, onClose, onSu
         {error && (
           <div className="mb-3 text-sm text-red-700 bg-red-50 border border-red-200 rounded p-2">{error}</div>
         )}
-        <form onSubmit={submit} className="space-y-4">
+        <form onSubmit={(e) => { void submit(e); }} className="space-y-4">
           <div className="flex items-center">
             <label className="flex items-center text-sm text-gray-700">
               <input

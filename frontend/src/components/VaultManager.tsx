@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 import { useToast } from './ui/Toast';
-import { useBackendStatus } from '../context/BackendStatusContext';
+// import { useBackendStatus } from '../context/BackendStatusContext';
 import { vaultApi } from '../services/api';
 
 type Vault = {
@@ -32,38 +32,38 @@ type Vault = {
 
 const VaultManager: React.FC = () => {
   const navigate = useNavigate();
-  const { isOnline } = useBackendStatus() as unknown as { isOnline: boolean };
-  const { error: showErrorToast, success: showSuccessToast } =
-    useToast() as unknown as {
-      error: (m: string) => void;
-      success: (m: string) => void;
-    };
+  const { error: showErrorToast } = useToast() as unknown as {
+    error: (m: string) => void;
+  };
 
   const [vaults, setVaults] = useState<Vault[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    loadVaults();
-  }, []);
-
-  const loadVaults = async () => {
+  const loadVaults = useCallback(async (): Promise<void> => {
     try {
       setLoading(true);
       setError(null);
       const vaultsData = await vaultApi.getActiveVaults();
       setVaults(vaultsData as Vault[]);
-    } catch (err: any) {
-      setError(err?.message || 'Failed to load vaults');
+    } catch (err: unknown) {
+      const msg = (err as { message?: string } | null)?.message ?? 'Failed to load vaults';
+      setError(msg);
       showErrorToast('Failed to load vaults');
     } finally {
       setLoading(false);
     }
-  };
+  }, [showErrorToast]);
+
+  useEffect(() => {
+    void loadVaults();
+  }, [loadVaults]);
+
+  // moved into useCallback above
 
   const handleVaultClick = (vault: Vault) => {
     // Navigate to vault detail page using vault name
-    navigate(`/vault/${encodeURIComponent(vault.vault_name || vault.id)}`);
+    navigate(`/vault/${encodeURIComponent(vault.vault_name ?? vault.id)}`);
   };
 
   const formatCurrency = (value: string | number, currency: string = 'USD'): string => {
@@ -102,7 +102,7 @@ const VaultManager: React.FC = () => {
       <div className="text-center py-8">
         <div className="text-red-600 mb-4">Error loading vaults</div>
         <button
-          onClick={loadVaults}
+          onClick={() => { void loadVaults(); }}
           className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
         >
           Retry
@@ -158,11 +158,11 @@ const VaultManager: React.FC = () => {
               <div className="flex justify-between items-start mb-4">
                 <div>
                   <h3 className="text-lg font-semibold text-gray-900">
-                    {vault.vault_name || `Vault ${vault.id}`}
+                    {vault.vault_name ?? `Vault ${vault.id}`}
                   </h3>
                   <p className="text-sm text-gray-600">
                     {vault.asset} @ {vault.account}
-                    {vault.horizon && ` [${vault.horizon}]`}
+                  {vault.horizon ? ` [${vault.horizon}]` : ''}
                   </p>
                 </div>
                 <div className="flex flex-col items-end">
@@ -250,7 +250,7 @@ const VaultManager: React.FC = () => {
         <ul className="text-sm text-blue-800 space-y-1">
           <li>• Click on any vault card to view detailed P&L, transaction history, and manage deposits/withdrawals</li>
           <li>• Active vaults allow deposits and withdrawals</li>
-          <li>• End a vault when you're done to lock in final returns</li>
+          <li>• End a vault when you&apos;re done to lock in final returns</li>
           <li>• All investment tracking is now vault-based for better organization</li>
         </ul>
       </div>

@@ -24,9 +24,9 @@ const AssetAllocationChart: React.FC<AssetAllocationChartProps> = ({
   data,
   currency,
 }) => {
-  const assets = Object.entries(data.by_asset || {})
+  const assets = Object.entries(data.by_asset ?? {})
     .map(([asset, info]) => {
-      const value = currency === 'USD' ? (info.value_usd || 0) : (info.value_vnd || 0);
+      const value = currency === 'USD' ? (info.value_usd ?? 0) : (info.value_vnd ?? 0);
       // Display rule: For USD vaults, show actual currency amount instead of vault share count
       const isUsdVault = asset.toUpperCase().startsWith('USD') && asset.toLowerCase().includes('(vault)');
       const quantityForDisplay = isUsdVault ? value : (info.quantity || 0);
@@ -41,7 +41,7 @@ const AssetAllocationChart: React.FC<AssetAllocationChartProps> = ({
     .sort((a, b) => b.value - a.value);
 
   const totalValue =
-    currency === 'USD' ? data.total_value_usd || 0 : data.total_value_vnd || 0;
+    currency === 'USD' ? (data.total_value_usd ?? 0) : (data.total_value_vnd ?? 0);
 
   const getAllocationColor = (percentage: number) => {
     if (percentage > 50) return 'bg-blue-500';
@@ -102,7 +102,7 @@ const AssetAllocationChart: React.FC<AssetAllocationChartProps> = ({
           Allocation Breakdown
         </h4>
         <div className="space-y-3">
-          {assets.map((asset, index) => (
+          {assets.map((asset, _index) => (
             <div key={asset.asset} className="space-y-2" data-testid={`asset-${asset.asset}`}>
               <div className="flex justify-between items-center">
                 <div className="flex items-center space-x-3">

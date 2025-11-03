@@ -1,23 +1,36 @@
 import React, { useState, useEffect, createContext, useContext } from 'react'
 
-// Toast context
-const ToastContext = createContext()
-
-// Toast types
 export const ToastTypes = {
   SUCCESS: 'success',
   ERROR: 'error',
   WARNING: 'warning',
   INFO: 'info',
+} as const
+
+type ToastType = typeof ToastTypes[keyof typeof ToastTypes]
+type ToastItemData = { id: number; message: string; type: ToastType; duration: number }
+
+type ToastContextValue = {
+  toasts: ToastItemData[]
+  addToast: (message: string, type?: ToastType, duration?: number) => number
+  removeToast: (id: number) => void
+  success: (message: string, duration?: number) => number
+  error: (message: string, duration?: number) => number
+  warning: (message: string, duration?: number) => number
+  info: (message: string, duration?: number) => number
 }
 
-// Toast provider component
-export function ToastProvider({ children }) {
-  const [toasts, setToasts] = useState([])
+// Toast context
+const ToastContext = createContext<ToastContextValue | undefined>(undefined)
 
-  const addToast = (message, type = ToastTypes.INFO, duration = 5000) => {
+// Toast types
+// Toast provider component
+export function ToastProvider({ children }: React.PropsWithChildren) {
+  const [toasts, setToasts] = useState<ToastItemData[]>([])
+
+  const addToast = (message: string, type: ToastType = ToastTypes.INFO, duration: number = 5000): number => {
     const id = Date.now() + Math.random()
-    const toast = { id, message, type, duration }
+    const toast: ToastItemData = { id, message, type, duration }
     
     setToasts(prev => [...prev, toast])
 
@@ -30,7 +43,7 @@ export function ToastProvider({ children }) {
     return id
   }
 
-  const removeToast = (id) => {
+  const removeToast = (id: number) => {
     setToasts(prev => prev.filter(toast => toast.id !== id))
   }
 
@@ -38,10 +51,10 @@ export function ToastProvider({ children }) {
     toasts,
     addToast,
     removeToast,
-    success: (message, duration) => addToast(message, ToastTypes.SUCCESS, duration),
-    error: (message, duration) => addToast(message, ToastTypes.ERROR, duration),
-    warning: (message, duration) => addToast(message, ToastTypes.WARNING, duration),
-    info: (message, duration) => addToast(message, ToastTypes.INFO, duration),
+    success: (message: string, duration?: number) => addToast(message, ToastTypes.SUCCESS, duration),
+    error: (message: string, duration?: number) => addToast(message, ToastTypes.ERROR, duration),
+    warning: (message: string, duration?: number) => addToast(message, ToastTypes.WARNING, duration),
+    info: (message: string, duration?: number) => addToast(message, ToastTypes.INFO, duration),
   }
 
   return (
@@ -51,8 +64,8 @@ export function ToastProvider({ children }) {
   )
 }
 
-// Hook to use toast
-export function useToast() {
+// eslint-disable-next-line react-refresh/only-export-components
+export function useToast(): ToastContextValue {
   const context = useContext(ToastContext)
   if (!context) {
     throw new Error('useToast must be used within a ToastProvider')
@@ -61,9 +74,9 @@ export function useToast() {
 }
 
 // Individual toast component
-function ToastItem({ toast, onRemove }) {
-  const [isVisible, setIsVisible] = useState(false)
-  const [isLeaving, setIsLeaving] = useState(false)
+function ToastItem({ toast, onRemove }: { toast: ToastItemData; onRemove: (id: number) => void }) {
+  const [isVisible, setIsVisible] = useState<boolean>(false)
+  const [isLeaving, setIsLeaving] = useState<boolean>(false)
 
   useEffect(() => {
     // Animate in
@@ -71,12 +84,12 @@ function ToastItem({ toast, onRemove }) {
     return () => clearTimeout(timer)
   }, [])
 
-  const handleRemove = () => {
+  const handleRemove = (): void => {
     setIsLeaving(true)
     setTimeout(() => onRemove(toast.id), 300)
   }
 
-  const getToastStyles = () => {
+  const getToastStyles = (): string => {
     const baseStyles = "flex items-center p-4 mb-3 text-sm rounded-lg shadow-lg transition-all duration-300 transform"
     
     const typeStyles = {

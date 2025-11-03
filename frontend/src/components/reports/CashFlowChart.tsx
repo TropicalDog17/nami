@@ -7,9 +7,15 @@ interface CashFlowData {
   total_in_vnd?: number;
   total_out_vnd?: number;
   net_vnd?: number;
+  operating_in_vnd?: number;
+  operating_out_vnd?: number;
+  operating_net_vnd?: number;
   operating_in_usd?: number;
   operating_out_usd?: number;
   operating_net_usd?: number;
+  financing_in_vnd?: number;
+  financing_out_vnd?: number;
+  financing_net_vnd?: number;
   financing_in_usd?: number;
   financing_out_usd?: number;
   financing_net_usd?: number;
@@ -18,6 +24,9 @@ interface CashFlowData {
       inflow_usd?: number;
       outflow_usd?: number;
       net_usd?: number;
+      inflow_vnd?: number;
+      outflow_vnd?: number;
+      net_vnd?: number;
       count?: number;
     };
   };
@@ -29,17 +38,17 @@ interface CashFlowChartProps {
 }
 
 const CashFlowChart: React.FC<CashFlowChartProps> = ({ data, currency }) => {
-  const totalIn = currency === 'USD' ? (data.total_in_usd || 0) : (data.total_in_vnd || 0);
-  const totalOut = currency === 'USD' ? (data.total_out_usd || 0) : (data.total_out_vnd || 0);
-  const netFlow = currency === 'USD' ? (data.net_usd || 0) : (data.net_vnd || 0);
+  const totalIn = currency === 'USD' ? (data.total_in_usd ?? 0) : (data.total_in_vnd ?? 0);
+  const totalOut = currency === 'USD' ? (data.total_out_usd ?? 0) : (data.total_out_vnd ?? 0);
+  const netFlow = currency === 'USD' ? (data.net_usd ?? 0) : (data.net_vnd ?? 0);
 
-  const operatingIn = currency === 'USD' ? (data.operating_in_usd || 0) : (data.operating_in_vnd || 0);
-  const operatingOut = currency === 'USD' ? (data.operating_out_usd || 0) : (data.operating_out_vnd || 0);
-  const operatingNet = currency === 'USD' ? (data.operating_net_usd || 0) : (data.operating_net_vnd || 0);
+  const operatingIn = currency === 'USD' ? (data.operating_in_usd ?? 0) : (data.operating_in_vnd ?? 0);
+  const operatingOut = currency === 'USD' ? (data.operating_out_usd ?? 0) : (data.operating_out_vnd ?? 0);
+  const operatingNet = currency === 'USD' ? (data.operating_net_usd ?? 0) : (data.operating_net_vnd ?? 0);
 
-  const financingIn = currency === 'USD' ? (data.financing_in_usd || 0) : (data.financing_in_vnd || 0);
-  const financingOut = currency === 'USD' ? (data.financing_out_usd || 0) : (data.financing_out_vnd || 0);
-  const financingNet = currency === 'USD' ? (data.financing_net_usd || 0) : (data.financing_net_vnd || 0);
+  const financingIn = currency === 'USD' ? (data.financing_in_usd ?? 0) : (data.financing_in_vnd ?? 0);
+  const financingOut = currency === 'USD' ? (data.financing_out_usd ?? 0) : (data.financing_out_vnd ?? 0);
+  const financingNet = currency === 'USD' ? (data.financing_net_usd ?? 0) : (data.financing_net_vnd ?? 0);
 
   const formatCurrency = (amount: number) => {
     return currency === 'USD'
@@ -144,9 +153,9 @@ const CashFlowChart: React.FC<CashFlowChartProps> = ({ data, currency }) => {
           <h4 className="text-md font-medium text-gray-900 mb-4">Cash Flow by Transaction Type</h4>
           <div className="space-y-3">
             {Object.entries(data.by_type).map(([type, flowData]) => {
-              const inflow = currency === 'USD' ? (flowData.inflow_usd || 0) : (flowData.inflow_vnd || 0);
-              const outflow = currency === 'USD' ? (flowData.outflow_usd || 0) : (flowData.outflow_vnd || 0);
-              const net = currency === 'USD' ? (flowData.net_usd || 0) : (flowData.net_vnd || 0);
+              const inflow = currency === 'USD' ? (flowData.inflow_usd ?? 0) : (flowData.inflow_vnd ?? 0);
+              const outflow = currency === 'USD' ? (flowData.outflow_usd ?? 0) : (flowData.outflow_vnd ?? 0);
+              const net = currency === 'USD' ? (flowData.net_usd ?? 0) : (flowData.net_vnd ?? 0);
 
               if (inflow === 0 && outflow === 0) return null;
 

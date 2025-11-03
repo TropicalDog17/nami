@@ -1,13 +1,12 @@
 import { format } from 'date-fns';
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 import ComboBox from '../components/ui/ComboBox';
-import DataTable from '../components/ui/DataTable';
+import DataTable, { TableColumn } from '../components/ui/DataTable';
 import DateInput from '../components/ui/DateInput';
 import { useToast } from '../components/ui/Toast';
-import { useBackendStatus } from '../context/BackendStatusContext';
-import { vaultApi, actionsApi, adminApi } from '../services/api';
+import { vaultApi, adminApi } from '../services/api';
 import { formatCurrency, formatPercentage, formatPnL, getDecimalPlaces } from '../utils/currencyFormatter';
 
 type Vault = {
@@ -37,26 +36,10 @@ type Vault = {
 };
 
 type Option = { value: string; label: string };
-type Column = {
-  key: string;
-  title: string;
-  type?: 'date' | 'datetime' | 'currency' | 'number' | 'text' | string;
-  width?: number | string;
-  editable?: boolean;
-  editType?: 'select' | 'date' | 'number' | 'text' | string;
-  render?: (value: any, column: any, row: any) => React.ReactNode;
-  decimals?: number;
-  currency?: string;
-};
 
 const VaultsPage: React.FC = () => {
   const navigate = useNavigate();
-  const { isOnline } = useBackendStatus() as unknown as { isOnline: boolean };
-  const { error: showErrorToast, success: showSuccessToast } =
-    useToast() as unknown as {
-      error: (m: string) => void;
-      success: (m: string) => void;
-    };
+  const { error: showErrorToast, success: showSuccessToast } = useToast();
 
   const [vaults, setVaults] = useState<Vault[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
@@ -65,7 +48,7 @@ const VaultsPage: React.FC = () => {
   const [filter, setFilter] = useState<'all' | 'open' | 'closed'>('all');
   const [assets, setAssets] = useState<Option[]>([]);
   const [accounts, setAccounts] = useState<Option[]>([]);
-  const [horizons, setHorizons] = useState<Option[]>([
+  const [horizons] = useState<Option[]>([
     { value: 'short-term', label: 'Short-term' },
     { value: 'long-term', label: 'Long-term' },
     { value: 'speculative', label: 'Speculative' },
@@ -82,45 +65,40 @@ const VaultsPage: React.FC = () => {
   });
   const [isUsdOnly, setIsUsdOnly] = useState<boolean>(false);
   const unitCost = useMemo(() => {
-    const qty = parseFloat(createForm.depositQty || '');
-    const cost = parseFloat(createForm.depositCost || '');
+    const qty = parseFloat(createForm.depositQty ?? '');
+    const cost = parseFloat(createForm.depositCost ?? '');
     if (!qty || !cost || qty <= 0 || cost <= 0) return null;
     return cost / qty;
   }, [createForm.depositQty, createForm.depositCost]);
 
-  useEffect(() => {
-    loadVaults();
-    loadAssets();
-    loadAccounts();
-  }, [filter]);
-
-  const loadVaults = async () => {
+  const loadVaults = useCallback(async (): Promise<void> => {
     try {
       setLoading(true);
-      const params: Record<string, any> = {};
-      if (filter === 'open') params.is_open = true;
-      if (filter === 'closed') params.is_open = false;
-
-      const vaultsData = await vaultApi.getActiveVaults() as Vault[];
-      setVaults(vaultsData || []);
-    } catch (err: any) {
-      setError(err?.message || 'Failed to load vaults');
+      // Fetch active vaults
+      const vaultsData = await vaultApi.getActiveVaults<Vault[]>();
+      setVaults(vaultsData ?? []);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to load vaults';
+      setError(message);
       showErrorToast('Failed to load vaults');
     } finally {
       setLoading(false);
     }
-  };
+  }, [showErrorToast]);
 
-  const loadAssets = async () => {
+  const loadAssets = useCallback(async (): Promise<void> => {
     try {
-      const assetsData = await adminApi.listAssets() as any[];
-      const options = assetsData.map((asset: any) => ({
+      type AssetLite = { symbol: string; name?: string };
+      const assetsData = await adminApi.listAssets<AssetLite[]>();
+      const safeAssets = Array.isArray(assetsData) ? assetsData : [];
+      const options = safeAssets.map((asset) => ({
         value: asset.symbol,
-        label: `${asset.symbol} - ${asset.name || asset.symbol}`,
+        label: `${asset.symbol} - ${asset.name ?? asset.symbol}`,
       }));
       setAssets(options);
-    } catch (err) {
-      console.error('Failed to load assets:', err);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error('Failed to load assets:', message);
       // Fallback to common assets
       setAssets([
         { value: 'BTC', label: 'BTC - Bitcoin' },
@@ -129,18 +107,21 @@ const VaultsPage: React.FC = () => {
         { value: 'USDC', label: 'USDC - USD Coin' },
       ]);
     }
-  };
+  }, []);
 
-  const loadAccounts = async () => {
+  const loadAccounts = useCallback(async (): Promise<void> => {
     try {
-      const accountsData = await adminApi.listAccounts() as any[];
-      const options = accountsData.map((account: any) => ({
+      type AccountLite = { name: string; type?: string };
+      const accountsData = await adminApi.listAccounts<AccountLite[]>();
+      const safeAccounts = Array.isArray(accountsData) ? accountsData : [];
+      const options = safeAccounts.map((account) => ({
         value: account.name,
-        label: `${account.name} (${account.type})`,
+        label: `${account.name} (${account.type ?? ''})`,
       }));
       setAccounts(options);
-    } catch (err) {
-      console.error('Failed to load accounts:', err);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error('Failed to load accounts:', message);
       // Fallback to common accounts
       setAccounts([
         { value: 'Binance', label: 'Binance (exchange)' },
@@ -149,9 +130,15 @@ const VaultsPage: React.FC = () => {
         { value: 'Cash - VND', label: 'Cash - VND (bank)' },
       ]);
     }
-  };
+  }, []);
 
-  const handleCreateVault = async () => {
+  useEffect(() => {
+    void loadVaults();
+    void loadAssets();
+    void loadAccounts();
+  }, [filter, loadVaults, loadAssets, loadAccounts]);
+
+  const handleCreateVault = async (): Promise<void> => {
     if (!createForm.asset || !createForm.account || !createForm.depositQty || !createForm.depositCost) {
       showErrorToast('Please fill in all required fields');
       return;
@@ -182,13 +169,14 @@ const VaultsPage: React.FC = () => {
       });
       setIsUsdOnly(false);
 
-      await loadVaults();
-    } catch (err: any) {
-      showErrorToast(err?.message || 'Failed to create vault');
+      void loadVaults();
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to create vault';
+      showErrorToast(message);
     }
   };
 
-  const handleEndVault = async (vault: any) => {
+  const handleEndVault = async (vault: Vault): Promise<void> => {
     const vaultName = `${vault.asset} - ${vault.account}`;
     if (!confirm(`Are you sure you want to end vault "${vaultName}"? This will mark it as closed but keep all data.`)) {
       return;
@@ -197,13 +185,14 @@ const VaultsPage: React.FC = () => {
     try {
       await vaultApi.endVault(vault.id);
       showSuccessToast('Vault ended successfully!');
-      await loadVaults();
-    } catch (err: any) {
-      showErrorToast(err?.message || 'Failed to end vault');
+      void loadVaults();
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to end vault';
+      showErrorToast(message);
     }
   };
 
-  const handleDeleteVault = async (vault: any) => {
+  const handleDeleteVault = async (vault: Vault): Promise<void> => {
     const vaultName = `${vault.asset} - ${vault.account}`;
     if (!confirm(`Are you sure you want to delete vault "${vaultName}"? This action cannot be undone and will permanently remove all vault data.`)) {
       return;
@@ -212,13 +201,14 @@ const VaultsPage: React.FC = () => {
     try {
       await vaultApi.deleteVault(vault.id);
       showSuccessToast('Vault deleted successfully!');
-      await loadVaults();
-    } catch (err: any) {
-      showErrorToast(err?.message || 'Failed to delete vault');
+      void loadVaults();
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to delete vault';
+      showErrorToast(message);
     }
   };
 
-  const handleViewVault = (vault: any) => {
+  const handleViewVault = (vault: Vault): void => {
     navigate(`/vault/${vault.id}`);
   };
 
@@ -228,11 +218,11 @@ const VaultsPage: React.FC = () => {
     return num.toLocaleString(undefined, { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
   };
 
-  const vaultColumns: Column[] = [
+  const vaultColumns: TableColumn<Vault>[] = [
     {
       key: 'vault_name',
       title: 'Vault Name',
-      render: (value: any, column: any, row: any) => {
+      render: (_value, _column, row) => {
         const vaultName = `${row.asset} - ${row.account}`;
         return (
           <button
@@ -247,8 +237,8 @@ const VaultsPage: React.FC = () => {
     {
       key: 'asset',
       title: 'Asset',
-      render: (value: any) => (
-        <span className="font-medium">{value}</span>
+      render: (value) => (
+        <span className="font-medium">{typeof value === 'string' ? value : ''}</span>
       ),
     },
     {
@@ -258,14 +248,15 @@ const VaultsPage: React.FC = () => {
     {
       key: 'horizon',
       title: 'Horizon',
-      render: (value: any) => {
+      render: (value) => {
         if (!value) return <span className="text-gray-500">-</span>;
         const horizonConfig = {
           'short-term': { label: 'Short-term', class: 'bg-blue-100 text-blue-800' },
           'long-term': { label: 'Long-term', class: 'bg-green-100 text-green-800' },
           'speculative': { label: 'Speculative', class: 'bg-purple-100 text-purple-800' },
         };
-        const config = horizonConfig[value as keyof typeof horizonConfig] || { label: value, class: 'bg-gray-100 text-gray-800' };
+        const key = typeof value === 'string' ? value : '';
+        const config = horizonConfig[key as keyof typeof horizonConfig] || { label: key, class: 'bg-gray-100 text-gray-800' };
         return (
           <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${config.class}`}>
             {config.label}
@@ -283,9 +274,9 @@ const VaultsPage: React.FC = () => {
       title: 'Total Deposited',
       type: 'number',
       decimals: 8,
-      render: (value: any, column: any, row: any) => {
-        const qty = parseFloat(value || '0');
-        const decimals = getDecimalPlaces(row.asset || 'USD');
+      render: (value, _column, row) => {
+        const qty = typeof value === 'string' && value !== '' ? parseFloat(value) : 0;
+        const decimals = getDecimalPlaces(row.asset ?? 'USD');
         return formatVaultNumber(qty, decimals);
       },
     },
@@ -294,16 +285,16 @@ const VaultsPage: React.FC = () => {
       title: 'Total Cost',
       type: 'currency',
       currency: 'USD',
-      render: (value: any) => formatCurrency(parseFloat(value || '0'), 'USD'),
+      render: (value) => formatCurrency(typeof value === 'string' && value !== '' ? parseFloat(value) : 0, 'USD'),
     },
     {
       key: 'remaining_qty',
       title: 'Current Balance',
       type: 'number',
       decimals: 8,
-      render: (value: any, column: any, row: any) => {
-        const qty = parseFloat(value || '0');
-        const decimals = getDecimalPlaces(row.asset || 'USD');
+      render: (value, _column, row) => {
+        const qty = typeof value === 'string' && value !== '' ? parseFloat(value) : 0;
+        const decimals = getDecimalPlaces(row.asset ?? 'USD');
         return formatVaultNumber(qty, decimals);
       },
     },
@@ -312,9 +303,9 @@ const VaultsPage: React.FC = () => {
       title: 'P&L',
       type: 'currency',
       currency: 'USD',
-      render: (value: any, _column: any, row: any) => {
-        const pnl = parseFloat(value || '0');
-        const formattedPnL = formatPnL(pnl, 'USD');
+      render: (value) => {
+        const pnl = typeof value === 'string' && value !== '' ? parseFloat(value) : 0;
+        const formattedPnL = formatPnL(pnl, 'USD') as { colorClass: string; sign: string; value: string };
         return <span className={formattedPnL.colorClass}>{formattedPnL.sign}{formattedPnL.value}</span>;
       },
     },
@@ -323,8 +314,8 @@ const VaultsPage: React.FC = () => {
       title: 'ROI %',
       type: 'number',
       decimals: 2,
-      render: (value: any, _column: any, row: any) => {
-        const roi = parseFloat(value || '0');
+      render: (value) => {
+        const roi = typeof value === 'string' && value !== '' ? parseFloat(value) : 0;
         const isPositive = roi > 0;
         const className = isPositive ? 'text-green-700' : roi < 0 ? 'text-red-700' : 'text-gray-700';
         return <span className={className}>{formatPercentage(roi / 100, 2)}</span>;
@@ -335,9 +326,9 @@ const VaultsPage: React.FC = () => {
       title: 'APR %',
       type: 'number',
       decimals: 2,
-      render: (value: any) => {
+      render: (value) => {
         if (!value) return <span className="text-gray-500">-</span>;
-        const apr = parseFloat(value || '0');
+        const apr = typeof value === 'string' && value !== '' ? parseFloat(value) : 0;
         const isPositive = apr > 0;
         const className = isPositive ? 'text-green-700' : apr < 0 ? 'text-red-700' : 'text-gray-700';
         return <span className={className}>{formatPercentage(apr / 100, 2)}</span>;
@@ -346,8 +337,8 @@ const VaultsPage: React.FC = () => {
     {
       key: 'vault_status',
       title: 'Status',
-      render: (value: any) => {
-        const status = String(value || '').toLowerCase();
+      render: (value) => {
+        const status = (typeof value === 'string' ? value : '').toLowerCase();
         const statusConfig = {
           active: { label: 'Active', class: 'bg-green-100 text-green-800' },
           ended: { label: 'Ended', class: 'bg-red-100 text-red-800' },
@@ -364,13 +355,13 @@ const VaultsPage: React.FC = () => {
     {
       key: 'actions',
       title: 'Actions',
-      render: (value: any, column: any, row: any) => (
+      render: (_value, _column, row) => (
         <div className="flex space-x-2">
           {row.is_open && (
             <button
               onClick={(e) => {
                 e.stopPropagation();
-                handleEndVault(row);
+                void handleEndVault(row);
               }}
               className="px-2 py-1 bg-red-600 text-white text-xs rounded hover:bg-red-700"
               title="End Vault"
@@ -381,7 +372,7 @@ const VaultsPage: React.FC = () => {
           <button
             onClick={(e) => {
               e.stopPropagation();
-              handleDeleteVault(row);
+              void handleDeleteVault(row);
             }}
             className="px-2 py-1 bg-gray-600 text-white text-xs rounded hover:bg-gray-700"
             title="Delete Vault"
@@ -410,9 +401,13 @@ const VaultsPage: React.FC = () => {
     };
 
     filteredVaults.forEach(vault => {
-      stats.totalDeposited += parseFloat(vault.deposit_cost || '0');
-      stats.totalValue += parseFloat(vault.remaining_qty || '0') * parseFloat(vault.deposit_unit_cost || '0');
-      stats.totalPnL += parseFloat(vault.pnl || '0');
+      const depositCost = vault.deposit_cost === '' ? '0' : vault.deposit_cost;
+      const remainingQty = vault.remaining_qty === '' ? '0' : vault.remaining_qty;
+      const unitCost = vault.deposit_unit_cost === '' ? '0' : vault.deposit_unit_cost;
+      const pnl = vault.pnl === '' ? '0' : vault.pnl;
+      stats.totalDeposited += parseFloat(depositCost ?? '0');
+      stats.totalValue += parseFloat(remainingQty ?? '0') * parseFloat(unitCost ?? '0');
+      stats.totalPnL += parseFloat(pnl ?? '0');
     });
 
     return stats;
@@ -598,7 +593,7 @@ const VaultsPage: React.FC = () => {
           )}
           <div className="flex space-x-3">
             <button
-              onClick={handleCreateVault}
+              onClick={() => { void handleCreateVault(); }}
               className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
             >
               Create Vault
@@ -615,7 +610,7 @@ const VaultsPage: React.FC = () => {
 
       {/* Vaults Table */}
       <div className="bg-white rounded-lg border border-gray-200">
-        <DataTable
+        <DataTable<Vault>
           data={filteredVaults}
           columns={vaultColumns}
           loading={loading}

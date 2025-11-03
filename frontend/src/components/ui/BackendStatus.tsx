@@ -1,5 +1,3 @@
-import React from 'react'
-
 import { useBackendStatus } from '../../context/BackendStatusContext'
 
 const BackendStatus = () => {
@@ -9,7 +7,7 @@ const BackendStatus = () => {
     return null // Don't show anything when backend is online
   }
 
-  const formatTime = (date) => {
+  const formatTime = (date: Date | null | undefined): string => {
     if (!date) return 'Never'
     return date.toLocaleTimeString()
   }

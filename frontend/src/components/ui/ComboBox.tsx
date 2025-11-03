@@ -98,10 +98,10 @@ const ComboBox: React.FC<ComboBoxProps> = ({
           {showCreate && (
             <button
               type="button"
-              onClick={handleCreate}
+              onClick={() => { void handleCreate(); }}
               className="w-full text-left px-3 py-2 text-sm bg-green-50 hover:bg-green-100 border-t"
             >
-              Create "{query.trim()}"
+              Create {'"'}{query.trim()}{'"'}
             </button>
           )}
         </div>

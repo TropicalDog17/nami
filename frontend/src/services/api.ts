@@ -1,5 +1,5 @@
 const API_BASE_URL: string =
-  import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080';
+  (import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8080');
 
 class ApiError extends Error {
   status: number;
@@ -67,7 +67,7 @@ class ApiClient {
       }
 
       const contentType = response.headers.get('content-type');
-      if (contentType && contentType.includes('application/json')) {
+      if (contentType?.includes('application/json') === true) {
         const text = await response.text();
         return text ? (JSON.parse(text) as T) : null;
       }
@@ -92,8 +92,12 @@ class ApiClient {
       if (value !== undefined && value !== null) {
         if (Array.isArray(value)) {
           searchParams.append(key, value.join(','));
-        } else {
+        } else if (typeof value === 'string') {
+          searchParams.append(key, value);
+        } else if (typeof value === 'number' || typeof value === 'boolean') {
           searchParams.append(key, String(value));
+        } else {
+          searchParams.append(key, JSON.stringify(value));
         }
       }
     });
@@ -137,13 +141,13 @@ const api = new ApiClient();
 
 // Transaction API
 export const transactionApi = {
-  list: (filters: Record<string, unknown> = {}) =>
-    api.get('/api/transactions', filters),
-  get: (id: string | number) => api.get(`/api/transactions/${id}`),
-  create: (transaction: unknown) => api.post('/api/transactions', transaction),
-  update: (id: string | number, transaction: unknown) =>
-    api.put(`/api/transactions/${id}`, transaction),
-  delete: (id: string | number) => api.delete(`/api/transactions/${id}`),
+  list: <T = unknown>(filters: Record<string, unknown> = {}) =>
+    api.get<T>('/api/transactions', filters),
+  get: <T = unknown>(id: string | number) => api.get<T>(`/api/transactions/${id}`),
+  create: <T = unknown>(transaction: unknown) => api.post<T>('/api/transactions', transaction),
+  update: <T = unknown>(id: string | number, transaction: unknown) =>
+    api.put<T>(`/api/transactions/${id}`, transaction),
+  delete: <T = unknown>(id: string | number) => api.delete<T>(`/api/transactions/${id}`),
   deleteMany: (ids: Array<string>) => api.delete<{ deleted: number }, { ids: Array<string> }>(`/api/transactions`, { ids }),
   recalc: (id: string, onlyMissing: boolean = true) =>
     api.post(
@@ -154,44 +158,44 @@ export const transactionApi = {
 
 // Actions API
 export const actionsApi = {
-  perform: (action: string, params: Record<string, unknown>) =>
-    api.post('/api/actions', { action, params }),
+  perform: <T = unknown>(action: string, params: Record<string, unknown>) =>
+    api.post<T>('/api/actions', { action, params }),
 };
 
 // Admin API
 export const adminApi = {
   // Transaction Types
-  listTypes: () => api.get('/api/admin/types'),
-  getType: (id: string | number) => api.get(`/api/admin/types/${id}`),
-  createType: (type: unknown) => api.post('/api/admin/types', type),
-  updateType: (id: string | number, type: unknown) =>
-    api.put(`/api/admin/types/${id}`, type),
-  deleteType: (id: string | number) => api.delete(`/api/admin/types/${id}`),
+  listTypes: <T = unknown>() => api.get<T>('/api/admin/types'),
+  getType: <T = unknown>(id: string | number) => api.get<T>(`/api/admin/types/${id}`),
+  createType: <T = unknown>(type: unknown) => api.post<T>('/api/admin/types', type),
+  updateType: <T = unknown>(id: string | number, type: unknown) =>
+    api.put<T>(`/api/admin/types/${id}`, type),
+  deleteType: <T = unknown>(id: string | number) => api.delete<T>(`/api/admin/types/${id}`),
 
   // Accounts
-  listAccounts: () => api.get('/api/admin/accounts'),
-  getAccount: (id: string | number) => api.get(`/api/admin/accounts/${id}`),
-  createAccount: (account: unknown) => api.post('/api/admin/accounts', account),
-  updateAccount: (id: string | number, account: unknown) =>
-    api.put(`/api/admin/accounts/${id}`, account),
-  deleteAccount: (id: string | number) =>
-    api.delete(`/api/admin/accounts/${id}`),
+  listAccounts: <T = unknown>() => api.get<T>('/api/admin/accounts'),
+  getAccount: <T = unknown>(id: string | number) => api.get<T>(`/api/admin/accounts/${id}`),
+  createAccount: <T = unknown>(account: unknown) => api.post<T>('/api/admin/accounts', account),
+  updateAccount: <T = unknown>(id: string | number, account: unknown) =>
+    api.put<T>(`/api/admin/accounts/${id}`, account),
+  deleteAccount: <T = unknown>(id: string | number) =>
+    api.delete<T>(`/api/admin/accounts/${id}`),
 
   // Assets
-  listAssets: () => api.get('/api/admin/assets'),
-  getAsset: (id: string | number) => api.get(`/api/admin/assets/${id}`),
-  createAsset: (asset: unknown) => api.post('/api/admin/assets', asset),
-  updateAsset: (id: string | number, asset: unknown) =>
-    api.put(`/api/admin/assets/${id}`, asset),
-  deleteAsset: (id: string | number) => api.delete(`/api/admin/assets/${id}`),
+  listAssets: <T = unknown>() => api.get<T>('/api/admin/assets'),
+  getAsset: <T = unknown>(id: string | number) => api.get<T>(`/api/admin/assets/${id}`),
+  createAsset: <T = unknown>(asset: unknown) => api.post<T>('/api/admin/assets', asset),
+  updateAsset: <T = unknown>(id: string | number, asset: unknown) =>
+    api.put<T>(`/api/admin/assets/${id}`, asset),
+  deleteAsset: <T = unknown>(id: string | number) => api.delete<T>(`/api/admin/assets/${id}`),
 
   // Tags
-  listTags: () => api.get('/api/admin/tags'),
-  getTag: (id: string | number) => api.get(`/api/admin/tags/${id}`),
-  createTag: (tag: unknown) => api.post('/api/admin/tags', tag),
-  updateTag: (id: string | number, tag: unknown) =>
-    api.put(`/api/admin/tags/${id}`, tag),
-  deleteTag: (id: string | number) => api.delete(`/api/admin/tags/${id}`),
+  listTags: <T = unknown>() => api.get<T>('/api/admin/tags'),
+  getTag: <T = unknown>(id: string | number) => api.get<T>(`/api/admin/tags/${id}`),
+  createTag: <T = unknown>(tag: unknown) => api.post<T>('/api/admin/tags', tag),
+  updateTag: <T = unknown>(id: string | number, tag: unknown) =>
+    api.put<T>(`/api/admin/tags/${id}`, tag),
+  deleteTag: <T = unknown>(id: string | number) => api.delete<T>(`/api/admin/tags/${id}`),
 
   // Maintenance
   recalcFX: (onlyMissing: boolean = true) =>
@@ -203,44 +207,44 @@ export const adminApi = {
 
 // Price Population API
 export const pricePopulationApi = {
-  createJob: (data: unknown) =>
-    api.post('/api/admin/price-population/jobs', data),
-  getJobStatus: (jobId: number) =>
-    api.get(`/api/admin/price-population/jobs?id=${jobId}`),
-  listJobs: (assetId: number) =>
-    api.get(`/api/admin/price-population/jobs?asset_id=${assetId}`),
+  createJob: <T = unknown>(data: unknown) =>
+    api.post<T>('/api/admin/price-population/jobs', data),
+  getJobStatus: <T = unknown>(jobId: number) =>
+    api.get<T>(`/api/admin/price-population/jobs?id=${jobId}`),
+  listJobs: <T = unknown>(assetId: number) =>
+    api.get<T>(`/api/admin/price-population/jobs?asset_id=${assetId}`),
 };
 
 // Reports API
 export const reportsApi = {
-  holdings: (params: Record<string, unknown> = {}) =>
-    api.get('/api/reports/holdings', params),
-  holdingsSummary: (params: Record<string, unknown> = {}) =>
-    api.get('/api/reports/holdings/summary', params),
-  cashFlow: (params: Record<string, unknown> = {}) =>
-    api.get('/api/reports/cashflow', params),
-  spending: (params: Record<string, unknown> = {}) =>
-    api.get('/api/reports/spending', params),
-  pnl: (params: Record<string, unknown> = {}) =>
-    api.get('/api/reports/pnl', params),
+  holdings: <T = unknown>(params: Record<string, unknown> = {}) =>
+    api.get<T>('/api/reports/holdings', params),
+  holdingsSummary: <T = unknown>(params: Record<string, unknown> = {}) =>
+    api.get<T>('/api/reports/holdings/summary', params),
+  cashFlow: <T = unknown>(params: Record<string, unknown> = {}) =>
+    api.get<T>('/api/reports/cashflow', params),
+  spending: <T = unknown>(params: Record<string, unknown> = {}) =>
+    api.get<T>('/api/reports/spending', params),
+  pnl: <T = unknown>(params: Record<string, unknown> = {}) =>
+    api.get<T>('/api/reports/pnl', params),
 };
 
 // Health check
 export const healthApi = {
-  check: () => api.get('/health'),
+  check: <T = unknown>() => api.get<T>('/health'),
 };
 
 // Vault API
 export const vaultApi = {
-  getActiveVaults: () => api.get('/api/vaults'),
-  getVaultByName: (name: string) => api.get(`/api/vaults/${encodeURIComponent(name)}`),
-  createVault: (vault: unknown) => api.post('/api/vaults', vault),
-  depositToVault: (name: string, deposit: unknown) => api.post(`/api/vaults/${encodeURIComponent(name)}/deposit`, deposit),
-  withdrawFromVault: (name: string, withdrawal: unknown) => api.post(`/api/vaults/${encodeURIComponent(name)}/withdraw`, withdrawal),
-  endVault: (name: string) => api.post(`/api/vaults/${encodeURIComponent(name)}/end`, {}),
-  deleteVault: (name: string) => api.delete(`/api/vaults/${encodeURIComponent(name)}`),
-  refresh: (name: string, data?: { current_value_usd?: number; current_unit_price_usd?: number; currency?: string; benchmark?: string }) =>
-    api.post(`/api/vaults/${encodeURIComponent(name)}/refresh`, data || {}),
+  getActiveVaults: <T = unknown>() => api.get<T>('/api/vaults'),
+  getVaultByName: <T = unknown>(name: string) => api.get<T>(`/api/vaults/${encodeURIComponent(name)}`),
+  createVault: <T = unknown>(vault: unknown) => api.post<T>('/api/vaults', vault),
+  depositToVault: <T = unknown>(name: string, deposit: unknown) => api.post<T>(`/api/vaults/${encodeURIComponent(name)}/deposit`, deposit),
+  withdrawFromVault: <T = unknown>(name: string, withdrawal: unknown) => api.post<T>(`/api/vaults/${encodeURIComponent(name)}/withdraw`, withdrawal),
+  endVault: <T = unknown>(name: string) => api.post<T>(`/api/vaults/${encodeURIComponent(name)}/end`, {}),
+  deleteVault: <T = unknown>(name: string) => api.delete<T>(`/api/vaults/${encodeURIComponent(name)}`),
+  refresh: <T = unknown>(name: string, data?: { current_value_usd?: number; current_unit_price_usd?: number; currency?: string; benchmark?: string }) =>
+    api.post<T>(`/api/vaults/${encodeURIComponent(name)}/refresh`, data ?? {}),
 };
 
 export default api;
@@ -249,25 +253,25 @@ export { ApiError };
 // Prices API (simple helper for daily spot price)
 export const pricesApi = {
   // Returns array; we read last element's price
-  daily: (symbol: string, currency: string, start: string, end: string) =>
-    api.get('/api/prices/daily', { symbol, currency, start, end }),
+  daily: <T = unknown>(symbol: string, currency: string, start: string, end: string) =>
+    api.get<T>('/api/prices/daily', { symbol, currency, start, end }),
 };
 
 // Investments API
 export const investmentsApi = {
-  list: (filters: Record<string, unknown> = {}) =>
-    api.get('/api/investments', filters),
-  get: (id: string) => api.get(`/api/investments/${id}`),
-  create: (investment: unknown) => api.post('/api/investments', investment),
-  update: (id: string, investment: unknown) =>
-    api.put(`/api/investments/${id}`, investment),
-  delete: (id: string) => api.delete(`/api/investments/${id}`),
-  summary: (filters: Record<string, unknown> = {}) =>
-    api.get('/api/investments/summary', filters),
+  list: <T = unknown>(filters: Record<string, unknown> = {}) =>
+    api.get<T>('/api/investments', filters),
+  get: <T = unknown>(id: string) => api.get<T>(`/api/investments/${id}`),
+  create: <T = unknown>(investment: unknown) => api.post<T>('/api/investments', investment),
+  update: <T = unknown>(id: string, investment: unknown) =>
+    api.put<T>(`/api/investments/${id}`, investment),
+  delete: <T = unknown>(id: string) => api.delete<T>(`/api/investments/${id}`),
+  summary: <T = unknown>(filters: Record<string, unknown> = {}) =>
+    api.get<T>('/api/investments/summary', filters),
 
   // Stake-specific endpoints
-  stake: (stakeData: unknown) => api.post('/api/investments/stake', stakeData),
-  unstake: (unstakeData: unknown) => api.post('/api/investments/unstake', unstakeData),
-  available: (asset: string, account: string, horizon?: string) =>
-    api.get('/api/investments/available', { asset, account, horizon }),
+  stake: <T = unknown>(stakeData: unknown) => api.post<T>('/api/investments/stake', stakeData),
+  unstake: <T = unknown>(unstakeData: unknown) => api.post<T>('/api/investments/unstake', unstakeData),
+  available: <T = unknown>(asset: string, account: string, horizon?: string) =>
+    api.get<T>('/api/investments/available', { asset, account, horizon }),
 };

@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 
 import { AssetFormAdvanced } from './AssetFormAdvanced';
 import { useApp } from '../context/AppContext';
-import { adminApi, pricePopulationApi } from '../services/api';
+import { adminApi } from '../services/api';
 
 interface Asset {
   id: number;
@@ -25,26 +25,26 @@ export const AdminAssetsTab: React.FC = () => {
   const [showForm, setShowForm] = useState(false);
   const [showInactive, setShowInactive] = useState(false);
 
-  useEffect(() => {
-    loadAssets();
-  }, []);
-
-  const loadAssets = async () => {
+  const loadAssets = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await adminApi.listAssets();
-      setAssets(data.map((asset: Asset) => ({ ...asset, price_loading: true })));
+      const data = await adminApi.listAssets() as Asset[];
+      setAssets(data.map((asset) => ({ ...asset, price_loading: true })));
       
       // Fetch current prices for each asset
-      data.forEach((asset: Asset) => {
-        fetchCurrentPrice(asset.symbol, asset.id);
+      data.forEach((asset) => {
+        void fetchCurrentPrice(asset.symbol, asset.id);
       });
-    } catch (error: any) {
-      actions.setError(`Failed to load assets: ${error.message}`);
+    } catch (error: unknown) {
+      actions.setError(`Failed to load assets: ${(error as Error).message}`);
     } finally {
       setLoading(false);
     }
-  };
+  }, [actions]);
+
+  useEffect(() => {
+    void loadAssets();
+  }, [loadAssets]);
 
   const fetchCurrentPrice = async (symbol: string, assetId: number) => {
     try {
@@ -54,7 +54,7 @@ export const AdminAssetsTab: React.FC = () => {
       );
       
       if (response.ok) {
-        const data = await response.json();
+        const data: { price: number }[] = await response.json() as { price: number }[];
         if (data && data.length > 0) {
           setAssets((prev) =>
             prev.map((a) =>
@@ -77,7 +77,7 @@ export const AdminAssetsTab: React.FC = () => {
           )
         );
       }
-    } catch (error) {
+    } catch (_error) {
       setAssets((prev) =>
         prev.map((a) =>
           a.id === assetId ? { ...a, price_loading: false } : a
@@ -86,14 +86,14 @@ export const AdminAssetsTab: React.FC = () => {
     }
   };
 
-  const handleCreate = async (data: any) => {
+  const handleCreate = async (data: unknown) => {
     try {
-      await adminApi.createAsset(data);
+      await adminApi.createAsset(data as Asset);
       actions.setSuccess('Asset created successfully');
       setShowForm(false);
-      loadAssets();
-    } catch (error: any) {
-      actions.setError(`Failed to create asset: ${error.message}`);
+      void loadAssets();  // added void
+    } catch (error: unknown) {
+      actions.setError(`Failed to create asset: ${(error as Error).message}`);
     }
   };
 
@@ -103,9 +103,9 @@ export const AdminAssetsTab: React.FC = () => {
     try {
       await adminApi.deleteAsset(id);
       actions.setSuccess('Asset deleted successfully');
-      loadAssets();
-    } catch (error: any) {
-      actions.setError(`Failed to delete asset: ${error.message}`);
+      void loadAssets();  // added void
+    } catch (error: unknown) {
+      actions.setError(`Failed to delete asset: ${(error as Error).message}`);
     }
   };
 
@@ -116,9 +116,9 @@ export const AdminAssetsTab: React.FC = () => {
         is_active: !asset.is_active,
       });
       actions.setSuccess(`Asset ${asset.is_active ? 'deactivated' : 'activated'}`);
-      loadAssets();
-    } catch (error: any) {
-      actions.setError(`Failed to update asset: ${error.message}`);
+      void loadAssets();  // added void
+    } catch (error: unknown) {
+      actions.setError(`Failed to update asset: ${(error as Error).message}`);
     }
   };
 
@@ -141,7 +141,7 @@ export const AdminAssetsTab: React.FC = () => {
       <div className="bg-white rounded-lg shadow p-6">
         <h2 className="text-2xl font-bold mb-6">Create New Asset</h2>
         <AssetFormAdvanced
-          onSubmit={handleCreate}
+          onSubmit={(data) => void handleCreate(data)}  // added void
           onCancel={() => setShowForm(false)}
         />
       </div>
@@ -178,7 +178,7 @@ export const AdminAssetsTab: React.FC = () => {
           <div className="p-8 text-center text-gray-500">Loading...</div>
         ) : filteredAssets.length === 0 ? (
           <div className="p-8 text-center text-gray-500">
-            No assets found. Click "Add Asset" to create one.
+            No assets found. Click {"Add Asset"} to create one.
           </div>
         ) : (
           <table className="min-w-full divide-y divide-gray-200">
@@ -244,13 +244,13 @@ export const AdminAssetsTab: React.FC = () => {
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
                     <button
-                      onClick={() => handleToggleActive(asset)}
+                      onClick={(e) => { e.stopPropagation(); void handleToggleActive(asset); }}  // added void and stopProp
                       className="text-blue-600 hover:text-blue-900"
                     >
                       {asset.is_active ? 'Deactivate' : 'Activate'}
                     </button>
                     <button
-                      onClick={() => handleDelete(asset.id)}
+                      onClick={(e) => { e.stopPropagation(); void handleDelete(asset.id); }}  // added void and stopProp
                       className="text-red-600 hover:text-red-900"
                     >
                       Delete
@@ -267,8 +267,8 @@ export const AdminAssetsTab: React.FC = () => {
       <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
         <h3 className="text-sm font-semibold text-blue-900 mb-2">💡 Tips</h3>
         <ul className="text-sm text-blue-800 space-y-1">
-          <li>• Current prices are fetched automatically for today's date</li>
-          <li>• Use "Add Asset" to configure custom price providers</li>
+          <li>• Current prices are fetched automatically for {`today's`} date</li>
+          <li>• Use {"Add Asset"} to configure custom price providers</li>
           <li>• Enable auto-populate to fetch historical prices automatically</li>
           <li>• Decimals: Crypto (8), Commodities (4), Fiat (2)</li>
         </ul>

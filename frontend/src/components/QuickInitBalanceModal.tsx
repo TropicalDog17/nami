@@ -7,7 +7,7 @@ import { adminApi } from '../services/api';
 interface QuickInitBalanceModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSubmit: (params: any) => Promise<void> | void;
+  onSubmit: (params: unknown) => Promise<void>;
 }
 
 const QuickInitBalanceModal: React.FC<QuickInitBalanceModalProps> = ({ isOpen, onClose, onSubmit }) => {
@@ -31,10 +31,16 @@ const QuickInitBalanceModal: React.FC<QuickInitBalanceModalProps> = ({ isOpen, o
         const [assetsData, accountsData] = (await Promise.all([
           adminApi.listAssets(),
           adminApi.listAccounts(),
-        ])) as [any[], any[]];
-        setAssets((assetsData || []).map((a: any) => ({ value: a.symbol, label: `${a.symbol} - ${a.name || a.symbol}` })));
-        setAccounts((accountsData || []).map((a: any) => ({ value: a.name, label: `${a.name} (${a.type})` })));
-      } catch (e) {
+        ])) as [unknown[], unknown[]];
+        setAssets((assetsData as { symbol: string; name?: string }[] || []).map((a: unknown) => {
+          const typedA = a as { symbol: string; name?: string };
+          return { value: typedA.symbol, label: `${typedA.symbol} - ${typedA.name ?? typedA.symbol}` };
+        }));
+        setAccounts((accountsData as { name: string; type?: string }[] || []).map((a: unknown) => {
+          const typedA = a as { name: string; type?: string };
+          return { value: typedA.name, label: `${typedA.name} (${typedA.type ?? 'Unknown'})` };
+        }));
+      } catch (_e) {
         setAssets([
           { value: 'USD', label: 'USD - U.S. Dollar' },
           { value: 'XAU', label: 'XAU - Gold (oz)' },
@@ -45,7 +51,7 @@ const QuickInitBalanceModal: React.FC<QuickInitBalanceModalProps> = ({ isOpen, o
         ]);
       }
     };
-    if (isOpen) load();
+    if (isOpen) void load();
   }, [isOpen]);
 
   const validate = (): string | null => {
@@ -63,7 +69,7 @@ const QuickInitBalanceModal: React.FC<QuickInitBalanceModalProps> = ({ isOpen, o
     setError(null);
     setIsSubmitting(true);
     try {
-      const payload: any = {
+      const payload: Record<string, unknown> = {
         date: form.date,
         account: form.account,
         asset: form.asset,
@@ -71,7 +77,7 @@ const QuickInitBalanceModal: React.FC<QuickInitBalanceModalProps> = ({ isOpen, o
         note: form.note || undefined,
       };
       if (form.price_local && Number(form.price_local) > 0) {
-        payload.price_local = parseFloat(form.price_local);
+        (payload as Record<string, unknown> & { price_local?: number }).price_local = parseFloat(form.price_local);
       }
       await onSubmit(payload);
       onClose();
@@ -93,7 +99,7 @@ const QuickInitBalanceModal: React.FC<QuickInitBalanceModalProps> = ({ isOpen, o
         {error && (
           <div className="mb-3 text-sm text-red-700 bg-red-50 border border-red-200 rounded p-2">{error}</div>
         )}
-        <form onSubmit={submit} className="space-y-4">
+        <form onSubmit={(e) => void submit(e)} className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Date</label>
             <DateInput value={form.date} onChange={(v) => setForm((s) => ({ ...s, date: v }))} />

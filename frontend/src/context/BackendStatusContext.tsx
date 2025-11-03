@@ -2,9 +2,19 @@ import React, { createContext, useContext, useState, useEffect } from 'react'
 
 import { healthApi } from '../services/api'
 
-const BackendStatusContext = createContext()
+type BackendStatusContextValue = {
+  isOnline: boolean
+  lastChecked: Date | null
+  isChecking: boolean
+  retryCount: number
+  checkBackendHealth: (showLoading?: boolean) => Promise<void>
+  retryConnection: () => void
+}
 
-export const useBackendStatus = () => {
+const BackendStatusContext = createContext<BackendStatusContextValue | undefined>(undefined)
+
+// eslint-disable-next-line react-refresh/only-export-components
+export const useBackendStatus = (): BackendStatusContextValue => {
   const context = useContext(BackendStatusContext)
   if (!context) {
     throw new Error('useBackendStatus must be used within a BackendStatusProvider')
@@ -12,13 +22,13 @@ export const useBackendStatus = () => {
   return context
 }
 
-export const BackendStatusProvider = ({ children }) => {
-  const [isOnline, setIsOnline] = useState(true)
-  const [lastChecked, setLastChecked] = useState(null)
-  const [isChecking, setIsChecking] = useState(false)
-  const [retryCount, setRetryCount] = useState(0)
+export const BackendStatusProvider: React.FC<React.PropsWithChildren> = ({ children }) => {
+  const [isOnline, setIsOnline] = useState<boolean>(true)
+  const [lastChecked, setLastChecked] = useState<Date | null>(null)
+  const [isChecking, setIsChecking] = useState<boolean>(false)
+  const [retryCount, setRetryCount] = useState<number>(0)
 
-  const checkBackendHealth = async (showLoading = true) => {
+  const checkBackendHealth = async (showLoading: boolean = true): Promise<void> => {
     if (showLoading) {
       setIsChecking(true)
     }
@@ -28,8 +38,9 @@ export const BackendStatusProvider = ({ children }) => {
       setIsOnline(true)
       setRetryCount(0)
       setLastChecked(new Date())
-    } catch (error) {
-      console.warn('Backend health check failed:', error.message)
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error)
+      console.warn('Backend health check failed:', message)
       setIsOnline(false)
       setRetryCount(prev => prev + 1)
       setLastChecked(new Date())
@@ -40,17 +51,17 @@ export const BackendStatusProvider = ({ children }) => {
     }
   }
 
-  const retryConnection = () => {
-    checkBackendHealth(true)
+  const retryConnection = (): void => {
+    void checkBackendHealth(true)
   }
 
   // Check backend health on mount and periodically
   useEffect(() => {
-    checkBackendHealth(false)
+    void checkBackendHealth(false)
 
     // Check every 30 seconds when online, every 10 seconds when offline
     const interval = setInterval(() => {
-      checkBackendHealth(false)
+      void checkBackendHealth(false)
     }, isOnline ? 30000 : 10000)
 
     return () => clearInterval(interval)
@@ -58,7 +69,7 @@ export const BackendStatusProvider = ({ children }) => {
 
   // Listen for online/offline events
   useEffect(() => {
-    const handleOnline = () => checkBackendHealth(false)
+    const handleOnline = () => void checkBackendHealth(false)
     const handleOffline = () => setIsOnline(false)
 
     window.addEventListener('online', handleOnline)
@@ -70,7 +81,7 @@ export const BackendStatusProvider = ({ children }) => {
     }
   }, [])
 
-  const value = {
+  const value: BackendStatusContextValue = {
     isOnline,
     lastChecked,
     isChecking,

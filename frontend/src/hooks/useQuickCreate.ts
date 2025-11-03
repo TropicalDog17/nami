@@ -6,24 +6,24 @@ export const useQuickCreate = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const createExpense = async (data: any) => {
+  const createExpense = async (data: Record<string, unknown>) => {
     setIsLoading(true); setError(null);
-    try { return await transactionApi.create(data); } catch (e: any) { setError(e?.message ?? 'Failed'); throw e; } finally { setIsLoading(false); }
+    try { return await transactionApi.create(data); } catch (e: unknown) { const msg = (e as { message?: string } | null)?.message ?? 'Failed'; setError(msg); throw e; } finally { setIsLoading(false); }
   };
 
-  const createIncome = async (data: any) => {
+  const createIncome = async (data: Record<string, unknown>) => {
     setIsLoading(true); setError(null);
-    try { return await transactionApi.create(data); } catch (e: any) { setError(e?.message ?? 'Failed'); throw e; } finally { setIsLoading(false); }
+    try { return await transactionApi.create(data); } catch (e: unknown) { const msg = (e as { message?: string } | null)?.message ?? 'Failed'; setError(msg); throw e; } finally { setIsLoading(false); }
   };
 
-  const createVault = async (data: any) => {
+  const createVault = async (data: Record<string, unknown>) => {
     setIsLoading(true); setError(null);
-    try { return await vaultApi.createVault(data); } catch (e: any) { setError(e?.message ?? 'Failed'); throw e; } finally { setIsLoading(false); }
+    try { return await vaultApi.createVault(data); } catch (e: unknown) { const msg = (e as { message?: string } | null)?.message ?? 'Failed'; setError(msg); throw e; } finally { setIsLoading(false); }
   };
 
-  const createInvestment = async (data: any) => {
+  const createInvestment = async (data: Record<string, unknown>) => {
     setIsLoading(true); setError(null);
-    try { return await investmentsApi.stake(data); } catch (e: any) { setError(e?.message ?? 'Failed'); throw e; } finally { setIsLoading(false); }
+    try { return await investmentsApi.stake(data); } catch (e: unknown) { const msg = (e as { message?: string } | null)?.message ?? 'Failed'; setError(msg); throw e; } finally { setIsLoading(false); }
   };
 
   return { isLoading, error, createExpense, createIncome, createVault, createInvestment };
