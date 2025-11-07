@@ -1,12 +1,13 @@
 import { Telegraf, Context } from 'telegraf'
 import OpenAI from 'openai'
 import { AppConfig } from './config.js'
-import { logger } from './logger.js'
+import { logger, createCorrelationLogger } from './logger.js'
 import { createPendingAction, redact } from './backendClient.js'
 import { parseExpenseText } from './parser.js'
 import { parseBankScreenshot } from './vision.js'
 import { PendingActionCreate } from './schemas.js'
 import { GroundingProvider } from './grounding.js'
+import { handleAndLogError, ErrorCategory } from './errors.js'
 
 type Ctx = Context & { state: Record<string, unknown> }
 
@@ -38,11 +39,20 @@ export function buildBot(cfg: AppConfig, openai: OpenAI, grounding: GroundingPro
     const chatId = ctx.chat?.id
     if (!chatId) return
     const text = ctx.message?.text || ''
+    const correlationId = `text-${chatId}-${Date.now()}`
+    const correlationLogger = createCorrelationLogger(correlationId)
     const state = sessionStore.get(chatId) || {}
+
+    correlationLogger.info({
+      chatId,
+      textLength: text.length,
+      textPreview: text.substring(0, 100)
+    }, 'Processing text message')
 
     // If waiting for account selection for a batch
     if (state.awaitingAccountForBatch) {
       const account = text.trim()
+      correlationLogger.info({ requestedAccount: account }, 'Handling account selection for batch')
       // No-op here; for v1 we ask user to resend the image with account in text
       await ctx.reply(`Got account: ${account}. Please resend the screenshot with this account in the caption for now.`)
       sessionStore.delete(chatId)
@@ -51,7 +61,13 @@ export function buildBot(cfg: AppConfig, openai: OpenAI, grounding: GroundingPro
 
     try {
       const { accounts, tags } = await grounding.get()
-      const parsed = await parseExpenseText(openai, text, accounts, tags)
+      correlationLogger.debug({
+        accountsCount: accounts.length,
+        tagsCount: tags.length
+      }, 'Retrieved grounding data')
+
+      const parsed = await parseExpenseText(openai, text, accounts, tags, correlationId)
+
       const payload: PendingActionCreate = {
         source: 'telegram_text',
         raw_input: text,
@@ -59,11 +75,56 @@ export function buildBot(cfg: AppConfig, openai: OpenAI, grounding: GroundingPro
         action_json: parsed.action || undefined,
         confidence: parsed.confidence
       }
-      const res = await createPendingAction(cfg, payload)
-      if (!isDryRun) await ctx.reply(`Parsed and queued for review. Pending ID: ${res.id}`)
+
+      const res = await createPendingAction(cfg, payload, correlationId)
+
+      correlationLogger.info({
+        pendingId: res.id,
+        hasAction: !!parsed.action,
+        actionType: parsed.action?.action,
+        account: parsed.action?.params.account
+      }, 'Successfully processed text message')
+
+      if (!isDryRun) {
+        let replyText = `✅ Text parsed and queued for review\nPending ID: ${res.id}`
+
+        if (parsed.action) {
+          const { action } = parsed.action
+          const { account, vnd_amount, counterparty } = parsed.action.params
+          replyText += `\n\n📊 ${action === 'spend_vnd' ? '💸 Spend' : '💳 Credit'}: ${vnd_amount.toLocaleString()}₫`
+          if (account) replyText += ` from ${account}`
+          if (counterparty) replyText += ` at ${counterparty}`
+        }
+
+        await ctx.reply(replyText)
+      }
     } catch (e: any) {
-      logger.error({ err: e }, 'text parse failed')
-      if (!isDryRun) await ctx.reply(`Sorry, I couldn't parse that. ${redact(String(e.message || e))}`)
+      const categorizedError = handleAndLogError(
+        e,
+        {
+          chatId,
+          textLength: text.length,
+          textPreview: text.substring(0, 100),
+          isDryRun
+        },
+        'parseText'
+      )
+
+      if (!isDryRun) {
+        let userMessage = 'Sorry, I couldn\'t parse that text.'
+
+        if (categorizedError.category === ErrorCategory.AI_SERVICE) {
+          userMessage += ' The AI service is currently unavailable. Please try again later.'
+        } else if (categorizedError.category === ErrorCategory.NETWORK) {
+          userMessage += ' Network error occurred. Please check your connection and try again.'
+        } else if (categorizedError.category === ErrorCategory.VALIDATION) {
+          userMessage += ' Please check the format and try again. Example: "Lunch 120k at McDo from Bank today"'
+        } else {
+          userMessage += ` ${redact(String(categorizedError.message))}`
+        }
+
+        await ctx.reply(userMessage)
+      }
     }
   })
 
@@ -74,32 +135,94 @@ export function buildBot(cfg: AppConfig, openai: OpenAI, grounding: GroundingPro
     const photos = ctx.message?.photo
     if (!photos || photos.length === 0) return
     const best = photos[photos.length - 1]
-    const fileUrl = isDryRun
-      ? 'https://example.com/fake.jpg'
-      : (() => {
-          /* eslint-disable no-useless-return */
-          return '' as any
-        })()
-    let finalFileUrl = fileUrl
-    if (!isDryRun) {
-      const file = await ctx.telegram.getFile(best.file_id)
-      finalFileUrl = `https://api.telegram.org/file/bot${cfg.TELEGRAM_BOT_TOKEN}/${file.file_path}`
-    }
-    const caption = ctx.message?.caption || ''
+    const correlationId = `photo-${chatId}-${Date.now()}`
+    const correlationLogger = createCorrelationLogger(correlationId)
+
+    correlationLogger.info({
+      chatId,
+      fileId: best.file_id,
+      hasCaption: !!ctx.message?.caption,
+      photoCount: photos.length
+    }, 'Processing photo message')
+
     try {
-      const { toon, rows } = await parseBankScreenshot(openai, finalFileUrl)
+      let finalFileUrl: string
+
+      if (isDryRun) {
+        finalFileUrl = 'https://example.com/fake.jpg'
+        correlationLogger.debug({}, 'Using dry run mode with fake image URL')
+      } else {
+        // Get file info from Telegram
+        const file = await ctx.telegram.getFile(best.file_id)
+        if (!file.file_path) {
+          throw new Error('Telegram file path is missing')
+        }
+        finalFileUrl = `https://api.telegram.org/file/bot${cfg.TELEGRAM_BOT_TOKEN}/${file.file_path}`
+        correlationLogger.debug({ filePath: file.file_path }, 'Constructed file URL from Telegram')
+      }
+
+      const caption = ctx.message?.caption || ''
+      correlationLogger.debug({ captionLength: caption.length }, 'Parsing bank screenshot')
+
+      // Parse the screenshot with vision
+      const { toon, rows } = await parseBankScreenshot(openai, finalFileUrl, correlationId)
+
+      correlationLogger.info({
+        rowsFound: rows.length,
+        toonLength: toon.length,
+        caption: caption.substring(0, 100)
+      }, 'Successfully parsed screenshot')
+
       // For v1 we do not map into actions yet; store rows TOON as raw for review
       const payload: PendingActionCreate = {
         source: 'telegram_image',
         raw_input: caption || '[image] bank screenshot',
         toon_text: toon,
-        meta: { telegram_file_id: best.file_id }
+        meta: {
+          telegram_file_id: best.file_id,
+          rows_count: rows.length,
+          file_size: best.file_size,
+          width: best.width,
+          height: best.height
+        }
       }
-      const res = await createPendingAction(cfg, payload)
-      if (!isDryRun) await ctx.reply(`Screenshot parsed and queued (${rows.length} rows). Pending ID: ${res.id}`)
+
+      const res = await createPendingAction(cfg, payload, correlationId)
+
+      correlationLogger.info({
+        pendingId: res.id,
+        rowsCount: rows.length
+      }, 'Successfully created pending action from screenshot')
+
+      if (!isDryRun) {
+        const replyText = `📸 Screenshot parsed and queued (${rows.length} rows)\nPending ID: ${res.id}`
+        await ctx.reply(replyText)
+      }
     } catch (e: any) {
-      logger.error({ err: e }, 'vision parse failed')
-      if (!isDryRun) await ctx.reply(`Sorry, I couldn't parse the screenshot. ${redact(String(e.message || e))}`)
+      const categorizedError = handleAndLogError(
+        e,
+        {
+          chatId,
+          fileId: best.file_id,
+          hasCaption: !!ctx.message?.caption,
+          isDryRun
+        },
+        'parsePhoto'
+      )
+
+      if (!isDryRun) {
+        let userMessage = 'Sorry, I couldn\'t parse the screenshot.'
+
+        if (categorizedError.category === ErrorCategory.AI_SERVICE) {
+          userMessage += ' The AI service is currently unavailable. Please try again later.'
+        } else if (categorizedError.category === ErrorCategory.NETWORK) {
+          userMessage += ' Network error occurred. Please check your connection and try again.'
+        } else {
+          userMessage += ` ${redact(String(categorizedError.message))}`
+        }
+
+        await ctx.reply(userMessage)
+      }
     }
   })
 

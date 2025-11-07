@@ -1,0 +1,151 @@
+version: '3.8'
+
+services:
+  # Main AI Service
+  ai-service:
+    build: .
+    image: nami-ai-service:latest
+    container_name: nami-ai-service
+    restart: unless-stopped
+    ports:
+      - "8081:8081"
+    environment:
+      # Service Configuration
+      - NODE_ENV=${NODE_ENV:-development}
+      - PORT=${PORT:-8081}
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+
+      # Telegram Configuration
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - ALLOWED_CHAT_IDS=${ALLOWED_CHAT_IDS}
+      - TELEGRAM_WEBHOOK_MODE=${TELEGRAM_WEBHOOK_MODE:-false}
+      - TELEGRAM_DRY_RUN=${TELEGRAM_DRY_RUN:-false}
+
+      # API Configuration
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - BACKEND_BASE_URL=${BACKEND_BASE_URL}
+      - BACKEND_SIGNING_SECRET=${BACKEND_SIGNING_SECRET}
+      - SERVICE_BASE_URL=${SERVICE_BASE_URL}
+
+      # Localization
+      - DEFAULT_TIMEZONE=${DEFAULT_TIMEZONE:-Asia/Ho_Chi_Minh}
+
+    # Health check
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8081/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '0.5'
+        reservations:
+          memory: 256M
+          cpus: '0.25'
+
+    # Logging configuration
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+    # Network
+    networks:
+      - nami-network
+
+  # Nginx Reverse Proxy (Optional)
+  nginx:
+    image: nginx:alpine
+    container_name: nami-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+    depends_on:
+      ai-service:
+        condition: service_healthy
+    networks:
+      - nami-network
+    profiles:
+      - production
+
+  # Redis for caching (Optional)
+  redis:
+    image: redis:7-alpine
+    container_name: nami-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes
+    volumes:
+      - redis-data:/data
+    networks:
+      - nami-network
+    profiles:
+      - redis
+
+  # Monitoring Stack (Optional)
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: nami-prometheus
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=200h'
+      - '--web.enable-lifecycle'
+    networks:
+      - nami-network
+    profiles:
+      - monitoring
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: nami-grafana
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-admin}
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./monitoring/grafana/datasources:/etc/grafana/provisioning/datasources:ro
+    networks:
+      - nami-network
+    profiles:
+      - monitoring
+
+# Network configuration
+networks:
+  nami-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+
+# Persistent volumes
+volumes:
+  redis-data:
+    driver: local
+  prometheus-data:
+    driver: local
+  grafana-data:
+    driver: local
