@@ -65,6 +65,59 @@ func TestVault_End_ClosesInvestment(t *testing.T) {
 	}
 }
 
+func TestVault_FullWithdraw_DoesNotAutoClose(t *testing.T) {
+    tdb := setupTestDB(t)
+    defer tdb.cleanup(t)
+
+    txRepo := repositories.NewTransactionRepository(tdb.database)
+    invRepo := repositories.NewInvestmentRepository(tdb.database)
+    invSvc := services.NewInvestmentService(invRepo, txRepo)
+    invHandler := handlers.NewInvestmentHandler(invSvc)
+    vaultHandler := handlers.NewVaultHandler(invSvc, nil)
+
+    // Seed stake 10 @ $1
+    seed := makeStakeTx(time.Now().Add(-24*time.Hour), "USDT", "Kyberswap", 10, 1)
+    b, _ := json.Marshal(seed)
+    req := httptest.NewRequest(http.MethodPost, "/api/investments/stake", bytes.NewReader(b))
+    rr := httptest.NewRecorder()
+    invHandler.HandleStake(rr, req)
+    if rr.Code != http.StatusCreated {
+        t.Fatalf("stake create status=%d body=%s", rr.Code, rr.Body.String())
+    }
+    var created models.Investment
+    if err := json.Unmarshal(rr.Body.Bytes(), &created); err != nil {
+        t.Fatalf("decode stake: %v", err)
+    }
+
+    // Full withdraw 10 @ $1
+    wd := map[string]interface{}{"quantity": 10, "value": 10}
+    wdJSON, _ := json.Marshal(wd)
+    rW := httptest.NewRequest(http.MethodPost, "/api/vaults/"+created.ID+"/withdraw", bytes.NewReader(wdJSON))
+    wW := httptest.NewRecorder()
+    vaultHandler.HandleVault(wW, rW)
+    if wW.Code != http.StatusCreated {
+        t.Fatalf("withdraw status=%d body=%s", wW.Code, wW.Body.String())
+    }
+
+    // GET should still show open (not auto-ended)
+    rGet := httptest.NewRequest(http.MethodGet, "/api/vaults/"+created.ID, nil)
+    wGet := httptest.NewRecorder()
+    vaultHandler.HandleVault(wGet, rGet)
+    if wGet.Code != http.StatusOK {
+        t.Fatalf("get status=%d body=%s", wGet.Code, wGet.Body.String())
+    }
+    var got map[string]interface{}
+    if err := json.Unmarshal(wGet.Body.Bytes(), &got); err != nil {
+        t.Fatalf("decode get: %v", err)
+    }
+    if open, ok := got["is_open"].(bool); !ok || !open {
+        t.Fatalf("expected is_open=true after full withdraw, got %v", got["is_open"])
+    }
+    if status, _ := got["vault_status"].(string); status != "active" {
+        t.Fatalf("expected vault_status=active after full withdraw, got %v", status)
+    }
+}
+
 func TestVault_Delete_RemovesInvestmentAndTransactions(t *testing.T) {
 	tdb := setupTestDB(t)
 	defer tdb.cleanup(t)

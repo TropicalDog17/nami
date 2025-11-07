@@ -1,5 +1,6 @@
 import { Telegraf, Context } from 'telegraf'
 import OpenAI from 'openai'
+import { LLMClient } from './llm.js'
 import { AppConfig } from './config.js'
 import { logger, createCorrelationLogger } from './logger.js'
 import { createPendingAction, redact } from './backendClient.js'
@@ -66,7 +67,13 @@ export function buildBot(cfg: AppConfig, openai: OpenAI, grounding: GroundingPro
         tagsCount: tags.length
       }, 'Retrieved grounding data')
 
-      const parsed = await parseExpenseText(openai, text, accounts, tags, correlationId)
+      const llmClient = new LLMClient({
+        provider: 'openai',
+        apiKey: cfg.OPENAI_API_KEY,
+        timeout: 30000
+      }, correlationId)
+
+      const parsed = await parseExpenseText(llmClient, text, accounts, tags, correlationId)
 
       const payload: PendingActionCreate = {
         source: 'telegram_text',
@@ -165,6 +172,13 @@ export function buildBot(cfg: AppConfig, openai: OpenAI, grounding: GroundingPro
       correlationLogger.debug({ captionLength: caption.length }, 'Parsing bank screenshot')
 
       // Parse the screenshot with vision
+      const llmClient = new LLMClient({
+        provider: 'openai',
+        apiKey: cfg.OPENAI_API_KEY,
+        timeout: 60000
+      }, correlationId)
+
+      // For vision, we still need to use OpenAI directly for now
       const { toon, rows } = await parseBankScreenshot(openai, finalFileUrl, correlationId)
 
       correlationLogger.info({

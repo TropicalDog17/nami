@@ -5,6 +5,7 @@ import { logger, createCorrelationLogger } from './logger.js'
 import { buildBot } from './telegram.js'
 import { startGroundingCache } from './grounding.js'
 import { HealthChecker } from './health.js'
+import { apiTestRouter } from './api-test.js'
 import { handleAndLogError, ErrorCategory, ErrorSeverity } from './errors.js'
 
 function validateConfig(cfg: any): void {
@@ -144,6 +145,9 @@ async function main() {
       }
       res.json(metrics)
     })
+
+    // API testing endpoints
+    app.use('/api/test', apiTestRouter)
 
     // Start server
     const port = cfg.PORT

@@ -13,7 +13,7 @@ export interface VisionRow {
 }
 
 export async function parseBankScreenshot(
-  client: OpenAI,
+  openaiClient: OpenAI,
   imageUrl: string,
   correlationId?: string,
   localeHint = 'vi-VN'
@@ -27,7 +27,7 @@ export async function parseBankScreenshot(
       const system = `Extract a table of bank history rows from the image. Output ONLY a fenced code block labelled toon with rows[N]{date,description,amount,sign,reference}. Dates ISO YYYY-MM-DD. amount is unformatted number; sign in {debit,credit}.`
       const user = 'Image below. If multiple pages present, include all rows.'
 
-      const response = await client.chat.completions.create({
+      const response = await openaiClient.chat.completions.create({
         model: 'gpt-4o-mini',
         messages: [
           { role: 'system', content: system },
@@ -42,7 +42,7 @@ export async function parseBankScreenshot(
         temperature: 0.1,
         max_tokens: 4000
       }, {
-        timeout: 60000 // 60 seconds
+        timeout: 60000
       })
 
       const content = response.choices[0]?.message?.content || ''
@@ -72,11 +72,9 @@ export async function parseBankScreenshot(
 
       const rows = (decoded?.rows || []) as VisionRow[]
 
-      // Validate rows
       if (rows.length === 0) {
         correlationLogger.warn({ toon: toon.substring(0, 200) }, 'No rows found in vision response')
       } else {
-        // Validate row structure
         const invalidRows = rows.filter((row, index) => {
           return !row.date || !row.description || typeof row.amount !== 'number' || !row.sign
         })
@@ -112,5 +110,3 @@ function extractCodeBlock(text: string): string | null {
   const m = text.match(/```toon\n([\s\S]*?)```/)
   return m ? m[1].trim() : null
 }
-
-
