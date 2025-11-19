@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 
-import QuickExpenseModal from '../components/QuickExpenseModal';
-import QuickIncomeModal from '../components/QuickIncomeModal';
-import QuickInitBalanceModal from '../components/QuickInitBalanceModal';
-import QuickInvestmentModal from '../components/QuickInvestmentModal';
-import QuickVaultModal from '../components/QuickVaultModal';
-import TransactionForm from '../components/TransactionForm';
+import QuickExpenseModal from '../components/modals/QuickExpenseModal';
+import QuickIncomeModal from '../components/modals/QuickIncomeModal';
+import QuickInitBalanceModal from '../components/modals/QuickInitBalanceModal';
+import QuickInvestmentModal from '../components/modals/QuickInvestmentModal';
+import QuickVaultModal from '../components/modals/QuickVaultModal';
+import TransactionForm from '../components/forms/TransactionForm';
 import ComboBox from '../components/ui/ComboBox';
 import DataTable, { TableColumn, TableRowBase } from '../components/ui/DataTable';
 import DateInput from '../components/ui/DateInput';

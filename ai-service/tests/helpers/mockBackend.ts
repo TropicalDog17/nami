@@ -8,7 +8,7 @@ export function startMockBackend(secret: string) {
 
   const received: any[] = []
 
-  app.post('/api/admin/pending-actions', (req, res) => {
+  app.post('/admin/pending-actions', (req, res) => {
     const body = JSON.stringify(req.body)
     const sig = req.header('X-AI-Signature') || ''
     const expected = crypto.createHmac('sha256', secret).update(body).digest('hex')
@@ -23,7 +23,7 @@ export function startMockBackend(secret: string) {
     server.listen(0, () => {
       const addr = server.address() as any
       resolve({
-        url: `http://127.0.0.1:${addr.port}/api`,
+        url: `http://127.0.0.1:${addr.port}`,
         received,
         close: () => new Promise<void>((r) => server.close(() => r()))
       })

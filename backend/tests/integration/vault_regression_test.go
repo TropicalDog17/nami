@@ -26,8 +26,9 @@ func TestVault_End_ClosesInvestment(t *testing.T) {
 	txRepo := repositories.NewTransactionRepository(tdb.database)
 	invRepo := repositories.NewInvestmentRepository(tdb.database)
 	invSvc := services.NewInvestmentService(invRepo, txRepo)
+	txSvc := services.NewTransactionService(tdb.database)
 	invHandler := handlers.NewInvestmentHandler(invSvc)
-	vaultHandler := handlers.NewVaultHandler(invSvc, nil)
+	vaultHandler := handlers.NewVaultHandler(invSvc, txSvc, nil)
 
 	// Seed: create a stake investment
 	seed := makeStakeTx(time.Now().Add(-24*time.Hour), "USDT", "Kyberswap", 10, 1)
@@ -65,15 +66,16 @@ func TestVault_End_ClosesInvestment(t *testing.T) {
 	}
 }
 
-func TestVault_FullWithdraw_DoesNotAutoClose(t *testing.T) {
+func TestVault_FullWithdraw_AutoCloses(t *testing.T) {
     tdb := setupTestDB(t)
     defer tdb.cleanup(t)
 
     txRepo := repositories.NewTransactionRepository(tdb.database)
     invRepo := repositories.NewInvestmentRepository(tdb.database)
     invSvc := services.NewInvestmentService(invRepo, txRepo)
+    txSvc := services.NewTransactionService(tdb.database)
     invHandler := handlers.NewInvestmentHandler(invSvc)
-    vaultHandler := handlers.NewVaultHandler(invSvc, nil)
+    vaultHandler := handlers.NewVaultHandler(invSvc, txSvc, nil)
 
     // Seed stake 10 @ $1
     seed := makeStakeTx(time.Now().Add(-24*time.Hour), "USDT", "Kyberswap", 10, 1)
@@ -99,7 +101,7 @@ func TestVault_FullWithdraw_DoesNotAutoClose(t *testing.T) {
         t.Fatalf("withdraw status=%d body=%s", wW.Code, wW.Body.String())
     }
 
-    // GET should still show open (not auto-ended)
+    // GET should show closed (auto-ended)
     rGet := httptest.NewRequest(http.MethodGet, "/api/vaults/"+created.ID, nil)
     wGet := httptest.NewRecorder()
     vaultHandler.HandleVault(wGet, rGet)
@@ -110,11 +112,11 @@ func TestVault_FullWithdraw_DoesNotAutoClose(t *testing.T) {
     if err := json.Unmarshal(wGet.Body.Bytes(), &got); err != nil {
         t.Fatalf("decode get: %v", err)
     }
-    if open, ok := got["is_open"].(bool); !ok || !open {
-        t.Fatalf("expected is_open=true after full withdraw, got %v", got["is_open"])
+    if open, ok := got["is_open"].(bool); !ok || open {
+        t.Fatalf("expected is_open=false after full withdraw, got %v", got["is_open"])
     }
-    if status, _ := got["vault_status"].(string); status != "active" {
-        t.Fatalf("expected vault_status=active after full withdraw, got %v", status)
+    if status, _ := got["vault_status"].(string); status != "ended" {
+        t.Fatalf("expected vault_status=ended after full withdraw, got %v", status)
     }
 }
 
@@ -128,8 +130,8 @@ func TestVault_Delete_RemovesInvestmentAndTransactions(t *testing.T) {
 	invRepo := repositories.NewInvestmentRepository(tdb.database)
 	invSvc := services.NewInvestmentService(invRepo, txRepo)
 	invHandler := handlers.NewInvestmentHandler(invSvc)
-	vaultHandler := handlers.NewVaultHandler(invSvc, nil)
 	txService := services.NewTransactionService(tdb.database)
+	vaultHandler := handlers.NewVaultHandler(invSvc, txService, nil)
 
 	// Seed: create a stake investment
 	seed := makeStakeTx(time.Now(), "BTC", "Kyberswap", 5, 2)

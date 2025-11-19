@@ -141,6 +141,8 @@ func (t *Transaction) CalculateDerivedFields() {
 		t.DeltaQty = t.Quantity
 	case "sell", "withdraw", "transfer_out", "expense", "fee", "repay_borrow", "interest_expense":
 		t.DeltaQty = t.Quantity.Neg()
+	case "valuation":
+		t.DeltaQty = decimal.Zero
 	case "borrow":
 		// Borrow increases cash/asset holdings in the receiving account
 		// Liability tracking is handled separately via reporting
@@ -151,6 +153,12 @@ func (t *Transaction) CalculateDerivedFields() {
 	// Special cases: internal flows should not affect net cash flow
 	if t.InternalFlow != nil && *t.InternalFlow && (t.Type == "buy" || t.Type == "sell" || t.Type == "transfer_in" || t.Type == "transfer_out") {
 		// Zero out cash flow for internal trades/transfers between own accounts
+		t.CashFlowUSD = decimal.Zero
+		t.CashFlowVND = decimal.Zero
+		return
+	}
+
+	if t.Type == "valuation" {
 		t.CashFlowUSD = decimal.Zero
 		t.CashFlowVND = decimal.Zero
 		return

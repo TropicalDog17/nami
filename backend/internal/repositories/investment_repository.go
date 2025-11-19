@@ -158,7 +158,7 @@ func (r *investmentRepository) GetCount(ctx context.Context, filter *models.Inve
 func (r *investmentRepository) Update(ctx context.Context, investment *models.Investment) error {
 	investment.UpdatedAt = time.Now()
 
-	result := r.db.WithContext(ctx).Model(&models.Investment{}).Where("id = ?", investment.ID).Updates(investment)
+	result := r.db.WithContext(ctx).Save(investment)
 	if result.Error != nil {
 		return fmt.Errorf("failed to update investment: %w", result.Error)
 	}

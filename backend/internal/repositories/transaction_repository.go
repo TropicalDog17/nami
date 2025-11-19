@@ -249,8 +249,12 @@ func (r *transactionRepository) DeleteMany(ctx context.Context, ids []string) (i
 		}
 
 		// Delete action links referencing any of these IDs to avoid FK issues
-		if err := tx.Where("(from_tx IN ? OR to_tx IN ?)", ids, ids).Delete(&struct{}{}).Error; err != nil {
-			return fmt.Errorf("failed to delete links for transactions: %w", err)
+		// Use two separate queries to avoid parameter binding issues
+		if err := tx.Exec("DELETE FROM transaction_links WHERE from_tx IN ?", ids).Error; err != nil {
+			return fmt.Errorf("failed to delete links for transactions (from_tx): %w", err)
+		}
+		if err := tx.Exec("DELETE FROM transaction_links WHERE to_tx IN ?", ids).Error; err != nil {
+			return fmt.Errorf("failed to delete links for transactions (to_tx): %w", err)
 		}
 
 		// Delete transactions

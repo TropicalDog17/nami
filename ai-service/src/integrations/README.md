@@ -1,0 +1,11 @@
+# External Service Integrations
+
+Connections to AI providers and communication platforms.
+
+## Components
+
+- **`llm.ts`** - Unified interface for OpenAI GPT-4 Vision and Anthropic Claude APIs
+- **`telegram.ts`** - Telegram bot implementation with polling and webhook modes
+- **`vision.ts`** - Receipt image analysis and OCR processing capabilities
+
+Handles provider failover, authentication, rate limiting, and consistent error handling across all external service integrations.

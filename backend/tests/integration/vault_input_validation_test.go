@@ -24,8 +24,9 @@ func TestVault_DepositValidation(t *testing.T) {
 	txRepo := repositories.NewTransactionRepository(tdb.database)
 	invRepo := repositories.NewInvestmentRepository(tdb.database)
 	invSvc := services.NewInvestmentService(invRepo, txRepo)
+	txSvc := services.NewTransactionService(tdb.database)
 	invHandler := handlers.NewInvestmentHandler(invSvc)
-    vaultHandler := handlers.NewVaultHandler(invSvc, nil)
+    vaultHandler := handlers.NewVaultHandler(invSvc, txSvc, nil)
 
 	// Seed an investment via stake
     seed := makeStakeTx(time.Now(), "USDT", "Kyberswap", 10, 1)
@@ -87,8 +88,9 @@ func TestVault_WithdrawValidation(t *testing.T) {
 	txRepo := repositories.NewTransactionRepository(tdb.database)
 	invRepo := repositories.NewInvestmentRepository(tdb.database)
 	invSvc := services.NewInvestmentService(invRepo, txRepo)
+	txSvc := services.NewTransactionService(tdb.database)
 	invHandler := handlers.NewInvestmentHandler(invSvc)
-    vaultHandler := handlers.NewVaultHandler(invSvc, nil)
+    vaultHandler := handlers.NewVaultHandler(invSvc, txSvc, nil)
 
 	// Seed an investment via stake
     seed := makeStakeTx(time.Now(), "BTC", "Kyberswap", 5, 2)
@@ -160,14 +162,15 @@ func TestVault_RouteMisuseAndUnknownActions(t *testing.T) {
 	txRepo := repositories.NewTransactionRepository(tdb.database)
 	invRepo := repositories.NewInvestmentRepository(tdb.database)
 	invSvc := services.NewInvestmentService(invRepo, txRepo)
-    vaultHandler := handlers.NewVaultHandler(invSvc, nil)
+	txSvc := services.NewTransactionService(tdb.database)
+    vaultHandler := handlers.NewVaultHandler(invSvc, txSvc, nil)
 
-	// POST on GET-only route
+	// POST on GET-only route (now allowed for creation, so expects 400 Bad Request due to nil body)
 	r := httptest.NewRequest(http.MethodPost, "/api/vaults", nil)
 	w := httptest.NewRecorder()
 	vaultHandler.HandleVaults(w, r)
-	if w.Code != http.StatusMethodNotAllowed {
-		t.Fatalf("expected 405 for POST /api/vaults, got %d", w.Code)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for POST /api/vaults with nil body, got %d", w.Code)
 	}
 
 	// GET on vault action route
@@ -194,8 +197,9 @@ func TestVault_EndZeroROI_APRAbsent(t *testing.T) {
 	txRepo := repositories.NewTransactionRepository(tdb.database)
 	invRepo := repositories.NewInvestmentRepository(tdb.database)
 	invSvc := services.NewInvestmentService(invRepo, txRepo)
+	txSvc := services.NewTransactionService(tdb.database)
 	invHandler := handlers.NewInvestmentHandler(invSvc)
-    vaultHandler := handlers.NewVaultHandler(invSvc, nil)
+    vaultHandler := handlers.NewVaultHandler(invSvc, txSvc, nil)
 
 	// Stake 10 @ $1
     seed := makeStakeTx(time.Now().Add(-24*time.Hour), "USDT", "Kyberswap", 10, 1)
@@ -254,8 +258,9 @@ func TestVault_ListFilter_IsOpen(t *testing.T) {
 	txRepo := repositories.NewTransactionRepository(tdb.database)
 	invRepo := repositories.NewInvestmentRepository(tdb.database)
 	invSvc := services.NewInvestmentService(invRepo, txRepo)
+	txSvc := services.NewTransactionService(tdb.database)
 	invHandler := handlers.NewInvestmentHandler(invSvc)
-    vaultHandler := handlers.NewVaultHandler(invSvc, nil)
+    vaultHandler := handlers.NewVaultHandler(invSvc, txSvc, nil)
 
 	// Seed two investments
 	// Open one (no withdraw)
@@ -345,8 +350,9 @@ func TestVault_OverWithdraw_CorrectPnL(t *testing.T) {
 	txRepo := repositories.NewTransactionRepository(tdb.database)
 	invRepo := repositories.NewInvestmentRepository(tdb.database)
 	invSvc := services.NewInvestmentService(invRepo, txRepo)
+	txSvc := services.NewTransactionService(tdb.database)
 	invHandler := handlers.NewInvestmentHandler(invSvc)
-    vaultHandler := handlers.NewVaultHandler(invSvc, nil)
+    vaultHandler := handlers.NewVaultHandler(invSvc, txSvc, nil)
 
 	// Stake 10 @ $1, then deposit +5 @ $1 (total cost 15)
     seed := makeStakeTx(time.Now().Add(-48*time.Hour), "USDT", "Kyberswap", 10, 1)
@@ -406,8 +412,9 @@ func TestVaultPnLAndROI_ComputesCorrectly_OnFullExit(t *testing.T) {
 	txRepo := repositories.NewTransactionRepository(tdb.database)
 	invRepo := repositories.NewInvestmentRepository(tdb.database)
 	invSvc := services.NewInvestmentService(invRepo, txRepo)
+	txSvc := services.NewTransactionService(tdb.database)
 	invHandler := handlers.NewInvestmentHandler(invSvc)
-    vaultHandler := handlers.NewVaultHandler(invSvc, nil)
+    vaultHandler := handlers.NewVaultHandler(invSvc, txSvc, nil)
 
 	// Seed: deposit 10 @ $1 (USD) two days ago
     seed := makeStakeTx(time.Now().Add(-48*time.Hour), "USDT", "Kyberswap", 10, 1)
@@ -481,8 +488,9 @@ func TestVaultPnL_RemainsZero_OnPartialWhileOpen(t *testing.T) {
 	txRepo := repositories.NewTransactionRepository(tdb.database)
 	invRepo := repositories.NewInvestmentRepository(tdb.database)
 	invSvc := services.NewInvestmentService(invRepo, txRepo)
+	txSvc := services.NewTransactionService(tdb.database)
 	invHandler := handlers.NewInvestmentHandler(invSvc)
-    vaultHandler := handlers.NewVaultHandler(invSvc, nil)
+    vaultHandler := handlers.NewVaultHandler(invSvc, txSvc, nil)
 
 	// One deposit 10 @ $2
     seed := makeStakeTx(time.Now().Add(-24*time.Hour), "BTC", "Kyberswap", 10, 2)

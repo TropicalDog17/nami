@@ -8,7 +8,13 @@
     "start": "node dist/index.js",
     "build": "tsc -p tsconfig.json",
     "check": "tsc --noEmit",
-    "test": "npm run build && vitest run"
+    "test": "npm run build && vitest run",
+    "test:unit": "jest",
+    "test:llm": "jest tests/llm.integration.test.ts",
+    "test:llm:watch": "jest tests/llm.integration.test.ts --watch",
+    "test:llm:coverage": "jest tests/llm.integration.test.ts --coverage",
+    "test:llm:simple": "node test-llm-simple.mjs",
+    "test:llm:real": "node test-real-llm.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.68.0",
@@ -24,10 +30,13 @@
   },
   "devDependencies": {
     "@types/express": "^4.17.21",
+    "@types/jest": "^30.0.0",
     "@types/node": "^20.11.30",
     "@types/supertest": "^2.0.16",
+    "jest": "^29.7.0",
     "pino-pretty": "^11.2.2",
     "supertest": "^7.0.0",
+    "ts-jest": "^29.4.5",
     "tsx": "^4.19.0",
     "typescript": "^5.6.3",
     "vitest": "^2.1.3"

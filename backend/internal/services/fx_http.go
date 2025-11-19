@@ -34,9 +34,9 @@ func normalizeCurrencyForAPI(symbol string) string {
 
 // ExchangeRateResponse represents the API response structure
 type ExchangeRateResponse struct {
-	Result          string                     `json:"result"`
-	BaseCode        string                     `json:"base_code"`
-	ConversionRates map[string]decimal.Decimal `json:"conversion_rates"`
+    Result          string                     `json:"result"`
+    BaseCode        string                     `json:"base_code"`
+    ConversionRates map[string]decimal.Decimal `json:"conversion_rates"`
 }
 
 // NewHTTPFXProvider creates a new HTTP FX provider
@@ -180,44 +180,62 @@ func (p *HTTPFXProvider) fetchRateFromAPI(ctx context.Context, from, to string) 
 
 // fetchRatesFromAPI fetches multiple exchange rates from the API
 func (p *HTTPFXProvider) fetchRatesFromAPI(ctx context.Context, base string, targets []string) (map[string]decimal.Decimal, error) {
-	// Map unsupported bases (e.g., stablecoins) to a supported equivalent (USD)
-	normalizedBase := normalizeCurrencyForAPI(base)
-	url := fmt.Sprintf("%s/%s", p.baseURL, normalizedBase)
+    normalizedBase := normalizeCurrencyForAPI(base)
+    url := fmt.Sprintf("%s/%s", p.baseURL, normalizedBase)
 
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
-	}
+    req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+    if err != nil {
+        return nil, fmt.Errorf("failed to create request: %w", err)
+    }
 
-	resp, err := p.httpClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("failed to fetch rates: %w", err)
-	}
-	defer resp.Body.Close()
+    resp, err := p.httpClient.Do(req)
+    if err != nil {
+        return nil, fmt.Errorf("failed to fetch rates: %w", err)
+    }
+    defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("API returned status %d", resp.StatusCode)
-	}
+    if resp.StatusCode != http.StatusOK {
+        return nil, fmt.Errorf("API returned status %d", resp.StatusCode)
+    }
 
-	var apiResponse ExchangeRateResponse
-	if err := json.NewDecoder(resp.Body).Decode(&apiResponse); err != nil {
-		return nil, fmt.Errorf("failed to decode response: %w", err)
-	}
+    // Decode generically to support both v6 (conversion_rates) and v4 (rates)
+    var raw map[string]interface{}
+    if err := json.NewDecoder(resp.Body).Decode(&raw); err != nil {
+        return nil, fmt.Errorf("failed to decode response: %w", err)
+    }
 
-	if apiResponse.Result != "success" {
-		return nil, fmt.Errorf("API error: %s", apiResponse.Result)
-	}
+    // Optional result field check; treat missing as success
+    if r, ok := raw["result"].(string); ok && r != "success" {
+        return nil, fmt.Errorf("API error: %s", r)
+    }
 
-	// Filter rates for requested targets. If any requested target is a stablecoin
-	// (USDT/USDC), treat it as USD since the upstream response uses USD.
-	result := make(map[string]decimal.Decimal)
-	for _, target := range targets {
-		targetUpper := strings.ToUpper(target)
-		normalizedTarget := normalizeCurrencyForAPI(targetUpper)
-		if rate, exists := apiResponse.ConversionRates[normalizedTarget]; exists {
-			result[target] = rate
-		}
-	}
+    // Extract rates from either conversion_rates or rates
+    var ratesMap map[string]interface{}
+    if cr, ok := raw["conversion_rates"].(map[string]interface{}); ok {
+        ratesMap = cr
+    } else if rr, ok := raw["rates"].(map[string]interface{}); ok {
+        ratesMap = rr
+    } else {
+        return nil, fmt.Errorf("API response missing rates")
+    }
 
-	return result, nil
+    result := make(map[string]decimal.Decimal)
+    for _, target := range targets {
+        targetUpper := strings.ToUpper(target)
+        normalizedTarget := normalizeCurrencyForAPI(targetUpper)
+        if v, exists := ratesMap[normalizedTarget]; exists {
+            switch t := v.(type) {
+            case float64:
+                result[target] = decimal.NewFromFloat(t)
+            case json.Number:
+                if f, err := t.Float64(); err == nil {
+                    result[target] = decimal.NewFromFloat(f)
+                }
+            default:
+                // ignore non-numeric
+            }
+        }
+    }
+
+    return result, nil
 }

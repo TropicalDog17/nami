@@ -89,7 +89,7 @@ func main() {
 	fxHandler := handlers.NewFXHandler(fxHistoryService)
 	priceHandler := handlers.NewPriceHandler(assetPriceService, priceMappingResolver, fxHistoryService)
 	investmentHandler := handlers.NewInvestmentHandler(investmentService)
-    vaultHandler := handlers.NewVaultHandler(investmentService, assetPriceService)
+    vaultHandler := handlers.NewVaultHandler(investmentService, transactionService, assetPriceService)
 
 	// Setup HTTP server
 	mux := http.NewServeMux()
