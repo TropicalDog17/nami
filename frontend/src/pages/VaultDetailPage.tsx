@@ -424,6 +424,8 @@ const VaultDetailPage: React.FC = () => {
     }
   };
 
+  console.log('VaultDetailPage render:', { loading, error, vault: vault ? 'present' : 'null', vaultName });
+
   if (loading) {
     return (
       <div className="px-4 py-6 sm:px-0">

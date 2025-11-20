@@ -40,11 +40,15 @@ const QuickIncomeModal = ({ isOpen, onClose, onSubmit }: Props) => {
     setIsSubmitting(true);
     try {
       const toISODateTime = (value?: string) => {
-        if (!value) return new Date().toISOString();
+        console.log('toISODateTime input:', value);
+        if (!value || value === 'undefined' || value === 'null') return new Date().toISOString();
         const s = String(value);
         if (s.includes('T')) return s;
+        // Append current time to the date
         const timePart = new Date().toISOString().split('T')[1];
-        return `${s}T${timePart}`;
+        const result = `${s}T${timePart}`;
+        console.log('toISODateTime output:', result);
+        return result;
       };
       const transactionData = {
         date: toISODateTime(formData.date),

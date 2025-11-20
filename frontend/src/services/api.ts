@@ -243,7 +243,7 @@ export const vaultApi = {
   withdrawFromVault: <T = unknown>(name: string, withdrawal: unknown) => api.post<T>(`/api/vaults/${encodeURIComponent(name)}/withdraw`, withdrawal),
   endVault: <T = unknown>(name: string) => api.post<T>(`/api/vaults/${encodeURIComponent(name)}/end`, {}),
   deleteVault: <T = unknown>(name: string) => api.delete<T>(`/api/vaults/${encodeURIComponent(name)}`),
-  refresh: <T = unknown>(name: string, data?: { current_value_usd?: number; current_unit_price_usd?: number; currency?: string; benchmark?: string }) =>
+  refresh: <T = unknown>(name: string, data?: { current_value_usd?: number; current_unit_price_usd?: number; currency?: string; benchmark?: string; persist?: boolean }) =>
     api.post<T>(`/api/vaults/${encodeURIComponent(name)}/refresh`, data ?? {}),
 };
 

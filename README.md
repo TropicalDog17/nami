@@ -14,6 +14,7 @@ Comprehensive financial transaction tracking system with dual-currency valuation
 
 Supports 17+ transaction types, credit card flows, admin-configurable transaction types, holdings reporting, and FX rate tracking with decimal precision for financial calculations.
 
+tracking expense, investment(vault-based), income, saving, transfer, credit card, which will be aggregated for reports, holdings, cashflow, investment performance and spending trend
 ## Development
 
 ```bash

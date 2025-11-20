@@ -85,6 +85,9 @@ func (r *transactionRepository) List(ctx context.Context, filter *models.Transac
 	// Apply filters
 	if filter != nil {
 		if filter.InvestmentID != nil && *filter.InvestmentID != "" {
+			if _, err := uuid.Parse(*filter.InvestmentID); err != nil {
+				return []*models.Transaction{}, nil
+			}
 			query = query.Where("investment_id = ?", *filter.InvestmentID)
 		}
 		if filter.StartDate != nil {

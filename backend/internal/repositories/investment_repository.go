@@ -31,6 +31,9 @@ func (r *investmentRepository) Create(ctx context.Context, investment *models.In
 
 // GetByID retrieves an investment by ID
 func (r *investmentRepository) GetByID(ctx context.Context, id string) (*models.Investment, error) {
+	if _, err := uuid.Parse(id); err != nil {
+		return nil, fmt.Errorf("investment not found: %s (invalid UUID)", id)
+	}
 	var investment models.Investment
 	if err := r.db.WithContext(ctx).First(&investment, "id = ?", id).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
