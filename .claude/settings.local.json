@@ -51,7 +51,9 @@
       "Bash(npm run test:*)",
       "Bash(tree:*)",
       "Bash(npm run check:*)",
-      "Read(//Users/mac/personal/**)"
+      "Read(//Users/mac/personal/**)",
+      "Skill(superpowers:using-superpowers)",
+      "Skill(superpowers:verification-before-completion)"
     ],
     "deny": [],
     "ask": []

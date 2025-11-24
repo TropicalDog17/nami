@@ -515,24 +515,36 @@ const VaultsPage: React.FC = () => {
       {showCreateForm && (
         <div className="bg-white p-6 rounded-lg border border-gray-200 mb-6">
           <h3 className="text-lg font-semibold mb-4">Create New Vault</h3>
-          <div className="flex items-center mb-4">
-            <label className="flex items-center text-sm text-gray-700">
-              <input
-                type="checkbox"
-                className="mr-2"
-                checked={isUsdOnly}
-                onChange={(e) => {
-                  const next = e.target.checked;
-                  setIsUsdOnly(next);
-                  setCreateForm((prev) => ({
-                    ...prev,
-                    asset: next ? 'USD' : '',
-                    depositQty: next ? '1' : '',
-                  }));
+          <div className="mb-4">
+            <label className="block text-sm font-medium text-gray-700 mb-2">Vault Type</label>
+            <div className="flex space-x-4">
+              <button
+                onClick={() => {
+                  setIsUsdOnly(false);
+                  setCreateForm(prev => ({ ...prev, asset: '' }));
                 }}
-              />
-              USD-only mode (track by USD only; fixes Quantity = 1)
-            </label>
+                className={`px-4 py-2 rounded-md text-sm font-medium border ${
+                  !isUsdOnly
+                    ? 'bg-blue-50 border-blue-500 text-blue-700'
+                    : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
+                }`}
+              >
+                Investment (Crypto/Stocks)
+              </button>
+              <button
+                onClick={() => {
+                  setIsUsdOnly(true);
+                  setCreateForm(prev => ({ ...prev, asset: 'USD', depositQty: '1' }));
+                }}
+                className={`px-4 py-2 rounded-md text-sm font-medium border ${
+                  isUsdOnly
+                    ? 'bg-blue-50 border-blue-500 text-blue-700'
+                    : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
+                }`}
+              >
+                Savings (Cash/Fiat)
+              </button>
+            </div>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-4">
             {!isUsdOnly && (
@@ -549,17 +561,15 @@ const VaultsPage: React.FC = () => {
               onChange={(value) => setCreateForm({ ...createForm, account: value })}
               placeholder="Account"
             />
-            <ComboBox
-              options={horizons}
-              value={createForm.horizon}
-              onChange={(value) => setCreateForm({ ...createForm, horizon: value })}
-              placeholder="Horizon (optional)"
-            />
-            {isUsdOnly ? (
-              <div className="flex items-center px-3 py-2 border rounded-md bg-gray-50 text-gray-700">
-                <span className="text-sm">Quantity fixed to 1</span>
-              </div>
-            ) : (
+            {!isUsdOnly && (
+              <ComboBox
+                options={horizons}
+                value={createForm.horizon}
+                onChange={(value) => setCreateForm({ ...createForm, horizon: value })}
+                placeholder="Horizon (optional)"
+              />
+            )}
+            {!isUsdOnly && (
               <input
                 type="number"
                 step="any"
@@ -572,7 +582,7 @@ const VaultsPage: React.FC = () => {
             <input
               type="number"
               step="any"
-              placeholder="Deposit Cost (USD)"
+              placeholder={isUsdOnly ? "Initial Deposit Amount" : "Deposit Cost (USD)"}
               value={createForm.depositCost}
               onChange={(e) => setCreateForm({ ...createForm, depositCost: e.target.value })}
               className="px-3 py-2 border rounded-md"

@@ -72,8 +72,10 @@ const ComboBox: React.FC<ComboBoxProps> = ({
         id={id}
         value={query}
         onChange={(e) => {
-          setQuery(e.target.value)
-          setOpen(true)
+          const newValue = e.target.value;
+          setQuery(newValue);
+          onChange?.(newValue); // Call onChange immediately when typing
+          setOpen(true);
         }}
         onFocus={() => setOpen(true)}
         placeholder={placeholder}

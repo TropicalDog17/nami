@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 
 import CreditCardSummary from '../components/CreditCardSummary';
 import DataTable, { TableColumn } from '../components/ui/DataTable';
@@ -17,6 +18,7 @@ interface CreditCard {
 }
 
 const CreditDashboardPage: React.FC = () => {
+  const navigate = useNavigate();
   const [creditCards, setCreditCards] = useState<CreditCard[]>([]);
   const [creditTransactions, setCreditTransactions] = useState<Array<Record<string, unknown>>>([]);
   const [loading, setLoading] = useState(false);
@@ -157,12 +159,19 @@ const CreditDashboardPage: React.FC = () => {
 
   return (
     <div className="px-4 py-6 sm:px-0">
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900" data-testid="credit-dashboard-page-title">Credit Card Dashboard</h1>
-        <p className="mt-1 text-sm text-gray-500">
-          Track your credit card spending, balances, and payments.
-        </p>
-        
+      <div className="mb-6 flex justify-between items-center">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900" data-testid="credit-dashboard-page-title">Credit Card Dashboard</h1>
+          <p className="mt-1 text-sm text-gray-500">
+            Track your credit card spending, balances, and payments.
+          </p>
+        </div>
+        <button
+          onClick={() => navigate('/admin')}
+          className="bg-white text-gray-700 border border-gray-300 px-4 py-2 rounded hover:bg-gray-50 text-sm font-medium"
+        >
+          Manage Cards
+        </button>
       </div>
 
       {/* Credit Summary Cards */}
@@ -174,8 +183,14 @@ const CreditDashboardPage: React.FC = () => {
           <h2 className="text-lg font-medium text-gray-900 mb-4">Credit Card Details</h2>
 
           {creditCards.length === 0 ? (
-            <div className="text-center py-8 text-gray-500">
-              No credit card activity found. Start by adding credit expenses.
+            <div className="text-center py-12">
+              <div className="text-gray-500 mb-4">No credit card accounts found.</div>
+              <button
+                onClick={() => navigate('/admin')}
+                className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
+              >
+                Add Credit Card
+              </button>
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
