@@ -20,6 +20,7 @@ import {
   investmentsApi,
   vaultApi,
 } from '../services/api';
+import { fxService } from '../services/fxService';
 
 type IdType = string | number;
 type Transaction = TableRowBase & Record<string, unknown>;
@@ -52,6 +53,10 @@ const TransactionPage: React.FC = () => {
   const [bulkRefreshing, setBulkRefreshing] = useState<boolean>(false);
   const [busyRowIds, setBusyRowIds] = useState<Set<IdType>>(new Set<IdType>());
   const [selectedIds, setSelectedIds] = useState<Set<IdType>>(new Set<IdType>());
+
+  // FX conversion states
+  const [fxConversionCache, setFxConversionCache] = useState<Map<string, number>>(new Map());
+  const [fxLoadingStates, setFxLoadingStates] = useState<Map<string, boolean>>(new Map());
   const [isQuickExpenseOpen, setIsQuickExpenseOpen] = useState(false);
   const [isQuickIncomeOpen, setIsQuickIncomeOpen] = useState(false);
   const [isQuickVaultOpen, setIsQuickVaultOpen] = useState(false);
@@ -728,6 +733,70 @@ const TransactionPage: React.FC = () => {
     }
   };
 
+  // Helper function to get cache key for FX conversion
+  const getFXCacheKey = (rowId: string, targetCurrency: string): string => {
+    return `${rowId}-${targetCurrency}`;
+  };
+
+  // Helper function to convert amount using stored FX data (synchronous)
+  const convertAmountSync = useCallback((
+    row: Transaction,
+    targetCurrency: 'USD' | 'VND'
+  ): { amount: number; cashflow: number; isLoading: boolean } => {
+    const rowId = String((row as Record<string, unknown>)?.id ?? 'unknown');
+    const cacheKey = getFXCacheKey(rowId, targetCurrency);
+
+    const amountLocal = Number((row as Record<string, unknown>)?.amount_local ?? 0);
+    const fxToUsd = Number((row as Record<string, unknown>)?.fx_to_usd ?? 1);
+    const fxToVnd = Number((row as Record<string, unknown>)?.fx_to_vnd ?? 24000);
+    const originalCurrency = (row as Record<string, unknown>)?.currency as string || 'USD';
+
+    // Pre-calculated fallback values
+    const amountUsd = Number((row as Record<string, unknown>)?.amount_usd ?? 0);
+    const amountVnd = Number((row as Record<string, unknown>)?.amount_vnd ?? 0);
+    const cashflowUsd = Number((row as Record<string, unknown>)?.cashflow_usd ?? 0);
+    const cashflowVnd = Number((row as Record<string, unknown>)?.cashflow_vnd ?? 0);
+
+    // Check cache first
+    if (fxConversionCache.has(cacheKey)) {
+      const cachedAmount = fxConversionCache.get(cacheKey)!;
+      return {
+        amount: cachedAmount,
+        cashflow: cachedAmount, // For simplicity, use same conversion for cashflow
+        isLoading: false
+      };
+    }
+
+    // If same currency, no conversion needed
+    if (originalCurrency === targetCurrency) {
+      return {
+        amount: amountLocal,
+        cashflow: amountLocal,
+        isLoading: false
+      };
+    }
+
+    // Use stored FX rates for conversion
+    let convertedAmount = 0;
+    if (targetCurrency === 'USD' && fxToUsd > 0) {
+      convertedAmount = amountLocal * fxToUsd;
+    } else if (targetCurrency === 'VND' && fxToVnd > 0) {
+      convertedAmount = amountLocal * fxToVnd;
+    } else {
+      // Fallback to pre-calculated values
+      convertedAmount = targetCurrency === 'USD' ? amountUsd : amountVnd;
+    }
+
+    // Cache the result
+    setFxConversionCache(prev => new Map(prev).set(cacheKey, convertedAmount));
+
+    return {
+      amount: convertedAmount,
+      cashflow: convertedAmount, // For simplicity, use same conversion for cashflow
+      isLoading: false
+    };
+  }, [fxConversionCache]);
+
   const columns: TableColumn<Transaction>[] = [
     {
       key: 'date',
@@ -834,52 +903,30 @@ const TransactionPage: React.FC = () => {
           style: 'currency',
           currency: currency,
         });
+
         const type = String((row as Record<string, unknown>)?.type ?? '').toLowerCase();
         const isNeutral = ['deposit', 'withdraw', 'borrow'].includes(type);
 
-        // Extract transaction data for dynamic conversion
-        const amountLocal = Number((row as Record<string, unknown>)?.amount_local ?? 0);
-        const fxToUsd = Number((row as Record<string, unknown>)?.fx_to_usd ?? 1);
-        const fxToVnd = Number((row as Record<string, unknown>)?.fx_to_vnd ?? 24000);
+        // Use synchronous conversion with stored FX rates
+        const { amount: convertedAmount, cashflow: convertedCashflow, isLoading } =
+          convertAmountSync(row, currency as 'USD' | 'VND');
 
-        // Fallback to pre-calculated values if conversion data is missing
-        const amountUsd = Number((row as Record<string, unknown>)?.amount_usd ?? 0);
-        const amountVnd = Number((row as Record<string, unknown>)?.amount_vnd ?? 0);
-        const cashflowUsd = Number((row as Record<string, unknown>)?.cashflow_usd ?? 0);
-        const cashflowVnd = Number((row as Record<string, unknown>)?.cashflow_vnd ?? 0);
+        // For zero amounts, return dash
+        if (convertedAmount === 0 && convertedCashflow === 0) {
+          return '-';
+        }
 
+        // Display converted amounts
         if (isNeutral) {
-          let amt: number;
-          if (amountLocal > 0 && (fxToUsd > 0 || fxToVnd > 0)) {
-            // Dynamic conversion using historical FX rates
-            amt = currency === 'USD'
-              ? amountLocal * fxToUsd
-              : amountLocal * fxToVnd;
-          } else {
-            // Fallback to pre-calculated values
-            amt = currency === 'USD' ? amountUsd : amountVnd;
-          }
-          if (!amt) return '-';
           return (
             <span className="font-medium text-gray-800">
-              {numberFormatter.format(amt)}
+              {numberFormatter.format(convertedAmount)}
             </span>
           );
         }
 
-        let cashflow: number;
-        if (amountLocal > 0 && (fxToUsd > 0 || fxToVnd > 0)) {
-          // Dynamic conversion using historical FX rates
-          cashflow = currency === 'USD'
-            ? amountLocal * fxToUsd
-            : amountLocal * fxToVnd;
-        } else {
-          // Fallback to pre-calculated values
-          cashflow = currency === 'USD' ? cashflowUsd : cashflowVnd;
-        }
-        if (!cashflow) return '-';
-        const isPositive = cashflow > 0;
-        const formatted = numberFormatter.format(Math.abs(cashflow));
+        const isPositive = convertedCashflow > 0;
+        const formatted = numberFormatter.format(Math.abs(convertedCashflow));
         const sign = isPositive ? '+' : '-';
         const cls = isPositive ? 'text-green-700' : 'text-red-700';
         return (

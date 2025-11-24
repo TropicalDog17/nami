@@ -205,6 +205,25 @@ export const adminApi = {
     ),
 };
 
+// FX Rates API
+export const fxApi = {
+  // Get today's FX rate
+  getTodayRate: <T = unknown>(from = 'USD', to = 'VND') =>
+    api.get<T>(`/api/fx/today?from=${from}&to=${to}`),
+
+  // Get historical FX rates for a date range
+  getHistory: <T = unknown>(params: {
+    from?: string;
+    to?: string;
+    start?: string;
+    end?: string;
+  }) => api.get<T>('/api/fx/history', params),
+
+  // Get FX rate for a specific date
+  getHistoricalRate: <T = unknown>(from: string, to: string, date: string) =>
+    api.get<T>(`/api/fx/history?from=${from}&to=${to}&start=${date}&end=${date}`),
+};
+
 // Price Population API
 export const pricePopulationApi = {
   createJob: <T = unknown>(data: unknown) =>
