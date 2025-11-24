@@ -825,7 +825,7 @@ const TransactionPage: React.FC = () => {
       editType: 'number',
     },
     {
-      key: currency === 'USD' ? 'amount_usd' : 'amount_vnd',
+      key: 'amount',
       title: `Amount (${currency})`,
       type: 'currency',
       currency: currency,
@@ -836,11 +836,29 @@ const TransactionPage: React.FC = () => {
         });
         const type = String((row as Record<string, unknown>)?.type ?? '').toLowerCase();
         const isNeutral = ['deposit', 'withdraw', 'borrow'].includes(type);
+
+        // Extract transaction data for dynamic conversion
+        const amountLocal = Number((row as Record<string, unknown>)?.amount_local ?? 0);
+        const fxToUsd = Number((row as Record<string, unknown>)?.fx_to_usd ?? 1);
+        const fxToVnd = Number((row as Record<string, unknown>)?.fx_to_vnd ?? 24000);
+
+        // Fallback to pre-calculated values if conversion data is missing
+        const amountUsd = Number((row as Record<string, unknown>)?.amount_usd ?? 0);
+        const amountVnd = Number((row as Record<string, unknown>)?.amount_vnd ?? 0);
+        const cashflowUsd = Number((row as Record<string, unknown>)?.cashflow_usd ?? 0);
+        const cashflowVnd = Number((row as Record<string, unknown>)?.cashflow_vnd ?? 0);
+
         if (isNeutral) {
-          const amt =
-            currency === 'USD'
-              ? Number((row as Record<string, unknown>)?.amount_usd ?? 0)
-              : Number((row as Record<string, unknown>)?.amount_vnd ?? 0);
+          let amt: number;
+          if (amountLocal > 0 && (fxToUsd > 0 || fxToVnd > 0)) {
+            // Dynamic conversion using historical FX rates
+            amt = currency === 'USD'
+              ? amountLocal * fxToUsd
+              : amountLocal * fxToVnd;
+          } else {
+            // Fallback to pre-calculated values
+            amt = currency === 'USD' ? amountUsd : amountVnd;
+          }
           if (!amt) return '-';
           return (
             <span className="font-medium text-gray-800">
@@ -848,10 +866,17 @@ const TransactionPage: React.FC = () => {
             </span>
           );
         }
-        const cashflow =
-          currency === 'USD'
-            ? Number((row as Record<string, unknown>)?.cashflow_usd ?? 0)
-            : Number((row as Record<string, unknown>)?.cashflow_vnd ?? 0);
+
+        let cashflow: number;
+        if (amountLocal > 0 && (fxToUsd > 0 || fxToVnd > 0)) {
+          // Dynamic conversion using historical FX rates
+          cashflow = currency === 'USD'
+            ? amountLocal * fxToUsd
+            : amountLocal * fxToVnd;
+        } else {
+          // Fallback to pre-calculated values
+          cashflow = currency === 'USD' ? cashflowUsd : cashflowVnd;
+        }
         if (!cashflow) return '-';
         const isPositive = cashflow > 0;
         const formatted = numberFormatter.format(Math.abs(cashflow));
