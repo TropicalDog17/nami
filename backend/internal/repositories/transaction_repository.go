@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/tropicaldog17/nami/internal/db"
 	"github.com/tropicaldog17/nami/internal/models"
 	"gorm.io/gorm"
@@ -85,6 +86,9 @@ func (r *transactionRepository) List(ctx context.Context, filter *models.Transac
 	// Apply filters
 	if filter != nil {
 		if filter.InvestmentID != nil && *filter.InvestmentID != "" {
+			if _, err := uuid.Parse(*filter.InvestmentID); err != nil {
+				return []*models.Transaction{}, nil
+			}
 			query = query.Where("investment_id = ?", *filter.InvestmentID)
 		}
 		if filter.StartDate != nil {
@@ -249,8 +253,12 @@ func (r *transactionRepository) DeleteMany(ctx context.Context, ids []string) (i
 		}
 
 		// Delete action links referencing any of these IDs to avoid FK issues
-		if err := tx.Where("(from_tx IN ? OR to_tx IN ?)", ids, ids).Delete(&struct{}{}).Error; err != nil {
-			return fmt.Errorf("failed to delete links for transactions: %w", err)
+		// Use two separate queries to avoid parameter binding issues
+		if err := tx.Exec("DELETE FROM transaction_links WHERE from_tx IN ?", ids).Error; err != nil {
+			return fmt.Errorf("failed to delete links for transactions (from_tx): %w", err)
+		}
+		if err := tx.Exec("DELETE FROM transaction_links WHERE to_tx IN ?", ids).Error; err != nil {
+			return fmt.Errorf("failed to delete links for transactions (to_tx): %w", err)
 		}
 
 		// Delete transactions

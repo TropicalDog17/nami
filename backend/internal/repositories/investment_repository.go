@@ -31,6 +31,9 @@ func (r *investmentRepository) Create(ctx context.Context, investment *models.In
 
 // GetByID retrieves an investment by ID
 func (r *investmentRepository) GetByID(ctx context.Context, id string) (*models.Investment, error) {
+	if _, err := uuid.Parse(id); err != nil {
+		return nil, fmt.Errorf("investment not found: %s (invalid UUID)", id)
+	}
 	var investment models.Investment
 	if err := r.db.WithContext(ctx).First(&investment, "id = ?", id).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
@@ -158,7 +161,7 @@ func (r *investmentRepository) GetCount(ctx context.Context, filter *models.Inve
 func (r *investmentRepository) Update(ctx context.Context, investment *models.Investment) error {
 	investment.UpdatedAt = time.Now()
 
-	result := r.db.WithContext(ctx).Model(&models.Investment{}).Where("id = ?", investment.ID).Updates(investment)
+	result := r.db.WithContext(ctx).Save(investment)
 	if result.Error != nil {
 		return fmt.Errorf("failed to update investment: %w", result.Error)
 	}
@@ -289,12 +292,6 @@ func (r *investmentRepository) UpdateWithUnstake(ctx context.Context, investment
 
 		// Set withdrawal date
 		investment.WithdrawalDate = &unstakeTx.Date
-
-		// If fully withdrawn or over-withdrawn, mark as closed
-		remaining := investment.DepositQty.Sub(investment.WithdrawalQty)
-		if !remaining.IsPositive() {
-			investment.IsOpen = false
-		}
 
 		// Save the updated investment
 		if err := tx.Save(investment).Error; err != nil {

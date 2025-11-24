@@ -45,11 +45,11 @@ fi
 # Set environment variables
 export SERVER_PORT=$BACKEND_PORT
 export GIN_PORT=$BACKEND_PORT
-export POSTGRES_HOST=$DB_HOST
-export POSTGRES_PORT=$DB_PORT
-export POSTGRES_DB=$DB_NAME
-export POSTGRES_USER=$DB_USER
-export POSTGRES_PASSWORD=$DB_PASSWORD
+export DB_HOST=$DB_HOST
+export DB_PORT=$DB_PORT
+export DB_NAME=$DB_NAME
+export DB_USER=$DB_USER
+export DB_PASSWORD=$DB_PASSWORD
 export DATABASE_URL="postgresql://$DB_USER:$DB_PASSWORD@$DB_HOST:$DB_PORT/$DB_NAME?sslmode=disable"
 
 echo -e "${BLUE}🔧 Environment variables set:${NC}"

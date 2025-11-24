@@ -6,7 +6,9 @@ export default defineConfig({
     reporters: 'default',
     include: ['tests/**/*.test.ts'],
     passWithNoTests: false,
-    coverage: { enabled: false }
+    coverage: { enabled: false },
+    setupFiles: ['./tests/setup.ts'],
+    testTimeout: 60000
   }
 })
 

@@ -1406,6 +1406,12 @@ const docTemplate = `{
                 "asset": {
                     "type": "string"
                 },
+                "id": {
+                    "type": "string"
+                },
+                "is_vault": {
+                    "type": "boolean"
+                },
                 "last_updated": {
                     "type": "string"
                 },
@@ -1509,6 +1515,9 @@ const docTemplate = `{
                 },
                 "realized_pnl": {
                     "description": "Derived fields (not persisted)",
+                    "type": "number"
+                },
+                "remaining_qty": {
                     "type": "number"
                 },
                 "updated_at": {
@@ -1650,6 +1659,20 @@ const docTemplate = `{
                 }
             }
         },
+        "github_com_tropicaldog17_nami_internal_models.SpendingByDay": {
+            "type": "object",
+            "properties": {
+                "amount_usd": {
+                    "type": "number"
+                },
+                "amount_vnd": {
+                    "type": "number"
+                },
+                "count": {
+                    "type": "integer"
+                }
+            }
+        },
         "github_com_tropicaldog17_nami_internal_models.SpendingByTag": {
             "type": "object",
             "properties": {
@@ -1674,6 +1697,13 @@ const docTemplate = `{
                     "type": "object",
                     "additionalProperties": {
                         "$ref": "#/definitions/github_com_tropicaldog17_nami_internal_models.SpendingByTag"
+                    }
+                },
+                "by_day": {
+                    "description": "Daily breakdown of spending (outflows only) keyed by YYYY-MM-DD",
+                    "type": "object",
+                    "additionalProperties": {
+                        "$ref": "#/definitions/github_com_tropicaldog17_nami_internal_models.SpendingByDay"
                     }
                 },
                 "by_tag": {

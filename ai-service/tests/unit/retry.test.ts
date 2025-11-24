@@ -83,15 +83,18 @@ describe('withRetry', () => {
   it('should fail after max attempts', async () => {
     const mockOperation = vi.fn().mockRejectedValue(new Error('ECONNRESET'))
 
+    // Start the retry operation
     const promise = withRetry(mockOperation, 'testOperation', {
       maxAttempts: 2,
       baseDelayMs: 100
     })
 
-    // Advance time to trigger retries
-    await vi.advanceTimersByTimeAsync(0) // First attempt
-    await vi.advanceTimersByTimeAsync(100) // Second attempt
+    // Advance timers to trigger retries
+    await vi.advanceTimersByTimeAsync(0)
+    await vi.advanceTimersByTimeAsync(100)
+    await vi.runAllTimersAsync()
 
+    // Expect the operation to have failed
     await expect(promise).rejects.toThrow('ECONNRESET')
     expect(mockOperation).toHaveBeenCalledTimes(2)
   })

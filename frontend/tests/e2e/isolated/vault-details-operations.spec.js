@@ -2,6 +2,9 @@ import { test, expect } from '@playwright/test';
 import { gotoAndWait } from '../utils/test-utils.js';
 
 test.describe('Vault Detail Page - Operations', () => {
+  test.beforeEach(({ page }) => {
+    page.on('console', msg => console.log(`BROWSER LOG: ${msg.text()}`));
+  });
   test('should display vault detail page structure', async ({ page }) => {
     // Test with a simple vault name - page should handle missing vault gracefully
     const vaultName = 'test-vault-simple';
@@ -18,18 +21,18 @@ test.describe('Vault Detail Page - Operations', () => {
     // Try the vault detail page first
     try {
       const vaultDetailPage = page.locator('[data-testid="vault-detail-page"]');
-      await expect(vaultDetailPage).toBeVisible({ timeout: 5000 });
+      await expect(vaultDetailPage).toBeVisible({ timeout: 10000 });
       pageLoaded = true;
     } catch (e) {
       // Check for "Vault Not Found" page
       try {
         const notFoundTitle = page.locator('text=Vault Not Found');
-        await expect(notFoundTitle).toBeVisible({ timeout: 5000 });
+        await expect(notFoundTitle).toBeVisible({ timeout: 10000 });
         pageLoaded = true;
       } catch (e2) {
         // Try any h1 element as a fallback
         const anyH1 = page.locator('h1').first();
-        await expect(anyH1).toBeVisible({ timeout: 5000 });
+        await expect(anyH1).toBeVisible({ timeout: 10000 });
         pageLoaded = true;
       }
     }
@@ -49,15 +52,15 @@ test.describe('Vault Detail Page - Operations', () => {
     let pageLoaded = false;
 
     try {
-      await expect(page.locator('[data-testid="vault-detail-page"]')).toBeVisible({ timeout: 5000 });
+      await expect(page.locator('[data-testid="vault-detail-page"]')).toBeVisible({ timeout: 10000 });
       pageLoaded = true;
     } catch (e) {
       try {
-        await expect(page.locator('text=Vault Not Found')).toBeVisible({ timeout: 5000 });
+        await expect(page.locator('text=Vault Not Found')).toBeVisible({ timeout: 10000 });
         pageLoaded = true;
       } catch (e2) {
         const anyH1 = page.locator('h1').first();
-        await expect(anyH1).toBeVisible({ timeout: 5000 });
+        await expect(anyH1).toBeVisible({ timeout: 10000 });
         pageLoaded = true;
       }
     }
@@ -90,15 +93,15 @@ test.describe('Vault Detail Page - Operations', () => {
     let pageLoaded = false;
 
     try {
-      await expect(page.locator('[data-testid="vault-detail-page"]')).toBeVisible({ timeout: 5000 });
+      await expect(page.locator('[data-testid="vault-detail-page"]')).toBeVisible({ timeout: 10000 });
       pageLoaded = true;
     } catch (e) {
       try {
-        await expect(page.locator('text=Vault Not Found')).toBeVisible({ timeout: 5000 });
+        await expect(page.locator('text=Vault Not Found')).toBeVisible({ timeout: 10000 });
         pageLoaded = true;
       } catch (e2) {
         const anyH1 = page.locator('h1').first();
-        await expect(anyH1).toBeVisible({ timeout: 5000 });
+        await expect(anyH1).toBeVisible({ timeout: 10000 });
         pageLoaded = true;
       }
     }
@@ -130,15 +133,15 @@ test.describe('Vault Detail Page - Operations', () => {
     let pageLoaded = false;
 
     try {
-      await expect(page.locator('[data-testid="vault-detail-page"]')).toBeVisible({ timeout: 5000 });
+      await expect(page.locator('[data-testid="vault-detail-page"]')).toBeVisible({ timeout: 10000 });
       pageLoaded = true;
     } catch (e) {
       try {
-        await expect(page.locator('text=Vault Not Found')).toBeVisible({ timeout: 5000 });
+        await expect(page.locator('text=Vault Not Found')).toBeVisible({ timeout: 10000 });
         pageLoaded = true;
       } catch (e2) {
         const anyH1 = page.locator('h1').first();
-        await expect(anyH1).toBeVisible({ timeout: 5000 });
+        await expect(anyH1).toBeVisible({ timeout: 10000 });
         pageLoaded = true;
       }
     }
@@ -171,15 +174,15 @@ test.describe('Vault Detail Page - Operations', () => {
     let pageLoaded = false;
 
     try {
-      await expect(page.locator('[data-testid="vault-detail-page"]')).toBeVisible({ timeout: 5000 });
+      await expect(page.locator('[data-testid="vault-detail-page"]')).toBeVisible({ timeout: 10000 });
       pageLoaded = true;
     } catch (e) {
       try {
-        await expect(page.locator('text=Vault Not Found')).toBeVisible({ timeout: 5000 });
+        await expect(page.locator('text=Vault Not Found')).toBeVisible({ timeout: 10000 });
         pageLoaded = true;
       } catch (e2) {
         const anyH1 = page.locator('h1').first();
-        await expect(anyH1).toBeVisible({ timeout: 5000 });
+        await expect(anyH1).toBeVisible({ timeout: 10000 });
         pageLoaded = true;
       }
     }

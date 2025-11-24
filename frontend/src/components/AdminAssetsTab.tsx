@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 
-import { AssetFormAdvanced } from './AssetFormAdvanced';
+import { AssetFormAdvanced } from './forms/AssetFormAdvanced';
 import { useApp } from '../context/AppContext';
 import { adminApi } from '../services/api';
 

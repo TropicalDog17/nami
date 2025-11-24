@@ -1,10 +1,26 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest'
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest'
 import express from 'express'
 import request from 'supertest'
-import { buildBot } from '../../dist/telegram.js'
+import { buildBot } from '../../src/telegram.js'
 import { OpenAIMock } from '../helpers/openaiMock.js'
 import { startMockBackend } from '../helpers/mockBackend.js'
 import { AppConfig } from '../../src/config.js'
+
+// Mock the LLMClient at module level
+vi.mock('../../src/llm.js', async () => {
+  const actual = await vi.importActual('../../src/llm.js')
+  return {
+    ...actual,
+    LLMClient: vi.fn().mockImplementation(() => ({
+      chat: vi.fn().mockResolvedValue({
+        content: '```toon\naction: spend_vnd\nparams:\n  account: Bank\n  vnd_amount: 120000\n  date: 2025-01-01\n  counterparty: McDo\n```',
+        model: 'gpt-4o-mini'
+      }),
+      getProvider: () => 'openai',
+      getModel: () => 'gpt-4o-mini'
+    }))
+  }
+})
 
 describe('AI Service integration - text to pending', () => {
   const secret = 'test-secret-1234567890'
@@ -59,6 +75,9 @@ describe('AI Service integration - text to pending', () => {
     }
     const res = await request(app).post('/telegram/webhook').send(update)
     expect(res.status).toBe(200)
+
+    // Wait a moment for async operations to complete
+    await new Promise(resolve => setTimeout(resolve, 100))
 
     // backend should have received one item
     expect(backend.received.length).toBe(1)

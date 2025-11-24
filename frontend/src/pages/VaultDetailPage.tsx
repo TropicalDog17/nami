@@ -5,7 +5,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import ComboBox from '../components/ui/ComboBox';
 import DataTable, { TableColumn } from '../components/ui/DataTable';
 import { useToast } from '../components/ui/Toast';
-import { vaultApi, investmentsApi } from '../services/api';
+import { vaultApi, transactionApi } from '../services/api';
 import { formatCurrency, formatPercentage, formatPnL, getDecimalPlaces } from '../utils/currencyFormatter';
 
 type Vault = {
@@ -73,6 +73,8 @@ const VaultDetailPage: React.FC = () => {
   const [showWithdrawForm, setShowWithdrawForm] = useState<boolean>(false);
   const [accounts, setAccounts] = useState<Option[]>([]);
   const [manualMetrics, setManualMetrics] = useState<ManualMetrics | null>(null);
+  const [liveMetrics, setLiveMetrics] = useState<ManualMetrics | null>(null);
+  const [showLiveMetrics, setShowLiveMetrics] = useState<boolean>(false);
 
   // Form states
   const [depositForm, setDepositForm] = useState({
@@ -92,8 +94,26 @@ const VaultDetailPage: React.FC = () => {
     try {
       setLoading(true);
       if (!vaultName) return;
-      const vaultData = await vaultApi.getVaultByName<Vault>(vaultName);
+      const endpoint = showLiveMetrics ? `/api/vaults/${encodeURIComponent(vaultName)}?enrich=true` : `/api/vaults/${encodeURIComponent(vaultName)}`;
+      const vaultData = await fetch(`${(import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8080')}${endpoint}`).then(async (r) => {
+        const t = await r.text();
+        return t ? (JSON.parse(t) as Vault) : null;
+      });
       setVault(vaultData ?? null);
+      if (vaultData && showLiveMetrics) {
+        const lm: ManualMetrics = {
+          as_of: (vaultData as unknown as { as_of?: string }).as_of,
+          current_value_usd: (vaultData as unknown as { current_value_usd?: number }).current_value_usd,
+          roi_realtime_percent: (vaultData as unknown as { roi_realtime_percent?: number }).roi_realtime_percent,
+          apr_percent: (vaultData as unknown as { apr_percent?: number }).apr_percent,
+          benchmark_asset: (vaultData as unknown as { benchmark_asset?: string }).benchmark_asset,
+          benchmark_roi_percent: (vaultData as unknown as { benchmark_roi_percent?: number }).benchmark_roi_percent,
+          benchmark_apr_percent: (vaultData as unknown as { benchmark_apr_percent?: number }).benchmark_apr_percent,
+        };
+        setLiveMetrics(lm);
+      } else {
+        setLiveMetrics(null);
+      }
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Failed to load vault';
       setError(message);
@@ -101,13 +121,13 @@ const VaultDetailPage: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [vaultName, showErrorToast]);
+  }, [vaultName, showErrorToast, showLiveMetrics]);
 
   const loadVaultTransactions = useCallback(async (): Promise<void> => {
     try {
       // Load transactions related to this vault
       if (!vaultName) return;
-      const txs = await investmentsApi.list<Transaction[]>({ investment_id: vaultName });
+      const txs = await transactionApi.list<Transaction[]>({ investment_id: vaultName });
       setTransactions(Array.isArray(txs) ? txs : []);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
@@ -132,7 +152,7 @@ const VaultDetailPage: React.FC = () => {
       void loadVaultTransactions();
       loadAccounts();
     }
-  }, [vaultName, loadVault, loadVaultTransactions]);
+  }, [vaultName, loadVault, loadVaultTransactions, showLiveMetrics]);
 
   const handleDeposit = async (): Promise<void> => {
     if (!depositForm.quantity || !depositForm.cost) {
@@ -230,10 +250,12 @@ const VaultDetailPage: React.FC = () => {
     }
     try {
       if (!vaultName) return;
-      const data = await vaultApi.refresh<ManualMetrics>(vaultName, { current_value_usd: value });
+      const data = await vaultApi.refresh<ManualMetrics>(vaultName, { current_value_usd: value, persist: true });
       if (data) {
         setManualMetrics(data);
         showSuccessToast('Manual update calculated');
+        await loadVault();
+        await loadVaultTransactions();
       }
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Failed to run manual update';
@@ -402,6 +424,8 @@ const VaultDetailPage: React.FC = () => {
     }
   };
 
+  console.log('VaultDetailPage render:', { loading, error, vault: vault ? 'present' : 'null', vaultName });
+
   if (loading) {
     return (
       <div className="px-4 py-6 sm:px-0">
@@ -532,6 +556,12 @@ const VaultDetailPage: React.FC = () => {
           Delete Vault
         </button>
         <button
+          onClick={() => setShowLiveMetrics((s) => !s)}
+          className="px-4 py-2 bg-yellow-600 text-white rounded-md hover:bg-yellow-700"
+        >
+          {showLiveMetrics ? 'Hide Live Metrics' : 'Show Live Metrics'}
+        </button>
+        <button
           onClick={() => { void handleManualUpdate(); }}
           className="px-4 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700"
         >
@@ -655,39 +685,39 @@ const VaultDetailPage: React.FC = () => {
       )}
 
       {/* Vault Details Table */}
-      {manualMetrics && (
+      {(manualMetrics || liveMetrics) && (
         <div className="bg-white p-4 rounded-lg border border-gray-200 mb-6">
-          <h3 className="text-lg font-semibold mb-2">Manual Update</h3>
+          <h3 className="text-lg font-semibold mb-2">{liveMetrics ? 'Live Metrics' : 'Manual Update'}</h3>
           <div className="text-sm text-gray-700 mb-2">
-            As of: {manualMetrics.as_of ? new Date(manualMetrics.as_of).toLocaleString() : '—'}
+            As of: {(liveMetrics ?? manualMetrics)?.as_of ? new Date(String((liveMetrics ?? manualMetrics)?.as_of)).toLocaleString() : '—'}
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
               <div className="text-gray-500 text-sm">Current Value</div>
-              <div className="font-semibold">{formatCurrency(manualMetrics.current_value_usd ?? 0)}</div>
+              <div className="font-semibold">{formatCurrency((liveMetrics ?? manualMetrics)?.current_value_usd ?? 0)}</div>
             </div>
             <div>
               <div className="text-gray-500 text-sm">ROI (now)</div>
-              <div className="font-semibold">{formatVaultNumber(manualMetrics.roi_realtime_percent ?? 0, 2)}%</div>
+              <div className="font-semibold">{formatVaultNumber((liveMetrics ?? manualMetrics)?.roi_realtime_percent ?? 0, 2)}%</div>
             </div>
             <div>
               <div className="text-gray-500 text-sm">APR (now)</div>
-              <div className="font-semibold">{formatVaultNumber(manualMetrics.apr_percent ?? 0, 2)}%</div>
+              <div className="font-semibold">{formatVaultNumber((liveMetrics ?? manualMetrics)?.apr_percent ?? 0, 2)}%</div>
             </div>
           </div>
-          {manualMetrics.benchmark_asset && (
+          {(liveMetrics ?? manualMetrics)?.benchmark_asset && (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
               <div>
                 <div className="text-gray-500 text-sm">Benchmark</div>
-                <div className="font-semibold">{manualMetrics.benchmark_asset}</div>
+                <div className="font-semibold">{(liveMetrics ?? manualMetrics)?.benchmark_asset}</div>
               </div>
               <div>
                 <div className="text-gray-500 text-sm">Benchmark ROI</div>
-                <div className="font-semibold">{formatVaultNumber(manualMetrics.benchmark_roi_percent ?? 0, 2)}%</div>
+                <div className="font-semibold">{formatVaultNumber(((liveMetrics ?? manualMetrics)?.benchmark_roi_percent) ?? 0, 2)}%</div>
               </div>
               <div>
                 <div className="text-gray-500 text-sm">Benchmark APR</div>
-                <div className="font-semibold">{formatVaultNumber(manualMetrics.benchmark_apr_percent ?? 0, 2)}%</div>
+                <div className="font-semibold">{formatVaultNumber(((liveMetrics ?? manualMetrics)?.benchmark_apr_percent) ?? 0, 2)}%</div>
               </div>
             </div>
           )}

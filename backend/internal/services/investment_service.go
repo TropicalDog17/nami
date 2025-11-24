@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/shopspring/decimal"
 	"github.com/tropicaldog17/nami/internal/models"
 	"github.com/tropicaldog17/nami/internal/repositories"
@@ -90,6 +91,7 @@ func (s *investmentService) CreateDeposit(ctx context.Context, tx *models.Transa
 	// If no existing investment found, create a new one
 	if targetInvestment == nil {
 		targetInvestment = &models.Investment{
+			ID:              uuid.New().String(),
 			Asset:           tx.Asset,
 			Account:         tx.Account,
 			Horizon:         tx.Horizon,
@@ -178,6 +180,13 @@ func (s *investmentService) CreateWithdrawal(ctx context.Context, tx *models.Tra
 		return nil, fmt.Errorf("failed to process withdrawal: %w", err)
 	}
 
+	// Auto-close if fully withdrawn or over-withdrawn
+	remaining := targetInvestment.DepositQty.Sub(targetInvestment.WithdrawalQty)
+	if remaining.LessThanOrEqual(decimal.Zero) {
+		targetInvestment.IsOpen = false
+		targetInvestment.UpdatePnL()
+	}
+
 	// Set the withdrawal date
 	targetInvestment.WithdrawalDate = &tx.Date
 
@@ -195,7 +204,7 @@ func (s *investmentService) CreateWithdrawal(ctx context.Context, tx *models.Tra
 
 	// Populate derived realized PnL before returning
 	targetInvestment.RealizedPnL = targetInvestment.PnL
-	targetInvestment.RemainingQty = targetInvestment.DepositQty.Sub(targetInvestment.WithdrawalQty)
+	targetInvestment.RemainingQty = remaining
 	return targetInvestment, nil
 }
 
@@ -287,6 +296,16 @@ func (s *investmentService) ProcessUnstake(ctx context.Context, unstakeTx *model
 		return nil, fmt.Errorf("failed to update investment with unstake: %w", err)
 	}
 
+	// Auto-close if fully withdrawn or over-withdrawn
+	remaining := investment.DepositQty.Sub(investment.WithdrawalQty)
+	if remaining.LessThanOrEqual(decimal.Zero) && investment.IsOpen {
+		investment.IsOpen = false
+		investment.UpdatePnL()
+		if err := s.investmentRepo.Update(ctx, investment); err != nil {
+			return nil, fmt.Errorf("failed to update investment status: %w", err)
+		}
+	}
+
 	// Create the unstake transaction
 	err = s.transactionRepo.Create(ctx, unstakeTx)
 	if err != nil {
@@ -295,7 +314,7 @@ func (s *investmentService) ProcessUnstake(ctx context.Context, unstakeTx *model
 
 	// Populate derived realized PnL before returning
 	investment.RealizedPnL = investment.PnL
-	investment.RemainingQty = investment.DepositQty.Sub(investment.WithdrawalQty)
+	investment.RemainingQty = remaining
 	return investment, nil
 }
 

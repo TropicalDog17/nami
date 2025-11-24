@@ -199,6 +199,10 @@ func (h *TransactionHandler) listTransactions(w http.ResponseWriter, r *http.Req
 		filter.Tags = strings.Split(tags, ",")
 	}
 
+	if invID := r.URL.Query().Get("investment_id"); invID != "" {
+		filter.InvestmentID = &invID
+	}
+
 	if counterparty := r.URL.Query().Get("counterparty"); counterparty != "" {
 		filter.Counterparty = &counterparty
 	}

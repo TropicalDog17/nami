@@ -140,8 +140,7 @@ func (i *Investment) UpdatePnL() {
 	// Calculate realized P&L from withdrawals using cost basis
 	realizedPnL := i.WithdrawalValue.Sub(costBasisForWithdrawal)
 
-	
-	// If position is fully closed, only use realized P&L
+	// Realize PnL only when explicitly closed
 	if !i.IsOpen {
 		i.PnL = realizedPnL
 		if !costBasisForWithdrawal.IsZero() {
@@ -150,19 +149,9 @@ func (i *Investment) UpdatePnL() {
 		return
 	}
 
-	// For open positions with partial withdrawals, we don't calculate P&L
-	// P&L should only be realized when position is fully closed or over-withdrawn
-	if i.WithdrawalQty.GreaterThanOrEqual(i.DepositQty) {
-		// Position is fully closed or over-withdrawn - calculate realized P&L
-		i.PnL = realizedPnL
-		if !costBasisForWithdrawal.IsZero() {
-			i.PnLPercent = i.PnL.Div(costBasisForWithdrawal).Mul(decimal.NewFromInt(100))
-		}
-	} else {
-		// Partial withdrawal - don't realize P&L
-		i.PnL = decimal.Zero
-		i.PnLPercent = decimal.Zero
-	}
+	// While open (regardless of withdrawal amount), do not realize PnL
+	i.PnL = decimal.Zero
+	i.PnLPercent = decimal.Zero
 }
 
 // AddDeposit adds a new deposit to the investment and recalculates weighted average cost

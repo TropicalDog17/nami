@@ -16,12 +16,13 @@ import (
 
 // VaultHandler exposes high-level vault operations backed by investments
 type VaultHandler struct {
-	investmentService services.InvestmentService
+    investmentService services.InvestmentService
+    transactionService services.TransactionService
     priceService      services.AssetPriceService
 }
 
-func NewVaultHandler(investmentService services.InvestmentService, priceService services.AssetPriceService) *VaultHandler {
-    return &VaultHandler{investmentService: investmentService, priceService: priceService}
+func NewVaultHandler(investmentService services.InvestmentService, txService services.TransactionService, priceService services.AssetPriceService) *VaultHandler {
+    return &VaultHandler{investmentService: investmentService, transactionService: txService, priceService: priceService}
 }
 
 // vaultDTO is a projection returned to the frontend
@@ -665,6 +666,7 @@ func (h *VaultHandler) handleRefresh(w http.ResponseWriter, r *http.Request, id 
         CurrentUnitPriceUSD *float64 `json:"current_unit_price_usd"`
         Benchmark           *string  `json:"benchmark"`
         Currency            *string  `json:"currency"`
+        Persist             *bool    `json:"persist"`
     }
     // best-effort decode; ignore errors when no body
     _ = json.NewDecoder(r.Body).Decode(&manualBody)
@@ -703,7 +705,73 @@ func (h *VaultHandler) handleRefresh(w http.ResponseWriter, r *http.Request, id 
     inv.RemainingQty = inv.DepositQty.Sub(inv.WithdrawalQty)
     dto := mapInvestmentToVaultDTO(inv)
     if manualBody.CurrentValueUSD != nil || manualBody.CurrentUnitPriceUSD != nil {
-        h.enrichVaultWithManualMetrics(r, inv, dto, manualBody)
+        var enrichInput struct {
+            CurrentValueUSD     *float64 `json:"current_value_usd"`
+            CurrentUnitPriceUSD *float64 `json:"current_unit_price_usd"`
+            Benchmark           *string  `json:"benchmark"`
+            Currency            *string  `json:"currency"`
+        }
+        enrichInput.CurrentValueUSD = manualBody.CurrentValueUSD
+        enrichInput.CurrentUnitPriceUSD = manualBody.CurrentUnitPriceUSD
+        enrichInput.Benchmark = manualBody.Benchmark
+        enrichInput.Currency = manualBody.Currency
+        h.enrichVaultWithManualMetrics(r, inv, dto, enrichInput)
+        // Persist valuation snapshot when requested
+        persist := false
+        if manualBody.Persist != nil {
+            persist = *manualBody.Persist
+        } else if r.URL.Query().Get("persist") == "true" {
+            persist = true
+        }
+        if persist {
+            // Compute quantity/unit price for valuation
+            qty := inv.DepositQty.Sub(inv.WithdrawalQty)
+            if qty.IsNegative() {
+                qty = decimal.Zero
+            }
+            var unitPriceLocal decimal.Decimal
+            if strings.ToUpper(inv.Asset) == "USD" {
+                // USD-only vault: treat quantity as USD amount
+                val := decimal.Zero
+                if manualBody.CurrentValueUSD != nil {
+                    val = decimal.NewFromFloat(*manualBody.CurrentValueUSD)
+                } else if dto.CurrentValueUSD != nil {
+                    val = *dto.CurrentValueUSD
+                }
+                qty = val
+                unitPriceLocal = decimal.NewFromInt(1)
+            } else {
+                // Non-USD: derive unit price
+                if manualBody.CurrentUnitPriceUSD != nil {
+                    unitPriceLocal = decimal.NewFromFloat(*manualBody.CurrentUnitPriceUSD)
+                } else if manualBody.CurrentValueUSD != nil && qty.IsPositive() {
+                    unitPriceLocal = decimal.NewFromFloat(*manualBody.CurrentValueUSD).Div(qty)
+                } else if dto.CurrentValueUSD != nil && qty.IsPositive() {
+                    unitPriceLocal = (*dto.CurrentValueUSD).Div(qty)
+                } else {
+                    unitPriceLocal = decimal.Zero
+                }
+            }
+            if unitPriceLocal.IsZero() && qty.IsZero() {
+                unitPriceLocal = decimal.NewFromInt(1)
+                qty = decimal.NewFromInt(1)
+            }
+            tx := &models.Transaction{
+                Date:         time.Now().UTC(),
+                Type:         "valuation",
+                Asset:        inv.Asset,
+                Account:      inv.Account,
+                Quantity:     qty,
+                PriceLocal:   unitPriceLocal,
+                FXToUSD:      decimal.NewFromInt(1),
+                FXToVND:      decimal.NewFromInt(1),
+                InvestmentID: &inv.ID,
+                InternalFlow: func() *bool { b := true; return &b }(),
+            }
+            if err := tx.PreSave(); err == nil {
+                _ = h.transactionService.CreateTransaction(r.Context(), tx)
+            }
+        }
     } else {
         h.enrichVaultWithLiveMetrics(r, inv, dto)
     }

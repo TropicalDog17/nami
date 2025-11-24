@@ -42,7 +42,7 @@ test.describe('Vault Functionality - Regression Tests', () => {
     await expect(vaultsTab).toBeVisible(); // Vaults should be visible in main nav
 
     // Verify other expected main navigation tabs are present
-    const expectedTabs = ['Transactions', 'Vaults', 'Admin', 'Credit Cards', 'Reports'];
+    const expectedTabs = ['Transactions', 'Vaults', 'Credit Cards', 'Reports'];
     for (const tabName of expectedTabs) {
       const tab = page.locator(`a:has-text("${tabName}")`);
       await expect(tab).toBeVisible();

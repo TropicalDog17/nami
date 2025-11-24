@@ -1,11 +1,12 @@
 import express from 'express'
 import OpenAI from 'openai'
-import { loadConfig } from './config.js'
-import { logger, createCorrelationLogger } from './logger.js'
-import { buildBot } from './telegram.js'
-import { startGroundingCache } from './grounding.js'
-import { HealthChecker } from './health.js'
-import { handleAndLogError, ErrorCategory, ErrorSeverity } from './errors.js'
+import { loadConfig } from './utils/config.js'
+import { logger, createCorrelationLogger } from './utils/logger.js'
+import { buildBot } from './integrations/telegram.js'
+import { startGroundingCache } from './core/grounding.js'
+import { HealthChecker } from './api/health.js'
+import { apiTestRouter } from './api/api-test.js'
+import { handleAndLogError, ErrorCategory, ErrorSeverity } from './utils/errors.js'
 
 function validateConfig(cfg: any): void {
   const correlationLogger = createCorrelationLogger('startup')
@@ -144,6 +145,9 @@ async function main() {
       }
       res.json(metrics)
     })
+
+    // API testing endpoints
+    app.use('/api/test', apiTestRouter)
 
     // Start server
     const port = cfg.PORT

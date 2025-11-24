@@ -738,6 +738,13 @@ func (s *actionService) performUnstake(ctx context.Context, req *models.ActionRe
 		}
 	}
 
+	// Explicitly close the investment if requested
+	if closeAll && outTx.InvestmentID != nil {
+		if _, err := s.investmentService.CloseInvestment(ctx, *outTx.InvestmentID); err != nil {
+			return nil, fmt.Errorf("failed to close investment: %w", err)
+		}
+	}
+
 	return &models.ActionResponse{Action: req.Action, Transactions: []*models.Transaction{outTx, inTx}, ExecutedAt: time.Now()}, nil
 }
 

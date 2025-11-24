@@ -47,7 +47,13 @@
       "mcp__playwright__browser_snapshot",
       "mcp__playwright__browser_wait_for",
       "mcp__playwright__browser_console_messages",
-      "Bash(claude:*)"
+      "Bash(claude:*)",
+      "Bash(npm run test:*)",
+      "Bash(tree:*)",
+      "Bash(npm run check:*)",
+      "Read(//Users/mac/personal/**)",
+      "Skill(superpowers:using-superpowers)",
+      "Skill(superpowers:verification-before-completion)"
     ],
     "deny": [],
     "ask": []

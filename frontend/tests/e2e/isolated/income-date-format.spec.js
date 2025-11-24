@@ -3,19 +3,24 @@ import { gotoAndWait } from '../utils/test-utils.js';
 
 test.describe('Quick Income Modal - Date RFC3339', () => {
   test('sends RFC3339 datetime in POST payload', async ({ page }) => {
+    page.on('console', msg => console.log(`BROWSER LOG: ${msg.text()}`));
     // Stub master data endpoints to keep the UI functional offline
     await page.route('**/api/admin/types', async (route) => {
       await route.fulfill({ json: [] });
     });
     await page.route('**/api/admin/accounts', async (route) => {
-      await route.fulfill({ json: [
-        { name: 'Test Account', type: 'bank', is_active: true },
-      ] });
+      await route.fulfill({
+        json: [
+          { name: 'Test Account', type: 'bank', is_active: true },
+        ]
+      });
     });
     await page.route('**/api/admin/assets', async (route) => {
-      await route.fulfill({ json: [
-        { symbol: 'USD', name: 'US Dollar', is_active: true },
-      ] });
+      await route.fulfill({
+        json: [
+          { symbol: 'USD', name: 'US Dollar', is_active: true },
+        ]
+      });
     });
     await page.route('**/api/admin/tags', async (route) => {
       await route.fulfill({ json: [] });
