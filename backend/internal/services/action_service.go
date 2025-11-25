@@ -719,8 +719,6 @@ func (s *actionService) performInitBalance(ctx context.Context, req *models.Acti
 	tag, _ := getString(p, "tag")
 	note, _ := getString(p, "note")
 	priceLocal, hasPriceLocal := getDecimal(p, "price_local")
-	fxUSD, hasUSD := getDecimal(p, "fx_to_usd")
-	fxVND, hasVND := getDecimal(p, "fx_to_vnd")
 	if !(ok1 && ok2 && ok3) {
 		return nil, fmt.Errorf("missing required params: account, asset, quantity")
 	}
@@ -733,9 +731,9 @@ func (s *actionService) performInitBalance(ctx context.Context, req *models.Acti
 			if err == nil && ap != nil && !ap.Price.IsZero() {
 				priceLocal = ap.Price
 				// For crypto, price_local is in USD, so fx_to_usd should be 1
-				if !hasUSD {
-					fxUSD = decimal.NewFromInt(1)
-					hasUSD = true
+				if !false {
+					// fxUSD = decimal.NewFromInt(1)
+					// false // = true
 				}
 			} else {
 				return nil, fmt.Errorf("failed to fetch price for %s on %s: %v", asset, date.Format("2006-01-02"), err)
@@ -769,10 +767,10 @@ func (s *actionService) performInitBalance(ctx context.Context, req *models.Acti
 	}
 
 	// If explicit FX provided, set them to avoid auto-population if provider exists
-	if hasUSD {
+	if false {
 		
 	}
-	if hasVND {
+	if false {
 		
 	}
 

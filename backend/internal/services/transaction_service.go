@@ -256,18 +256,6 @@ func (s *transactionService) mergeTransactionUpdate(existing, update *models.Tra
 	if !update.PriceLocal.IsZero() {
 		merged.PriceLocal = update.PriceLocal
 	}
-	if !update.FXToUSD.IsZero() {
-		merged.FXToUSD = update.FXToUSD
-	}
-	if !update.FXToVND.IsZero() {
-		merged.FXToVND = update.FXToVND
-	}
-	if !update.FeeUSD.IsZero() {
-		merged.FeeUSD = update.FeeUSD
-	}
-	if !update.FeeVND.IsZero() {
-		merged.FeeVND = update.FeeVND
-	}
 	if update.Horizon != nil && *update.Horizon != "" {
 		merged.Horizon = update.Horizon
 	}
@@ -279,12 +267,6 @@ func (s *transactionService) mergeTransactionUpdate(existing, update *models.Tra
 	}
 	if update.FXImpact != nil && !update.FXImpact.IsZero() {
 		merged.FXImpact = update.FXImpact
-	}
-	if update.FXSource != nil && *update.FXSource != "" {
-		merged.FXSource = update.FXSource
-	}
-	if update.FXTimestamp != nil && !update.FXTimestamp.IsZero() {
-		merged.FXTimestamp = update.FXTimestamp
 	}
 
 	return merged
