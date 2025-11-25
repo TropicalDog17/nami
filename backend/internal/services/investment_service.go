@@ -97,8 +97,8 @@ func (s *investmentService) CreateDeposit(ctx context.Context, tx *models.Transa
 			Horizon:         tx.Horizon,
 			DepositDate:     tx.Date,
 			DepositQty:      tx.Quantity,
-			DepositCost:     tx.AmountUSD,
-			DepositUnitCost: tx.AmountUSD.Div(tx.Quantity),
+			DepositCost:     tx.AmountLocal,
+			DepositUnitCost: tx.AmountLocal.Div(tx.Quantity),
 			WithdrawalQty:   decimal.Zero,
 			WithdrawalValue: decimal.Zero,
 			PnL:             decimal.Zero,
@@ -118,7 +118,7 @@ func (s *investmentService) CreateDeposit(ctx context.Context, tx *models.Transa
 		}
 	} else {
 		// Add to existing investment
-		targetInvestment.AddDeposit(tx.Quantity, tx.AmountUSD)
+		targetInvestment.AddDeposit(tx.Quantity, tx.AmountLocal)
 
 		// Update the investment
 		err := s.investmentRepo.Update(ctx, targetInvestment)
@@ -175,7 +175,7 @@ func (s *investmentService) CreateWithdrawal(ctx context.Context, tx *models.Tra
 	}
 
 	// Process the withdrawal using the investment's cost basis method
-	err = targetInvestment.AddWithdrawal(tx.Quantity, tx.AmountUSD)
+	err = targetInvestment.AddWithdrawal(tx.Quantity, tx.AmountLocal)
 	if err != nil {
 		return nil, fmt.Errorf("failed to process withdrawal: %w", err)
 	}
