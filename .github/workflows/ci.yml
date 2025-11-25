@@ -1,0 +1,312 @@
+name: CI Pipeline
+
+on:
+  push:
+    branches: [ master, develop ]
+  pull_request:
+    branches: [ master, develop ]
+
+env:
+  GO_VERSION: '1.21'
+  NODE_VERSION: '20'
+  POSTGRES_VERSION: '15'
+
+jobs:
+  # Backend CI Job
+  backend:
+    name: Backend CI
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:$POSTGRES_VERSION
+        env:
+          POSTGRES_PASSWORD: test_password
+          POSTGRES_USER: test_user
+          POSTGRES_DB: test_nami
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: ${{ env.GO_VERSION }}
+
+    - name: Cache Go modules
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.cache/go-build
+          ~/go/pkg/mod
+        key: ${{ runner.os }}-go-${{ hashFiles('backend/go.sum', 'backend/migrations/go.sum') }}
+        restore-keys: |
+          ${{ runner.os }}-go-
+
+    - name: Install dependencies
+      run: |
+        cd backend && go mod download
+        cd backend/migrations && go mod download
+
+    - name: Format code
+      run: |
+        cd backend && go fmt ./...
+        cd backend/migrations && go fmt ./...
+
+    - name: Lint code
+      run: |
+        cd backend && go vet ./...
+        cd backend/migrations && go vet ./...
+
+    - name: Run unit tests
+      run: |
+        cd backend && go test -v ./... -short
+
+    - name: Run integration tests
+      run: |
+        cd backend && go test -v ./tests/integration/ -timeout=10m
+      env:
+        DATABASE_URL: postgres://test_user:test_password@localhost:5432/test_nami?sslmode=disable
+        VAULT_E2E: 1
+
+    - name: Build backend
+      run: |
+        cd backend && go build -o ../bin/nami-server ./cmd/server
+
+  # Frontend CI Job
+  frontend:
+    name: Frontend CI
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+
+    - name: Cache Node modules
+      uses: actions/cache@v3
+      with:
+        path: |
+          frontend/node_modules
+          ~/.npm
+        key: ${{ runner.os }}-node-${{ hashFiles('frontend/package-lock.json') }}
+        restore-keys: |
+          ${{ runner.os }}-node-
+
+    - name: Install dependencies
+      working-directory: ./frontend
+      run: npm ci
+
+    - name: Lint code
+      working-directory: ./frontend
+      run: npm run lint
+
+    - name: Type check
+      working-directory: ./frontend
+      run: npm run lint:ts
+
+    - name: Run unit tests
+      working-directory: ./frontend
+      run: npm test
+
+    - name: Install Playwright browsers
+      working-directory: ./frontend
+      run: npx playwright install --with-deps
+
+    - name: Build frontend
+      working-directory: ./frontend
+      run: npm run build
+
+    - name: Run E2E tests
+      working-directory: ./frontend
+      run: npm run test:e2e
+      env:
+        CI: true
+
+  # AI Service CI Job
+  ai-service:
+    name: AI Service CI
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+
+    - name: Cache Node modules
+      uses: actions/cache@v3
+      with:
+        path: |
+          ai-service/node_modules
+          ~/.npm
+        key: ${{ runner.os }}-node-ai-${{ hashFiles('ai-service/package-lock.json') }}
+        restore-keys: |
+          ${{ runner.os }}-node-ai-
+
+    - name: Install dependencies
+      working-directory: ./ai-service
+      run: npm ci
+
+    - name: Type check
+      working-directory: ./ai-service
+      run: npm run check
+
+    - name: Build AI service
+      working-directory: ./ai-service
+      run: npm run build
+
+    - name: Run unit tests
+      working-directory: ./ai-service
+      run: npm run test:unit
+
+    - name: Run tests
+      working-directory: ./ai-service
+      run: npm test
+
+  # Cross-service Integration Tests
+  integration:
+    name: Cross-service Integration
+    runs-on: ubuntu-latest
+    needs: [backend, frontend, ai-service]
+
+    services:
+      postgres:
+        image: postgres:$POSTGRES_VERSION
+        env:
+          POSTGRES_PASSWORD: test_password
+          POSTGRES_USER: test_user
+          POSTGRES_DB: test_nami
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: ${{ env.GO_VERSION }}
+
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+
+    - name: Cache Go modules
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.cache/go-build
+          ~/go/pkg/mod
+        key: ${{ runner.os }}-go-${{ hashFiles('backend/go.sum', 'backend/migrations/go.sum') }}
+        restore-keys: |
+          ${{ runner.os }}-go-
+
+    - name: Cache Node modules
+      uses: actions/cache@v3
+      with:
+        path: |
+          frontend/node_modules
+          ai-service/node_modules
+        key: ${{ runner.os }}-node-integration-${{ hashFiles('frontend/package-lock.json', 'ai-service/package-lock.json') }}
+        restore-keys: |
+          ${{ runner.os }}-node-integration-
+
+    - name: Install all dependencies
+      run: |
+        cd backend && go mod download
+        cd backend/migrations && go mod download
+        cd frontend && npm ci
+        cd ai-service && npm ci
+
+    - name: Run database migrations
+      run: |
+        cd backend/migrations && go run migrate.go
+      env:
+        DATABASE_URL: postgres://test_user:test_password@localhost:5432/test_nami?sslmode=disable
+
+    - name: Start backend server
+      run: |
+        cd backend && go run cmd/server/main.go &
+        sleep 10
+      env:
+        DATABASE_URL: postgres://test_user:test_password@localhost:5432/test_nami?sslmode=disable
+
+    - name: Run isolated E2E tests
+      run: |
+        cd frontend && npm run test:e2e:isolated
+      env:
+        CI: true
+
+    - name: Generate test coverage report
+      run: |
+        echo "## Test Coverage Summary" >> $GITHUB_STEP_SUMMARY
+        echo "| Service | Tests Passed | Coverage |" >> $GITHUB_STEP_SUMMARY
+        echo "|---------|-------------|----------|" >> $GITHUB_STEP_SUMMARY
+
+  # Security and Quality Checks
+  security:
+    name: Security & Quality
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: ${{ env.GO_VERSION }}
+
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+
+    - name: Run Go security check
+      uses: securecodewarrior/github-action-gosec@master
+      with:
+        args: '-no-fail -fmt sarif -out gosec.sarif ./backend/...'
+
+    - name: Upload Go security scan results
+      uses: github/codeql-action/upload-sarif@v2
+      if: always()
+      with:
+        sarif_file: gosec.sarif
+
+    - name: Run Node.js audit
+      working-directory: ./frontend
+      run: npm audit --audit-level high
+
+    - name: Run AI Service audit
+      working-directory: ./ai-service
+      run: npm audit --audit-level high
+
+    - name: Check for secrets
+      uses: trufflesecurity/trufflehog@main
+      with:
+        path: ./
+        base: main
+        head: HEAD

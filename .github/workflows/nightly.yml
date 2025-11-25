@@ -1,0 +1,94 @@
+name: Nightly Tests
+
+on:
+  schedule:
+    # Run at 2 AM UTC every day
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+
+jobs:
+  # Comprehensive nightly testing
+  comprehensive-test:
+    name: Comprehensive Tests
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_PASSWORD: nami_password
+          POSTGRES_USER: nami_user
+          POSTGRES_DB: nami
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: '1.21'
+
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+
+    - name: Cache dependencies
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.cache/go-build
+          ~/go/pkg/mod
+          frontend/node_modules
+          ai-service/node_modules
+        key: ${{ runner.os }}-nightly-${{ hashFiles('backend/go.sum', 'backend/migrations/go.sum', 'frontend/package-lock.json', 'ai-service/package-lock.json') }}
+
+    - name: Install dependencies
+      run: |
+        cd backend && go mod download
+        cd backend/migrations && go mod download
+        cd frontend && npm ci
+        cd ai-service && npm ci
+
+    - name: Run full test suite
+      run: |
+        # Run all tests with full coverage
+        cd backend && go test -v -race -coverprofile=coverage.out ./...
+        cd backend && go test -v -race -coverprofile=integration-coverage.out ./tests/integration/
+      env:
+        DATABASE_URL: postgres://nami_user:nami_password@localhost:5432/nami?sslmode=disable
+        VAULT_E2E: 1
+
+    - name: Frontend full test suite
+      working-directory: ./frontend
+      run: |
+        npm install playwright
+        npx playwright install --with-deps
+        npm test -- --coverage
+        npm run test:e2e
+
+    - name: AI Service full test suite
+      working-directory: ./ai-service
+      run: |
+        npm run test:unit
+        npm run test:llm
+
+    - name: Generate test reports
+      run: |
+        echo "## Nightly Test Results" >> $GITHUB_STEP_SUMMARY
+        echo "All tests completed successfully!" >> $GITHUB_STEP_SUMMARY
+
+    - name: Upload coverage reports
+      uses: codecov/codecov-action@v3
+      with:
+        files: ./backend/coverage.out,./backend/integration-coverage.out
+        flags: nightly
+        name: nightly-coverage
