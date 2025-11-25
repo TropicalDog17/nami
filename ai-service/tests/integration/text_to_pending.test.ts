@@ -1,14 +1,14 @@
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest'
 import express from 'express'
 import request from 'supertest'
-import { buildBot } from '../../src/telegram.js'
+import { buildBot } from '../../src/integrations/telegram.js'
 import { OpenAIMock } from '../helpers/openaiMock.js'
 import { startMockBackend } from '../helpers/mockBackend.js'
-import { AppConfig } from '../../src/config.js'
+import { AppConfig } from '../../src/utils/config.js'
 
 // Mock the LLMClient at module level
-vi.mock('../../src/llm.js', async () => {
-  const actual = await vi.importActual('../../src/llm.js')
+vi.mock('../../src/integrations/llm.js', async () => {
+  const actual = await vi.importActual('../../src/integrations/llm.js')
   return {
     ...actual,
     LLMClient: vi.fn().mockImplementation(() => ({

@@ -1,5 +1,5 @@
-import { LLMClient } from '../src/llm'
-import { parseExpenseText } from '../src/parser'
+import { LLMClient } from '../src/integrations/llm.js'
+import { parseExpenseText } from '../src/core/parser.js'
 import { describe, it, beforeAll, afterAll, expect, test } from 'vitest'
 // Test data
 const TEST_EXPENSES = [
