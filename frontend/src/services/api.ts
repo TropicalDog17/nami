@@ -276,6 +276,34 @@ export const pricesApi = {
     api.get<T>('/api/prices/daily', { symbol, currency, start, end }),
 };
 
+// Tokenized Vault API
+export const tokenizedVaultApi = {
+  // Basic CRUD
+  list: <T = unknown>(filters: Record<string, unknown> = {}) =>
+    api.get<T>('/api/tokenized-vaults', filters),
+  get: <T = unknown>(id: string) => api.get<T>(`/api/tokenized-vaults/${id}`),
+  create: <T = unknown>(vault: unknown) => api.post<T>('/api/tokenized-vaults', vault),
+  update: <T = unknown>(id: string, vault: unknown) => api.put<T>(`/api/tokenized-vaults/${id}`, vault),
+  delete: <T = unknown>(id: string) => api.delete<T>(`/api/tokenized-vaults/${id}`),
+
+  // Manual pricing
+  updatePrice: <T = unknown>(id: string, data: { new_price: number; notes?: string }) =>
+    api.post<T>(`/api/tokenized-vaults/${id}/update-price`, data),
+  enableManualPricing: <T = unknown>(id: string, data: { initial_price: number }) =>
+    api.post<T>(`/api/tokenized-vaults/${id}/enable-manual-pricing`, data),
+  disableManualPricing: <T = unknown>(id: string) =>
+    api.post<T>(`/api/tokenized-vaults/${id}/disable-manual-pricing`, {}),
+
+  // Deposits and withdrawals
+  deposit: <T = unknown>(id: string, data: { amount: number; notes?: string }) =>
+    api.post<T>(`/api/tokenized-vaults/${id}/deposit`, data),
+  withdraw: <T = unknown>(id: string, data: { amount: number; notes?: string }) =>
+    api.post<T>(`/api/tokenized-vaults/${id}/withdraw`, data),
+
+  // Vault management
+  close: <T = unknown>(id: string) => api.post<T>(`/api/tokenized-vaults/${id}/close`, {}),
+};
+
 // Investments API
 export const investmentsApi = {
   list: <T = unknown>(filters: Record<string, unknown> = {}) =>

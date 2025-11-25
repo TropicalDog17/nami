@@ -17,11 +17,17 @@ const (
 )
 
 // Investment represents a specific investment position that can have multiple deposits
+// NOTE: This model is maintained for backward compatibility during migration to tokenized vaults
+// New implementations should use the Vault, VaultShare, and VaultAsset models
 type Investment struct {
 	ID      string  `json:"id" gorm:"primaryKey;column:id;type:varchar(255)"`
 	Asset   string  `json:"asset" gorm:"column:asset;type:varchar(50);not null;index"`
 	Account string  `json:"account" gorm:"column:account;type:varchar(100);not null;index"`
 	Horizon *string `json:"horizon,omitempty" gorm:"column:horizon;type:varchar(20);index"`
+
+	// Vault migration fields
+	VaultID    *string `json:"vault_id,omitempty" gorm:"column:vault_id;type:varchar(255);index"`
+	IsMigrated bool    `json:"is_migrated" gorm:"column:is_migrated;type:boolean;not null;default:false"`
 
 	// Aggregated deposit information
 	DepositDate     time.Time       `json:"deposit_date" gorm:"column:deposit_date;type:timestamptz;not null;index"`        // First deposit date
@@ -100,8 +106,8 @@ func (i *Investment) Validate() error {
 	if i.DepositDate.IsZero() {
 		return errors.New("deposit date is required")
 	}
-	if i.DepositQty.IsZero() || i.DepositQty.IsNegative() {
-		return errors.New("deposit quantity must be positive")
+	if i.DepositQty.IsNegative() {
+		return errors.New("deposit quantity cannot be negative")
 	}
 	if i.DepositCost.IsNegative() {
 		return errors.New("deposit cost cannot be negative")

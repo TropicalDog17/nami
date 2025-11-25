@@ -91,6 +91,21 @@ func main() {
 	investmentHandler := handlers.NewInvestmentHandler(investmentService)
     vaultHandler := handlers.NewVaultHandler(investmentService, transactionService, assetPriceService)
 
+	// Initialize tokenized vault services and handlers
+	vaultService := services.NewTokenizedVaultService(database.DB)
+	vaultShareService := services.NewTokenizedVaultShareService(database.DB)
+	// TODO: Implement VaultAssetService
+	// vaultAssetService := services.NewVaultAssetService(database.DB)
+	vaultTransactionService := services.NewVaultTransactionService(database.DB)
+
+	tokenizedVaultHandler := handlers.NewTokenizedVaultHandler(
+		vaultService,
+		vaultShareService,
+		nil, // TODO: Implement VaultAssetService
+		vaultTransactionService,
+		assetPriceService,
+	)
+
 	// Setup HTTP server
 	mux := http.NewServeMux()
 
@@ -228,6 +243,16 @@ func main() {
 			return
 		}
 		vaultHandler.HandleVaults(w, r)
+	})
+
+	// Tokenized Vault endpoints
+	mux.HandleFunc("/api/tokenized-vaults", tokenizedVaultHandler.HandleTokenizedVaults)
+	mux.HandleFunc("/api/tokenized-vaults/", func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/api/tokenized-vaults/") && len(strings.TrimPrefix(r.URL.Path, "/api/tokenized-vaults/")) > 0 {
+			tokenizedVaultHandler.HandleTokenizedVault(w, r)
+			return
+		}
+		tokenizedVaultHandler.HandleTokenizedVaults(w, r)
 	})
 
 	// Crypto tokens management

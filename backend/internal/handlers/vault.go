@@ -366,8 +366,8 @@ func (h *VaultHandler) HandleVaults(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "Invalid JSON: "+err.Error(), http.StatusBadRequest)
 			return
 		}
-		if body.Asset == "" || body.Account == "" || body.DepositQty <= 0 || body.DepositCost < 0 {
-			http.Error(w, "asset, account, depositQty (>0), and depositCost (>=0) are required", http.StatusBadRequest)
+		if body.Asset == "" || body.Account == "" || body.DepositQty < 0 || body.DepositCost < 0 {
+			http.Error(w, "asset, account, depositQty (>=0), and depositCost (>=0) are required", http.StatusBadRequest)
 			return
 		}
 

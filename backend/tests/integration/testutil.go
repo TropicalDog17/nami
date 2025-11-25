@@ -149,14 +149,14 @@ func setupTestTables(database *db.DB) error {
 
 func makeStakeTx(date time.Time, asset, account string, qty, priceUSD float64) *models.Transaction {
 	return &models.Transaction{
-		Date:         date,
-		Type:         models.ActionStake,
-		Asset:        asset,
-		Account:      account,
-		Quantity:     decimal.NewFromFloat(qty),
-		PriceLocal:   decimal.NewFromFloat(priceUSD),
+		Date:          date,
+		Type:          models.ActionStake,
+		Asset:         asset,
+		Account:       account,
+		Quantity:      decimal.NewFromFloat(qty),
+		PriceLocal:    decimal.NewFromFloat(priceUSD),
 		LocalCurrency: "USD",
-		FeeLocal:     decimal.Zero,
+		FeeLocal:      decimal.Zero,
 	}
 }
 
@@ -227,3 +227,11 @@ func stringPtr(s string) *string     { return &s }
 func boolPtr(b bool) *bool           { return &b }
 func timePtr(t time.Time) *time.Time { return &t }
 func floatPtr(f float64) *float64    { return &f }
+
+func assertApproxEqual(t *testing.T, a, b decimal.Decimal, toleranceBPS int64) {
+	diff := a.Sub(b).Abs()
+	tol := a.Mul(decimal.NewFromInt(toleranceBPS)).Div(decimal.NewFromInt(10000)).Abs()
+	if diff.GreaterThan(tol) {
+		t.Errorf("Values not approximately equal: %s vs %s (diff: %s > tol: %s)", a.String(), b.String(), diff.String(), tol.String())
+	}
+}

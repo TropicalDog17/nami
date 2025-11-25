@@ -50,14 +50,14 @@ func TestVault_DepositValidation(t *testing.T) {
 		t.Fatalf("expected 400 for bad JSON, got %d", wBad.Code)
 	}
 
-	// quantity <= 0
+	// quantity = 0 should now be allowed (empty deposit)
 	dep := map[string]interface{}{"quantity": 0, "cost": 0}
 	depJSON, _ := json.Marshal(dep)
 	rQty := httptest.NewRequest(http.MethodPost, "/api/vaults/"+created.ID+"/deposit", bytes.NewReader(depJSON))
 	wQty := httptest.NewRecorder()
 	vaultHandler.HandleVault(wQty, rQty)
-	if wQty.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400 for qty<=0, got %d body=%s", wQty.Code, wQty.Body.String())
+	if wQty.Code != http.StatusCreated {
+		t.Fatalf("expected 201 for qty=0 (empty deposit), got %d body=%s", wQty.Code, wQty.Body.String())
 	}
 
 	// cost < 0
@@ -153,6 +153,186 @@ func TestVault_WithdrawValidation(t *testing.T) {
 	if wOK.Code != http.StatusCreated {
 		t.Fatalf("expected 201 for valid withdrawal, got %d body=%s", wOK.Code, wOK.Body.String())
 	}
+}
+
+func TestVault_EmptyVaultCreation(t *testing.T) {
+	tdb := setupTestDB(t)
+	defer tdb.cleanup(t)
+
+	txRepo := repositories.NewTransactionRepository(tdb.database)
+	invRepo := repositories.NewInvestmentRepository(tdb.database)
+	invSvc := services.NewInvestmentService(invRepo, txRepo)
+	txSvc := services.NewTransactionService(tdb.database)
+	vaultHandler := handlers.NewVaultHandler(invSvc, txSvc, nil)
+
+	tests := []struct {
+		name        string
+		asset       string
+		account     string
+		depositQty  float64
+		depositCost float64
+		date        string
+		expectCode  int
+		expectError string
+	}{
+		{
+			name:        "valid empty vault (depositQty=0, depositCost=0)",
+			asset:       "BTC",
+			account:     "Investment Vault",
+			depositQty:  0,
+			depositCost: 0,
+			date:        "2025-01-15",
+			expectCode:  http.StatusCreated,
+			expectError: "",
+		},
+		{
+			name:        "valid vault with positive deposit",
+			asset:       "ETH",
+			account:     "Investment Vault",
+			depositQty:  10,
+			depositCost: 2000,
+			date:        "2025-01-15",
+			expectCode:  http.StatusCreated,
+			expectError: "",
+		},
+		{
+			name:        "valid vault with depositQty > 0 and depositCost = 0",
+			asset:       "USDT",
+			account:     "Investment Vault",
+			depositQty:  100,
+			depositCost: 0,
+			date:        "2025-01-15",
+			expectCode:  http.StatusCreated,
+			expectError: "",
+		},
+		{
+			name:        "reject negative depositQty",
+			asset:       "BTC",
+			account:     "Investment Vault",
+			depositQty:  -1,
+			depositCost: 0,
+			date:        "2025-01-15",
+			expectCode:  http.StatusBadRequest,
+			expectError: "depositQty (>=0), and depositCost (>=0) are required",
+		},
+		{
+			name:        "reject negative depositCost",
+			asset:       "BTC",
+			account:     "Investment Vault",
+			depositQty:  0,
+			depositCost: -100,
+			date:        "2025-01-15",
+			expectCode:  http.StatusBadRequest,
+			expectError: "depositQty (>=0), and depositCost (>=0) are required",
+		},
+		{
+			name:        "reject empty asset",
+			asset:       "",
+			account:     "Investment Vault",
+			depositQty:  0,
+			depositCost: 0,
+			date:        "2025-01-15",
+			expectCode:  http.StatusBadRequest,
+			expectError: "depositQty (>=0), and depositCost (>=0) are required",
+		},
+		{
+			name:        "reject empty account",
+			asset:       "BTC",
+			account:     "",
+			depositQty:  0,
+			depositCost: 0,
+			date:        "2025-01-15",
+			expectCode:  http.StatusBadRequest,
+			expectError: "depositQty (>=0), and depositCost (>=0) are required",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			body := map[string]interface{}{
+				"asset":       tc.asset,
+				"account":     tc.account,
+				"depositQty":  tc.depositQty,
+				"depositCost": tc.depositCost,
+				"date":        tc.date,
+			}
+			bodyJSON, _ := json.Marshal(body)
+
+			req := httptest.NewRequest(http.MethodPost, "/api/vaults", bytes.NewReader(bodyJSON))
+			w := httptest.NewRecorder()
+			vaultHandler.HandleVaults(w, req)
+
+			if w.Code != tc.expectCode {
+				t.Fatalf("expected status %d, got %d, body=%s", tc.expectCode, w.Code, w.Body.String())
+			}
+
+			if tc.expectCode == http.StatusBadRequest && tc.expectError != "" {
+				responseBody := w.Body.String()
+				if !contains(responseBody, tc.expectError) {
+					t.Fatalf("expected error message to contain '%s', got '%s'", tc.expectError, responseBody)
+				}
+			}
+
+			if tc.expectCode == http.StatusCreated {
+				var created models.Investment
+				if err := json.Unmarshal(w.Body.Bytes(), &created); err != nil {
+					t.Fatalf("failed to decode response: %v", err)
+				}
+
+				// Verify the created vault has correct values
+				if created.Asset != tc.asset {
+					t.Fatalf("expected asset '%s', got '%s'", tc.asset, created.Asset)
+				}
+
+				if created.Account != tc.account {
+					t.Fatalf("expected account '%s', got '%s'", tc.account, created.Account)
+				}
+
+				expectedQty := decimal.NewFromFloat(tc.depositQty)
+				if !created.DepositQty.Equal(expectedQty) {
+					t.Fatalf("expected depositQty %s, got %s", expectedQty.String(), created.DepositQty.String())
+				}
+
+				expectedCost := decimal.NewFromFloat(tc.depositCost)
+				if !created.DepositCost.Equal(expectedCost) {
+					t.Fatalf("expected depositCost %s, got %s", expectedCost.String(), created.DepositCost.String())
+				}
+
+				// Verify that the vault was created successfully and can be retrieved
+				reqGet := httptest.NewRequest(http.MethodGet, "/api/vaults/"+created.ID, nil)
+				wGet := httptest.NewRecorder()
+				vaultHandler.HandleVault(wGet, reqGet)
+
+				if wGet.Code != http.StatusOK {
+					t.Fatalf("failed to retrieve created vault, got status %d, body=%s", wGet.Code, wGet.Body.String())
+				}
+
+				var retrieved models.Investment
+				if err := json.Unmarshal(wGet.Body.Bytes(), &retrieved); err != nil {
+					t.Fatalf("failed to decode retrieved vault: %v", err)
+				}
+
+				if retrieved.ID != created.ID {
+					t.Fatalf("retrieved vault ID mismatch, expected %s, got %s", created.ID, retrieved.ID)
+				}
+			}
+		})
+	}
+}
+
+// Helper function to check if a string contains a substring
+func contains(s, substr string) bool {
+	return len(s) >= len(substr) && (s == substr || len(substr) == 0 ||
+		(len(s) > len(substr) && containsString(s, substr)))
+}
+
+func containsString(s, substr string) bool {
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
+	return false
 }
 
 func TestVault_RouteMisuseAndUnknownActions(t *testing.T) {
@@ -542,7 +722,8 @@ type depositValidationCase struct {
 func runDepositValidationTests(t *testing.T, tdb *testDB, invHandler handlers.InvestmentHandler, vaultHandler handlers.VaultHandler, createdID string) {
 	tests := []depositValidationCase{
 		{"bad JSON", map[string]interface{}{}, http.StatusBadRequest},
-		{"quantity <= 0", map[string]interface{}{"quantity": 0, "cost": 0}, http.StatusBadRequest},
+		{"quantity < 0", map[string]interface{}{"quantity": -1, "cost": 0}, http.StatusBadRequest},
+		{"quantity = 0 should be allowed", map[string]interface{}{"quantity": 0, "cost": 0}, http.StatusCreated},
 		{"cost < 0", map[string]interface{}{"quantity": 1, "cost": -1}, http.StatusBadRequest},
 		{"not found", map[string]interface{}{"quantity": 1, "cost": 1}, http.StatusNotFound},
 	}
