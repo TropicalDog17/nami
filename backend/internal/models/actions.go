@@ -133,11 +133,10 @@ func (s StakeParams) Validate() error {
 
 // ToIncomingTransaction creates a transaction for a deposit into an investment
 func (s StakeParams) ToIncomingTransaction() *Transaction {
-	// Safely handle optional FX pointers with sensible defaults
-	if s.FXToUSD != nil {
-	}
-	if s.FXToVND != nil {
-	}
+	// Default to USD for stake transactions
+	localCurrency := "USD"
+	feeLocal := decimal.Zero
+
 	tx := &Transaction{
 		Date:         s.Date,
 		Type:         ActionStake,
@@ -145,6 +144,8 @@ func (s StakeParams) ToIncomingTransaction() *Transaction {
 		Account:      s.InvestmentAccount,
 		Quantity:     decimal.NewFromFloat(s.Amount),
 		PriceLocal:   decimal.NewFromFloat(1.0),
+		LocalCurrency: localCurrency,
+		FeeLocal:     feeLocal,
 		InternalFlow: func() *bool { b := true; return &b }(),
 	}
 	if s.Horizon != "" {
@@ -164,21 +165,19 @@ func (s StakeParams) ToIncomingTransaction() *Transaction {
 
 // ToOutgoingTransaction creates a transaction when transfering out for investment
 func (s StakeParams) ToOutgoingTransaction() *Transaction {
-	// Safely handle optional FX pointers with sensible defaults
-	if s.FXToUSD != nil {
-	}
-	if s.FXToVND != nil {
-	}
+	// Default to USD for transfer transactions
+	localCurrency := "USD"
+	feeLocal := decimal.NewFromFloat(s.FeePercent)
+
 	tx := &Transaction{
-		Date:    s.Date,
-		Type:    "transfer_out",
-		Asset:   s.Asset,
-		Account: s.SourceAccount,
-
-		Quantity:   decimal.NewFromFloat(s.Amount),
-		PriceLocal: decimal.NewFromFloat(1.0),
-
-
+		Date:         s.Date,
+		Type:         "transfer_out",
+		Asset:        s.Asset,
+		Account:      s.SourceAccount,
+		Quantity:     decimal.NewFromFloat(s.Amount),
+		PriceLocal:   decimal.NewFromFloat(1.0),
+		LocalCurrency: localCurrency,
+		FeeLocal:     feeLocal,
 		InternalFlow: func() *bool { b := true; return &b }(),
 	}
 	if s.Horizon != "" {
@@ -239,13 +238,25 @@ func (u UnstakeParams) Validate() error {
 }
 
 func (u UnstakeParams) ToTransaction() *Transaction {
+	// Default to USD for unstake transactions
+	localCurrency := "USD"
+	feeLocal := decimal.Zero
+
+	// If we have exit price local and need to determine currency
+	if u.ExitPriceLocal > 0 {
+		// For now, assume USD - in the future this could be inferred from other parameters
+		localCurrency = "USD"
+	}
+
 	tx := &Transaction{
-		Date:       u.Date,
-		Type:       ActionUnstake,
-		Asset:      u.Asset,
-		Account:    u.InvestmentAccount,
-		Quantity:   decimal.NewFromFloat(u.Quantity),
-		PriceLocal: decimal.NewFromFloat(u.ExitPriceLocal),
+		Date:         u.Date,
+		Type:         ActionUnstake,
+		Asset:        u.Asset,
+		Account:      u.InvestmentAccount,
+		Quantity:     decimal.NewFromFloat(u.Quantity),
+		PriceLocal:   decimal.NewFromFloat(u.ExitPriceLocal),
+		LocalCurrency: localCurrency,
+		FeeLocal:     feeLocal,
 	}
 	if u.Horizon != "" {
 		tx.Horizon = &u.Horizon

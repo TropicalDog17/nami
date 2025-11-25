@@ -175,10 +175,10 @@ func (s *actionService) performP2P(ctx context.Context, req *models.ActionReques
 	if isBuy {
 		// 1) Bank VND outflow to counterparty
 		bankTx := &models.Transaction{
-			Date:    date,
-			Type:    "transfer_out",
-			Asset:   "VND",
-			Account: bankAccount,
+			Date:         date,
+			Type:         "transfer_out",
+			Asset:        "VND",
+			Account:      bankAccount,
 			Counterparty: func() *string {
 				if counterparty == "" {
 					return nil
@@ -187,17 +187,21 @@ func (s *actionService) performP2P(ctx context.Context, req *models.ActionReques
 			}(),
 			Quantity:     vndAmount,
 			PriceLocal:   decimal.NewFromInt(1),
+			LocalCurrency: "VND",
+			FeeLocal:     feeVND,
 			InternalFlow: func() *bool { b := true; return &b }(),
 		}
 		bankTx.PreSave()
 		created = append(created, bankTx)
 
 		// 2) Exchange USDT inflow with price in VND per USDT
+		// Convert price from VND to USD for USDT transaction
+		priceUSD := priceVND.Mul(decimal.NewFromFloat(usdPerVnd))
 		exchTx := &models.Transaction{
-			Date:    date,
-			Type:    "transfer_in",
-			Asset:   "USDT",
-			Account: exchangeAccount,
+			Date:         date,
+			Type:         "transfer_in",
+			Asset:        "USDT",
+			Account:      exchangeAccount,
 			Counterparty: func() *string {
 				if counterparty == "" {
 					return nil
@@ -205,7 +209,9 @@ func (s *actionService) performP2P(ctx context.Context, req *models.ActionReques
 				return &counterparty
 			}(),
 			Quantity:     qty,
-			PriceLocal:   priceVND,
+			PriceLocal:   priceUSD,
+			LocalCurrency: "USD",
+			FeeLocal:     decimal.Zero,
 			InternalFlow: func() *bool { b := true; return &b }(),
 		}
 		exchTx.PreSave()
@@ -219,11 +225,13 @@ func (s *actionService) performP2P(ctx context.Context, req *models.ActionReques
 	} else {
 		// SELL USDT for VND
 		// 1) Exchange USDT outflow
+		// Convert price from VND to USD for USDT transaction
+		priceUSD := priceVND.Mul(decimal.NewFromFloat(usdPerVnd))
 		usdtOut := &models.Transaction{
-			Date:    date,
-			Type:    "transfer_out",
-			Asset:   "USDT",
-			Account: exchangeAccount,
+			Date:         date,
+			Type:         "transfer_out",
+			Asset:        "USDT",
+			Account:      exchangeAccount,
 			Counterparty: func() *string {
 				if counterparty == "" {
 					return nil
@@ -231,7 +239,9 @@ func (s *actionService) performP2P(ctx context.Context, req *models.ActionReques
 				return &counterparty
 			}(),
 			Quantity:     qty,
-			PriceLocal:   priceVND,
+			PriceLocal:   priceUSD,
+			LocalCurrency: "USD",
+			FeeLocal:     decimal.Zero,
 			InternalFlow: func() *bool { b := true; return &b }(),
 		}
 		usdtOut.PreSave()
@@ -239,10 +249,10 @@ func (s *actionService) performP2P(ctx context.Context, req *models.ActionReques
 
 		// 2) Bank VND inflow
 		vndIn := &models.Transaction{
-			Date:    date,
-			Type:    "transfer_in",
-			Asset:   "VND",
-			Account: bankAccount,
+			Date:         date,
+			Type:         "transfer_in",
+			Asset:        "VND",
+			Account:      bankAccount,
 			Counterparty: func() *string {
 				if counterparty == "" {
 					return nil
@@ -251,6 +261,8 @@ func (s *actionService) performP2P(ctx context.Context, req *models.ActionReques
 			}(),
 			Quantity:     vndAmount,
 			PriceLocal:   decimal.NewFromInt(1),
+			LocalCurrency: "VND",
+			FeeLocal:     feeVND,
 			InternalFlow: func() *bool { b := true; return &b }(),
 		}
 		vndIn.PreSave()
@@ -259,12 +271,14 @@ func (s *actionService) performP2P(ctx context.Context, req *models.ActionReques
 		// Optional fee in VND (bank/cex fee)
 		if !feeVND.IsZero() {
 			feeTx := &models.Transaction{
-				Date:       date,
-				Type:       "fee",
-				Asset:      "VND",
-				Account:    bankAccount,
-				Quantity:   feeVND,
-				PriceLocal: decimal.NewFromInt(1),
+				Date:         date,
+				Type:         "fee",
+				Asset:        "VND",
+				Account:      bankAccount,
+				Quantity:     feeVND,
+				PriceLocal:   decimal.NewFromInt(1),
+				LocalCurrency: "VND",
+				FeeLocal:     decimal.Zero,
 			}
 			feeTx.PreSave()
 			created = append(created, feeTx)
@@ -293,15 +307,17 @@ func (s *actionService) performSpend(ctx context.Context, req *models.ActionRequ
 	}
 
 	t := "expense"
-	// Leave FX rates as zero so TransactionService.populateFXRates fetches from the FX provider.
+	// For VND expenses, use VND as local currency
 	// For CreditCard, model as expense on account; CashFlow derived handles zero immediate cash flow
 	tx := &models.Transaction{
-		Date:       date,
-		Type:       t,
-		Asset:      "VND",
-		Account:    account,
-		Quantity:   vndAmount,
-		PriceLocal: decimal.NewFromInt(1),
+		Date:         date,
+		Type:         t,
+		Asset:        "VND",
+		Account:      account,
+		Quantity:     vndAmount,
+		PriceLocal:   decimal.NewFromInt(1),
+		LocalCurrency: "VND",
+		FeeLocal:     decimal.Zero,
 	}
 	if counterparty != "" {
 		tx.Counterparty = &counterparty
@@ -350,13 +366,16 @@ func (s *actionService) performSpotBuy(ctx context.Context, req *models.ActionRe
 	}
 
 	// 1) Buy base
+	// For crypto transactions, assume USD as local currency
 	buyTx := &models.Transaction{
-		Date:       date,
-		Type:       "buy",
-		Asset:      base,
-		Account:    account,
-		Quantity:   qty,
-		PriceLocal: price,
+		Date:         date,
+		Type:         "buy",
+		Asset:        base,
+		Account:      account,
+		Quantity:     qty,
+		PriceLocal:   price,
+		LocalCurrency: "USD",
+		FeeLocal:     feeQuote,
 	}
 	if counterparty != "" {
 		buyTx.Counterparty = &counterparty
@@ -368,12 +387,14 @@ func (s *actionService) performSpotBuy(ctx context.Context, req *models.ActionRe
 	// 2) Spend quote (sell/transfer_out) quantity = qty * price
 	spent := qty.Mul(price)
 	sellTx := &models.Transaction{
-		Date:       date,
-		Type:       "sell",
-		Asset:      quote,
-		Account:    account,
-		Quantity:   spent,
-		PriceLocal: decimal.NewFromInt(1),
+		Date:         date,
+		Type:         "sell",
+		Asset:        quote,
+		Account:      account,
+		Quantity:     spent,
+		PriceLocal:   decimal.NewFromInt(1),
+		LocalCurrency: "USD",
+		FeeLocal:     decimal.Zero,
 	}
 	if counterparty != "" {
 		sellTx.Counterparty = &counterparty
@@ -398,12 +419,14 @@ func (s *actionService) performSpotBuy(ctx context.Context, req *models.ActionRe
 	// Create fee transactions when amounts > 0
 	if feeBaseQty.IsPositive() {
 		feeTx := &models.Transaction{
-			Date:       date,
-			Type:       "fee",
-			Asset:      base,
-			Account:    account,
-			Quantity:   feeBaseQty,
-			PriceLocal: decimal.NewFromInt(1),
+			Date:         date,
+			Type:         "fee",
+			Asset:        base,
+			Account:      account,
+			Quantity:     feeBaseQty,
+			PriceLocal:   decimal.NewFromInt(1),
+			LocalCurrency: "USD",
+			FeeLocal:     decimal.Zero,
 		}
 		if err := s.transactionService.CreateTransaction(ctx, feeTx); err != nil {
 			return nil, err
@@ -412,12 +435,14 @@ func (s *actionService) performSpotBuy(ctx context.Context, req *models.ActionRe
 	}
 	if feeQuoteQty.IsPositive() {
 		feeTx := &models.Transaction{
-			Date:       date,
-			Type:       "fee",
-			Asset:      quote,
-			Account:    account,
-			Quantity:   feeQuoteQty,
-			PriceLocal: decimal.NewFromInt(1),
+			Date:         date,
+			Type:         "fee",
+			Asset:        quote,
+			Account:      account,
+			Quantity:     feeQuoteQty,
+			PriceLocal:   decimal.NewFromInt(1),
+			LocalCurrency: "USD",
+			FeeLocal:     decimal.Zero,
 		}
 		if err := s.transactionService.CreateTransaction(ctx, feeTx); err != nil {
 			return nil, err
@@ -445,13 +470,14 @@ func (s *actionService) performBorrow(ctx context.Context, req *models.ActionReq
 	}
 
 	tx := &models.Transaction{
-		Date:       date,
-		Type:       "borrow",
-		Asset:      asset,
-		Account:    account,
-		Quantity:   amount,
-		PriceLocal: decimal.NewFromInt(1),
-		// Leave FX zero so TransactionService can auto-populate correct rates
+		Date:         date,
+		Type:         "borrow",
+		Asset:        asset,
+		Account:      account,
+		Quantity:     amount,
+		PriceLocal:   decimal.NewFromInt(1),
+		LocalCurrency: "USD",
+		FeeLocal:     decimal.Zero,
 	}
 	if counterparty != "" {
 		tx.Counterparty = &counterparty
@@ -480,13 +506,14 @@ func (s *actionService) performRepayBorrow(ctx context.Context, req *models.Acti
 	}
 
 	tx := &models.Transaction{
-		Date:       date,
-		Type:       "repay_borrow",
-		Asset:      asset,
-		Account:    account,
-		Quantity:   amount,
-		PriceLocal: decimal.NewFromInt(1),
-		// Leave FX zero so TransactionService can auto-populate correct rates
+		Date:         date,
+		Type:         "repay_borrow",
+		Asset:        asset,
+		Account:      account,
+		Quantity:     amount,
+		PriceLocal:   decimal.NewFromInt(1),
+		LocalCurrency: "USD",
+		FeeLocal:     decimal.Zero,
 	}
 	if counterparty != "" {
 		tx.Counterparty = &counterparty
@@ -622,6 +649,8 @@ func (s *actionService) performUnstake(ctx context.Context, req *models.ActionRe
 		Account:      invest,
 		Quantity:     amount,
 		PriceLocal:   finalExitPriceUSD,
+		LocalCurrency: "USD",
+		FeeLocal:     decimal.Zero,
 		InternalFlow: func() *bool { b := true; return &b }(),
 		Horizon:      horizonPtr,
 	}
@@ -648,6 +677,8 @@ func (s *actionService) performUnstake(ctx context.Context, req *models.ActionRe
 		Account:      dest,
 		Quantity:     amount,
 		PriceLocal:   finalExitPriceUSD,
+		LocalCurrency: "USD",
+		FeeLocal:     decimal.Zero,
 		InternalFlow: func() *bool { b := true; return &b }(),
 		ExitDate:     &date,
 		Horizon:      horizonPtr,
@@ -730,11 +761,7 @@ func (s *actionService) performInitBalance(ctx context.Context, req *models.Acti
 			ap, err := s.priceService.GetDaily(ctx, asset, "USD", date)
 			if err == nil && ap != nil && !ap.Price.IsZero() {
 				priceLocal = ap.Price
-				// For crypto, price_local is in USD, so fx_to_usd should be 1
-				if !false {
-					// fxUSD = decimal.NewFromInt(1)
-					// false // = true
-				}
+				// For crypto, price_local is in USD
 			} else {
 				return nil, fmt.Errorf("failed to fetch price for %s on %s: %v", asset, date.Format("2006-01-02"), err)
 			}
@@ -746,12 +773,14 @@ func (s *actionService) performInitBalance(ctx context.Context, req *models.Acti
 	}
 
 	tx := &models.Transaction{
-		Date:       date,
-		Type:       "deposit",
-		Asset:      asset,
-		Account:    account,
-		Quantity:   qty,
-		PriceLocal: priceLocal,
+		Date:         date,
+		Type:         "deposit",
+		Asset:        asset,
+		Account:      account,
+		Quantity:     qty,
+		PriceLocal:   priceLocal,
+		LocalCurrency: "USD",
+		FeeLocal:     decimal.Zero,
 		Tag: func() *string {
 			if tag == "" {
 				return nil
@@ -766,13 +795,7 @@ func (s *actionService) performInitBalance(ctx context.Context, req *models.Acti
 		}(),
 	}
 
-	// If explicit FX provided, set them to avoid auto-population if provider exists
-	if false {
-		
-	}
-	if false {
-		
-	}
+	// FX rates are now inferred dynamically based on transaction date and local currency
 
 	if err := s.transactionService.CreateTransaction(ctx, tx); err != nil {
 		return nil, err
@@ -808,6 +831,8 @@ func (s *actionService) performInternalTransfer(ctx context.Context, req *models
 		Account:      source,
 		Quantity:     amount,
 		PriceLocal:   decimal.NewFromInt(1),
+		LocalCurrency: "USD",
+		FeeLocal:     decimal.Zero,
 		InternalFlow: func() *bool { b := true; return &b }(),
 	}
 	inTx := &models.Transaction{
@@ -817,6 +842,8 @@ func (s *actionService) performInternalTransfer(ctx context.Context, req *models
 		Account:      dest,
 		Quantity:     amount,
 		PriceLocal:   decimal.NewFromInt(1),
+		LocalCurrency: "USD",
+		FeeLocal:     decimal.Zero,
 		InternalFlow: func() *bool { b := true; return &b }(),
 	}
 	if counterparty != "" {

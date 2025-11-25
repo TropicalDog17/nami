@@ -190,8 +190,7 @@ func TestAdvancedHoldingsReporting(t *testing.T) {
 				Account:    inv.account,
 				Quantity:   inv.quantity,
 				PriceLocal: inv.price,
-				FXToUSD:    decimal.NewFromFloat(1),
-				FXToVND:    decimal.NewFromFloat(24000),
+				LocalCurrency: "USD",
 			}
 
 			if inv.quantity.IsNegative() {
@@ -295,8 +294,7 @@ func TestAdvancedHoldingsReporting(t *testing.T) {
 				Account:    tx.account,
 				Quantity:   tx.quantity,
 				PriceLocal: tx.price,
-				FXToUSD:    decimal.NewFromFloat(1),
-				FXToVND:    decimal.NewFromFloat(24000),
+				LocalCurrency: "USD",
 				Note:       stringPtr(tx.description),
 			}
 
@@ -404,9 +402,8 @@ func TestEnhancedFXRateTracking(t *testing.T) {
 
 		for _, scenario := range fxScenarios {
 			t.Run(scenario.name, func(t *testing.T) {
-				// Calculate expected amounts
-				expectedUSD := scenario.amount.Mul(scenario.usdRate)
-				expectedVND := scenario.amount.Mul(scenario.vndRate)
+				// Calculate expected local amount (same as quantity since price is 1)
+				expectedLocal := scenario.amount.Mul(decimal.NewFromFloat(1))
 
 				// Create transaction with FX rates
 				transaction := &models.Transaction{
@@ -416,8 +413,7 @@ func TestEnhancedFXRateTracking(t *testing.T) {
 					Account:    "TestAccount",
 					Quantity:   scenario.amount,
 					PriceLocal: decimal.NewFromFloat(1),
-					FXToUSD:    scenario.usdRate,
-					FXToVND:    scenario.vndRate,
+					LocalCurrency: scenario.asset,
 				}
 
 				// Pre-save to calculate derived fields
@@ -425,31 +421,14 @@ func TestEnhancedFXRateTracking(t *testing.T) {
 					t.Fatalf("Transaction validation failed: %v", err)
 				}
 
-				// Verify FX calculations
-				if !transaction.AmountUSD.Equal(expectedUSD.RoundBank(2)) {
-					t.Errorf("USD amount mismatch: expected %s, got %s",
-						expectedUSD.RoundBank(2).String(), transaction.AmountUSD.String())
+				// Verify local amount calculations
+				if !transaction.AmountLocal.Equal(expectedLocal.RoundBank(2)) {
+					t.Errorf("Local amount mismatch: expected %s, got %s",
+						expectedLocal.RoundBank(2).String(), transaction.AmountLocal.String())
 				}
 
-				if !transaction.AmountVND.Equal(expectedVND.RoundBank(0)) {
-					t.Errorf("VND amount mismatch: expected %s, got %s",
-						expectedVND.RoundBank(0).String(), transaction.AmountVND.String())
-				}
-
-				if scenario.precisionCheck {
-					// Test precision preservation
-					backConvertedUSD := transaction.AmountUSD.Div(transaction.FXToUSD)
-					diffUSD := scenario.amount.Sub(backConvertedUSD).Abs()
-					if diffUSD.GreaterThan(decimal.NewFromFloat(0.01)) {
-						t.Errorf("USD precision loss too high: diff=%s", diffUSD.String())
-					}
-
-					backConvertedVND := transaction.AmountVND.Div(transaction.FXToVND)
-					diffVND := scenario.amount.Sub(backConvertedVND).Abs()
-					if diffVND.GreaterThan(decimal.NewFromFloat(0.01)) {
-						t.Errorf("VND precision loss too high: diff=%s", diffVND.String())
-					}
-				}
+				// Note: FX precision testing removed since FX rates are now inferred dynamically
+				// The system now fetches real-time FX rates instead of storing them
 			})
 		}
 	})
@@ -480,8 +459,8 @@ func TestEnhancedFXRateTracking(t *testing.T) {
 				Account:    "MultiCurrency",
 				Quantity:   pos.quantity,
 				PriceLocal: pos.price,
-				FXToUSD:    pos.usdRate,
-				FXToVND:    pos.vndRate,
+				FXToUSD:    func() *decimal.Decimal { d := pos.usdRate; return &d }(),
+				FXToVND:    func() *decimal.Decimal { d := pos.vndRate; return &d }(),
 			}
 
 			if err := transactionService.CreateTransaction(ctx, transaction); err != nil {

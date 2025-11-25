@@ -365,13 +365,12 @@ func (r *transactionRepository) RecalculateFX(ctx context.Context, onlyMissing b
 
 		// Update with recalculated values
 		result := r.db.WithContext(ctx).Model(&models.Transaction{}).Where("id = ?", tx.ID).Updates(map[string]interface{}{
-			"amount_local": tx.AmountLocal,
-			"amount_usd":   tx.AmountLocal,
-			"amount_vnd":   tx.AmountLocal,
-			"delta_qty":    tx.DeltaQty,
-			"cashflow_usd": tx.CashFlowLocal,
-			"cashflow_vnd": tx.CashFlowLocal,
-			"updated_at":   tx.UpdatedAt,
+			"amount_local":   tx.AmountLocal,
+			"local_currency": tx.LocalCurrency,
+			"fee_local":      tx.FeeLocal,
+			"cashflow_local": tx.CashFlowLocal,
+			"delta_qty":      tx.DeltaQty,
+			"updated_at":     tx.UpdatedAt,
 		})
 
 		if result.Error == nil {
@@ -397,13 +396,12 @@ func (r *transactionRepository) RecalculateOneFX(ctx context.Context, id string,
 
 	// Update with recalculated values
 	if err := r.db.WithContext(ctx).Model(&models.Transaction{}).Where("id = ?", id).Updates(map[string]interface{}{
-		"amount_local": tx.AmountLocal,
-		"amount_usd":   tx.AmountLocal,
-		"amount_vnd":   tx.AmountLocal,
-		"delta_qty":    tx.DeltaQty,
-		"cashflow_usd": tx.CashFlowLocal,
-		"cashflow_vnd": tx.CashFlowLocal,
-		"updated_at":   tx.UpdatedAt,
+		"amount_local":   tx.AmountLocal,
+		"local_currency": tx.LocalCurrency,
+		"fee_local":      tx.FeeLocal,
+		"cashflow_local": tx.CashFlowLocal,
+		"delta_qty":      tx.DeltaQty,
+		"updated_at":     tx.UpdatedAt,
 	}).Error; err != nil {
 		return nil, fmt.Errorf("failed to update transaction: %w", err)
 	}

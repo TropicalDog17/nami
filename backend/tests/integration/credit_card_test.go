@@ -37,14 +37,14 @@ func TestCreditCard_Flow(t *testing.T) {
 		Account:    "CreditCard",
 		Quantity:   decimal.NewFromFloat(100),
 		PriceLocal: decimal.NewFromFloat(1),
-		FXToUSD:    decimal.NewFromFloat(1),
-		FXToVND:    decimal.NewFromFloat(24000),
+		FXToUSD:    func() *decimal.Decimal { d := decimal.NewFromFloat(1); return &d }(),
+		FXToVND:    func() *decimal.Decimal { d := decimal.NewFromFloat(24000); return &d }(),
 		Tag:        stringPtr("Shopping"),
 	}
 	if err := txService.CreateTransaction(ctx, ccSpend); err != nil {
 		t.Fatalf("failed to create CC spend: %v", err)
 	}
-	t.Logf("Created Tx: Account='%s', Type='%s', CashFlowUSD=%s", ccSpend.Account, ccSpend.Type, ccSpend.CashFlowUSD.String())
+	t.Logf("Created Tx: Account='%s', Type='%s', CashFlowLocal=%s", ccSpend.Account, ccSpend.Type, ccSpend.CashFlowLocal.String())
 
 	// Verify Cashflow is 0
 	period := models.Period{StartDate: start, EndDate: end}

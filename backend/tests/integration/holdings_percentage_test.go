@@ -30,13 +30,9 @@ func TestReportingService_GetHoldings_WithPercentages(t *testing.T) {
 			Account:     "Binance",
 			Quantity:    decimal.NewFromFloat(0.1),
 			PriceLocal:  decimal.NewFromFloat(50000),
-			AmountUSD:   decimal.NewFromFloat(5000),
-			AmountVND:   decimal.NewFromFloat(125000000), // 5000 * 25000
-			FXToUSD:     decimal.NewFromInt(1),
-			FXToVND:     decimal.NewFromInt(25000),
-			DeltaQty:    decimal.NewFromFloat(0.1),
-			CashFlowUSD: decimal.NewFromFloat(-5000),
-			CashFlowVND: decimal.NewFromFloat(-125000000),
+			LocalCurrency: "USD",
+			FXToUSD:     func() *decimal.Decimal { d := decimal.NewFromInt(1); return &d }(),
+			FXToVND:     func() *decimal.Decimal { d := decimal.NewFromInt(25000); return &d }(),
 		},
 		{
 			Date:        asOf.AddDate(0, 0, -3),
@@ -45,13 +41,9 @@ func TestReportingService_GetHoldings_WithPercentages(t *testing.T) {
 			Account:     "Binance",
 			Quantity:    decimal.NewFromFloat(1.0),
 			PriceLocal:  decimal.NewFromFloat(3000),
-			AmountUSD:   decimal.NewFromFloat(3000),
-			AmountVND:   decimal.NewFromFloat(75000000), // 3000 * 25000
-			FXToUSD:     decimal.NewFromInt(1),
-			FXToVND:     decimal.NewFromInt(25000),
-			DeltaQty:    decimal.NewFromFloat(1.0),
-			CashFlowUSD: decimal.NewFromFloat(-3000),
-			CashFlowVND: decimal.NewFromFloat(-75000000),
+			LocalCurrency: "USD",
+			FXToUSD:     func() *decimal.Decimal { d := decimal.NewFromInt(1); return &d }(),
+			FXToVND:     func() *decimal.Decimal { d := decimal.NewFromInt(25000); return &d }(),
 		},
 		{
 			Date:        asOf.AddDate(0, 0, -1),
@@ -60,13 +52,10 @@ func TestReportingService_GetHoldings_WithPercentages(t *testing.T) {
 			Account:     "Binance",
 			Quantity:    decimal.NewFromFloat(2000),
 			PriceLocal:  decimal.NewFromFloat(1),
-			AmountUSD:   decimal.NewFromFloat(2000),
-			AmountVND:   decimal.NewFromFloat(50000000), // 2000 * 25000
-			FXToUSD:     decimal.NewFromInt(1),
-			FXToVND:     decimal.NewFromInt(25000),
-			DeltaQty:    decimal.NewFromFloat(2000),
-			CashFlowUSD: decimal.NewFromFloat(-2000),
-			CashFlowVND: decimal.NewFromFloat(-50000000),
+			LocalCurrency: "USD",
+			FXToUSD:     func() *decimal.Decimal { d := decimal.NewFromInt(1); return &d }(),
+			FXToVND:     func() *decimal.Decimal { d := decimal.NewFromInt(25000); return &d }(),
+			// CashFlow field calculated automatically
 		},
 	}
 
@@ -135,11 +124,11 @@ func TestReportingService_GetHoldingsByAsset_WithPercentages(t *testing.T) {
 			Account:     "Binance",
 			Quantity:    decimal.NewFromFloat(0.1),
 			PriceLocal:  decimal.NewFromFloat(50000),
-			AmountUSD:   decimal.NewFromFloat(5000),
-			FXToUSD:     decimal.NewFromInt(1),
-			FXToVND:     decimal.NewFromInt(25000),
+			LocalCurrency: "USD",
+			FXToUSD:     func() *decimal.Decimal { d := decimal.NewFromInt(1); return &d }(),
+			FXToVND:     func() *decimal.Decimal { d := decimal.NewFromInt(25000); return &d }(),
 			DeltaQty:    decimal.NewFromFloat(0.1),
-			CashFlowUSD: decimal.NewFromFloat(-5000),
+			// CashFlow field calculated automatically
 		},
 		{
 			Date:        asOf.AddDate(0, 0, -3),
@@ -148,11 +137,11 @@ func TestReportingService_GetHoldingsByAsset_WithPercentages(t *testing.T) {
 			Account:     "Coinbase",
 			Quantity:    decimal.NewFromFloat(0.05),
 			PriceLocal:  decimal.NewFromFloat(50000),
-			AmountUSD:   decimal.NewFromFloat(2500),
-			FXToUSD:     decimal.NewFromInt(1),
-			FXToVND:     decimal.NewFromInt(25000),
+			LocalCurrency: "USD",
+			FXToUSD:     func() *decimal.Decimal { d := decimal.NewFromInt(1); return &d }(),
+			FXToVND:     func() *decimal.Decimal { d := decimal.NewFromInt(25000); return &d }(),
 			DeltaQty:    decimal.NewFromFloat(0.05),
-			CashFlowUSD: decimal.NewFromFloat(-2500),
+			// CashFlow field calculated automatically
 		},
 		{
 			Date:        asOf.AddDate(0, 0, -1),
@@ -161,11 +150,11 @@ func TestReportingService_GetHoldingsByAsset_WithPercentages(t *testing.T) {
 			Account:     "Binance",
 			Quantity:    decimal.NewFromFloat(1.0),
 			PriceLocal:  decimal.NewFromFloat(3000),
-			AmountUSD:   decimal.NewFromFloat(3000),
-			FXToUSD:     decimal.NewFromInt(1),
-			FXToVND:     decimal.NewFromInt(25000),
+			LocalCurrency: "USD",
+			FXToUSD:     func() *decimal.Decimal { d := decimal.NewFromInt(1); return &d }(),
+			FXToVND:     func() *decimal.Decimal { d := decimal.NewFromInt(25000); return &d }(),
 			DeltaQty:    decimal.NewFromFloat(1.0),
-			CashFlowUSD: decimal.NewFromFloat(-3000),
+			// CashFlow field calculated automatically
 		},
 	}
 

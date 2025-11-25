@@ -149,14 +149,14 @@ func setupTestTables(database *db.DB) error {
 
 func makeStakeTx(date time.Time, asset, account string, qty, priceUSD float64) *models.Transaction {
 	return &models.Transaction{
-		Date:       date,
-		Type:       models.ActionStake,
-		Asset:      asset,
-		Account:    account,
-		Quantity:   decimal.NewFromFloat(qty),
-		PriceLocal: decimal.NewFromFloat(priceUSD),
-		FXToUSD:    decimal.NewFromFloat(1),
-		FXToVND:    decimal.NewFromFloat(24000),
+		Date:         date,
+		Type:         models.ActionStake,
+		Asset:        asset,
+		Account:      account,
+		Quantity:     decimal.NewFromFloat(qty),
+		PriceLocal:   decimal.NewFromFloat(priceUSD),
+		LocalCurrency: "USD",
+		FeeLocal:     decimal.Zero,
 	}
 }
 

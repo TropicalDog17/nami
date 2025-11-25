@@ -33,8 +33,8 @@ func TestReportingService_GetExpectedBorrowOutflows_WithAPR(t *testing.T) {
 		Account:        "Bank",
 		Quantity:       decimal.NewFromInt(1000),
 		PriceLocal:     decimal.NewFromInt(1),
-		FXToUSD:        decimal.NewFromInt(1),
-		FXToVND:        decimal.NewFromInt(25000),
+		FXToUSD:        func() *decimal.Decimal { d := decimal.NewFromInt(1); return &d }(),
+		FXToVND:        func() *decimal.Decimal { d := decimal.NewFromInt(25000); return &d }(),
 		BorrowAPR:      &apr,
 		BorrowTermDays: &term,
 	}
@@ -49,8 +49,8 @@ func TestReportingService_GetExpectedBorrowOutflows_WithAPR(t *testing.T) {
 		Account:    "Bank",
 		Quantity:   decimal.NewFromInt(200),
 		PriceLocal: decimal.NewFromInt(1),
-		FXToUSD:    decimal.NewFromInt(1),
-		FXToVND:    decimal.NewFromInt(25000),
+		FXToUSD:    func() *decimal.Decimal { d := decimal.NewFromInt(1); return &d }(),
+		FXToVND:    func() *decimal.Decimal { d := decimal.NewFromInt(25000); return &d }(),
 	}
 	if err := txService.CreateTransaction(ctx, repay); err != nil {
 		t.Fatalf("failed to create repay: %v", err)

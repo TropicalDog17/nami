@@ -45,6 +45,8 @@ type Transaction struct {
 	EntryDate *time.Time       `json:"entry_date" gorm:"column:entry_date;type:timestamptz;index"`
 	ExitDate  *time.Time       `json:"exit_date" gorm:"column:exit_date;type:timestamptz;index"`
 	FXImpact  *decimal.Decimal `json:"fx_impact" gorm:"column:fx_impact;type:decimal(30,18)"`
+	FXToUSD   *decimal.Decimal `json:"fx_to_usd" gorm:"column:fx_to_usd;type:decimal(30,18)"`
+	FXToVND   *decimal.Decimal `json:"fx_to_vnd" gorm:"column:fx_to_vnd;type:decimal(30,18)"`
 
 	// Borrow metadata (for type = 'borrow')
 	BorrowAPR      *decimal.Decimal `json:"borrow_apr" gorm:"column:borrow_apr;type:decimal(10,8)"`

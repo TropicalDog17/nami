@@ -256,6 +256,13 @@ func (s *transactionService) mergeTransactionUpdate(existing, update *models.Tra
 	if !update.PriceLocal.IsZero() {
 		merged.PriceLocal = update.PriceLocal
 	}
+	if !update.FeeLocal.IsZero() {
+		merged.FeeLocal = update.FeeLocal
+	}
+	if update.LocalCurrency != "" {
+		merged.LocalCurrency = update.LocalCurrency
+	}
+	// Fee fields are now handled by FeeLocal above
 	if update.Horizon != nil && *update.Horizon != "" {
 		merged.Horizon = update.Horizon
 	}
@@ -268,6 +275,7 @@ func (s *transactionService) mergeTransactionUpdate(existing, update *models.Tra
 	if update.FXImpact != nil && !update.FXImpact.IsZero() {
 		merged.FXImpact = update.FXImpact
 	}
+	// FXSource and FXTimestamp are no longer stored - FX rates are inferred dynamically
 
 	return merged
 }

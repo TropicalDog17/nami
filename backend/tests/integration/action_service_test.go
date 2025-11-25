@@ -61,22 +61,22 @@ func TestActionService_Stake_TableDriven(t *testing.T) {
 				if transferOut.InternalFlow == nil || !*transferOut.InternalFlow {
 					t.Fatalf("expected transfer_out to be marked internal")
 				}
-				if !transferOut.CashFlowUSD.Equal(decimal.Zero) || !transferOut.CashFlowVND.Equal(decimal.Zero) {
-					t.Fatalf("expected transfer_out cashflow to be zero, got USD=%s VND=%s", transferOut.CashFlowUSD.String(), transferOut.CashFlowVND.String())
+				if !transferOut.CashFlowLocal.Equal(decimal.Zero) {
+					t.Fatalf("expected transfer_out cashflow to be zero, got %s %s", transferOut.CashFlowLocal.String(), transferOut.LocalCurrency)
 				}
 
 				if depositLike.InternalFlow == nil || !*depositLike.InternalFlow {
 					t.Fatalf("expected deposit to be marked internal")
 				}
-				if !depositLike.CashFlowUSD.Equal(decimal.Zero) || !depositLike.CashFlowVND.Equal(decimal.Zero) {
-					t.Fatalf("expected deposit cashflow to be zero, got USD=%s VND=%s", depositLike.CashFlowUSD.String(), depositLike.CashFlowVND.String())
+				if !depositLike.CashFlowLocal.Equal(decimal.Zero) {
+					t.Fatalf("expected deposit cashflow to be zero, got %s %s", depositLike.CashFlowLocal.String(), depositLike.LocalCurrency)
 				}
 
 				if fee == nil {
 					t.Fatalf("expected a fee transaction to be created")
 				}
-				if !fee.CashFlowUSD.IsNegative() || !fee.CashFlowVND.IsNegative() {
-					t.Fatalf("expected fee cashflow negative, got USD=%s VND=%s", fee.CashFlowUSD.String(), fee.CashFlowVND.String())
+				if !fee.CashFlowLocal.IsNegative() {
+					t.Fatalf("expected fee cashflow negative, got %s %s", fee.CashFlowLocal.String(), fee.LocalCurrency)
 				}
 			},
 		},
@@ -150,8 +150,8 @@ func TestActionService_Unstake_TableDriven(t *testing.T) {
 				if transferIn.InternalFlow == nil || !*transferIn.InternalFlow {
 					t.Fatalf("expected transfer_in to be marked internal")
 				}
-				if !transferIn.CashFlowUSD.Equal(decimal.Zero) || !transferIn.CashFlowVND.Equal(decimal.Zero) {
-					t.Fatalf("expected transfer_in cashflow to be zero, got USD=%s VND=%s", transferIn.CashFlowUSD.String(), transferIn.CashFlowVND.String())
+				if !transferIn.CashFlowLocal.Equal(decimal.Zero) {
+					t.Fatalf("expected transfer_in cashflow to be zero, got %s %s", transferIn.CashFlowLocal.String(), transferIn.LocalCurrency)
 				}
 			},
 		},
@@ -200,12 +200,12 @@ func TestActionService_Unstake_TableDriven(t *testing.T) {
 					t.Errorf("expected transfer_in price %s, got %s", expectedPrice, transferIn.PriceLocal.String())
 				}
 
-				expectedAmountUSD := "275"
-				if withdrawLike.AmountUSD.String() != expectedAmountUSD {
-					t.Errorf("expected withdraw amount_usd %s, got %s", expectedAmountUSD, withdrawLike.AmountUSD.String())
+				expectedAmountLocal := "275"
+				if withdrawLike.AmountLocal.String() != expectedAmountLocal {
+					t.Errorf("expected withdraw amount_local %s, got %s", expectedAmountLocal, withdrawLike.AmountLocal.String())
 				}
-				if transferIn.AmountUSD.String() != expectedAmountUSD {
-					t.Errorf("expected transfer_in amount_usd %s, got %s", expectedAmountUSD, transferIn.AmountUSD.String())
+				if transferIn.AmountLocal.String() != expectedAmountLocal {
+					t.Errorf("expected transfer_in amount_local %s, got %s", expectedAmountLocal, transferIn.AmountLocal.String())
 				}
 
 				if transferIn.ExitDate == nil {
@@ -249,8 +249,8 @@ func TestActionService_Unstake_TableDriven(t *testing.T) {
 				}
 
 				expectedExitAmount := decimal.NewFromFloat(302.5)
-				if !withdrawLike.AmountUSD.Equal(expectedExitAmount) {
-					t.Errorf("expected withdraw amount_usd %s, got %s", expectedExitAmount.String(), withdrawLike.AmountUSD.String())
+				if !withdrawLike.AmountLocal.Equal(expectedExitAmount) {
+					t.Errorf("expected withdraw amount_local %s, got %s", expectedExitAmount.String(), withdrawLike.AmountLocal.String())
 				}
 
 				depositTxID := stakeResp.Transactions[1].ID
@@ -260,13 +260,13 @@ func TestActionService_Unstake_TableDriven(t *testing.T) {
 				}
 
 				expectedDepositAmount := decimal.NewFromFloat(500)
-				if !depositTx.AmountUSD.Equal(expectedDepositAmount) {
-					t.Errorf("expected deposit amount_usd %s, got %s", expectedDepositAmount.String(), depositTx.AmountUSD.String())
+				if !depositTx.AmountLocal.Equal(expectedDepositAmount) {
+					t.Errorf("expected deposit amount_local %s, got %s", expectedDepositAmount.String(), depositTx.AmountLocal.String())
 				}
 
 				expectedPnL := decimal.NewFromFloat(27.5)
-				depositUnitPrice := depositTx.AmountUSD.Div(depositTx.Quantity)
-				withdrawUnitPrice := withdrawLike.AmountUSD.Div(withdrawLike.Quantity)
+				depositUnitPrice := depositTx.AmountLocal.Div(depositTx.Quantity)
+				withdrawUnitPrice := withdrawLike.AmountLocal.Div(withdrawLike.Quantity)
 				calculatedPnL := withdrawLike.Quantity.Mul(withdrawUnitPrice.Sub(depositUnitPrice))
 
 				if !calculatedPnL.Equal(expectedPnL) {

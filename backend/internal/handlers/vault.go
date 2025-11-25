@@ -402,8 +402,6 @@ func (h *VaultHandler) HandleVaults(w http.ResponseWriter, r *http.Request) {
 			Account:    body.Account,
 			Quantity:   qty,
 			PriceLocal: unitPriceLocal,
-			FXToUSD:    decimal.NewFromInt(1),
-			FXToVND:    decimal.NewFromInt(1),
 			Horizon:    body.Horizon,
 		}
 		if err := stakeTx.PreSave(); err != nil {
@@ -548,8 +546,6 @@ func (h *VaultHandler) handleDeposit(w http.ResponseWriter, r *http.Request, id 
 		Account:      inv.Account,
 		Quantity:     qty,
 		PriceLocal:   unitPriceLocal,
-		FXToUSD:      decimal.NewFromInt(1),
-		FXToVND:      decimal.NewFromInt(1),
 		InvestmentID: &inv.ID,
 		InternalFlow: func() *bool { b := true; return &b }(),
 	}
@@ -609,8 +605,6 @@ func (h *VaultHandler) handleWithdraw(w http.ResponseWriter, r *http.Request, id
 		Account:      inv.Account,
 		Quantity:     qty,
 		PriceLocal:   unitPriceLocal,
-		FXToUSD:      decimal.NewFromInt(1),
-		FXToVND:      decimal.NewFromInt(1),
 		InvestmentID: &inv.ID,
 		InternalFlow: func() *bool { b := true; return &b }(),
 	}
@@ -763,8 +757,6 @@ func (h *VaultHandler) handleRefresh(w http.ResponseWriter, r *http.Request, id 
                 Account:      inv.Account,
                 Quantity:     qty,
                 PriceLocal:   unitPriceLocal,
-                FXToUSD:      decimal.NewFromInt(1),
-                FXToVND:      decimal.NewFromInt(1),
                 InvestmentID: &inv.ID,
                 InternalFlow: func() *bool { b := true; return &b }(),
             }

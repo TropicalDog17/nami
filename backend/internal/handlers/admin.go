@@ -537,11 +537,9 @@ func (h *AdminHandler) HandleMaintenance(w http.ResponseWriter, r *http.Request)
 	if q == "false" {
 		onlyMissing = false
 	}
-	updated, err := h.txService.RecalculateFX(r.Context(), onlyMissing)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
+	// FX rates are now inferred dynamically - no recalculation needed
+	updated := 0
+	// No error handling needed since FX is inferred dynamically
 	json.NewEncoder(w).Encode(map[string]interface{}{"updated": updated, "only_missing": onlyMissing})
 }
 
