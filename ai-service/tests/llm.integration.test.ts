@@ -1,6 +1,6 @@
-import { LLMClient } from '../src/llm'
-import { parseExpenseText } from '../src/parser'
-import { describe, it, beforeAll, afterAll, expect, test } from 'vitest'
+import { LLMClient } from '../src/integrations/llm.js'
+import { parseExpenseText } from '../src/core/parser.js'
+import { describe, it, beforeAll, afterAll, expect, test, vi } from 'vitest'
 // Test data
 const TEST_EXPENSES = [
   "Lunch 120k at McDonalds today",
@@ -18,6 +18,172 @@ describe('Anthropic LLM Integration Tests', () => {
     console.log('🧪 Initializing Anthropic LLM client...')
     console.log('🔗 Proxy URL:', config.baseURL)
     console.log('🔑 Token:', config.apiKey.substring(0, 20) + '...')
+    console.log('🎭 Mock Mode:', config.useMock)
+
+    // Skip real API calls in mock mode
+    if (config.useMock) {
+      console.log('⚠️  Using mock mode - no real API calls will be made')
+      vi.mock('../src/integrations/llm.js', async () => {
+        const actual = await vi.importActual('../src/integrations/llm.js')
+        return {
+          ...actual,
+          LLMClient: vi.fn().mockImplementation((config) => {
+            const chatMock = vi.fn()
+
+            // Handle error testing scenarios
+            if (config.apiKey === 'invalid-key' || config.apiKey === 'invalid-token-key') {
+              chatMock.mockRejectedValue(new Error('401: Unauthorized - Invalid API key'))
+              return {
+                chat: chatMock,
+                getProvider: () => 'anthropic',
+                getModel: () => 'claude-3-5-haiku-20241022'
+              }
+            }
+
+            if (config.timeout === 1) {
+              chatMock.mockRejectedValue(new Error('Request timed out.'))
+              return {
+                chat: chatMock,
+                getProvider: () => 'anthropic',
+                getModel: () => 'claude-3-5-haiku-20241022'
+              }
+            }
+
+            // Mock different responses based on input
+            chatMock.mockImplementation(async (messages) => {
+              const lastMessage = messages[messages.length - 1]?.content?.toLowerCase() || ''
+              const fullContext = messages.map(m => m.content?.toLowerCase() || '').join(' ')
+
+              // Basic chat responses
+              if (lastMessage.includes('hello')) {
+                return {
+                  content: 'LLM test successful',
+                  model: 'claude-3-5-haiku-20241022',
+                  usage: { promptTokens: 20, completionTokens: 5, totalTokens: 25 }
+                }
+              }
+
+              // Conversation context
+              if (fullContext.includes('42') && fullContext.includes('remember')) {
+                return {
+                  content: 'The number 42',
+                  model: 'claude-3-5-haiku-20241022',
+                  usage: { promptTokens: 30, completionTokens: 6, totalTokens: 36 }
+                }
+              }
+
+              // Expense parsing responses
+              if (lastMessage.includes('mcdonalds') || lastMessage.includes('lunch 120k')) {
+                return {
+                  content: '```toon\n{\n  "action": "spend_vnd",\n  "params": {\n    "account": "Cash",\n    "vnd_amount": 120000,\n    "date": "2025-01-15",\n    "counterparty": "McDonalds"\n  }\n}\n```',
+                  model: 'claude-3-5-haiku-20241022',
+                  usage: { promptTokens: 80, completionTokens: 50, totalTokens: 130 }
+                }
+              }
+
+              if (lastMessage.includes('highlands') || lastMessage.includes('coffee 45k')) {
+                return {
+                  content: '```toon\n{\n  "action": "spend_vnd",\n  "params": {\n    "account": "Cash",\n    "vnd_amount": 45000,\n    "date": "2025-01-14",\n    "counterparty": "Highlands Coffee"\n  }\n}\n```',
+                  model: 'claude-3-5-haiku-20241022',
+                  usage: { promptTokens: 80, completionTokens: 50, totalTokens: 130 }
+                }
+              }
+
+              // Amount parsing
+              if (lastMessage.includes('850k')) {
+                return {
+                  content: '```toon\n{\n  "action": "spend_vnd",\n  "params": {\n    "account": "Cash",\n    "vnd_amount": 850000,\n    "date": "2025-01-15",\n    "counterparty": "Taxi"\n  }\n}\n```',
+                  model: 'claude-3-5-haiku-20241022',
+                  usage: { promptTokens: 80, completionTokens: 50, totalTokens: 130 }
+                }
+              }
+
+              if (lastMessage.includes('50k') || lastMessage.includes('50000')) {
+                return {
+                  content: '```toon\n{\n  "action": "spend_vnd",\n  "params": {\n    "account": "Cash",\n    "vnd_amount": 50000,\n    "date": "2025-01-15",\n    "counterparty": "Restaurant"\n  }\n}\n```',
+                  model: 'claude-3-5-haiku-20241022',
+                  usage: { promptTokens: 80, completionTokens: 50, totalTokens: 130 }
+                }
+              }
+
+              // Complex reasoning
+              if (lastMessage.includes('850k') && fullContext.includes('complex')) {
+                return {
+                  content: JSON.stringify({
+                    amount_vnd: 850000,
+                    people_count: 4,
+                    restaurant: "Pizza Company",
+                    payment_method: "Techcombank card",
+                    service_charge: 10
+                  }),
+                  model: 'claude-3-5-haiku-20241022',
+                  usage: { promptTokens: 120, completionTokens: 60, totalTokens: 180 }
+                }
+              }
+
+              if (lastMessage.includes('vietnamese') || fullContext.includes('vietnamese')) {
+                return {
+                  content: JSON.stringify({
+                    amount_vnd: 50000,
+                    currency: "VND",
+                    description: "Mua cà phê"
+                  }),
+                  model: 'claude-3-5-haiku-20241022',
+                  usage: { promptTokens: 80, completionTokens: 40, totalTokens: 120 }
+                }
+              }
+
+              // Handle other expense cases
+              if (lastMessage.includes('85k') || lastMessage.includes('grab taxi')) {
+                return {
+                  content: '```toon\n{\n  "action": "spend_vnd",\n  "params": {\n    "account": "Cash",\n    "vnd_amount": 85000,\n    "date": "2025-01-15",\n    "counterparty": "Grab"\n  }\n}\n```',
+                  model: 'claude-3-5-haiku-20241022',
+                  usage: { promptTokens: 80, completionTokens: 50, totalTokens: 130 }
+                }
+              }
+
+              if (lastMessage.includes('350k') || lastMessage.includes('big c')) {
+                return {
+                  content: '```toon\n{\n  "action": "spend_vnd",\n  "params": {\n    "account": "Cash",\n    "vnd_amount": 350000,\n    "date": "2025-01-13",\n    "counterparty": "Big C"\n  }\n}\n```',
+                  model: 'claude-3-5-haiku-20241022',
+                  usage: { promptTokens: 80, completionTokens: 50, totalTokens: 130 }
+                }
+              }
+
+              if (lastMessage.includes('180k') || lastMessage.includes('movie')) {
+                return {
+                  content: '```toon\n{\n  "action": "spend_vnd",\n  "params": {\n    "account": "Cash",\n    "vnd_amount": 180000,\n    "date": "2025-01-12",\n    "counterparty": "Cinema"\n  }\n}\n```',
+                  model: 'claude-3-5-haiku-20241022',
+                  usage: { promptTokens: 80, completionTokens: 50, totalTokens: 130 }
+                }
+              }
+
+              // Account usage testing
+              if (fullContext.includes('cash')) {
+                return {
+                  content: '```toon\n{\n  "action": "spend_vnd",\n  "params": {\n    "account": "Cash",\n    "vnd_amount": 45000,\n    "date": "2025-01-15"\n  }\n}\n```',
+                  model: 'claude-3-5-haiku-20241022',
+                  usage: { promptTokens: 70, completionTokens: 40, totalTokens: 110 }
+                }
+              }
+
+              // Default response for any other input
+              return {
+                content: 'LLM test successful',
+                model: 'claude-3-5-haiku-20241022',
+                usage: { promptTokens: 50, completionTokens: 10, totalTokens: 60 }
+              }
+            })
+
+            return {
+              chat: chatMock,
+              getProvider: () => 'anthropic',
+              getModel: () => 'claude-3-5-haiku-20241022'
+            }
+          })
+        }
+      })
+    }
 
     llmClient = new LLMClient(config)
   })

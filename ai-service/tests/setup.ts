@@ -11,13 +11,18 @@ dotenv.config()
 // Set test environment variables
 process.env.NODE_ENV = 'test'
 
+// Determine if we should use mock mode or real API
+const useMockMode = process.env.TEST_ANTHROPIC_KEY === 'mock-key' ||
+                   (!process.env.TEST_ANTHROPIC_KEY && !process.env.ANTHROPIC_AUTH_TOKEN);
+
 // Global test configuration
 global.testConfig = {
   anthropic: {
     provider: 'anthropic' as const,
-    apiKey: process.env.ANTHROPIC_AUTH_TOKEN || '40133acb657d4343a13561fa2ae25e7a.XlBfpsO4chsOorMP',
+    apiKey: process.env.TEST_ANTHROPIC_KEY || process.env.ANTHROPIC_AUTH_TOKEN || 'mock-key',
     baseURL: process.env.ANTHROPIC_BASE_URL || 'https://api.z.ai/api/anthropic',
-    timeout: 30000
+    timeout: 30000,
+    useMock: useMockMode
   },
   accounts: [
     { name: 'Cash', id: 'cash' },

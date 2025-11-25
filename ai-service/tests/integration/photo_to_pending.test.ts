@@ -1,10 +1,10 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import express from 'express'
 import request from 'supertest'
-import { buildBot } from '../../dist/telegram.js'
+import { buildBot } from '../../src/integrations/telegram.js'
 import { OpenAIMock } from '../helpers/openaiMock.js'
 import { startMockBackend } from '../helpers/mockBackend.js'
-import { AppConfig } from '../../src/config.js'
+import { AppConfig } from '../../src/utils/config.js'
 
 describe('AI Service integration - photo to pending', () => {
   const secret = 'test-secret-1234567890'

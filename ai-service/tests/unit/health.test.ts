@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { HealthChecker } from '../../src/health.js'
-import { AppConfig } from '../../src/config.js'
+import { HealthChecker } from '../../src/api/health.js'
+import { AppConfig } from '../../src/utils/config.js'
 
 describe('HealthChecker', () => {
   let healthChecker: HealthChecker

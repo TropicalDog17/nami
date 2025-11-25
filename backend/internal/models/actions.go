@@ -134,13 +134,9 @@ func (s StakeParams) Validate() error {
 // ToIncomingTransaction creates a transaction for a deposit into an investment
 func (s StakeParams) ToIncomingTransaction() *Transaction {
 	// Safely handle optional FX pointers with sensible defaults
-	fxUSD := 1.0
 	if s.FXToUSD != nil {
-		fxUSD = *s.FXToUSD
 	}
-	fxVND := 1.0
 	if s.FXToVND != nil {
-		fxVND = *s.FXToVND
 	}
 	tx := &Transaction{
 		Date:         s.Date,
@@ -149,10 +145,6 @@ func (s StakeParams) ToIncomingTransaction() *Transaction {
 		Account:      s.InvestmentAccount,
 		Quantity:     decimal.NewFromFloat(s.Amount),
 		PriceLocal:   decimal.NewFromFloat(1.0),
-		FXToUSD:      decimal.NewFromFloat(fxUSD),
-		FXToVND:      decimal.NewFromFloat(fxVND),
-		FeeUSD:       decimal.Zero,
-		FeeVND:       decimal.Zero,
 		InternalFlow: func() *bool { b := true; return &b }(),
 	}
 	if s.Horizon != "" {
@@ -173,13 +165,9 @@ func (s StakeParams) ToIncomingTransaction() *Transaction {
 // ToOutgoingTransaction creates a transaction when transfering out for investment
 func (s StakeParams) ToOutgoingTransaction() *Transaction {
 	// Safely handle optional FX pointers with sensible defaults
-	fxUSD := 1.0
 	if s.FXToUSD != nil {
-		fxUSD = *s.FXToUSD
 	}
-	fxVND := 1.0
 	if s.FXToVND != nil {
-		fxVND = *s.FXToVND
 	}
 	tx := &Transaction{
 		Date:    s.Date,
@@ -190,12 +178,6 @@ func (s StakeParams) ToOutgoingTransaction() *Transaction {
 		Quantity:   decimal.NewFromFloat(s.Amount),
 		PriceLocal: decimal.NewFromFloat(1.0),
 
-		FXToUSD:   decimal.NewFromFloat(fxUSD),
-		AmountUSD: decimal.NewFromFloat(s.Amount),
-		FXToVND:   decimal.NewFromFloat(fxVND),
-		AmountVND: decimal.NewFromFloat(s.Amount),
-		FeeUSD:    decimal.NewFromFloat(s.FeePercent),
-		FeeVND:    decimal.NewFromFloat(s.FeePercent),
 
 		InternalFlow: func() *bool { b := true; return &b }(),
 	}
@@ -264,10 +246,6 @@ func (u UnstakeParams) ToTransaction() *Transaction {
 		Account:    u.InvestmentAccount,
 		Quantity:   decimal.NewFromFloat(u.Quantity),
 		PriceLocal: decimal.NewFromFloat(u.ExitPriceLocal),
-		FXToUSD:    decimal.NewFromFloat(u.FXToUSD),
-		FXToVND:    decimal.NewFromFloat(u.FXToVND),
-		FeeUSD:     decimal.Zero,
-		FeeVND:     decimal.Zero,
 	}
 	if u.Horizon != "" {
 		tx.Horizon = &u.Horizon

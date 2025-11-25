@@ -222,8 +222,8 @@ func (r *investmentRepository) CreateFromStake(ctx context.Context, stakeTx *mod
 		Horizon:             stakeTx.Horizon,
 		DepositDate:         stakeTx.Date,
 		DepositQty:          stakeTx.Quantity,
-		DepositCost:         stakeTx.AmountUSD,
-		DepositUnitCost:     stakeTx.AmountUSD.Div(stakeTx.Quantity),
+		DepositCost:         stakeTx.AmountLocal,
+		DepositUnitCost:     stakeTx.AmountLocal.Div(stakeTx.Quantity),
 		WithdrawalQty:       decimal.Zero,
 		WithdrawalValue:     decimal.Zero,
 		WithdrawalUnitPrice: decimal.Zero,
@@ -270,7 +270,7 @@ func (r *investmentRepository) FindOpenInvestmentForStake(ctx context.Context, a
 func (r *investmentRepository) UpdateWithStake(ctx context.Context, investment *models.Investment, stakeTx *models.Transaction) error {
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		// Update investment with additional stake
-		investment.AddDeposit(stakeTx.Quantity, stakeTx.AmountUSD)
+		investment.AddDeposit(stakeTx.Quantity, stakeTx.AmountLocal)
 
 		// Save the updated investment
 		if err := tx.Save(investment).Error; err != nil {
@@ -285,7 +285,7 @@ func (r *investmentRepository) UpdateWithStake(ctx context.Context, investment *
 func (r *investmentRepository) UpdateWithUnstake(ctx context.Context, investment *models.Investment, unstakeTx *models.Transaction) error {
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		// Update investment with unstake
-		err := investment.AddWithdrawal(unstakeTx.Quantity, unstakeTx.AmountUSD)
+		err := investment.AddWithdrawal(unstakeTx.Quantity, unstakeTx.AmountLocal)
 		if err != nil {
 			return fmt.Errorf("failed to process withdrawal: %w", err)
 		}

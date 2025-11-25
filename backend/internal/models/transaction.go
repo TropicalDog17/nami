@@ -234,7 +234,7 @@ func (tfx *TransactionWithFX) GetCashflowInCurrency(targetCurrency string) decim
 	// Try inverse conversion
 	inverseKey := fmt.Sprintf("%s-%s", targetCurrency, tfx.LocalCurrency)
 	if rate, exists := tfx.FXRates[inverseKey]; exists {
-		return tfx.CashflowLocal.Div(rate)
+		return tfx.CashFlowLocal.Div(rate)
 	}
 
 	// No conversion rate available
