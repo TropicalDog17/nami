@@ -39,11 +39,8 @@ func validateQuickExpense(tx *models.Transaction) error {
 		if tx.Quantity.IsZero() {
 			tx.Quantity = decimal.NewFromInt(1)
 		}
-		if tx.FXToUSD.IsZero() {
-			tx.FXToUSD = decimal.NewFromInt(1)
-		}
-		if tx.FXToVND.IsZero() {
-			tx.FXToVND = decimal.NewFromInt(24000)
+		if tx.LocalCurrency == "" {
+			tx.LocalCurrency = "USD" // Default to USD for expenses
 		}
 	}
 
@@ -63,9 +60,11 @@ func validateQuickExpense(tx *models.Transaction) error {
 // @Param accounts query string false "Comma-separated account names"
 // @Param tags query string false "Comma-separated tag names"
 // @Param counterparty query string false "Counterparty name"
+// @Param currencies query string false "Target currencies for FX conversion (comma-separated), defaults to USD,VND"
 // @Param limit query int false "Limit"
 // @Param offset query int false "Offset"
-// @Success 200 {array} models.Transaction
+// @Success 200 {array} models.TransactionWithFX "Transactions with FX rates when currencies parameter is provided"
+// @Success 200 {array} models.Transaction "Basic transactions without FX conversion"
 // @Failure 400 {string} string "Invalid request"
 // @Failure 500 {string} string "Internal server error"
 // @Router /transactions [get]
@@ -133,21 +132,6 @@ func (h *TransactionHandler) HandleTransaction(w http.ResponseWriter, r *http.Re
 	case "DELETE":
 		h.deleteTransaction(w, r, id)
 	case "POST":
-		// Support: /api/transactions/{id}/recalc?only_missing=true|false
-		if strings.HasSuffix(r.URL.Path, "/recalc") {
-			onlyMissing := true
-			if q := r.URL.Query().Get("only_missing"); q == "false" {
-				onlyMissing = false
-			}
-			tx, err := h.service.RecalculateOneFX(r.Context(), id, onlyMissing)
-			if err != nil {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
-				return
-			}
-			json.NewEncoder(w).Encode(tx)
-			return
-		}
-
 		// Support: /api/transactions/{id}/mark-borrow-inactive
 		if strings.HasSuffix(r.URL.Path, "/mark-borrow-inactive") {
 			update := &models.Transaction{BorrowActive: new(bool)}
@@ -219,13 +203,32 @@ func (h *TransactionHandler) listTransactions(w http.ResponseWriter, r *http.Req
 		}
 	}
 
-	transactions, err := h.service.ListTransactions(r.Context(), filter)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
+	// Check if FX conversion is requested
+	targetCurrencies := []string{}
+	if currencies := r.URL.Query().Get("currencies"); currencies != "" {
+		targetCurrencies = strings.Split(currencies, ",")
+	} else {
+		// Default to USD and VND for backwards compatibility
+		targetCurrencies = []string{"USD", "VND"}
 	}
 
-	json.NewEncoder(w).Encode(transactions)
+	// Use FX-enhanced method if specific currencies are requested
+	if len(targetCurrencies) > 0 {
+		transactions, err := h.service.GetTransactionsFXEnhanced(r.Context(), filter, targetCurrencies)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		json.NewEncoder(w).Encode(transactions)
+	} else {
+		// Fallback to basic method
+		transactions, err := h.service.ListTransactions(r.Context(), filter)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		json.NewEncoder(w).Encode(transactions)
+	}
 }
 
 func (h *TransactionHandler) createTransaction(w http.ResponseWriter, r *http.Request) {
@@ -250,8 +253,7 @@ func (h *TransactionHandler) createTransaction(w http.ResponseWriter, r *http.Re
 			strings.Contains(err.Error(), "account is required") ||
 			strings.Contains(err.Error(), "quantity must be non-zero") ||
 			strings.Contains(err.Error(), "price must be non-negative") ||
-			strings.Contains(err.Error(), "FX to USD rate is required") ||
-			strings.Contains(err.Error(), "FX to VND rate is required") ||
+			strings.Contains(err.Error(), "local currency is required") ||
 			strings.Contains(err.Error(), "horizon must be") ||
 			strings.Contains(err.Error(), "borrow_") {
 			http.Error(w, err.Error(), http.StatusBadRequest)
@@ -303,8 +305,7 @@ func (h *TransactionHandler) updateTransaction(w http.ResponseWriter, r *http.Re
 			strings.Contains(err.Error(), "account is required") ||
 			strings.Contains(err.Error(), "quantity must be non-zero") ||
 			strings.Contains(err.Error(), "price must be non-negative") ||
-			strings.Contains(err.Error(), "FX to USD rate is required") ||
-			strings.Contains(err.Error(), "FX to VND rate is required") ||
+			strings.Contains(err.Error(), "local currency is required") ||
 			strings.Contains(err.Error(), "horizon must be") ||
 			strings.Contains(err.Error(), "borrow_") {
 			http.Error(w, err.Error(), http.StatusBadRequest)
