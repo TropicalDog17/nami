@@ -10,7 +10,7 @@ require (
 	github.com/shopspring/decimal v1.4.0
 	github.com/swaggo/files v1.0.1 // indirect
 	github.com/swaggo/http-swagger v1.3.4
-	github.com/swaggo/swag v1.16.3
+	github.com/swaggo/swag v1.16.6
 	github.com/testcontainers/testcontainers-go v0.32.0
 	github.com/testcontainers/testcontainers-go/modules/postgres v0.32.0
 	go.uber.org/multierr v1.11.0 // indirect
@@ -21,11 +21,10 @@ require (
 	github.com/gorilla/mux v1.8.1
 	github.com/stretchr/testify v1.9.0
 	gorm.io/driver/postgres v1.6.0
-	gorm.io/driver/sqlite v1.6.0
 	gorm.io/gorm v1.31.0
 )
 
-require github.com/mattn/go-sqlite3 v1.14.22 // indirect
+require golang.org/x/mod v0.27.0 // indirect
 
 require (
 	dario.cat/mergo v1.0.0 // indirect
