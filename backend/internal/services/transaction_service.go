@@ -48,9 +48,9 @@ func NewTransactionServiceWithFXAndPrices(database *db.DB, fxProvider FXProvider
 
 // CreateTransaction creates a new transaction
 func (s *transactionService) CreateTransaction(ctx context.Context, tx *models.Transaction) error {
-	// Auto-populate FX rates if not provided and FX provider is available
-	if err := s.populateFXRates(ctx, tx); err != nil {
-		return fmt.Errorf("failed to populate FX rates: %w", err)
+	// Auto-populate local currency if not provided
+	if tx.LocalCurrency == "" {
+		tx.LocalCurrency = s.inferLocalCurrency(tx)
 	}
 
 	// Prepare transaction for saving (calculate derived fields and validate)
@@ -77,9 +77,9 @@ func (s *transactionService) CreateTransactionsBatch(ctx context.Context, txs []
 		if t == nil {
 			return nil, fmt.Errorf("nil transaction in batch")
 		}
-		// Populate FX if needed
-		if e := s.populateFXRates(ctx, t); e != nil {
-			return nil, fmt.Errorf("failed to populate FX rates: %w", e)
+		// Auto-populate local currency if not provided
+		if t.LocalCurrency == "" {
+			t.LocalCurrency = s.inferLocalCurrency(t)
 		}
 		if e := t.PreSave(); e != nil {
 			return nil, fmt.Errorf("transaction validation failed: %w", e)
@@ -290,108 +290,114 @@ func (s *transactionService) mergeTransactionUpdate(existing, update *models.Tra
 	return merged
 }
 
-// populateFXRates automatically populates FX rates if they are missing and FX provider is available
-func (s *transactionService) populateFXRates(ctx context.Context, tx *models.Transaction) error {
-	if s.fxProvider == nil {
-		// No FX provider available, skip auto-population
-		return nil
+// inferLocalCurrency determines the local currency for a transaction based on asset/account
+func (s *transactionService) inferLocalCurrency(tx *models.Transaction) string {
+	// For cryptocurrencies, default to USD as the standard trading currency
+	if models.IsCryptocurrency(tx.Asset) {
+		return "USD"
 	}
 
-	// Only populate if FX rates are not already set
-	needsUSD := tx.FXToUSD.IsZero()
-	needsVND := tx.FXToVND.IsZero()
-
-	if !needsUSD && !needsVND {
-		// Both rates already provided
-		return nil
+	// For fiat assets, infer from asset name or account
+	switch tx.Asset {
+	case "VND", "USD", "EUR", "GBP", "JPY":
+		return tx.Asset
+	default:
+		// Default to USD for unknown assets
+		return "USD"
 	}
+}
 
-	localCurrency := tx.LocalCurrency
-	date := tx.Date
-
-	// Skip FX rate population for cryptocurrency or USD transactions
-	// Cryptocurrencies don't have FX rates - they have prices in other currencies
-	// USD transactions don't need USD conversion
-	if models.IsCryptocurrency(tx.Asset) || localCurrency == "USD" {
-		// For USD transactions and cryptocurrencies, set appropriate rates
-		if needsUSD {
-			if localCurrency == "USD" {
-				tx.FXToUSD = decimal.NewFromInt(1) // USD to USD rate is 1
-			} else {
-				// For crypto priced in USD, set to 1 to avoid errors
-				tx.FXToUSD = decimal.NewFromInt(1)
-			}
-		}
-		if needsVND && localCurrency == "USD" {
-			// For USD to VND, we still need to fetch the rate
-		} else if needsVND && models.IsCryptocurrency(tx.Asset) {
-			// For crypto, set to 1 to avoid errors (valuation via price providers)
-			tx.FXToVND = decimal.NewFromInt(1)
-		}
-		// For USD transactions that need VND rate, continue to fetch below
-		if localCurrency == "USD" && !needsVND {
-			return nil
-		}
-		if models.IsCryptocurrency(tx.Asset) && !(localCurrency == "USD" && needsVND) {
-			return nil
-		}
-	}
-
-	// Determine which rates we need
-	targets := []string{}
-	if needsUSD {
-		targets = append(targets, "USD")
-	}
-	if needsVND {
-		targets = append(targets, "VND")
-	}
-
-	// Fetch rates using local currency as base
-	fetchedRates, err := s.fxProvider.GetRates(ctx, localCurrency, targets, date)
+// GetTransactionsFXEnhanced retrieves transactions with real-time FX conversion
+func (s *transactionService) GetTransactionsFXEnhanced(ctx context.Context, filter *models.TransactionFilter, targetCurrencies []string) ([]*models.TransactionWithFX, error) {
+	// Get base transactions
+	txs, err := s.txRepo.List(ctx, filter)
 	if err != nil {
-		return fmt.Errorf("failed to fetch FX rates for %s: %w", localCurrency, err)
+		return nil, fmt.Errorf("failed to get transactions: %w", err)
 	}
 
-	// Apply fetched rates
-	if needsUSD {
-		if usdRate, exists := fetchedRates["USD"]; exists {
-			if localCurrency == "USD" {
-				tx.FXToUSD = decimal.NewFromInt(1) // USD to USD rate is 1
-			} else {
-				tx.FXToUSD = usdRate
+	// Convert each transaction with FX rates
+	var enhancedTxs []*models.TransactionWithFX
+	for _, tx := range txs {
+		enhancedTx, err := s.convertTransactionWithFX(ctx, tx, targetCurrencies)
+		if err != nil {
+			// Log error but continue with other transactions
+			fmt.Printf("Warning: failed to convert transaction %s with FX: %v\n", tx.ID, err)
+			// Add transaction without FX conversion
+			enhancedTx = &models.TransactionWithFX{
+				Transaction: *tx,
+				FXRates:      make(map[string]decimal.Decimal),
 			}
-			if tx.FXSource == nil {
-				source := "auto-fx-provider"
-				tx.FXSource = &source
-			}
-			if tx.FXTimestamp == nil {
-				now := time.Now()
-				tx.FXTimestamp = &now
-			}
-		} else if localCurrency == "USD" {
-			tx.FXToUSD = decimal.NewFromInt(1) // USD to USD rate is 1
-		} else {
-			return fmt.Errorf("USD rate not available for %s", localCurrency)
+		}
+		enhancedTxs = append(enhancedTxs, enhancedTx)
+	}
+
+	return enhancedTxs, nil
+}
+
+// convertTransactionWithFX converts a single transaction with FX rates
+func (s *transactionService) convertTransactionWithFX(ctx context.Context, tx *models.Transaction, targetCurrencies []string) (*models.TransactionWithFX, error) {
+	if s.fxProvider == nil {
+		// No FX provider, return transaction without conversion
+		return &models.TransactionWithFX{
+			Transaction: *tx,
+			FXRates:      make(map[string]decimal.Decimal),
+		}, nil
+	}
+
+	// Build FX rate map
+	fxRates := make(map[string]decimal.Decimal)
+
+	// Get rates needed for conversion
+	rateTargets := []string{}
+	for _, currency := range targetCurrencies {
+		if currency != tx.LocalCurrency {
+			rateTargets = append(rateTargets, currency)
 		}
 	}
 
-	if needsVND {
-		if vndRate, exists := fetchedRates["VND"]; exists {
-			tx.FXToVND = vndRate
-			if tx.FXSource == nil {
-				source := "auto-fx-provider"
-				tx.FXSource = &source
+	// Add USD-VND rate as common conversion pair
+	if tx.LocalCurrency == "USD" || tx.LocalCurrency == "VND" {
+		if containsString(targetCurrencies, "USD") && containsString(targetCurrencies, "VND") {
+			if !containsString(rateTargets, "VND") && tx.LocalCurrency == "USD" {
+				rateTargets = append(rateTargets, "VND")
 			}
-			if tx.FXTimestamp == nil {
-				now := time.Now()
-				tx.FXTimestamp = &now
+			if !containsString(rateTargets, "USD") && tx.LocalCurrency == "VND" {
+				rateTargets = append(rateTargets, "USD")
 			}
-		} else if localCurrency == "VND" {
-			tx.FXToVND = decimal.NewFromInt(1) // VND to VND rate is 1
-		} else {
-			return fmt.Errorf("VND rate not available for %s", localCurrency)
 		}
 	}
 
-	return nil
+	// Fetch FX rates
+	if len(rateTargets) > 0 {
+		fetchedRates, err := s.fxProvider.GetRates(ctx, tx.LocalCurrency, rateTargets, tx.Date)
+		if err != nil {
+			return nil, fmt.Errorf("failed to fetch FX rates: %w", err)
+		}
+
+		// Build rate map with standard keys
+		for _, target := range rateTargets {
+			if rate, exists := fetchedRates[target]; exists {
+				key := fmt.Sprintf("%s-%s", tx.LocalCurrency, target)
+				fxRates[key] = rate
+				// Add inverse rate
+				inverseKey := fmt.Sprintf("%s-%s", target, tx.LocalCurrency)
+				fxRates[inverseKey] = decimal.NewFromInt(1).Div(rate)
+			}
+		}
+	}
+
+	return &models.TransactionWithFX{
+		Transaction: *tx,
+		FXRates:     fxRates,
+	}, nil
+}
+
+// containsString checks if a string is in a slice
+func containsString(slice []string, str string) bool {
+	for _, s := range slice {
+		if s == str {
+			return true
+		}
+	}
+	return false
 }

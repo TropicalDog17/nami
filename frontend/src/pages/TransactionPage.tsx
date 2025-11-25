@@ -52,6 +52,10 @@ const TransactionPage: React.FC = () => {
   const [bulkRefreshing, setBulkRefreshing] = useState<boolean>(false);
   const [busyRowIds, setBusyRowIds] = useState<Set<IdType>>(new Set<IdType>());
   const [selectedIds, setSelectedIds] = useState<Set<IdType>>(new Set<IdType>());
+
+  // FX conversion states
+  const [fxConversionCache, setFxConversionCache] = useState<Map<string, number>>(new Map());
+  const [fxLoadingStates, setFxLoadingStates] = useState<Map<string, boolean>>(new Map());
   const [isQuickExpenseOpen, setIsQuickExpenseOpen] = useState(false);
   const [isQuickIncomeOpen, setIsQuickIncomeOpen] = useState(false);
   const [isQuickVaultOpen, setIsQuickVaultOpen] = useState(false);
@@ -112,8 +116,23 @@ const TransactionPage: React.FC = () => {
     try {
       setLoading(true);
       setError(null);
-      const data = await transactionApi.list(filters) as unknown[];
-      setTransactions(data as Transaction[]);
+
+      // Request FX-enhanced data with USD and VND conversion
+      const fxFilters = {
+        ...filters,
+        currencies: 'USD,VND' // Request FX conversion for both currencies
+      };
+
+      const data = await transactionApi.list(fxFilters) as unknown[];
+
+      // Handle both TransactionWithFX and basic Transaction responses
+      if (data && data.length > 0 && 'fx_rates' in (data[0] as any)) {
+        // FX-enhanced response
+        setTransactions(data as Transaction[]);
+      } else {
+        // Fallback to basic response for backwards compatibility
+        setTransactions(data as Transaction[]);
+      }
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Unknown error';
       setError(message);
@@ -728,6 +747,100 @@ const TransactionPage: React.FC = () => {
     }
   };
 
+  // Helper function to get cache key for FX conversion
+  const getFXCacheKey = (rowId: string, targetCurrency: string): string => {
+    return `${rowId}-${targetCurrency}`;
+  };
+
+  // Helper function to convert amount using FX data from API response
+  const convertAmountSync = useCallback((
+    row: any, // Transaction or TransactionWithFX
+    targetCurrency: 'USD' | 'VND'
+  ): { amount: number; cashflow: number; isLoading: boolean } => {
+    const rowId = String(row?.id ?? 'unknown');
+    const cacheKey = getFXCacheKey(rowId, targetCurrency);
+
+    const amountLocal = Number(row?.amount_local ?? 0);
+    const localCurrency = row?.local_currency as string || 'USD';
+    const cashflowLocal = Number(row?.cashflow_local ?? 0);
+
+    // Check cache first
+    if (fxConversionCache.has(cacheKey)) {
+      const cachedAmount = fxConversionCache.get(cacheKey)!;
+      return {
+        amount: cachedAmount,
+        cashflow: cachedAmount,
+        isLoading: false
+      };
+    }
+
+    // If same currency, no conversion needed
+    if (localCurrency === targetCurrency) {
+      return {
+        amount: amountLocal,
+        cashflow: cashflowLocal,
+        isLoading: false
+      };
+    }
+
+    // Use FX rates from API response if available
+    if (row?.fx_rates) {
+      const fxRates = row.fx_rates as Record<string, number>;
+      const rateKey = `${localCurrency}-${targetCurrency}`;
+      const rate = fxRates[rateKey];
+
+      if (rate && rate > 0) {
+        const convertedAmount = amountLocal * rate;
+        const convertedCashflow = cashflowLocal * rate;
+
+        // Cache the result
+        setFxConversionCache(prev => new Map(prev).set(cacheKey, convertedAmount));
+
+        return {
+          amount: convertedAmount,
+          cashflow: convertedCashflow,
+          isLoading: false
+        };
+      }
+    }
+
+    // Fallback: use legacy fields if available (backwards compatibility)
+    const amountUsd = Number(row?.amount_usd ?? 0);
+    const amountVnd = Number(row?.amount_vnd ?? 0);
+    const cashflowUsd = Number(row?.cashflow_usd ?? 0);
+    const cashflowVnd = Number(row?.cashflow_vnd ?? 0);
+
+    if (targetCurrency === 'USD' && amountUsd > 0) {
+      return {
+        amount: amountUsd,
+        cashflow: cashflowUsd,
+        isLoading: false
+      };
+    }
+
+    if (targetCurrency === 'VND' && amountVnd > 0) {
+      return {
+        amount: amountVnd,
+        cashflow: cashflowVnd,
+        isLoading: false
+      };
+    }
+
+    // Final fallback to hardcoded rates
+    const fallbackRate = targetCurrency === 'USD' ? 1 : 24000;
+    const convertedAmount = amountLocal * fallbackRate;
+    const convertedCashflow = cashflowLocal * fallbackRate;
+
+    // Cache the fallback result
+    setFxConversionCache(prev => new Map(prev).set(cacheKey, convertedAmount));
+
+    return {
+      amount: convertedAmount,
+      cashflow: convertedCashflow,
+      isLoading: false
+    };
+  }, [fxConversionCache]);
+
   const columns: TableColumn<Transaction>[] = [
     {
       key: 'date',
@@ -834,52 +947,30 @@ const TransactionPage: React.FC = () => {
           style: 'currency',
           currency: currency,
         });
+
         const type = String((row as Record<string, unknown>)?.type ?? '').toLowerCase();
         const isNeutral = ['deposit', 'withdraw', 'borrow'].includes(type);
 
-        // Extract transaction data for dynamic conversion
-        const amountLocal = Number((row as Record<string, unknown>)?.amount_local ?? 0);
-        const fxToUsd = Number((row as Record<string, unknown>)?.fx_to_usd ?? 1);
-        const fxToVnd = Number((row as Record<string, unknown>)?.fx_to_vnd ?? 24000);
+        // Use synchronous conversion with stored FX rates
+        const { amount: convertedAmount, cashflow: convertedCashflow, isLoading } =
+          convertAmountSync(row, currency as 'USD' | 'VND');
 
-        // Fallback to pre-calculated values if conversion data is missing
-        const amountUsd = Number((row as Record<string, unknown>)?.amount_usd ?? 0);
-        const amountVnd = Number((row as Record<string, unknown>)?.amount_vnd ?? 0);
-        const cashflowUsd = Number((row as Record<string, unknown>)?.cashflow_usd ?? 0);
-        const cashflowVnd = Number((row as Record<string, unknown>)?.cashflow_vnd ?? 0);
+        // For zero amounts, return dash
+        if (convertedAmount === 0 && convertedCashflow === 0) {
+          return '-';
+        }
 
+        // Display converted amounts
         if (isNeutral) {
-          let amt: number;
-          if (amountLocal > 0 && (fxToUsd > 0 || fxToVnd > 0)) {
-            // Dynamic conversion using historical FX rates
-            amt = currency === 'USD'
-              ? amountLocal * fxToUsd
-              : amountLocal * fxToVnd;
-          } else {
-            // Fallback to pre-calculated values
-            amt = currency === 'USD' ? amountUsd : amountVnd;
-          }
-          if (!amt) return '-';
           return (
             <span className="font-medium text-gray-800">
-              {numberFormatter.format(amt)}
+              {numberFormatter.format(convertedAmount)}
             </span>
           );
         }
 
-        let cashflow: number;
-        if (amountLocal > 0 && (fxToUsd > 0 || fxToVnd > 0)) {
-          // Dynamic conversion using historical FX rates
-          cashflow = currency === 'USD'
-            ? amountLocal * fxToUsd
-            : amountLocal * fxToVnd;
-        } else {
-          // Fallback to pre-calculated values
-          cashflow = currency === 'USD' ? cashflowUsd : cashflowVnd;
-        }
-        if (!cashflow) return '-';
-        const isPositive = cashflow > 0;
-        const formatted = numberFormatter.format(Math.abs(cashflow));
+        const isPositive = convertedCashflow > 0;
+        const formatted = numberFormatter.format(Math.abs(convertedCashflow));
         const sign = isPositive ? '+' : '-';
         const cls = isPositive ? 'text-green-700' : 'text-red-700';
         return (
