@@ -2,6 +2,7 @@ package models
 
 import (
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/shopspring/decimal"
@@ -22,21 +23,16 @@ type Transaction struct {
 	Quantity   decimal.Decimal `json:"quantity" gorm:"column:quantity;type:decimal(30,18);not null"`
 	PriceLocal decimal.Decimal `json:"price_local" gorm:"column:price_local;type:decimal(30,18);not null"`
 
-	// FX and dual currency
-	AmountLocal decimal.Decimal `json:"amount_local" gorm:"column:amount_local;type:decimal(30,18);not null"`
-	FXToUSD     decimal.Decimal `json:"fx_to_usd" gorm:"column:fx_to_usd;type:decimal(30,18);not null"`
-	FXToVND     decimal.Decimal `json:"fx_to_vnd" gorm:"column:fx_to_vnd;type:decimal(30,18);not null"`
-	AmountUSD   decimal.Decimal `json:"amount_usd" gorm:"column:amount_usd;type:decimal(30,18);not null"`
-	AmountVND   decimal.Decimal `json:"amount_vnd" gorm:"column:amount_vnd;type:decimal(30,18);not null"`
+	// Amount fields
+	AmountLocal   decimal.Decimal `json:"amount_local" gorm:"column:amount_local;type:decimal(30,18);not null"`
+	LocalCurrency string          `json:"local_currency" gorm:"column:local_currency;type:varchar(10);not null;default:'USD'"`
 
-	// Fees
-	FeeUSD decimal.Decimal `json:"fee_usd" gorm:"column:fee_usd;type:decimal(30,18);not null;default:0"`
-	FeeVND decimal.Decimal `json:"fee_vnd" gorm:"column:fee_vnd;type:decimal(30,18);not null;default:0"`
+	// Fees (stored in local currency, will be converted dynamically)
+	FeeLocal decimal.Decimal `json:"fee_local" gorm:"column:fee_local;type:decimal(30,18);not null;default:0"`
 
 	// Derived metrics
 	DeltaQty    decimal.Decimal `json:"delta_qty" gorm:"column:delta_qty;type:decimal(30,18);not null"`
-	CashFlowUSD decimal.Decimal `json:"cashflow_usd" gorm:"column:cashflow_usd;type:decimal(30,18);not null"`
-	CashFlowVND decimal.Decimal `json:"cashflow_vnd" gorm:"column:cashflow_vnd;type:decimal(30,18);not null"`
+	CashFlowLocal decimal.Decimal `json:"cashflow_local" gorm:"column:cashflow_local;type:decimal(30,18);not null"`
 
 	// Flow flags
 	InternalFlow *bool `json:"internal_flow" gorm:"column:internal_flow;type:boolean;default:false"`
@@ -56,10 +52,8 @@ type Transaction struct {
 	BorrowActive   *bool            `json:"borrow_active" gorm:"column:borrow_active;type:boolean;default:true"`
 
 	// Audit fields
-	FXSource    *string    `json:"fx_source" gorm:"column:fx_source;type:varchar(50)"`
-	FXTimestamp *time.Time `json:"fx_timestamp" gorm:"column:fx_timestamp;type:timestamptz"`
-	CreatedAt   time.Time  `json:"created_at" gorm:"column:created_at;type:timestamptz;autoCreateTime"`
-	UpdatedAt   time.Time  `json:"updated_at" gorm:"column:updated_at;type:timestamptz;autoUpdateTime"`
+	CreatedAt time.Time `json:"created_at" gorm:"column:created_at;type:timestamptz;autoCreateTime"`
+	UpdatedAt time.Time `json:"updated_at" gorm:"column:updated_at;type:timestamptz;autoUpdateTime"`
 }
 
 // TableName returns the table name for the Transaction model
@@ -102,11 +96,8 @@ func (t *Transaction) Validate() error {
 	if t.PriceLocal.IsNegative() {
 		return errors.New("price must be non-negative")
 	}
-	if t.FXToUSD.IsZero() {
-		return errors.New("FX to USD rate is required")
-	}
-	if t.FXToVND.IsZero() {
-		return errors.New("FX to VND rate is required")
+	if t.LocalCurrency == "" {
+		return errors.New("local currency is required")
 	}
 
 	// Validate borrow fields if provided
@@ -129,11 +120,8 @@ func (t *Transaction) Validate() error {
 
 // CalculateDerivedFields calculates and sets the derived fields
 func (t *Transaction) CalculateDerivedFields() {
-	// Calculate USD/VND amounts
-	// First compute amount in local currency so downstream fields can rely on it
+	// Calculate amount in local currency
 	t.AmountLocal = t.Quantity.Mul(t.PriceLocal)
-	t.AmountUSD = t.AmountLocal.Mul(t.FXToUSD)
-	t.AmountVND = t.AmountLocal.Mul(t.FXToVND)
 
 	// Calculate ΔQty based on transaction type
 	switch t.Type {
@@ -153,35 +141,104 @@ func (t *Transaction) CalculateDerivedFields() {
 	// Special cases: internal flows should not affect net cash flow
 	if t.InternalFlow != nil && *t.InternalFlow && (t.Type == "buy" || t.Type == "sell" || t.Type == "transfer_in" || t.Type == "transfer_out") {
 		// Zero out cash flow for internal trades/transfers between own accounts
-		t.CashFlowUSD = decimal.Zero
-		t.CashFlowVND = decimal.Zero
+		t.CashFlowLocal = decimal.Zero
 		return
 	}
 
 	if t.Type == "valuation" {
-		t.CashFlowUSD = decimal.Zero
-		t.CashFlowVND = decimal.Zero
+		t.CashFlowLocal = decimal.Zero
 		return
 	}
 
 	if t.Account == "CreditCard" && t.Type == "expense" {
 		// Credit card expense: no immediate cash flow
-		t.CashFlowUSD = decimal.Zero
-		t.CashFlowVND = decimal.Zero
+		t.CashFlowLocal = decimal.Zero
 	} else {
 		switch t.Type {
 		case "buy", "expense", "fee", "transfer_out", "lend", "repay_borrow", "interest_expense":
-			t.CashFlowUSD = t.AmountUSD.Add(t.FeeUSD).Neg()
-			t.CashFlowVND = t.AmountVND.Add(t.FeeVND).Neg()
+			t.CashFlowLocal = t.AmountLocal.Add(t.FeeLocal).Neg()
 		case "sell", "income", "reward", "airdrop", "transfer_in", "repay", "interest":
-			t.CashFlowUSD = t.AmountUSD.Sub(t.FeeUSD)
-			t.CashFlowVND = t.AmountVND.Sub(t.FeeVND)
+			t.CashFlowLocal = t.AmountLocal.Sub(t.FeeLocal)
 		case "deposit", "withdraw", "borrow":
 			// No net cash flow for deposits/withdrawals within same currency
-			t.CashFlowUSD = decimal.Zero
-			t.CashFlowVND = decimal.Zero
+			t.CashFlowLocal = decimal.Zero
 		}
 	}
+}
+
+// GetConvertedAmounts returns the amounts converted to target currencies using provided FX rates
+func (t *Transaction) GetConvertedAmounts(fxRates map[string]decimal.Decimal) (usdAmount, vndAmount, usdCashflow, vndCashflow decimal.Decimal) {
+	if t.LocalCurrency == "USD" {
+		usdAmount = t.AmountLocal
+		vndAmount = t.AmountLocal.Mul(fxRates["USD-VND"])
+		usdCashflow = t.CashFlowLocal
+		vndCashflow = t.CashFlowLocal.Mul(fxRates["USD-VND"])
+	} else if t.LocalCurrency == "VND" {
+		usdAmount = t.AmountLocal.Mul(fxRates["VND-USD"])
+		vndAmount = t.AmountLocal
+		usdCashflow = t.CashFlowLocal.Mul(fxRates["VND-USD"])
+		vndCashflow = t.CashFlowLocal
+	} else {
+		// For other currencies, convert through USD as base
+		localToUSD := fxRates[t.LocalCurrency+"-USD"]
+		localToVND := fxRates[t.LocalCurrency+"-VND"]
+		usdAmount = t.AmountLocal.Mul(localToUSD)
+		vndAmount = t.AmountLocal.Mul(localToVND)
+		usdCashflow = t.CashFlowLocal.Mul(localToUSD)
+		vndCashflow = t.CashFlowLocal.Mul(localToVND)
+	}
+
+	return usdAmount, vndAmount, usdCashflow, vndCashflow
+}
+
+// TransactionWithFX extends Transaction with dynamically calculated FX rates
+type TransactionWithFX struct {
+	Transaction
+	FXRates map[string]decimal.Decimal `json:"fx_rates"` // Map of currency pairs to rates, e.g., "USD-VND": 24000
+}
+
+// GetAmountInCurrency returns the amount converted to the specified currency
+func (tfx *TransactionWithFX) GetAmountInCurrency(targetCurrency string) decimal.Decimal {
+	if tfx.LocalCurrency == targetCurrency {
+		return tfx.AmountLocal
+	}
+
+	// Try direct conversion
+	rateKey := fmt.Sprintf("%s-%s", tfx.LocalCurrency, targetCurrency)
+	if rate, exists := tfx.FXRates[rateKey]; exists {
+		return tfx.AmountLocal.Mul(rate)
+	}
+
+	// Try inverse conversion
+	inverseKey := fmt.Sprintf("%s-%s", targetCurrency, tfx.LocalCurrency)
+	if rate, exists := tfx.FXRates[inverseKey]; exists {
+		return tfx.AmountLocal.Div(rate)
+	}
+
+	// No conversion rate available
+	return decimal.Zero
+}
+
+// GetCashflowInCurrency returns the cashflow converted to the specified currency
+func (tfx *TransactionWithFX) GetCashflowInCurrency(targetCurrency string) decimal.Decimal {
+	if tfx.LocalCurrency == targetCurrency {
+		return tfx.CashFlowLocal
+	}
+
+	// Try direct conversion
+	rateKey := fmt.Sprintf("%s-%s", tfx.LocalCurrency, targetCurrency)
+	if rate, exists := tfx.FXRates[rateKey]; exists {
+		return tfx.CashFlowLocal.Mul(rate)
+	}
+
+	// Try inverse conversion
+	inverseKey := fmt.Sprintf("%s-%s", targetCurrency, tfx.LocalCurrency)
+	if rate, exists := tfx.FXRates[inverseKey]; exists {
+		return tfx.CashflowLocal.Div(rate)
+	}
+
+	// No conversion rate available
+	return decimal.Zero
 }
 
 // PreSave prepares the transaction for saving by calculating derived fields and validating
