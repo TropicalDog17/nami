@@ -21,13 +21,14 @@ type Transaction struct {
 	// Amount fields
 	Quantity   decimal.Decimal `json:"quantity" gorm:"column:quantity;type:decimal(30,18);not null"`
 	PriceLocal decimal.Decimal `json:"price_local" gorm:"column:price_local;type:decimal(30,18);not null"`
+	LocalCurrency string          `json:"local_currency" gorm:"column:local_currency;type:varchar(10);not null;default:'USD'"`
 
 	// FX and dual currency
 	AmountLocal decimal.Decimal `json:"amount_local" gorm:"column:amount_local;type:decimal(30,18);not null"`
-	FXToUSD     decimal.Decimal `json:"fx_to_usd" gorm:"column:fx_to_usd;type:decimal(30,18);not null"`
-	FXToVND     decimal.Decimal `json:"fx_to_vnd" gorm:"column:fx_to_vnd;type:decimal(30,18);not null"`
-	AmountUSD   decimal.Decimal `json:"amount_usd" gorm:"column:amount_usd;type:decimal(30,18);not null"`
-	AmountVND   decimal.Decimal `json:"amount_vnd" gorm:"column:amount_vnd;type:decimal(30,18);not null"`
+	FXToUSD     decimal.Decimal `json:"fx_to_usd" gorm:"column:fx_to_usd;type:decimal(30,18)"`
+	FXToVND     decimal.Decimal `json:"fx_to_vnd" gorm:"column:fx_to_vnd;type:decimal(30,18)"`
+	AmountUSD   decimal.Decimal `json:"amount_usd" gorm:"column:amount_usd;type:decimal(30,18)"`
+	AmountVND   decimal.Decimal `json:"amount_vnd" gorm:"column:amount_vnd;type:decimal(30,18)"`
 
 	// Fees
 	FeeUSD decimal.Decimal `json:"fee_usd" gorm:"column:fee_usd;type:decimal(30,18);not null;default:0"`
@@ -102,12 +103,10 @@ func (t *Transaction) Validate() error {
 	if t.PriceLocal.IsNegative() {
 		return errors.New("price must be non-negative")
 	}
-	if t.FXToUSD.IsZero() {
-		return errors.New("FX to USD rate is required")
+	if t.LocalCurrency == "" {
+		return errors.New("local_currency is required")
 	}
-	if t.FXToVND.IsZero() {
-		return errors.New("FX to VND rate is required")
-	}
+	// FX rates are now optional and will be inferred automatically
 
 	// Validate borrow fields if provided
 	if t.Type == "borrow" {
@@ -132,8 +131,14 @@ func (t *Transaction) CalculateDerivedFields() {
 	// Calculate USD/VND amounts
 	// First compute amount in local currency so downstream fields can rely on it
 	t.AmountLocal = t.Quantity.Mul(t.PriceLocal)
-	t.AmountUSD = t.AmountLocal.Mul(t.FXToUSD)
-	t.AmountVND = t.AmountLocal.Mul(t.FXToVND)
+
+	// Calculate USD/VND amounts if FX rates are available
+	if !t.FXToUSD.IsZero() {
+		t.AmountUSD = t.AmountLocal.Mul(t.FXToUSD)
+	}
+	if !t.FXToVND.IsZero() {
+		t.AmountVND = t.AmountLocal.Mul(t.FXToVND)
+	}
 
 	// Calculate ΔQty based on transaction type
 	switch t.Type {

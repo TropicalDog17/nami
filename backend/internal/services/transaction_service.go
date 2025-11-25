@@ -306,21 +306,35 @@ func (s *transactionService) populateFXRates(ctx context.Context, tx *models.Tra
 		return nil
 	}
 
-	asset := tx.Asset
+	localCurrency := tx.LocalCurrency
 	date := tx.Date
 
-	// Skip FX rate population for cryptocurrencies
+	// Skip FX rate population for cryptocurrency or USD transactions
 	// Cryptocurrencies don't have FX rates - they have prices in other currencies
-	if models.IsCryptocurrency(asset) {
-		// For cryptocurrencies, set FX rates to 1.0 to avoid errors
-		// The actual valuation should be done via price providers, not FX rates
+	// USD transactions don't need USD conversion
+	if models.IsCryptocurrency(tx.Asset) || localCurrency == "USD" {
+		// For USD transactions and cryptocurrencies, set appropriate rates
 		if needsUSD {
-			tx.FXToUSD = decimal.NewFromInt(1)
+			if localCurrency == "USD" {
+				tx.FXToUSD = decimal.NewFromInt(1) // USD to USD rate is 1
+			} else {
+				// For crypto priced in USD, set to 1 to avoid errors
+				tx.FXToUSD = decimal.NewFromInt(1)
+			}
 		}
-		if needsVND {
+		if needsVND && localCurrency == "USD" {
+			// For USD to VND, we still need to fetch the rate
+		} else if needsVND && models.IsCryptocurrency(tx.Asset) {
+			// For crypto, set to 1 to avoid errors (valuation via price providers)
 			tx.FXToVND = decimal.NewFromInt(1)
 		}
-		return nil
+		// For USD transactions that need VND rate, continue to fetch below
+		if localCurrency == "USD" && !needsVND {
+			return nil
+		}
+		if models.IsCryptocurrency(tx.Asset) && !(localCurrency == "USD" && needsVND) {
+			return nil
+		}
 	}
 
 	// Determine which rates we need
@@ -332,16 +346,20 @@ func (s *transactionService) populateFXRates(ctx context.Context, tx *models.Tra
 		targets = append(targets, "VND")
 	}
 
-	// Fetch rates
-	fetchedRates, err := s.fxProvider.GetRates(ctx, asset, targets, date)
+	// Fetch rates using local currency as base
+	fetchedRates, err := s.fxProvider.GetRates(ctx, localCurrency, targets, date)
 	if err != nil {
-		return fmt.Errorf("failed to fetch FX rates for %s: %w", asset, err)
+		return fmt.Errorf("failed to fetch FX rates for %s: %w", localCurrency, err)
 	}
 
 	// Apply fetched rates
 	if needsUSD {
 		if usdRate, exists := fetchedRates["USD"]; exists {
-			tx.FXToUSD = usdRate
+			if localCurrency == "USD" {
+				tx.FXToUSD = decimal.NewFromInt(1) // USD to USD rate is 1
+			} else {
+				tx.FXToUSD = usdRate
+			}
 			if tx.FXSource == nil {
 				source := "auto-fx-provider"
 				tx.FXSource = &source
@@ -350,8 +368,10 @@ func (s *transactionService) populateFXRates(ctx context.Context, tx *models.Tra
 				now := time.Now()
 				tx.FXTimestamp = &now
 			}
+		} else if localCurrency == "USD" {
+			tx.FXToUSD = decimal.NewFromInt(1) // USD to USD rate is 1
 		} else {
-			return fmt.Errorf("USD rate not available for %s", asset)
+			return fmt.Errorf("USD rate not available for %s", localCurrency)
 		}
 	}
 
@@ -366,8 +386,10 @@ func (s *transactionService) populateFXRates(ctx context.Context, tx *models.Tra
 				now := time.Now()
 				tx.FXTimestamp = &now
 			}
+		} else if localCurrency == "VND" {
+			tx.FXToVND = decimal.NewFromInt(1) // VND to VND rate is 1
 		} else {
-			return fmt.Errorf("VND rate not available for %s", asset)
+			return fmt.Errorf("VND rate not available for %s", localCurrency)
 		}
 	}
 
