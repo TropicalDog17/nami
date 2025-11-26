@@ -272,10 +272,7 @@ func (s *transactionService) mergeTransactionUpdate(existing, update *models.Tra
 	if update.ExitDate != nil && !update.ExitDate.IsZero() {
 		merged.ExitDate = update.ExitDate
 	}
-	if update.FXImpact != nil && !update.FXImpact.IsZero() {
-		merged.FXImpact = update.FXImpact
-	}
-	// FXSource and FXTimestamp are no longer stored - FX rates are inferred dynamically
+	// FX impact and stored FX fields have been removed; FX is now inferred dynamically
 
 	return merged
 }
@@ -315,7 +312,7 @@ func (s *transactionService) GetTransactionsFXEnhanced(ctx context.Context, filt
 			// Add transaction without FX conversion
 			enhancedTx = &models.TransactionWithFX{
 				Transaction: *tx,
-				FXRates:      make(map[string]decimal.Decimal),
+				FXRates:     make(map[string]decimal.Decimal),
 			}
 		}
 		enhancedTxs = append(enhancedTxs, enhancedTx)
@@ -330,7 +327,7 @@ func (s *transactionService) convertTransactionWithFX(ctx context.Context, tx *m
 		// No FX provider, return transaction without conversion
 		return &models.TransactionWithFX{
 			Transaction: *tx,
-			FXRates:      make(map[string]decimal.Decimal),
+			FXRates:     make(map[string]decimal.Decimal),
 		}, nil
 	}
 

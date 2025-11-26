@@ -44,12 +44,14 @@ func (r *reportingRepository) GetHoldings(ctx context.Context, asOf time.Time) (
 			HAVING SUM(delta_qty) > 0
 		),
 		latest_prices AS (
+			-- Since legacy pre-calculated USD columns (amount_usd, fx_to_usd, fx_to_vnd) were removed in migration 018,
+			-- we now treat price_local as the canonical unit price and value in USD terms.
+			-- For USD-denominated assets this is already correct; for other currencies, FX conversion
+			-- is handled at the portfolio aggregation level using fx_rates (see usd_to_vnd_rate CTE below).
 			SELECT DISTINCT ON (asset)
 				asset,
 				price_local,
-				amount_usd / NULLIF(quantity, 0) as price_usd,
-				fx_to_usd,
-				fx_to_vnd
+				price_local AS price_usd
 			FROM transactions
 			WHERE date <= $1 AND quantity > 0
 			ORDER BY asset, date DESC
@@ -130,12 +132,15 @@ func (r *reportingRepository) GetOpenInvestmentHoldings(ctx context.Context, asO
 			WHERE is_open = TRUE
 		),
 		latest_prices AS (
+			-- Legacy holdings logic relied on amount_usd and FX columns on transactions.
+			-- After migration 018, those columns were removed in favor of local_currency-based storage.
+			-- For valuation we now use price_local directly as the USD unit price, keeping
+			-- consistency with transaction entry where price_local is expressed in USD terms
+			-- for investable assets. FX to VND is applied separately via usd_to_vnd_rate when needed.
 			SELECT DISTINCT ON (asset)
 				asset,
 				price_local,
-				amount_usd / NULLIF(quantity, 0) AS price_usd,
-				fx_to_usd,
-				fx_to_vnd
+				price_local AS price_usd
 			FROM transactions
 			WHERE date <= $1 AND quantity > 0
 			ORDER BY asset, date DESC
@@ -218,44 +223,104 @@ func (r *reportingRepository) GetCashFlow(ctx context.Context, period models.Per
 		return nil, fmt.Errorf("failed to get SQL DB: %w", err)
 	}
 
+	// Cash flow is now stored in local currency (cashflow_local) with local_currency.
+	// Convert to USD/VND on the fly using fx_rates, assuming USD as base for reporting.
 	query := `
+        WITH usd_to_vnd_rate AS (
+            SELECT rate
+            FROM fx_rates
+            WHERE from_currency = 'USD' AND to_currency = 'VND'
+              AND date <= $2
+            ORDER BY date DESC
+            LIMIT 1
+        )
         SELECT
             COALESCE(SUM(
                 CASE
-                    WHEN type = 'borrow' THEN amount_usd
-                    WHEN cashflow_usd > 0 THEN cashflow_usd
+                    WHEN type = 'borrow' THEN
+                        CASE
+                            WHEN local_currency = 'USD' THEN amount_local
+                            WHEN local_currency = 'VND' THEN amount_local / NULLIF((SELECT rate FROM usd_to_vnd_rate), 0)
+                            ELSE amount_local
+                        END
+                    WHEN cashflow_local > 0 THEN
+                        CASE
+                            WHEN local_currency = 'USD' THEN cashflow_local
+                            WHEN local_currency = 'VND' THEN cashflow_local / NULLIF((SELECT rate FROM usd_to_vnd_rate), 0)
+                            ELSE cashflow_local
+                        END
                     ELSE 0
                 END
             ), 0) as total_in_usd,
             COALESCE(SUM(
                 CASE
-                    WHEN cashflow_usd < 0 THEN ABS(cashflow_usd)
+                    WHEN cashflow_local < 0 THEN
+                        ABS(CASE
+                            WHEN local_currency = 'USD' THEN cashflow_local
+                            WHEN local_currency = 'VND' THEN cashflow_local / NULLIF((SELECT rate FROM usd_to_vnd_rate), 0)
+                            ELSE cashflow_local
+                        END)
                     ELSE 0
                 END
             ), 0) as total_out_usd,
             COALESCE(SUM(
                 CASE
-                    WHEN type = 'borrow' THEN amount_usd
-                    ELSE cashflow_usd
+                    WHEN type = 'borrow' THEN
+                        CASE
+                            WHEN local_currency = 'USD' THEN amount_local
+                            WHEN local_currency = 'VND' THEN amount_local / NULLIF((SELECT rate FROM usd_to_vnd_rate), 0)
+                            ELSE amount_local
+                        END
+                    ELSE
+                        CASE
+                            WHEN local_currency = 'USD' THEN cashflow_local
+                            WHEN local_currency = 'VND' THEN cashflow_local / NULLIF((SELECT rate FROM usd_to_vnd_rate), 0)
+                            ELSE cashflow_local
+                        END
                 END
             ), 0) as net_usd,
             COALESCE(SUM(
                 CASE
-                    WHEN type = 'borrow' THEN amount_vnd
-                    WHEN cashflow_vnd > 0 THEN cashflow_vnd
+                    WHEN type = 'borrow' THEN
+                        CASE
+                            WHEN local_currency = 'USD' THEN amount_local * (SELECT COALESCE(rate, 25000) FROM usd_to_vnd_rate)
+                            WHEN local_currency = 'VND' THEN amount_local
+                            ELSE amount_local * (SELECT COALESCE(rate, 25000) FROM usd_to_vnd_rate)
+                        END
+                    WHEN cashflow_local > 0 THEN
+                        CASE
+                            WHEN local_currency = 'USD' THEN cashflow_local * (SELECT COALESCE(rate, 25000) FROM usd_to_vnd_rate)
+                            WHEN local_currency = 'VND' THEN cashflow_local
+                            ELSE cashflow_local * (SELECT COALESCE(rate, 25000) FROM usd_to_vnd_rate)
+                        END
                     ELSE 0
                 END
             ), 0) as total_in_vnd,
             COALESCE(SUM(
                 CASE
-                    WHEN cashflow_vnd < 0 THEN ABS(cashflow_vnd)
+                    WHEN cashflow_local < 0 THEN
+                        ABS(CASE
+                            WHEN local_currency = 'USD' THEN cashflow_local * (SELECT COALESCE(rate, 25000) FROM usd_to_vnd_rate)
+                            WHEN local_currency = 'VND' THEN cashflow_local
+                            ELSE cashflow_local * (SELECT COALESCE(rate, 25000) FROM usd_to_vnd_rate)
+                        END)
                     ELSE 0
                 END
             ), 0) as total_out_vnd,
             COALESCE(SUM(
                 CASE
-                    WHEN type = 'borrow' THEN amount_vnd
-                    ELSE cashflow_vnd
+                    WHEN type = 'borrow' THEN
+                        CASE
+                            WHEN local_currency = 'USD' THEN amount_local * (SELECT COALESCE(rate, 25000) FROM usd_to_vnd_rate)
+                            WHEN local_currency = 'VND' THEN amount_local
+                            ELSE amount_local * (SELECT COALESCE(rate, 25000) FROM usd_to_vnd_rate)
+                        END
+                    ELSE
+                        CASE
+                            WHEN local_currency = 'USD' THEN cashflow_local * (SELECT COALESCE(rate, 25000) FROM usd_to_vnd_rate)
+                            WHEN local_currency = 'VND' THEN cashflow_local
+                            ELSE cashflow_local * (SELECT COALESCE(rate, 25000) FROM usd_to_vnd_rate)
+                        END
                 END
             ), 0) as net_vnd
         FROM transactions
@@ -276,44 +341,102 @@ func (r *reportingRepository) GetCashFlow(ctx context.Context, period models.Per
 	}
 
 	typeQuery := `
+        WITH usd_to_vnd_rate AS (
+            SELECT rate
+            FROM fx_rates
+            WHERE from_currency = 'USD' AND to_currency = 'VND'
+              AND date <= $2
+            ORDER BY date DESC
+            LIMIT 1
+        )
         SELECT
             type,
             COALESCE(SUM(
                 CASE
-                    WHEN type = 'borrow' THEN amount_usd
-                    WHEN cashflow_usd > 0 THEN cashflow_usd
+                    WHEN type = 'borrow' THEN
+                        CASE
+                            WHEN local_currency = 'USD' THEN amount_local
+                            WHEN local_currency = 'VND' THEN amount_local / NULLIF((SELECT rate FROM usd_to_vnd_rate), 0)
+                            ELSE amount_local
+                        END
+                    WHEN cashflow_local > 0 THEN
+                        CASE
+                            WHEN local_currency = 'USD' THEN cashflow_local
+                            WHEN local_currency = 'VND' THEN cashflow_local / NULLIF((SELECT rate FROM usd_to_vnd_rate), 0)
+                            ELSE cashflow_local
+                        END
                     ELSE 0
                 END
             ), 0) as inflow_usd,
             COALESCE(SUM(
                 CASE
-                    WHEN cashflow_usd < 0 THEN ABS(cashflow_usd)
+                    WHEN cashflow_local < 0 THEN
+                        ABS(CASE
+                            WHEN local_currency = 'USD' THEN cashflow_local
+                            WHEN local_currency = 'VND' THEN cashflow_local / NULLIF((SELECT rate FROM usd_to_vnd_rate), 0)
+                            ELSE cashflow_local
+                        END)
                     ELSE 0
                 END
             ), 0) as outflow_usd,
             COALESCE(SUM(
                 CASE
-                    WHEN type = 'borrow' THEN amount_usd
-                    ELSE cashflow_usd
+                    WHEN type = 'borrow' THEN
+                        CASE
+                            WHEN local_currency = 'USD' THEN amount_local
+                            WHEN local_currency = 'VND' THEN amount_local / NULLIF((SELECT rate FROM usd_to_vnd_rate), 0)
+                            ELSE amount_local
+                        END
+                    ELSE
+                        CASE
+                            WHEN local_currency = 'USD' THEN cashflow_local
+                            WHEN local_currency = 'VND' THEN cashflow_local / NULLIF((SELECT rate FROM usd_to_vnd_rate), 0)
+                            ELSE cashflow_local
+                        END
                 END
             ), 0) as net_usd,
             COALESCE(SUM(
                 CASE
-                    WHEN type = 'borrow' THEN amount_vnd
-                    WHEN cashflow_vnd > 0 THEN cashflow_vnd
+                    WHEN type = 'borrow' THEN
+                        CASE
+                            WHEN local_currency = 'USD' THEN amount_local * (SELECT COALESCE(rate, 25000) FROM usd_to_vnd_rate)
+                            WHEN local_currency = 'VND' THEN amount_local
+                            ELSE amount_local * (SELECT COALESCE(rate, 25000) FROM usd_to_vnd_rate)
+                        END
+                    WHEN cashflow_local > 0 THEN
+                        CASE
+                            WHEN local_currency = 'USD' THEN cashflow_local * (SELECT COALESCE(rate, 25000) FROM usd_to_vnd_rate)
+                            WHEN local_currency = 'VND' THEN cashflow_local
+                            ELSE cashflow_local * (SELECT COALESCE(rate, 25000) FROM usd_to_vnd_rate)
+                        END
                     ELSE 0
                 END
             ), 0) as inflow_vnd,
             COALESCE(SUM(
                 CASE
-                    WHEN cashflow_vnd < 0 THEN ABS(cashflow_vnd)
+                    WHEN cashflow_local < 0 THEN
+                        ABS(CASE
+                            WHEN local_currency = 'USD' THEN cashflow_local * (SELECT COALESCE(rate, 25000) FROM usd_to_vnd_rate)
+                            WHEN local_currency = 'VND' THEN cashflow_local
+                            ELSE cashflow_local * (SELECT COALESCE(rate, 25000) FROM usd_to_vnd_rate)
+                        END)
                     ELSE 0
                 END
             ), 0) as outflow_vnd,
             COALESCE(SUM(
                 CASE
-                    WHEN type = 'borrow' THEN amount_vnd
-                    ELSE cashflow_vnd
+                    WHEN type = 'borrow' THEN
+                        CASE
+                            WHEN local_currency = 'USD' THEN amount_local * (SELECT COALESCE(rate, 25000) FROM usd_to_vnd_rate)
+                            WHEN local_currency = 'VND' THEN amount_local
+                            ELSE amount_local * (SELECT COALESCE(rate, 25000) FROM usd_to_vnd_rate)
+                        END
+                    ELSE
+                        CASE
+                            WHEN local_currency = 'USD' THEN cashflow_local * (SELECT COALESCE(rate, 25000) FROM usd_to_vnd_rate)
+                            WHEN local_currency = 'VND' THEN cashflow_local
+                            ELSE cashflow_local * (SELECT COALESCE(rate, 25000) FROM usd_to_vnd_rate)
+                        END
                 END
             ), 0) as net_vnd,
             COUNT(*) as count
@@ -362,9 +485,29 @@ func (r *reportingRepository) GetCashFlow(ctx context.Context, period models.Per
 	report.OperatingNetVND = opNetVND
 
 	finBorrowQuery := `
+		WITH usd_to_vnd_rate AS (
+			SELECT rate
+			FROM fx_rates
+			WHERE from_currency = 'USD' AND to_currency = 'VND'
+			  AND date <= $2
+			ORDER BY date DESC
+			LIMIT 1
+		)
 		SELECT
-			COALESCE(SUM(amount_usd), 0) AS inflow_usd,
-			COALESCE(SUM(amount_vnd), 0) AS inflow_vnd
+			COALESCE(SUM(
+				CASE
+					WHEN local_currency = 'USD' THEN amount_local
+					WHEN local_currency = 'VND' THEN amount_local / NULLIF((SELECT rate FROM usd_to_vnd_rate), 0)
+					ELSE amount_local
+				END
+			), 0) AS inflow_usd,
+			COALESCE(SUM(
+				CASE
+					WHEN local_currency = 'USD' THEN amount_local * (SELECT COALESCE(rate, 25000) FROM usd_to_vnd_rate)
+					WHEN local_currency = 'VND' THEN amount_local
+					ELSE amount_local * (SELECT COALESCE(rate, 25000) FROM usd_to_vnd_rate)
+				END
+			), 0) AS inflow_vnd
 		FROM transactions
 		WHERE date >= $1 AND date <= $2 AND type = 'borrow'`
 
@@ -374,9 +517,29 @@ func (r *reportingRepository) GetCashFlow(ctx context.Context, period models.Per
 	}
 
 	finOutQuery := `
+		WITH usd_to_vnd_rate AS (
+			SELECT rate
+			FROM fx_rates
+			WHERE from_currency = 'USD' AND to_currency = 'VND'
+			  AND date <= $2
+			ORDER BY date DESC
+			LIMIT 1
+		)
 		SELECT
-			COALESCE(SUM(ABS(cashflow_usd)), 0) AS outflow_usd,
-			COALESCE(SUM(ABS(cashflow_vnd)), 0) AS outflow_vnd
+			COALESCE(SUM(ABS(
+				CASE
+					WHEN local_currency = 'USD' THEN cashflow_local
+					WHEN local_currency = 'VND' THEN cashflow_local / NULLIF((SELECT rate FROM usd_to_vnd_rate), 0)
+					ELSE cashflow_local
+				END
+			)), 0) AS outflow_usd,
+			COALESCE(SUM(ABS(
+				CASE
+					WHEN local_currency = 'USD' THEN cashflow_local * (SELECT COALESCE(rate, 25000) FROM usd_to_vnd_rate)
+					WHEN local_currency = 'VND' THEN cashflow_local
+					ELSE cashflow_local * (SELECT COALESCE(rate, 25000) FROM usd_to_vnd_rate)
+				END
+			)), 0) AS outflow_vnd
 		FROM transactions
 			WHERE date >= $1 AND date <= $2 AND type IN ('repay_borrow','interest_expense') AND (internal_flow IS DISTINCT FROM TRUE)`
 
@@ -400,14 +563,58 @@ func (r *reportingRepository) GetCashFlow(ctx context.Context, period models.Per
 	report.CombinedNetVND = report.OperatingNetVND.Add(report.FinancingNetVND)
 
 	tagQuery := `
+		WITH usd_to_vnd_rate AS (
+			SELECT rate
+			FROM fx_rates
+			WHERE from_currency = 'USD' AND to_currency = 'VND'
+			  AND date <= $2
+			ORDER BY date DESC
+			LIMIT 1
+		)
 		SELECT
 			COALESCE(tag, 'Untagged') as tag,
-			COALESCE(SUM(CASE WHEN cashflow_usd > 0 THEN cashflow_usd ELSE 0 END), 0) as inflow_usd,
-			COALESCE(SUM(CASE WHEN cashflow_usd < 0 THEN ABS(cashflow_usd) ELSE 0 END), 0) as outflow_usd,
-			COALESCE(SUM(cashflow_usd), 0) as net_usd,
-			COALESCE(SUM(CASE WHEN cashflow_vnd > 0 THEN cashflow_vnd ELSE 0 END), 0) as inflow_vnd,
-			COALESCE(SUM(CASE WHEN cashflow_vnd < 0 THEN ABS(cashflow_vnd) ELSE 0 END), 0) as outflow_vnd,
-			COALESCE(SUM(cashflow_vnd), 0) as net_vnd,
+			COALESCE(SUM(CASE WHEN cashflow_local > 0 THEN
+				CASE
+					WHEN local_currency = 'USD' THEN cashflow_local
+					WHEN local_currency = 'VND' THEN cashflow_local / NULLIF((SELECT rate FROM usd_to_vnd_rate), 0)
+					ELSE cashflow_local
+				END
+			ELSE 0 END), 0) as inflow_usd,
+			COALESCE(SUM(CASE WHEN cashflow_local < 0 THEN ABS(
+				CASE
+					WHEN local_currency = 'USD' THEN cashflow_local
+					WHEN local_currency = 'VND' THEN cashflow_local / NULLIF((SELECT rate FROM usd_to_vnd_rate), 0)
+					ELSE cashflow_local
+				END
+			) ELSE 0 END), 0) as outflow_usd,
+			COALESCE(SUM(
+				CASE
+					WHEN local_currency = 'USD' THEN cashflow_local
+					WHEN local_currency = 'VND' THEN cashflow_local / NULLIF((SELECT rate FROM usd_to_vnd_rate), 0)
+					ELSE cashflow_local
+				END
+			), 0) as net_usd,
+			COALESCE(SUM(CASE WHEN cashflow_local > 0 THEN
+				CASE
+					WHEN local_currency = 'USD' THEN cashflow_local * (SELECT COALESCE(rate, 25000) FROM usd_to_vnd_rate)
+					WHEN local_currency = 'VND' THEN cashflow_local
+					ELSE cashflow_local * (SELECT COALESCE(rate, 25000) FROM usd_to_vnd_rate)
+				END
+			ELSE 0 END), 0) as inflow_vnd,
+			COALESCE(SUM(CASE WHEN cashflow_local < 0 THEN ABS(
+				CASE
+					WHEN local_currency = 'USD' THEN cashflow_local * (SELECT COALESCE(rate, 25000) FROM usd_to_vnd_rate)
+					WHEN local_currency = 'VND' THEN cashflow_local
+					ELSE cashflow_local * (SELECT COALESCE(rate, 25000) FROM usd_to_vnd_rate)
+				END
+			) ELSE 0 END), 0) as outflow_vnd,
+			COALESCE(SUM(
+				CASE
+					WHEN local_currency = 'USD' THEN cashflow_local * (SELECT COALESCE(rate, 25000) FROM usd_to_vnd_rate)
+					WHEN local_currency = 'VND' THEN cashflow_local
+					ELSE cashflow_local * (SELECT COALESCE(rate, 25000) FROM usd_to_vnd_rate)
+				END
+			), 0) as net_vnd,
 			COUNT(*) as count
 		FROM transactions
 			WHERE date >= $1 AND date <= $2 AND (internal_flow IS DISTINCT FROM TRUE)
@@ -442,11 +649,31 @@ func (r *reportingRepository) GetSpending(ctx context.Context, period models.Per
 	}
 
 	query := `
+		WITH usd_to_vnd_rate AS (
+			SELECT rate
+			FROM fx_rates
+			WHERE from_currency = 'USD' AND to_currency = 'VND'
+			  AND date <= $2
+			ORDER BY date DESC
+			LIMIT 1
+		)
 		SELECT
-			COALESCE(SUM(CASE WHEN cashflow_usd < 0 THEN ABS(cashflow_usd) ELSE 0 END), 0) as total_usd,
-			COALESCE(SUM(CASE WHEN cashflow_vnd < 0 THEN ABS(cashflow_vnd) ELSE 0 END), 0) as total_vnd
+			COALESCE(SUM(CASE WHEN cashflow_local < 0 THEN ABS(
+				CASE
+					WHEN local_currency = 'USD' THEN cashflow_local
+					WHEN local_currency = 'VND' THEN cashflow_local / NULLIF((SELECT rate FROM usd_to_vnd_rate), 0)
+					ELSE cashflow_local
+				END
+			) ELSE 0 END), 0) as total_usd,
+			COALESCE(SUM(CASE WHEN cashflow_local < 0 THEN ABS(
+				CASE
+					WHEN local_currency = 'USD' THEN cashflow_local * (SELECT COALESCE(rate, 25000) FROM usd_to_vnd_rate)
+					WHEN local_currency = 'VND' THEN cashflow_local
+					ELSE cashflow_local * (SELECT COALESCE(rate, 25000) FROM usd_to_vnd_rate)
+				END
+			) ELSE 0 END), 0) as total_vnd
 		FROM transactions
-			WHERE date >= $1 AND date <= $2 AND cashflow_usd < 0 AND (internal_flow IS DISTINCT FROM TRUE)`
+			WHERE date >= $1 AND date <= $2 AND cashflow_local < 0 AND (internal_flow IS DISTINCT FROM TRUE)`
 
 	report := &models.SpendingReport{
 		Period:         period,
@@ -463,13 +690,33 @@ func (r *reportingRepository) GetSpending(ctx context.Context, period models.Per
 	}
 
 	tagQuery := `
+		WITH usd_to_vnd_rate AS (
+			SELECT rate
+			FROM fx_rates
+			WHERE from_currency = 'USD' AND to_currency = 'VND'
+			  AND date <= $2
+			ORDER BY date DESC
+			LIMIT 1
+		)
 		SELECT
 			COALESCE(tag, 'Untagged') as tag,
-			COALESCE(SUM(ABS(cashflow_usd)), 0) as amount_usd,
-			COALESCE(SUM(ABS(cashflow_vnd)), 0) as amount_vnd,
+			COALESCE(SUM(ABS(
+				CASE
+					WHEN local_currency = 'USD' THEN cashflow_local
+					WHEN local_currency = 'VND' THEN cashflow_local / NULLIF((SELECT rate FROM usd_to_vnd_rate), 0)
+					ELSE cashflow_local
+				END
+			)), 0) as amount_usd,
+			COALESCE(SUM(ABS(
+				CASE
+					WHEN local_currency = 'USD' THEN cashflow_local * (SELECT COALESCE(rate, 25000) FROM usd_to_vnd_rate)
+					WHEN local_currency = 'VND' THEN cashflow_local
+					ELSE cashflow_local * (SELECT COALESCE(rate, 25000) FROM usd_to_vnd_rate)
+				END
+			)), 0) as amount_vnd,
 			COUNT(*) as count
 		FROM transactions
-			WHERE date >= $1 AND date <= $2 AND cashflow_usd < 0 AND (internal_flow IS DISTINCT FROM TRUE)
+			WHERE date >= $1 AND date <= $2 AND cashflow_local < 0 AND (internal_flow IS DISTINCT FROM TRUE)
 		GROUP BY tag
 		ORDER BY amount_usd DESC`
 
@@ -495,13 +742,33 @@ func (r *reportingRepository) GetSpending(ctx context.Context, period models.Per
 	}
 
 	counterpartyQuery := `
+		WITH usd_to_vnd_rate AS (
+			SELECT rate
+			FROM fx_rates
+			WHERE from_currency = 'USD' AND to_currency = 'VND'
+			  AND date <= $2
+			ORDER BY date DESC
+			LIMIT 1
+		)
 		SELECT
 			COALESCE(counterparty, 'Unknown') as counterparty,
-			COALESCE(SUM(ABS(cashflow_usd)), 0) as amount_usd,
-			COALESCE(SUM(ABS(cashflow_vnd)), 0) as amount_vnd,
+			COALESCE(SUM(ABS(
+				CASE
+					WHEN local_currency = 'USD' THEN cashflow_local
+					WHEN local_currency = 'VND' THEN cashflow_local / NULLIF((SELECT rate FROM usd_to_vnd_rate), 0)
+					ELSE cashflow_local
+				END
+			)), 0) as amount_usd,
+			COALESCE(SUM(ABS(
+				CASE
+					WHEN local_currency = 'USD' THEN cashflow_local * (SELECT COALESCE(rate, 25000) FROM usd_to_vnd_rate)
+					WHEN local_currency = 'VND' THEN cashflow_local
+					ELSE cashflow_local * (SELECT COALESCE(rate, 25000) FROM usd_to_vnd_rate)
+				END
+			)), 0) as amount_vnd,
 			COUNT(*) as count
 		FROM transactions
-			WHERE date >= $1 AND date <= $2 AND cashflow_usd < 0 AND (internal_flow IS DISTINCT FROM TRUE)
+			WHERE date >= $1 AND date <= $2 AND cashflow_local < 0 AND (internal_flow IS DISTINCT FROM TRUE)
 		GROUP BY counterparty
 		ORDER BY amount_usd DESC`
 
@@ -528,13 +795,33 @@ func (r *reportingRepository) GetSpending(ctx context.Context, period models.Per
 
 	// Daily breakdown (outflows only)
 	dayQuery := `
+        WITH usd_to_vnd_rate AS (
+            SELECT rate
+            FROM fx_rates
+            WHERE from_currency = 'USD' AND to_currency = 'VND'
+              AND date <= $2
+            ORDER BY date DESC
+            LIMIT 1
+        )
         SELECT
             TO_CHAR(date::date, 'YYYY-MM-DD') as day,
-            COALESCE(SUM(ABS(cashflow_usd)), 0) as amount_usd,
-            COALESCE(SUM(ABS(cashflow_vnd)), 0) as amount_vnd,
+            COALESCE(SUM(ABS(
+                CASE
+                    WHEN local_currency = 'USD' THEN cashflow_local
+                    WHEN local_currency = 'VND' THEN cashflow_local / NULLIF((SELECT rate FROM usd_to_vnd_rate), 0)
+                    ELSE cashflow_local
+                END
+            )), 0) as amount_usd,
+            COALESCE(SUM(ABS(
+                CASE
+                    WHEN local_currency = 'USD' THEN cashflow_local * (SELECT COALESCE(rate, 25000) FROM usd_to_vnd_rate)
+                    WHEN local_currency = 'VND' THEN cashflow_local
+                    ELSE cashflow_local * (SELECT COALESCE(rate, 25000) FROM usd_to_vnd_rate)
+                END
+            )), 0) as amount_vnd,
             COUNT(*) as count
         FROM transactions
-            WHERE date >= $1 AND date <= $2 AND cashflow_usd < 0 AND (internal_flow IS DISTINCT FROM TRUE)
+            WHERE date >= $1 AND date <= $2 AND cashflow_local < 0 AND (internal_flow IS DISTINCT FROM TRUE)
         GROUP BY day
         ORDER BY day`
 
@@ -554,11 +841,39 @@ func (r *reportingRepository) GetSpending(ctx context.Context, period models.Per
 	}
 
 	expenseQuery := `
+		WITH usd_to_vnd_rate AS (
+			SELECT rate
+			FROM fx_rates
+			WHERE from_currency = 'USD' AND to_currency = 'VND'
+			  AND date <= $2
+			ORDER BY date DESC
+			LIMIT 1
+		)
 		SELECT id, date, type, asset, account, counterparty, tag,
-			   ABS(amount_usd) as amount_usd, ABS(amount_vnd) as amount_vnd, note
+			   ABS(
+			   	CASE
+					WHEN local_currency = 'USD' THEN amount_local
+					WHEN local_currency = 'VND' THEN amount_local / NULLIF((SELECT rate FROM usd_to_vnd_rate), 0)
+					ELSE amount_local
+				END
+			   ) as amount_usd,
+			   ABS(
+			   	CASE
+					WHEN local_currency = 'USD' THEN amount_local * (SELECT COALESCE(rate, 25000) FROM usd_to_vnd_rate)
+					WHEN local_currency = 'VND' THEN amount_local
+					ELSE amount_local * (SELECT COALESCE(rate, 25000) FROM usd_to_vnd_rate)
+				END
+			   ) as amount_vnd,
+			   note
 		FROM transactions
-		WHERE date >= $1 AND date <= $2 AND cashflow_usd < 0
-		ORDER BY ABS(amount_usd) DESC
+		WHERE date >= $1 AND date <= $2 AND cashflow_local < 0
+		ORDER BY ABS(
+			CASE
+				WHEN local_currency = 'USD' THEN amount_local
+				WHEN local_currency = 'VND' THEN amount_local / NULLIF((SELECT rate FROM usd_to_vnd_rate), 0)
+				ELSE amount_local
+			END
+		) DESC
 		LIMIT 10`
 
 	expRows, err := sqlDB.QueryContext(ctx, expenseQuery, period.StartDate, period.EndDate)
@@ -636,9 +951,17 @@ func (r *reportingRepository) GetPnL(ctx context.Context, period models.Period) 
 
 	// Simple PnL calculation using investments table
 	realizedQuery := `
+        WITH usd_to_vnd_rate AS (
+            SELECT rate
+            FROM fx_rates
+            WHERE from_currency = 'USD' AND to_currency = 'VND'
+              AND date <= $2
+            ORDER BY date DESC
+            LIMIT 1
+        )
         SELECT
             COALESCE(SUM(i.pnl), 0) as realized_pnl_usd,
-            COALESCE(SUM(i.pnl * fx.fx_to_vnd), 0) as realized_pnl_vnd,
+            COALESCE(SUM(i.pnl * (SELECT COALESCE(rate, 25000) FROM usd_to_vnd_rate)), 0) as realized_pnl_vnd,
             COALESCE(SUM(
                 CASE
                     WHEN i.withdrawal_qty >= i.deposit_qty THEN i.deposit_cost
@@ -646,13 +969,6 @@ func (r *reportingRepository) GetPnL(ctx context.Context, period models.Period) 
                 END
             ), 0) as total_cost_basis
         FROM investments i
-        LEFT JOIN (
-            SELECT DISTINCT ON (asset)
-                asset, fx_to_vnd, date
-            FROM transactions
-            WHERE date <= $2
-            ORDER BY asset, date DESC
-        ) fx ON i.asset = fx.asset AND i.withdrawal_date = fx.date
         WHERE i.withdrawal_qty > 0
         AND i.withdrawal_date >= $1 AND i.withdrawal_date <= $2`
 

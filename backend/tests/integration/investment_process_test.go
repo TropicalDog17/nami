@@ -21,8 +21,6 @@ func buildStakeTx(date time.Time, account, asset string, qty, entryPrice float64
 		Account:      account,
 		Quantity:     decimal.NewFromFloat(qty),
 		PriceLocal:   decimal.NewFromFloat(entryPrice),
-		FXToUSD:      func() *decimal.Decimal { d := decimal.NewFromInt(1); return &d }(),
-		FXToVND:      func() *decimal.Decimal { d := decimal.NewFromInt(1); return &d }(),
 		InvestmentID: investmentID,
 		Horizon:      horizon,
 	}
@@ -39,8 +37,6 @@ func buildUnstakeTx(date time.Time, account, asset string, qty, exitPrice float6
 		Account:      account,
 		Quantity:     decimal.NewFromFloat(qty),
 		PriceLocal:   decimal.NewFromFloat(exitPrice),
-		FXToUSD:      func() *decimal.Decimal { d := decimal.NewFromInt(1); return &d }(),
-		FXToVND:      func() *decimal.Decimal { d := decimal.NewFromInt(1); return &d }(),
 		InvestmentID: investmentID,
 		Horizon:      horizon,
 	}

@@ -14,7 +14,9 @@ const envSchema = z.object({
   SERVICE_BASE_URL: z.string().url(),
   PORT: z.coerce.number().default(8081),
   ALLOWED_CHAT_IDS: z.string().default(''),
-  DEFAULT_TIMEZONE: z.string().default('Asia/Ho_Chi_Minh')
+  DEFAULT_TIMEZONE: z.string().default('Asia/Ho_Chi_Minh'),
+
+  MODEL_PROVIDER: z.enum(['openai', 'anthropic', 'zai']).default('openai'),
 })
 
 export type AppConfig = z.infer<typeof envSchema> & {

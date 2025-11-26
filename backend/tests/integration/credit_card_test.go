@@ -24,12 +24,12 @@ func TestCreditCard_Flow(t *testing.T) {
 	end := time.Date(2025, 6, 30, 0, 0, 0, 0, time.UTC)
 
 	// 1. Spend 100 USD on Credit Card
-	// Mock FX provider behavior by manually setting FX rates if needed, 
+	// Mock FX provider behavior by manually setting FX rates if needed,
 	// but ActionCreditSpend uses 0 FX rates and relies on TransactionService to populate.
 	// Since we use NewActionService without price service, we might need to ensure FX is handled or manually create tx.
-	// Actually, ActionCreditSpend creates a transaction with 0 FX. 
+	// Actually, ActionCreditSpend creates a transaction with 0 FX.
 	// Let's use manual transaction creation to be safe and precise about FX for this test.
-	
+
 	ccSpend := &models.Transaction{
 		Date:       start,
 		Type:       "expense",
@@ -37,8 +37,6 @@ func TestCreditCard_Flow(t *testing.T) {
 		Account:    "CreditCard",
 		Quantity:   decimal.NewFromFloat(100),
 		PriceLocal: decimal.NewFromFloat(1),
-		FXToUSD:    func() *decimal.Decimal { d := decimal.NewFromFloat(1); return &d }(),
-		FXToVND:    func() *decimal.Decimal { d := decimal.NewFromFloat(24000); return &d }(),
 		Tag:        stringPtr("Shopping"),
 	}
 	if err := txService.CreateTransaction(ctx, ccSpend); err != nil {
@@ -73,7 +71,7 @@ func TestCreditCard_Flow(t *testing.T) {
 	// This means the current implementation IGNORES credit card spending in the Spending Report.
 	// This might be a feature (cash-basis accounting) or a bug/limitation.
 	// If it's cash-basis, then the Repayment should count as the expense/outflow.
-	
+
 	// Let's test the Repayment.
 	repayReq := &models.ActionRequest{
 		Action: models.ActionInternalTransfer,
@@ -97,25 +95,25 @@ func TestCreditCard_Flow(t *testing.T) {
 	// Since it's an internal transfer, Cashflow should STILL be 0?
 	// If so, Credit Card spending is never captured in Cashflow?
 	// That would be a gap.
-	
+
 	// Let's check the code in `models/transaction.go`:
 	// if t.Account == "CreditCard" && t.Type == "expense" { t.CashFlowUSD = decimal.Zero }
-	
+
 	// If I pay the CC, it's a transfer.
 	// if t.InternalFlow ... t.CashFlowUSD = decimal.Zero.
-	
+
 	// So CC spending is invisible in Cashflow?
 	// Unless the repayment is NOT marked as internal?
 	// But `ActionInternalTransfer` marks it as internal.
-	
+
 	// Maybe there is a specific "repay_liability" action?
 	// `models/transaction.go` has `repay_borrow`.
-	
-	// For now, I will verify the current behavior: 
+
+	// For now, I will verify the current behavior:
 	// 1. CC Spend -> 0 Cashflow.
 	// 2. CC Repay (Internal Transfer) -> 0 Cashflow.
 	// This confirms the system behaves as currently coded, even if the accounting logic is debatable (pure cash basis would count repayment as outflow if CC is external, but here CC is an account).
-	
+
 	report2, err := reportingService.GetCashFlow(ctx, period)
 	if err != nil {
 		t.Fatalf("GetCashFlow 2 failed: %v", err)
@@ -124,5 +122,3 @@ func TestCreditCard_Flow(t *testing.T) {
 		t.Fatalf("expected zero cashflow for CC repay (internal), got %s", report2.NetUSD.String())
 	}
 }
-
-

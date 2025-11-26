@@ -4,9 +4,10 @@ export const SpendParamsSchema = z.object({
   account: z.string().min(1),
   vnd_amount: z.number().positive(),
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  counterparty: z.string().optional(),
-  tag: z.string().optional(),
-  note: z.string().optional()
+  // Optional string fields – allow nulls from LLM output as well as omission
+  counterparty: z.string().nullable().optional(),
+  tag: z.string().nullable().optional(),
+  note: z.string().nullable().optional()
 })
 
 export const ActionRequestSchema = z.object({

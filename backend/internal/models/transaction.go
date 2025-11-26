@@ -31,7 +31,7 @@ type Transaction struct {
 	FeeLocal decimal.Decimal `json:"fee_local" gorm:"column:fee_local;type:decimal(30,18);not null;default:0"`
 
 	// Derived metrics
-	DeltaQty    decimal.Decimal `json:"delta_qty" gorm:"column:delta_qty;type:decimal(30,18);not null"`
+	DeltaQty      decimal.Decimal `json:"delta_qty" gorm:"column:delta_qty;type:decimal(30,18);not null"`
 	CashFlowLocal decimal.Decimal `json:"cashflow_local" gorm:"column:cashflow_local;type:decimal(30,18);not null"`
 
 	// Flow flags
@@ -41,13 +41,9 @@ type Transaction struct {
 	InvestmentID *string `json:"investment_id" gorm:"column:investment_id;type:varchar(255);index"`
 
 	// Optional tracking
-	Horizon   *string          `json:"horizon" gorm:"column:horizon;type:varchar(20);index"`
-	EntryDate *time.Time       `json:"entry_date" gorm:"column:entry_date;type:timestamptz;index"`
-	ExitDate  *time.Time       `json:"exit_date" gorm:"column:exit_date;type:timestamptz;index"`
-	FXImpact  *decimal.Decimal `json:"fx_impact" gorm:"column:fx_impact;type:decimal(30,18)"`
-	FXToUSD   *decimal.Decimal `json:"fx_to_usd" gorm:"column:fx_to_usd;type:decimal(30,18)"`
-	FXToVND   *decimal.Decimal `json:"fx_to_vnd" gorm:"column:fx_to_vnd;type:decimal(30,18)"`
-
+	Horizon   *string    `json:"horizon" gorm:"column:horizon;type:varchar(20);index"`
+	EntryDate *time.Time `json:"entry_date" gorm:"column:entry_date;type:timestamptz;index"`
+	ExitDate  *time.Time `json:"exit_date" gorm:"column:exit_date;type:timestamptz;index"`
 	// Borrow metadata (for type = 'borrow')
 	BorrowAPR      *decimal.Decimal `json:"borrow_apr" gorm:"column:borrow_apr;type:decimal(10,8)"`
 	BorrowTermDays *int             `json:"borrow_term_days" gorm:"column:borrow_term_days;type:integer"`

@@ -12,11 +12,11 @@ describe('AI Service integration - photo to pending', () => {
   let app: express.Express
 
   beforeAll(async () => {
-    process.env.TELEGRAM_DRY_RUN = 'true'
     backend = await startMockBackend(secret)
     const cfg: AppConfig = {
       TELEGRAM_BOT_TOKEN: 'dummy:token',
       OPENAI_API_KEY: 'sk-test',
+      MODEL_PROVIDER: 'openai',
       BACKEND_BASE_URL: backend.url,
       BACKEND_SIGNING_SECRET: secret,
       SERVICE_BASE_URL: 'http://localhost:8081',

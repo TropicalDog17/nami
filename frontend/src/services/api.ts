@@ -197,6 +197,16 @@ export const adminApi = {
     api.put<T>(`/api/admin/tags/${id}`, tag),
   deleteTag: <T = unknown>(id: string | number) => api.delete<T>(`/api/admin/tags/${id}`),
 
+  // AI Pending Actions
+  listPendingActions: <T = unknown>(params: { status?: string; limit?: number; offset?: number } = {}) =>
+    api.get<T>('/api/admin/pending-actions', params),
+  getPendingAction: <T = unknown>(id: string) =>
+    api.get<T>(`/api/admin/pending-actions/${id}`),
+  acceptPendingAction: <T = unknown>(id: string) =>
+    api.post<T>(`/api/admin/pending-actions/${id}/accept`, {}),
+  rejectPendingAction: <T = unknown>(id: string, reason?: string) =>
+    api.post<T>(`/api/admin/pending-actions/${id}/reject`, { reason }),
+
   // Maintenance
   recalcFX: (onlyMissing: boolean = true) =>
     api.post(

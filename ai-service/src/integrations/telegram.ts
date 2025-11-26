@@ -20,10 +20,23 @@ const sessionStore = new Map<number, SessionState>()
 
 export function buildBot(cfg: AppConfig, openai: OpenAI, grounding: GroundingProvider) {
   const bot = new Telegraf<Ctx>(cfg.TELEGRAM_BOT_TOKEN)
-  const isDryRun = process.env.TELEGRAM_DRY_RUN === 'true'
+
+   bot.telegram.setMyCommands([
+    {
+      command: 'start',
+      description: 'Show how to send expenses or bank screenshots'
+    },
+    {
+      command: 'grounding',
+      description: 'Display cached accounts/tags counts'
+    }
+  ]).catch((err) => {
+    logger.warn({ err }, 'Failed to register Telegram bot commands')
+  })
 
   bot.use(async (ctx, next) => {
     const chatId = String(ctx.chat?.id || '')
+    console.log('chatId', chatId)
     if (!cfg.allowedChatIds.has(chatId)) {
       return
     }
@@ -31,8 +44,22 @@ export function buildBot(cfg: AppConfig, openai: OpenAI, grounding: GroundingPro
     await next()
   })
 
-  bot.start((ctx) => {
-    if (!isDryRun) return ctx.reply('Nami AI ready. Send a text like "Lunch 120k at McDo from Bank today" or a bank screenshot.')
+  bot.command('grounding', async (ctx) => {
+    const chatId = ctx.chat?.id
+    if (!chatId) return
+    const correlationId = `cmd-grounding-${chatId}-${Date.now()}`
+    const correlationLogger = createCorrelationLogger(correlationId)
+
+    correlationLogger.info({ chatId }, 'Handling /grounding command')
+
+    try {
+      const { accounts, tags } = await grounding.get()
+      await ctx.reply(
+        `📚 Grounding cache\nAccounts: ${accounts.length}\nTags: ${tags.length}`
+      )
+    } catch (e: any) {
+      correlationLogger.error({ err: e.message }, 'Failed to load grounding data')
+    }
   })
 
   // Handle text messages
@@ -67,21 +94,14 @@ export function buildBot(cfg: AppConfig, openai: OpenAI, grounding: GroundingPro
         tagsCount: tags.length
       }, 'Retrieved grounding data')
 
-      // Determine which LLM provider to use
-      let llmProvider: 'openai' | 'anthropic' = 'openai'
-      let llmApiKey = cfg.OPENAI_API_KEY
-
-      if (cfg.ANTHROPIC_API_KEY && cfg.ANTHROPIC_AUTH_TOKEN) {
-        llmProvider = 'anthropic'
-        llmApiKey = cfg.ANTHROPIC_AUTH_TOKEN
-      }
-
-      const llmClient = new LLMClient({
-        provider: llmProvider,
-        apiKey: llmApiKey,
-        timeout: 30000,
-        ...(cfg.ANTHROPIC_BASE_URL && { baseURL: cfg.ANTHROPIC_BASE_URL })
-      }, correlationId)
+      // LLM provider and credentials are resolved from env/config via LLMClient
+      const llmClient = new LLMClient(
+        {
+          provider: cfg.MODEL_PROVIDER,
+          timeout: 30000,
+        },
+        correlationId
+      )
 
       const parsed = await parseExpenseText(llmClient, text, accounts, tags, correlationId)
 
@@ -95,26 +115,15 @@ export function buildBot(cfg: AppConfig, openai: OpenAI, grounding: GroundingPro
 
       const res = await createPendingAction(cfg, payload, correlationId)
 
-      correlationLogger.info({
-        pendingId: res.id,
-        hasAction: !!parsed.action,
-        actionType: parsed.action?.action,
-        account: parsed.action?.params.account
-      }, 'Successfully processed text message')
-
-      if (!isDryRun) {
-        let replyText = `✅ Text parsed and queued for review\nPending ID: ${res.id}`
-
-        if (parsed.action) {
-          const { action } = parsed.action
-          const { account, vnd_amount, counterparty } = parsed.action.params
-          replyText += `\n\n📊 ${action === 'spend_vnd' ? '💸 Spend' : '💳 Credit'}: ${vnd_amount.toLocaleString()}₫`
-          if (account) replyText += ` from ${account}`
-          if (counterparty) replyText += ` at ${counterparty}`
-        }
-
-        await ctx.reply(replyText)
-      }
+      correlationLogger.info(
+        {
+          pendingId: res.id,
+          hasAction: !!parsed.action,
+          actionType: parsed.action?.action,
+          account: parsed.action?.params.account,
+        },
+        'Successfully processed text message'
+      )
     } catch (e: any) {
       const categorizedError = handleAndLogError(
         e,
@@ -122,26 +131,24 @@ export function buildBot(cfg: AppConfig, openai: OpenAI, grounding: GroundingPro
           chatId,
           textLength: text.length,
           textPreview: text.substring(0, 100),
-          isDryRun
         },
         'parseText'
       )
 
-      if (!isDryRun) {
-        let userMessage = 'Sorry, I couldn\'t parse that text.'
+      let userMessage = 'Sorry, I couldn\'t parse that text.'
 
-        if (categorizedError.category === ErrorCategory.AI_SERVICE) {
-          userMessage += ' The AI service is currently unavailable. Please try again later.'
-        } else if (categorizedError.category === ErrorCategory.NETWORK) {
-          userMessage += ' Network error occurred. Please check your connection and try again.'
-        } else if (categorizedError.category === ErrorCategory.VALIDATION) {
-          userMessage += ' Please check the format and try again. Example: "Lunch 120k at McDo from Bank today"'
-        } else {
-          userMessage += ` ${redact(String(categorizedError.message))}`
-        }
-
-        await ctx.reply(userMessage)
+      if (categorizedError.category === ErrorCategory.AI_SERVICE) {
+        userMessage += ' The AI service is currently unavailable. Please try again later.'
+      } else if (categorizedError.category === ErrorCategory.NETWORK) {
+        userMessage += ' Network error occurred. Please check your connection and try again.'
+      } else if (categorizedError.category === ErrorCategory.VALIDATION) {
+        userMessage +=
+          ' Please check the format and try again. Example: "Lunch 120k at McDo from Bank today"'
+      } else {
+        userMessage += ` ${redact(String(categorizedError.message))}`
       }
+
+      await ctx.reply(userMessage)
     }
   })
 
@@ -163,40 +170,25 @@ export function buildBot(cfg: AppConfig, openai: OpenAI, grounding: GroundingPro
     }, 'Processing photo message')
 
     try {
-      let finalFileUrl: string
-
-      if (isDryRun) {
-        finalFileUrl = 'https://example.com/fake.jpg'
-        correlationLogger.debug({}, 'Using dry run mode with fake image URL')
-      } else {
-        // Get file info from Telegram
-        const file = await ctx.telegram.getFile(best.file_id)
-        if (!file.file_path) {
-          throw new Error('Telegram file path is missing')
-        }
-        finalFileUrl = `https://api.telegram.org/file/bot${cfg.TELEGRAM_BOT_TOKEN}/${file.file_path}`
-        correlationLogger.debug({ filePath: file.file_path }, 'Constructed file URL from Telegram')
+      // Get file info from Telegram
+      const file = await ctx.telegram.getFile(best.file_id)
+      if (!file.file_path) {
+        throw new Error('Telegram file path is missing')
       }
+      const finalFileUrl = `https://api.telegram.org/file/bot${cfg.TELEGRAM_BOT_TOKEN}/${file.file_path}`
+      correlationLogger.debug({ filePath: file.file_path }, 'Constructed file URL from Telegram')
 
       const caption = ctx.message?.caption || ''
       correlationLogger.debug({ captionLength: caption.length }, 'Parsing bank screenshot')
 
-      // Parse the screenshot with vision
-      // Determine which LLM provider to use
-      let llmProvider: 'openai' | 'anthropic' = 'openai'
-      let llmApiKey = cfg.OPENAI_API_KEY
-
-      if (cfg.ANTHROPIC_API_KEY && cfg.ANTHROPIC_AUTH_TOKEN) {
-        llmProvider = 'anthropic'
-        llmApiKey = cfg.ANTHROPIC_AUTH_TOKEN
-      }
-
-      const llmClient = new LLMClient({
-        provider: llmProvider,
-        apiKey: llmApiKey,
-        timeout: 60000,
-        ...(cfg.ANTHROPIC_BASE_URL && { baseURL: cfg.ANTHROPIC_BASE_URL })
-      }, correlationId)
+      // Text LLM for any caption/auxiliary parsing (provider resolved from env/config)
+      const llmClient = new LLMClient(
+        {
+          provider: cfg.MODEL_PROVIDER,
+          timeout: 60000,
+        },
+        correlationId
+      )
 
       // For vision, we still need to use OpenAI directly for now
       const { toon, rows } = await parseBankScreenshot(openai, finalFileUrl, correlationId)
@@ -228,35 +220,30 @@ export function buildBot(cfg: AppConfig, openai: OpenAI, grounding: GroundingPro
         rowsCount: rows.length
       }, 'Successfully created pending action from screenshot')
 
-      if (!isDryRun) {
-        const replyText = `📸 Screenshot parsed and queued (${rows.length} rows)\nPending ID: ${res.id}`
-        await ctx.reply(replyText)
-      }
+      const replyText = `📸 Screenshot parsed and queued (${rows.length} rows)\nPending ID: ${res.id}`
+      await ctx.reply(replyText)
     } catch (e: any) {
       const categorizedError = handleAndLogError(
         e,
         {
           chatId,
           fileId: best.file_id,
-          hasCaption: !!ctx.message?.caption,
-          isDryRun
+          hasCaption: !!ctx.message?.caption
         },
         'parsePhoto'
       )
 
-      if (!isDryRun) {
-        let userMessage = 'Sorry, I couldn\'t parse the screenshot.'
+      let userMessage = 'Sorry, I couldn\'t parse the screenshot.'
 
-        if (categorizedError.category === ErrorCategory.AI_SERVICE) {
-          userMessage += ' The AI service is currently unavailable. Please try again later.'
-        } else if (categorizedError.category === ErrorCategory.NETWORK) {
-          userMessage += ' Network error occurred. Please check your connection and try again.'
-        } else {
-          userMessage += ` ${redact(String(categorizedError.message))}`
-        }
-
-        await ctx.reply(userMessage)
+      if (categorizedError.category === ErrorCategory.AI_SERVICE) {
+        userMessage += ' The AI service is currently unavailable. Please try again later.'
+      } else if (categorizedError.category === ErrorCategory.NETWORK) {
+        userMessage += ' Network error occurred. Please check your connection and try again.'
+      } else {
+        userMessage += ` ${redact(String(categorizedError.message))}`
       }
+
+      await ctx.reply(userMessage)
     }
   })
 

@@ -138,6 +138,14 @@ type DecimalAmount struct {
 - Comparative performance analysis
 - Risk-adjusted returns (where applicable)
 
+#### FX model for holdings & P&L vs. cashflow
+
+- **Holdings & P&L reports** use the **stored prices and FX at transaction time** (or at position open/close for investments). These are effectively **snapshot-true** to the historical execution context and do not get recomputed when FX moves later.
+- **Cashflow reports** (including `GetCashFlow` and spending analysis) instead **re-express all cashflows in the reporting currencies (USD/VND) using the latest FX rate \(\leq\) the report `EndDate`**. This means:
+  - For a given period, the statement is shown in **“today’s FX” for that period**, not frozen at the original transaction-time FX.
+  - Historical cashflows in non-USD currencies are converted using a **single period-end FX curve** (latest known rate on or before `EndDate`), for consistency in the reporting currency.
+- This is an **intentional design choice** to keep cashflow views simpler and more comparable in the reporting currency, and it **differs from a stricter “snapshot-true cashflow” model** described in the requirements doc, where each transaction would be locked to its own FX at execution time.
+
 ### 6. FX Rate Precision and Tracking
 
 #### Multi-Currency Support

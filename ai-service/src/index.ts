@@ -17,8 +17,15 @@ function validateConfig(cfg: any): void {
     errors.push('TELEGRAM_BOT_TOKEN is required and must be valid')
   }
 
-  if (!cfg.OPENAI_API_KEY || !cfg.OPENAI_API_KEY.startsWith('sk-') || cfg.OPENAI_API_KEY.length < 20) {
-    errors.push('OPENAI_API_KEY is required and must be valid')
+  // Provider-specific API key validation
+  if (cfg.MODEL_PROVIDER === 'openai') {
+    if (!cfg.OPENAI_API_KEY || cfg.OPENAI_API_KEY.length < 20) {
+      errors.push('OPENAI_API_KEY is required and must be valid when MODEL_PROVIDER=openai')
+    }
+  } else if (cfg.MODEL_PROVIDER === 'anthropic' || cfg.MODEL_PROVIDER === 'zai') {
+    if (!cfg.ANTHROPIC_AUTH_TOKEN && !cfg.ANTHROPIC_API_KEY) {
+      errors.push('ANTHROPIC_AUTH_TOKEN or ANTHROPIC_API_KEY is required when MODEL_PROVIDER=anthropic or zai')
+    }
   }
 
   if (!cfg.BACKEND_BASE_URL || !cfg.BACKEND_BASE_URL.startsWith('http')) {
@@ -56,6 +63,7 @@ function validateConfig(cfg: any): void {
     allowedChats: cfg.allowedChatIds.size,
     hasTelegramToken: !!cfg.TELEGRAM_BOT_TOKEN,
     hasOpenAIKey: !!cfg.OPENAI_API_KEY,
+    modelProvider: cfg.MODEL_PROVIDER,
     backendUrl: cfg.BACKEND_BASE_URL,
     timezone: cfg.DEFAULT_TIMEZONE
   }, 'Configuration validated successfully')
@@ -99,21 +107,8 @@ async function main() {
 
     // Build and initialize bot
     const bot = buildBot(cfg, openai, grounding)
-
-    // Enhanced webhook endpoint with better error handling
-    app.post('/telegram/webhook', (req, res) => {
-      const webhookLogger = createCorrelationLogger(`webhook-${Date.now()}`)
-      webhookLogger.debug({ updateId: req.body.update_id }, 'Received Telegram webhook')
-
-      try {
-        ;(bot.webhookCallback('/telegram/webhook') as any)(req, res)
-      } catch (error: any) {
-        webhookLogger.error({ err: error }, 'Webhook processing failed')
-        if (!res.headersSent) {
-          res.status(500).json({ error: 'Internal webhook error' })
-        }
-      }
-    })
+    await bot.launch()
+    startupLogger.info({}, '📱 Telegram bot started')
 
     // Comprehensive health check endpoint
     app.get('/healthz', async (req, res) => {
@@ -158,36 +153,6 @@ async function main() {
       )
     })
 
-    // Fallback to polling in dev/local
-    if (process.env.TELEGRAM_WEBHOOK_MODE !== 'true') {
-      bot.launch().then(() => {
-        startupLogger.info({}, '📱 Telegram bot polling started')
-      }).catch((e) => {
-        const categorizedError = handleAndLogError(
-          e,
-          { webhookMode: false },
-          'botLaunch'
-        )
-
-        if (categorizedError.category === ErrorCategory.TELEGRAM) {
-          startupLogger.error({}, '❌ Failed to start Telegram bot - check bot token and network')
-        } else {
-          startupLogger.error({}, '❌ Failed to start Telegram bot')
-        }
-      })
-
-      // Graceful shutdown
-      const gracefulShutdown = (signal: string) => {
-        startupLogger.info({ signal }, 'Gracefully shutting down...')
-        bot.stop(signal)
-        process.exit(0)
-      }
-
-      process.once('SIGINT', () => gracefulShutdown('SIGINT'))
-      process.once('SIGTERM', () => gracefulShutdown('SIGTERM'))
-    } else {
-      startupLogger.info({}, '📡 Webhook mode enabled - bot will receive updates via webhook')
-    }
 
     // Global error handlers
     process.on('uncaughtException', (error) => {

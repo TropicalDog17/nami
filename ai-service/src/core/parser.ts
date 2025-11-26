@@ -1,5 +1,4 @@
-import { LLMClient, LLMProvider } from '../integrations/llm.js'
-import { encode, decode } from '@toon-format/toon'
+import { LLMClient } from '../integrations/llm.js'
 import { ActionRequest, ActionRequestSchema, AccountRef, TagRef } from '../core/schemas.js'
 import { createCorrelationLogger } from '../utils/logger.js'
 import { handleAndLogError, ErrorCategory } from '../utils/errors.js'
@@ -32,14 +31,14 @@ export async function parseExpenseText(
     tags: tags.map((t) => t.name)
   }
 
-  const groundingToon = [
+  const groundingJson = [
     `accounts[${grounding.accounts.length}]: ${grounding.accounts.join(',')}`,
     `tags[${grounding.tags.length}]: ${grounding.tags.join(',')}`
   ].join('\n')
 
-  const system = `You are a precise financial parser. Output ONLY a fenced code block labelled toon with a single TOON object having keys action and params.`
+  const system = `You are a precise financial parser. Output ONLY a fenced code block labelled json with a single JSON object having keys action and params.`
   const user = [
-    'Extract a spend action from the message into TOON with 2-space indent.',
+    'Extract a spend action from the message into JSON with 2-space indent.',
     'Rules:',
     '- action must be one of: spend_vnd, credit_spend_vnd',
     '- params: account, vnd_amount (number), date (YYYY-MM-DD), counterparty?, tag?, note?',
@@ -48,14 +47,14 @@ export async function parseExpenseText(
     '- Use unformatted numbers (no commas); Vietnamese k = thousand may appear',
     '',
     'Grounding:',
-    '```toon',
-    groundingToon,
+    '```json',
+    groundingJson,
     '```',
     '',
     'Message:',
     message,
     '',
-    'Output ONLY the TOON code block.'
+    'Output ONLY the JSON code block.'
   ].join('\n')
 
   const response = await llmClient.chat([
@@ -75,7 +74,7 @@ export async function parseExpenseText(
   const toon = extractCodeBlock(content) || content.trim()
 
   if (!toon.trim()) {
-    correlationLogger.warn({ content: content.substring(0, 200) }, 'No TOON content found in text response')
+    correlationLogger.warn({ content: content.substring(0, 200) }, 'No JSON content found in text response')
     return { toon: content, action: undefined, confidence: undefined }
   }
 
@@ -87,7 +86,7 @@ export async function parseExpenseText(
 
   let action: ActionRequest | undefined
   try {
-    const decoded = decode(toon) as any
+    const decoded = JSON.parse(toon) as any
     action = ActionRequestSchema.parse(decoded)
 
     // Additional validation
@@ -127,8 +126,8 @@ export async function parseExpenseText(
   } catch (e: any) {
     correlationLogger.warn({
       error: e.message,
-      toon: toon.substring(0, 200)
-    }, 'Failed to parse TOON to valid action')
+      json: toon.substring(0, 200)
+    }, 'Failed to parse JSON to valid action')
     action = undefined
   }
 
@@ -136,7 +135,7 @@ export async function parseExpenseText(
 }
 
 function extractCodeBlock(text: string): string | null {
-  const m = text.match(/```toon\n([\s\S]*?)```/)
+  const m = text.match(/```(?:toon|json)\n([\s\S]*?)```/)
   return m ? m[1].trim() : null
 }
 

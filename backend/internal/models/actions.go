@@ -36,8 +36,6 @@ type UnstakeParams struct {
 	// Optional fields
 	ExitPriceUSD   float64 `json:"exit_price_usd,omitempty"`   // Price per unit in USD at exit (if Amount not provided)
 	ExitPriceLocal float64 `json:"exit_price_local,omitempty"` // Price per unit in local currency at exit (if Amount not provided)
-	FXToUSD        float64 `json:"fx_to_usd,omitempty"`        // FX rate to USD at exit (if Amount not provided)
-	FXToVND        float64 `json:"fx_to_vnd,omitempty"`        // FX rate to VND at exit (if Amount not provided)
 
 	// Additional optional fields for linking and horizon/derived pricing
 	ExitAmountUSD float64 `json:"exit_amount_usd,omitempty"` // Total exit amount in USD to derive unit price
@@ -59,8 +57,6 @@ type StakeParams struct {
 	// Optional fields
 	EntryPriceUSD   *float64 `json:"entry_price_usd,omitempty"`   // Price per unit in USD at entry
 	EntryPriceLocal *float64 `json:"entry_price_local,omitempty"` // Price per unit in local currency at entry
-	FXToUSD         *float64 `json:"fx_to_usd,omitempty"`         // FX rate to USD at entry
-	FXToVND         *float64 `json:"fx_to_vnd,omitempty"`         // FX rate to VND at entry
 	FeePercent      float64  `json:"fee_percent,omitempty"`       // Optional fee percentage of amount
 	Horizon         string   `json:"horizon,omitempty"`           // Optional investment horizon label
 	Counterparty    string   `json:"counterparty,omitempty"`      // Optional counterparty
@@ -138,15 +134,15 @@ func (s StakeParams) ToIncomingTransaction() *Transaction {
 	feeLocal := decimal.Zero
 
 	tx := &Transaction{
-		Date:         s.Date,
-		Type:         ActionStake,
-		Asset:        s.Asset,
-		Account:      s.InvestmentAccount,
-		Quantity:     decimal.NewFromFloat(s.Amount),
-		PriceLocal:   decimal.NewFromFloat(1.0),
+		Date:          s.Date,
+		Type:          ActionStake,
+		Asset:         s.Asset,
+		Account:       s.InvestmentAccount,
+		Quantity:      decimal.NewFromFloat(s.Amount),
+		PriceLocal:    decimal.NewFromFloat(1.0),
 		LocalCurrency: localCurrency,
-		FeeLocal:     feeLocal,
-		InternalFlow: func() *bool { b := true; return &b }(),
+		FeeLocal:      feeLocal,
+		InternalFlow:  func() *bool { b := true; return &b }(),
 	}
 	if s.Horizon != "" {
 		tx.Horizon = &s.Horizon
@@ -170,15 +166,15 @@ func (s StakeParams) ToOutgoingTransaction() *Transaction {
 	feeLocal := decimal.NewFromFloat(s.FeePercent)
 
 	tx := &Transaction{
-		Date:         s.Date,
-		Type:         "transfer_out",
-		Asset:        s.Asset,
-		Account:      s.SourceAccount,
-		Quantity:     decimal.NewFromFloat(s.Amount),
-		PriceLocal:   decimal.NewFromFloat(1.0),
+		Date:          s.Date,
+		Type:          "transfer_out",
+		Asset:         s.Asset,
+		Account:       s.SourceAccount,
+		Quantity:      decimal.NewFromFloat(s.Amount),
+		PriceLocal:    decimal.NewFromFloat(1.0),
 		LocalCurrency: localCurrency,
-		FeeLocal:     feeLocal,
-		InternalFlow: func() *bool { b := true; return &b }(),
+		FeeLocal:      feeLocal,
+		InternalFlow:  func() *bool { b := true; return &b }(),
 	}
 	if s.Horizon != "" {
 		tx.Horizon = &s.Horizon
@@ -227,12 +223,6 @@ func (u UnstakeParams) Validate() error {
 		if u.ExitPriceUSD != 0 && u.ExitPriceLocal != 0 {
 			return &errors.ErrValidation{Field: "exit_price_usd/exit_price_local", Message: "only one of exit_price_usd or exit_price_local should be provided"}
 		}
-		if u.ExitPriceLocal != 0 && u.FXToUSD == 0 {
-			return &errors.ErrValidation{Field: "fx_to_usd", Message: "fx_to_usd is required when exit_price_local is provided"}
-		}
-		if u.ExitPriceLocal != 0 && u.FXToVND == 0 {
-			return &errors.ErrValidation{Field: "fx_to_vnd", Message: "fx_to_vnd is required when exit_price_local is provided"}
-		}
 	}
 	return nil
 }
@@ -249,14 +239,14 @@ func (u UnstakeParams) ToTransaction() *Transaction {
 	}
 
 	tx := &Transaction{
-		Date:         u.Date,
-		Type:         ActionUnstake,
-		Asset:        u.Asset,
-		Account:      u.InvestmentAccount,
-		Quantity:     decimal.NewFromFloat(u.Quantity),
-		PriceLocal:   decimal.NewFromFloat(u.ExitPriceLocal),
+		Date:          u.Date,
+		Type:          ActionUnstake,
+		Asset:         u.Asset,
+		Account:       u.InvestmentAccount,
+		Quantity:      decimal.NewFromFloat(u.Quantity),
+		PriceLocal:    decimal.NewFromFloat(u.ExitPriceLocal),
 		LocalCurrency: localCurrency,
-		FeeLocal:     feeLocal,
+		FeeLocal:      feeLocal,
 	}
 	if u.Horizon != "" {
 		tx.Horizon = &u.Horizon

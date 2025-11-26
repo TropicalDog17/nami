@@ -10,7 +10,6 @@ import (
 	"github.com/tropicaldog17/nami/internal/services"
 )
 
-
 // TestEnhancedAuditTrail tests the enhanced audit trail system for transaction types
 func TestEnhancedAuditTrail(t *testing.T) {
 	t.Run("TestTransactionTypeAuditTrail", func(t *testing.T) {
@@ -184,12 +183,12 @@ func TestAdvancedHoldingsReporting(t *testing.T) {
 
 		for _, inv := range investments {
 			tx := &models.Transaction{
-				Date:       inv.date,
-				Type:       "deposit",
-				Asset:      inv.asset,
-				Account:    inv.account,
-				Quantity:   inv.quantity,
-				PriceLocal: inv.price,
+				Date:          inv.date,
+				Type:          "deposit",
+				Asset:         inv.asset,
+				Account:       inv.account,
+				Quantity:      inv.quantity,
+				PriceLocal:    inv.price,
 				LocalCurrency: "USD",
 			}
 
@@ -288,14 +287,14 @@ func TestAdvancedHoldingsReporting(t *testing.T) {
 
 		for _, tx := range scenario {
 			transaction := &models.Transaction{
-				Date:       tx.date,
-				Type:       tx.action,
-				Asset:      tx.asset,
-				Account:    tx.account,
-				Quantity:   tx.quantity,
-				PriceLocal: tx.price,
+				Date:          tx.date,
+				Type:          tx.action,
+				Asset:         tx.asset,
+				Account:       tx.account,
+				Quantity:      tx.quantity,
+				PriceLocal:    tx.price,
 				LocalCurrency: "USD",
-				Note:       stringPtr(tx.description),
+				Note:          &tx.description,
 			}
 
 			if err := transactionService.CreateTransaction(ctx, transaction); err != nil {
@@ -407,12 +406,12 @@ func TestEnhancedFXRateTracking(t *testing.T) {
 
 				// Create transaction with FX rates
 				transaction := &models.Transaction{
-					Date:       startDate,
-					Type:       "expense",
-					Asset:      scenario.asset,
-					Account:    "TestAccount",
-					Quantity:   scenario.amount,
-					PriceLocal: decimal.NewFromFloat(1),
+					Date:          startDate,
+					Type:          "expense",
+					Asset:         scenario.asset,
+					Account:       "TestAccount",
+					Quantity:      scenario.amount,
+					PriceLocal:    decimal.NewFromFloat(1),
 					LocalCurrency: scenario.asset,
 				}
 
@@ -459,8 +458,6 @@ func TestEnhancedFXRateTracking(t *testing.T) {
 				Account:    "MultiCurrency",
 				Quantity:   pos.quantity,
 				PriceLocal: pos.price,
-				FXToUSD:    func() *decimal.Decimal { d := pos.usdRate; return &d }(),
-				FXToVND:    func() *decimal.Decimal { d := pos.vndRate; return &d }(),
 			}
 
 			if err := transactionService.CreateTransaction(ctx, transaction); err != nil {

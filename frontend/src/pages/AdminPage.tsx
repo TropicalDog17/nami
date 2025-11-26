@@ -1,32 +1,50 @@
 import { useState, useEffect, useCallback } from 'react';
 
 import { AdminAssetsTab } from '../components/AdminAssetsTab';
+import { AdminPendingActions } from '../components/AdminPendingActions';
 import DataTable from '../components/ui/DataTable';
 import { useApp } from '../context/AppContext';
 import { adminApi } from '../services/api';
 
 // Removed unused PopularExpenseCategories widget
 
+type TabId = 'types' | 'accounts' | 'assets' | 'tags' | 'pending';
+
+type AdminItem = {
+  id?: string | number;
+  is_active?: boolean;
+  [key: string]: unknown;
+};
+
+type ColumnConfig = {
+  key: string;
+  title: string;
+  width?: string;
+  type?: 'datetime';
+  render?: (value: unknown) => JSX.Element;
+};
+
 const AdminPage = () => {
   const { actions, error, success } = useApp();
-  const [activeTab, setActiveTab] = useState('types');
+  const [activeTab, setActiveTab] = useState<TabId>('types');
   const [loading, setLoading] = useState(false);
   const [showForm, setShowForm] = useState(false);
-  const [editingItem, setEditingItem] = useState<Record<string, unknown> | null>(null);
+  const [editingItem, setEditingItem] = useState<AdminItem | null>(null);
   const [showInactive, setShowInactive] = useState(false);
 
   // Data states
-  const [transactionTypes, setTransactionTypes] = useState([]);
-  const [accounts, setAccounts] = useState([]);
-  const [assets, setAssets] = useState([]);
-  const [tags, setTags] = useState([]);
+  const [transactionTypes, setTransactionTypes] = useState<AdminItem[]>([]);
+  const [accounts, setAccounts] = useState<AdminItem[]>([]);
+  const [assets, setAssets] = useState<AdminItem[]>([]);
+  const [tags, setTags] = useState<AdminItem[]>([]);
 
   // Tabs for navigation
-  const tabs = [
+  const tabs: Array<{ id: TabId; name: string; icon: string }> = [
     { id: 'types', name: 'Transaction Types', icon: '⚙️' },
     { id: 'accounts', name: 'Accounts', icon: '💰' },
     { id: 'assets', name: 'Assets', icon: '📦' },
     { id: 'tags', name: 'Tags', icon: '🏷️' },
+    { id: 'pending', name: 'AI Pending Actions', icon: '🤖' },
   ];
 
   // Auto-clear success message
@@ -42,22 +60,26 @@ const AdminPage = () => {
     setLoading(true);
     try {
       switch (activeTab) {
-        case 'types':
-          const types = await adminApi.listTypes();
-          setTransactionTypes(types);
+        case 'types': {
+          const types = await adminApi.listTypes<AdminItem[]>();
+          setTransactionTypes(types ?? []);
           break;
-        case 'accounts':
-          const accts = await adminApi.listAccounts();
-          setAccounts(accts);
+        }
+        case 'accounts': {
+          const accts = await adminApi.listAccounts<AdminItem[]>();
+          setAccounts(accts ?? []);
           break;
-        case 'assets':
-          const assts = await adminApi.listAssets();
-          setAssets(assts);
+        }
+        case 'assets': {
+          const assts = await adminApi.listAssets<AdminItem[]>();
+          setAssets(assts ?? []);
           break;
-        case 'tags':
-          const tgs = await adminApi.listTags();
-          setTags(tgs);
+        }
+        case 'tags': {
+          const tgs = await adminApi.listTags<AdminItem[]>();
+          setTags(tgs ?? []);
           break;
+        }
       }
     } catch (err: unknown) {
       const msg = (err as { message?: string } | null)?.message ?? 'Unknown error';
@@ -101,7 +123,7 @@ const AdminPage = () => {
     setShowForm(true);
   };
 
-  const handleEdit = (item: Record<string, unknown>) => {
+  const handleEdit = (item: AdminItem) => {
     setEditingItem(item);
     setShowForm(true);
   };
@@ -142,19 +164,24 @@ const AdminPage = () => {
     try {
       if (editingItem) {
         console.log('Updating item...');
+        const editingId = editingItem.id;
+        if (editingId === undefined || editingId === null) {
+          actions.setError('Selected item is missing an id.');
+          return;
+        }
         // Update
         switch (activeTab) {
           case 'types':
-            await adminApi.updateType(editingItem.id, formData);
+            await adminApi.updateType(editingId, formData);
             break;
           case 'accounts':
-            await adminApi.updateAccount(editingItem.id, formData);
+            await adminApi.updateAccount(editingId, formData);
             break;
           case 'assets':
-            await adminApi.updateAsset(editingItem.id, formData);
+            await adminApi.updateAsset(editingId, formData);
             break;
           case 'tags':
-            await adminApi.updateTag(editingItem.id, formData);
+            await adminApi.updateTag(editingId, formData);
             break;
         }
         console.log('Item updated, setting success message');
@@ -212,7 +239,7 @@ const AdminPage = () => {
 
     return (
       <AdminForm
-        type={activeTab}
+        type={activeTab as 'types' | 'accounts' | 'assets' | 'tags'}
         item={editingItem}
         onSubmit={handleSubmit}
         onCancel={() => {
@@ -226,7 +253,7 @@ const AdminPage = () => {
   // Update renderTable to use filtered data
   const renderTable = () => {
     const data = getFilteredData();
-    let columns = [];
+    let columns: ColumnConfig[] = [];
 
     switch (activeTab) {
       case 'types':
@@ -237,7 +264,7 @@ const AdminPage = () => {
           {
             key: 'is_active',
             title: 'Status',
-            render: (value) => (
+            render: (value: unknown) => (
               <span
                 className={`px-2 py-1 rounded text-xs ${value ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}
               >
@@ -257,7 +284,7 @@ const AdminPage = () => {
           {
             key: 'is_active',
             title: 'Status',
-            render: (value) => (
+            render: (value: unknown) => (
               <span
                 className={`px-2 py-1 rounded text-xs ${value ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}
               >
@@ -278,7 +305,7 @@ const AdminPage = () => {
           {
             key: 'is_active',
             title: 'Status',
-            render: (value) => (
+            render: (value: unknown) => (
               <span
                 className={`px-2 py-1 rounded text-xs ${value ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}
               >
@@ -298,7 +325,7 @@ const AdminPage = () => {
           {
             key: 'is_active',
             title: 'Status',
-            render: (value) => (
+            render: (value: unknown) => (
               <span
                 className={`px-2 py-1 rounded text-xs ${value ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}
               >
@@ -381,6 +408,12 @@ const AdminPage = () => {
       {/* Content */}
       {activeTab === 'assets' ? (
         <AdminAssetsTab />
+      ) : activeTab === 'pending' ? (
+        <div className="bg-white shadow rounded-lg">
+          <div className="px-4 py-5 sm:p-6">
+            <AdminPendingActions />
+          </div>
+        </div>
       ) : (
         <div className="bg-white shadow rounded-lg">
           <div className="px-4 py-5 sm:p-6">
@@ -437,7 +470,7 @@ const AdminPage = () => {
 };
 
 // Form component for CRUD operations
-const AdminForm: React.FC<{ type: 'types' | 'accounts' | 'assets' | 'tags'; item: Record<string, unknown> | null; onSubmit: (data: Record<string, unknown>) => Promise<void> | void; onCancel: () => void }> = ({ type, item, onSubmit, onCancel }) => {
+const AdminForm: React.FC<{ type: 'types' | 'accounts' | 'assets' | 'tags'; item: AdminItem | null; onSubmit: (data: Record<string, unknown>) => Promise<void> | void; onCancel: () => void }> = ({ type, item, onSubmit, onCancel }) => {
   const [formData, setFormData] = useState<Record<string, unknown>>({});
 
   useEffect(() => {
@@ -463,15 +496,22 @@ const AdminForm: React.FC<{ type: 'types' | 'accounts' | 'assets' | 'tags'; item
   }, [item, type]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
-    const { name, value, type: inputType, checked } = e.target as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement;
+    const target = e.target as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement;
+    const { name } = target;
+    let nextValue: unknown = target.value;
+
+    if (target instanceof HTMLInputElement) {
+      if (target.type === 'checkbox') {
+        nextValue = target.checked;
+      } else if (target.type === 'number') {
+        const parsed = Number(target.value);
+        nextValue = Number.isNaN(parsed) ? '' : parsed;
+      }
+    }
+
     setFormData((prev) => ({
       ...prev,
-      [name]:
-        inputType === 'checkbox'
-          ? checked
-          : inputType === 'number'
-            ? parseInt(String(value))
-            : (value),
+      [name]: nextValue,
     }));
   };
 

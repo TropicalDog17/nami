@@ -12,17 +12,27 @@ const router = express.Router()
 // Test request schemas
 const TextParseRequestSchema = z.object({
   message: z.string().min(1, 'Message is required'),
-  provider: z.enum(['openai', 'anthropic']).default('openai'),
-  apiKey: z.string().min(1, 'API key is required'),
+  // Provider and API key are now determined from the service env/config.
+  // These fields are kept only for backward compatibility and are ignored.
+  provider: z.enum(['openai', 'anthropic']).default('openai').optional(),
+  apiKey: z.string().min(1, 'API key is required').optional(),
   model: z.string().optional(),
-  accounts: z.array(z.object({
-    name: z.string(),
-    id: z.string().optional()
-  })).default([]),
-  tags: z.array(z.object({
-    name: z.string(),
-    id: z.string().optional()
-  })).default([])
+  accounts: z
+    .array(
+      z.object({
+        name: z.string(),
+        id: z.string().optional(),
+      })
+    )
+    .default([]),
+  tags: z
+    .array(
+      z.object({
+        name: z.string(),
+        id: z.string().optional(),
+      })
+    )
+    .default([]),
 })
 
 const VisionParseRequestSchema = z.object({
@@ -52,14 +62,10 @@ router.post('/text-parse', async (req, res) => {
 
   try {
     const validated = TextParseRequestSchema.parse(req.body)
-    logger.info({ provider: validated.provider }, 'Starting text parse test')
+    logger.info({}, 'Starting text parse test')
 
-    const llmClient = new LLMClient({
-      provider: validated.provider,
-      apiKey: validated.apiKey,
-      model: validated.model,
-      timeout: 30000
-    }, correlationId)
+    // Use env-driven configuration; request-level provider/apiKey are ignored.
+    const llmClient = new LLMClient({}, correlationId)
 
     const accounts = validated.accounts.map(a => ({ name: a.name, id: a.id || a.name }))
     const tags = validated.tags.map(t => ({ name: t.name, id: t.id || t.name }))
@@ -74,14 +80,14 @@ router.post('/text-parse', async (req, res) => {
 
     logger.info({
       hasAction: !!result.action,
-      provider: validated.provider,
+      provider: llmClient.getProvider(),
       model: llmClient.getModel()
     }, 'Text parse test completed')
 
     res.json({
       success: true,
       correlationId,
-      provider: validated.provider,
+        provider: llmClient.getProvider(),
       model: llmClient.getModel(),
       result
     })

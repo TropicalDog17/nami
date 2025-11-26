@@ -346,14 +346,12 @@ func (r *transactionRepository) DeleteActionGroup(ctx context.Context, oneID str
 }
 
 func (r *transactionRepository) RecalculateFX(ctx context.Context, onlyMissing bool) (int, error) {
-	query := r.db.WithContext(ctx).Model(&models.Transaction{})
-
-	if onlyMissing {
-		query = query.Where("fx_to_usd = 0 OR fx_to_vnd = 0")
-	}
-
+	// Legacy behavior attempted to filter by rows where stored FX columns were zero:
+	//   fx_to_usd = 0 OR fx_to_vnd = 0
+	// Those columns were removed in migration 018 in favor of inferring FX dynamically,
+	// so we now simply recompute derived local-currency fields for all rows.
 	var transactions []models.Transaction
-	if err := query.Find(&transactions).Error; err != nil {
+	if err := r.db.WithContext(ctx).Find(&transactions).Error; err != nil {
 		return 0, fmt.Errorf("failed to list transactions for FX recalc: %w", err)
 	}
 

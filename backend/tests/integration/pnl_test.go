@@ -25,8 +25,6 @@ func TestPnL_StakeUnstake(t *testing.T) {
 					Asset:             "USDT",
 					Amount:            500.0,
 					EntryPriceUSD:     floatPtr(1.0),
-					FXToUSD:           floatPtr(1.0),
-					FXToVND:           floatPtr(24000),
 				},
 				models.UnstakeParams{
 					Date:               time.Date(2025, 2, 1, 0, 0, 0, 0, time.UTC),
@@ -51,8 +49,6 @@ func TestPnL_StakeUnstake(t *testing.T) {
 					InvestmentAccount: "Futures",
 					Asset:             "USDT",
 					Amount:            500.0,
-					FXToUSD:           floatPtr(1.0),
-					FXToVND:           floatPtr(24000),
 				},
 				models.UnstakeParams{
 					Date:               time.Date(2025, 2, 1, 0, 0, 0, 0, time.UTC),
@@ -231,8 +227,6 @@ func TestPnL_FIFO_PartialCloseWithinPeriod(t *testing.T) {
 		Asset:             "USDT",
 		Amount:            100,
 		EntryPriceUSD:     floatPtr(1.0),
-		FXToUSD:           floatPtr(1.0),
-		FXToVND:           floatPtr(24000),
 	}
 	deposit2 := models.StakeParams{
 		Date:              time.Date(2025, 1, 15, 0, 0, 0, 0, time.UTC),
@@ -241,8 +235,6 @@ func TestPnL_FIFO_PartialCloseWithinPeriod(t *testing.T) {
 		Asset:             "USDT",
 		Amount:            100,
 		EntryPriceUSD:     floatPtr(2.0),
-		FXToUSD:           floatPtr(1.0),
-		FXToVND:           floatPtr(24000),
 	}
 	close1 := models.UnstakeParams{
 		Date:               time.Date(2025, 2, 1, 0, 0, 0, 0, time.UTC),
@@ -311,8 +303,6 @@ func TestPnL_FIFO_SecondCloseOutsideFirstPeriod(t *testing.T) {
 		Asset:             "USDT",
 		Amount:            100,
 		EntryPriceUSD:     floatPtr(1.0),
-		FXToUSD:           floatPtr(1.0),
-		FXToVND:           floatPtr(24000),
 	}
 	deposit2 := models.StakeParams{
 		Date:              time.Date(2025, 1, 15, 0, 0, 0, 0, time.UTC),
@@ -321,8 +311,6 @@ func TestPnL_FIFO_SecondCloseOutsideFirstPeriod(t *testing.T) {
 		Asset:             "USDT",
 		Amount:            100,
 		EntryPriceUSD:     floatPtr(2.0),
-		FXToUSD:           floatPtr(1.0),
-		FXToVND:           floatPtr(24000),
 	}
 	close1 := models.UnstakeParams{
 		Date:               time.Date(2025, 2, 1, 0, 0, 0, 0, time.UTC),
