@@ -291,7 +291,8 @@ export const tokenizedVaultApi = {
   // Basic CRUD
   list: <T = unknown>(filters: Record<string, unknown> = {}) =>
     api.get<T>('/api/tokenized-vaults', filters),
-  get: <T = unknown>(id: string) => api.get<T>(`/api/tokenized-vaults/${id}`),
+  get: <T = unknown>(id: string, params: Record<string, unknown> = {}) =>
+    api.get<T>(`/api/tokenized-vaults/${id}`, params),
   create: <T = unknown>(vault: unknown) => api.post<T>('/api/tokenized-vaults', vault),
   update: <T = unknown>(id: string, vault: unknown) => api.put<T>(`/api/tokenized-vaults/${id}`, vault),
   delete: <T = unknown>(id: string) => api.delete<T>(`/api/tokenized-vaults/${id}`),
@@ -299,6 +300,11 @@ export const tokenizedVaultApi = {
   // Manual pricing
   updatePrice: <T = unknown>(id: string, data: { new_price: number; notes?: string }) =>
     api.post<T>(`/api/tokenized-vaults/${id}/update-price`, data),
+  updateTotalValue: <T = unknown>(
+    id: string,
+    data: { total_value: number; net_contribution_delta?: number; notes?: string }
+  ) =>
+    api.post<T>(`/api/tokenized-vaults/${id}/update-total-value`, data),
   enableManualPricing: <T = unknown>(id: string, data: { initial_price: number }) =>
     api.post<T>(`/api/tokenized-vaults/${id}/enable-manual-pricing`, data),
   disableManualPricing: <T = unknown>(id: string) =>

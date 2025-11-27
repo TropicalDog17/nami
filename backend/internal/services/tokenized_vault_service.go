@@ -43,8 +43,20 @@ func (s *TokenizedVaultServiceImpl) CreateVault(ctx context.Context, vault *mode
 	}
 	vault.LastUpdated = now
 
-	// Initial AUM is based on initial share price and supply (should be 0 initially)
-	vault.TotalAssetsUnderManagement = decimal.Zero
+	// Preserve any precomputed AUM set by the handler (e.g., initial_total_value)
+	// Only default to zero if it's not already set.
+	if vault.TotalAssetsUnderManagement.IsZero() {
+		vault.TotalAssetsUnderManagement = decimal.Zero
+	}
+
+	// Initialize high watermark to initial share price if not set
+	if vault.HighWatermark.IsZero() && !vault.InitialSharePrice.IsZero() {
+		vault.HighWatermark = vault.InitialSharePrice
+	}
+
+	if vault.ManualPricingReferencePrice.IsZero() {
+		vault.ManualPricingReferencePrice = vault.InitialSharePrice
+	}
 
 	if err := s.db.WithContext(ctx).Create(vault).Error; err != nil {
 		return nil, fmt.Errorf("failed to create vault: %w", err)

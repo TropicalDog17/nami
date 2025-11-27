@@ -11,9 +11,9 @@ import (
 type VaultStatus string
 
 const (
-	VaultStatusActive    VaultStatus = "active"
-	VaultStatusPaused    VaultStatus = "paused"
-	VaultStatusClosed    VaultStatus = "closed"
+	VaultStatusActive      VaultStatus = "active"
+	VaultStatusPaused      VaultStatus = "paused"
+	VaultStatusClosed      VaultStatus = "closed"
 	VaultStatusLiquidating VaultStatus = "liquidating"
 )
 
@@ -21,22 +21,22 @@ const (
 type VaultType string
 
 const (
-	VaultTypeSingleAsset   VaultType = "single_asset"
-	VaultTypeMultiAsset    VaultType = "multi_asset"
-	VaultTypeYieldFarming  VaultType = "yield_farming"
-	VaultTypeLiquidity     VaultType = "liquidity"
-	VaultTypeStaking       VaultType = "staking"
-	VaultTypeUserDefined   VaultType = "user_defined"  // User-defined token with manual value tracking
+	VaultTypeSingleAsset  VaultType = "single_asset"
+	VaultTypeMultiAsset   VaultType = "multi_asset"
+	VaultTypeYieldFarming VaultType = "yield_farming"
+	VaultTypeLiquidity    VaultType = "liquidity"
+	VaultTypeStaking      VaultType = "staking"
+	VaultTypeUserDefined  VaultType = "user_defined" // User-defined token with manual value tracking
 )
 
 // FeeType represents different fee types
 type FeeType string
 
 const (
-	FeeTypeManagement     FeeType = "management"
-	FeeTypePerformance    FeeType = "performance"
-	FeeTypeDeposit        FeeType = "deposit"
-	FeeTypeWithdrawal     FeeType = "withdrawal"
+	FeeTypeManagement  FeeType = "management"
+	FeeTypePerformance FeeType = "performance"
+	FeeTypeDeposit     FeeType = "deposit"
+	FeeTypeWithdrawal  FeeType = "withdrawal"
 )
 
 // Vault represents a tokenized investment vault
@@ -48,32 +48,35 @@ type Vault struct {
 	Status      VaultStatus `json:"status" gorm:"column:status;type:varchar(20);not null;default:'active'"`
 
 	// Token information
-	TokenSymbol   string `json:"token_symbol" gorm:"column:token_symbol;type:varchar(20);not null"`
-	TokenDecimals int    `json:"token_decimals" gorm:"column:token_decimals;type:integer;not null;default:18"`
+	TokenSymbol   string          `json:"token_symbol" gorm:"column:token_symbol;type:varchar(20);not null"`
+	TokenDecimals int             `json:"token_decimals" gorm:"column:token_decimals;type:integer;not null;default:18"`
 	TotalSupply   decimal.Decimal `json:"total_supply" gorm:"column:total_supply;type:decimal(30,18);not null;default:0"`
 
 	// Financial metrics
 	TotalAssetsUnderManagement decimal.Decimal `json:"total_assets_under_management" gorm:"column:total_assets_under_management;type:decimal(30,18);not null;default:0"`
 	CurrentSharePrice          decimal.Decimal `json:"current_share_price" gorm:"column:current_share_price;type:decimal(30,18);not null;default:1"`
 	InitialSharePrice          decimal.Decimal `json:"initial_share_price" gorm:"column:initial_share_price;type:decimal(30,18);not null;default:1"`
+	HighWatermark              decimal.Decimal `json:"high_watermark" gorm:"column:high_watermark;type:decimal(30,18);not null;default:0"`
 
 	// User-defined token specific fields
-	IsUserDefinedPrice      bool           `json:"is_user_defined_price" gorm:"column:is_user_defined_price;type:boolean;not null;default:false"`
-	ManualPricePerShare     decimal.Decimal `json:"manual_price_per_share" gorm:"column:manual_price_per_share;type:decimal(30,18);not null;default:0"`
-	PriceLastUpdatedBy      *string        `json:"price_last_updated_by,omitempty" gorm:"column:price_last_updated_by;type:varchar(255)"`
-	PriceLastUpdatedAt      *time.Time     `json:"price_last_updated_at,omitempty" gorm:"column:price_last_updated_at;type:timestamptz"`
-	PriceUpdateNotes        *string        `json:"price_update_notes,omitempty" gorm:"column:price_update_notes;type:text"`
+	IsUserDefinedPrice          bool            `json:"is_user_defined_price" gorm:"column:is_user_defined_price;type:boolean;not null;default:false"`
+	ManualPricePerShare         decimal.Decimal `json:"manual_price_per_share" gorm:"column:manual_price_per_share;type:decimal(30,18);not null;default:0"`
+	ManualPricingInitialAUM     decimal.Decimal `json:"manual_pricing_initial_aum" gorm:"column:manual_pricing_initial_aum;type:decimal(30,18);not null;default:0"`
+	ManualPricingReferencePrice decimal.Decimal `json:"manual_pricing_reference_price" gorm:"column:manual_pricing_reference_price;type:decimal(30,18);not null;default:0"`
+	PriceLastUpdatedBy          *string         `json:"price_last_updated_by,omitempty" gorm:"column:price_last_updated_by;type:varchar(255)"`
+	PriceLastUpdatedAt          *time.Time      `json:"price_last_updated_at,omitempty" gorm:"column:price_last_updated_at;type:timestamptz"`
+	PriceUpdateNotes            *string         `json:"price_update_notes,omitempty" gorm:"column:price_update_notes;type:text"`
 
 	// Configuration
-	MinDepositAmount        decimal.Decimal `json:"min_deposit_amount" gorm:"column:min_deposit_amount;type:decimal(30,18);not null;default:0"`
-	MaxDepositAmount        *decimal.Decimal `json:"max_deposit_amount,omitempty" gorm:"column:max_deposit_amount;type:decimal(30,18)"`
-	MinWithdrawalAmount     decimal.Decimal `json:"min_withdrawal_amount" gorm:"column:min_withdrawal_amount;type:decimal(30,18);not null;default:0"`
-	IsDepositAllowed        bool `json:"is_deposit_allowed" gorm:"column:is_deposit_allowed;type:boolean;not null;default:true"`
-	IsWithdrawalAllowed     bool `json:"is_withdrawal_allowed" gorm:"column:is_withdrawal_allowed;type:boolean;not null;default:true"`
+	MinDepositAmount    decimal.Decimal  `json:"min_deposit_amount" gorm:"column:min_deposit_amount;type:decimal(30,18);not null;default:0"`
+	MaxDepositAmount    *decimal.Decimal `json:"max_deposit_amount,omitempty" gorm:"column:max_deposit_amount;type:decimal(30,18)"`
+	MinWithdrawalAmount decimal.Decimal  `json:"min_withdrawal_amount" gorm:"column:min_withdrawal_amount;type:decimal(30,18);not null;default:0"`
+	IsDepositAllowed    bool             `json:"is_deposit_allowed" gorm:"column:is_deposit_allowed;type:boolean;not null;default:true"`
+	IsWithdrawalAllowed bool             `json:"is_withdrawal_allowed" gorm:"column:is_withdrawal_allowed;type:boolean;not null;default:true"`
 
 	// Performance tracking
-	InceptionDate    time.Time      `json:"inception_date" gorm:"column:inception_date;type:timestamptz;not null"`
-	LastUpdated      time.Time      `json:"last_updated" gorm:"column:last_updated;type:timestamptz;not null"`
+	InceptionDate time.Time `json:"inception_date" gorm:"column:inception_date;type:timestamptz;not null"`
+	LastUpdated   time.Time `json:"last_updated" gorm:"column:last_updated;type:timestamptz;not null"`
 
 	// Metadata
 	CreatedBy string    `json:"created_by" gorm:"column:created_by;type:varchar(255);not null"`
@@ -166,6 +169,7 @@ func (v *Vault) UpdateManualPrice(newPrice decimal.Decimal, updatedBy string, no
 	v.IsUserDefinedPrice = true
 	v.ManualPricePerShare = newPrice
 	v.CurrentSharePrice = newPrice
+	v.ManualPricingReferencePrice = newPrice
 	v.PriceLastUpdatedBy = &updatedBy
 	now := time.Now()
 	v.PriceLastUpdatedAt = &now
@@ -173,8 +177,70 @@ func (v *Vault) UpdateManualPrice(newPrice decimal.Decimal, updatedBy string, no
 
 	// Update AUM based on new price
 	v.TotalAssetsUnderManagement = v.TotalSupply.Mul(newPrice)
+	if v.ManualPricingInitialAUM.IsZero() && v.TotalAssetsUnderManagement.IsPositive() {
+		v.ManualPricingInitialAUM = v.TotalAssetsUnderManagement
+	}
 
 	// Update timestamp
+	v.LastUpdated = now
+
+	return nil
+}
+
+// UpdateManualTotalValue allows manual updates of the vault's total value while deriving share price
+func (v *Vault) UpdateManualTotalValue(newTotalValue, netContributionDelta decimal.Decimal, updatedBy string, notes *string) error {
+	if !newTotalValue.IsPositive() {
+		return errors.New("total value must be positive")
+	}
+	if updatedBy == "" {
+		return errors.New("updated by is required")
+	}
+
+	v.IsUserDefinedPrice = true
+	v.TotalAssetsUnderManagement = newTotalValue
+
+	if !netContributionDelta.IsZero() {
+		v.ManualPricingInitialAUM = v.ManualPricingInitialAUM.Add(netContributionDelta)
+	}
+	if v.ManualPricingInitialAUM.IsNegative() {
+		return errors.New("manual pricing initial AUM cannot be negative")
+	}
+	if v.ManualPricingInitialAUM.IsZero() {
+		v.ManualPricingInitialAUM = newTotalValue
+	}
+
+	referencePrice := v.ManualPricingReferencePrice
+	if !referencePrice.IsPositive() {
+		switch {
+		case v.ManualPricePerShare.IsPositive():
+			referencePrice = v.ManualPricePerShare
+		case v.InitialSharePrice.IsPositive():
+			referencePrice = v.InitialSharePrice
+		default:
+			referencePrice = decimal.NewFromInt(1)
+		}
+		v.ManualPricingReferencePrice = referencePrice
+	}
+
+	var derivedPrice decimal.Decimal
+	switch {
+	case v.TotalSupply.IsPositive():
+		derivedPrice = newTotalValue.Div(v.TotalSupply)
+	default:
+		if v.ManualPricingInitialAUM.IsPositive() {
+			ratio := newTotalValue.Div(v.ManualPricingInitialAUM)
+			derivedPrice = referencePrice.Mul(ratio)
+		} else {
+			derivedPrice = referencePrice
+		}
+	}
+
+	v.ManualPricePerShare = derivedPrice
+	v.CurrentSharePrice = derivedPrice
+	v.PriceLastUpdatedBy = &updatedBy
+	now := time.Now()
+	v.PriceLastUpdatedAt = &now
+	v.PriceUpdateNotes = notes
 	v.LastUpdated = now
 
 	return nil
@@ -192,6 +258,7 @@ func (v *Vault) EnableManualPricing(initialPrice decimal.Decimal, updatedBy stri
 	v.IsUserDefinedPrice = true
 	v.ManualPricePerShare = initialPrice
 	v.CurrentSharePrice = initialPrice
+	v.ManualPricingReferencePrice = initialPrice
 	v.PriceLastUpdatedBy = &updatedBy
 	now := time.Now()
 	v.PriceLastUpdatedAt = &now
@@ -199,6 +266,9 @@ func (v *Vault) EnableManualPricing(initialPrice decimal.Decimal, updatedBy stri
 
 	// Update AUM
 	v.TotalAssetsUnderManagement = v.TotalSupply.Mul(initialPrice)
+	if v.ManualPricingInitialAUM.IsZero() && v.TotalAssetsUnderManagement.IsPositive() {
+		v.ManualPricingInitialAUM = v.TotalAssetsUnderManagement
+	}
 
 	return nil
 }
@@ -228,18 +298,18 @@ func (v *Vault) IsManuallyPriced() bool {
 
 // VaultFilter represents filters for querying vaults
 type VaultFilter struct {
-	Type            *VaultType
-	Status          *VaultStatus
-	CreatedBy       *string
-	MinAUM          *decimal.Decimal
-	MaxAUM          *decimal.Decimal
-	TokenSymbol     *string
-	IsDepositAllowed *bool
+	Type                *VaultType
+	Status              *VaultStatus
+	CreatedBy           *string
+	MinAUM              *decimal.Decimal
+	MaxAUM              *decimal.Decimal
+	TokenSymbol         *string
+	IsDepositAllowed    *bool
 	IsWithdrawalAllowed *bool
-	StartDate       *time.Time
-	EndDate         *time.Time
-	Limit           int
-	Offset          int
+	StartDate           *time.Time
+	EndDate             *time.Time
+	Limit               int
+	Offset              int
 }
 
 // VaultSummary provides aggregated vault statistics

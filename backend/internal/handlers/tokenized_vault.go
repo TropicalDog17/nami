@@ -58,11 +58,13 @@ type tokenizedVaultDTO struct {
 	HighWatermark              decimal.Decimal `json:"high_watermark"`
 
 	// User-defined pricing
-	IsUserDefinedPrice  bool            `json:"is_user_defined_price"`
-	ManualPricePerShare decimal.Decimal `json:"manual_price_per_share"`
-	PriceLastUpdatedBy  *string         `json:"price_last_updated_by,omitempty"`
-	PriceLastUpdatedAt  *time.Time      `json:"price_last_updated_at,omitempty"`
-	PriceUpdateNotes    *string         `json:"price_update_notes,omitempty"`
+	IsUserDefinedPrice          bool            `json:"is_user_defined_price"`
+	ManualPricePerShare         decimal.Decimal `json:"manual_price_per_share"`
+	ManualPricingInitialAUM     decimal.Decimal `json:"manual_pricing_initial_aum"`
+	ManualPricingReferencePrice decimal.Decimal `json:"manual_pricing_reference_price"`
+	PriceLastUpdatedBy          *string         `json:"price_last_updated_by,omitempty"`
+	PriceLastUpdatedAt          *time.Time      `json:"price_last_updated_at,omitempty"`
+	PriceUpdateNotes            *string         `json:"price_update_notes,omitempty"`
 
 	// Configuration
 	MinDepositAmount    decimal.Decimal  `json:"min_deposit_amount"`
@@ -158,6 +160,9 @@ func (h *TokenizedVaultHandler) HandleTokenizedVault(w http.ResponseWriter, r *h
 		case "update-price":
 			h.handleUpdatePrice(w, r, id)
 			return
+		case "update-total-value":
+			h.handleUpdateTotalValue(w, r, id)
+			return
 		case "enable-manual-pricing":
 			h.handleEnableManualPricing(w, r, id)
 			return
@@ -250,6 +255,7 @@ func (h *TokenizedVaultHandler) createTokenizedVault(w http.ResponseWriter, r *h
 		IsWithdrawalAllowed bool             `json:"is_withdrawal_allowed"`
 		EnableManualPricing bool             `json:"enable_manual_pricing"`
 		InitialManualPrice  decimal.Decimal  `json:"initial_manual_price"`
+		InitialTotalValue   decimal.Decimal  `json:"initial_total_value"`
 		DescriptionText     string           `json:"description_text,omitempty"`
 		Notes               string           `json:"notes,omitempty"`
 	}
@@ -278,6 +284,7 @@ func (h *TokenizedVaultHandler) createTokenizedVault(w http.ResponseWriter, r *h
 		TotalAssetsUnderManagement: decimal.Zero,
 		CurrentSharePrice:          body.InitialSharePrice,
 		InitialSharePrice:          body.InitialSharePrice,
+		HighWatermark:              body.InitialSharePrice, // Initialize to initial share price
 		MinDepositAmount:           body.MinDepositAmount,
 		MaxDepositAmount:           body.MaxDepositAmount,
 		MinWithdrawalAmount:        body.MinWithdrawalAmount,
@@ -297,6 +304,19 @@ func (h *TokenizedVaultHandler) createTokenizedVault(w http.ResponseWriter, r *h
 	if body.EnableManualPricing && !body.InitialManualPrice.IsZero() {
 		if err := vault.EnableManualPricing(body.InitialManualPrice, "user"); err != nil {
 			http.Error(w, "Failed to enable manual pricing: "+err.Error(), http.StatusBadRequest)
+			return
+		}
+	}
+
+	// Seed initial total value (AUM) if provided
+	if body.InitialTotalValue.IsPositive() {
+		var notesPtr *string
+		if strings.TrimSpace(body.Notes) != "" {
+			n := body.Notes
+			notesPtr = &n
+		}
+		if err := vault.UpdateManualTotalValue(body.InitialTotalValue, decimal.Zero, "user", notesPtr); err != nil {
+			http.Error(w, "Failed to set initial total value: "+err.Error(), http.StatusBadRequest)
 			return
 		}
 	}
@@ -379,6 +399,60 @@ func (h *TokenizedVaultHandler) handleUpdatePrice(w http.ResponseWriter, r *http
 	json.NewEncoder(w).Encode(dto)
 }
 
+func (h *TokenizedVaultHandler) handleUpdateTotalValue(w http.ResponseWriter, r *http.Request, id string) {
+	var body struct {
+		TotalValue           decimal.Decimal `json:"total_value" validate:"required,gt=0"`
+		NetContributionDelta decimal.Decimal `json:"net_contribution_delta"`
+		Notes                *string         `json:"notes,omitempty"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, "Invalid JSON: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	vault, err := h.vaultService.GetVaultByID(r.Context(), id)
+	if err != nil {
+		http.Error(w, "Vault not found: "+err.Error(), http.StatusNotFound)
+		return
+	}
+
+	previousAUM := vault.TotalAssetsUnderManagement
+	previousPrice := vault.CurrentSharePrice
+
+	updatedBy := "user" // TODO: Get from auth context
+	if err := vault.UpdateManualTotalValue(body.TotalValue, body.NetContributionDelta, updatedBy, body.Notes); err != nil {
+		http.Error(w, "Failed to update total value: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if err := h.vaultService.UpdateVault(r.Context(), vault); err != nil {
+		http.Error(w, "Failed to save vault: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	tx := &models.VaultTransaction{
+		VaultID:          id,
+		Type:             models.VaultTxTypeValuation,
+		AmountUSD:        body.TotalValue,
+		Shares:           vault.TotalSupply,
+		PricePerShare:    vault.CurrentSharePrice,
+		Notes:            body.Notes,
+		CreatedBy:        updatedBy,
+		Timestamp:        time.Now(),
+		VaultAUMBefore:   previousAUM,
+		VaultAUMAfter:    vault.TotalAssetsUnderManagement,
+		SharePriceBefore: previousPrice,
+		SharePriceAfter:  vault.CurrentSharePrice,
+	}
+	if _, err := h.transactionService.CreateTransaction(r.Context(), tx); err != nil {
+		// TODO: add structured logging
+	}
+
+	dto := h.mapVaultToDTO(vault)
+	json.NewEncoder(w).Encode(dto)
+}
+
 func (h *TokenizedVaultHandler) handleEnableManualPricing(w http.ResponseWriter, r *http.Request, id string) {
 	var body struct {
 		InitialPrice decimal.Decimal `json:"initial_price" validate:"required,gt=0"`
@@ -429,8 +503,48 @@ func (h *TokenizedVaultHandler) handleDisableManualPricing(w http.ResponseWriter
 }
 
 func (h *TokenizedVaultHandler) handleDeposit(w http.ResponseWriter, r *http.Request, id string) {
-	// TODO: Implement deposit logic
-	http.Error(w, "Not implemented yet", http.StatusNotImplemented)
+	var body struct {
+		Amount decimal.Decimal `json:"amount"`
+		Notes  *string         `json:"notes,omitempty"`
+		// Back-compat: allow "cost" as alias
+		Cost decimal.Decimal `json:"cost"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, "Invalid JSON: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	amount := body.Amount
+	if amount.IsZero() && body.Cost.IsPositive() {
+		amount = body.Cost
+	}
+	if !amount.IsPositive() {
+		http.Error(w, "amount must be positive", http.StatusBadRequest)
+		return
+	}
+
+	// Verify vault exists first
+	if _, err := h.vaultService.GetVaultByID(r.Context(), id); err != nil {
+		http.Error(w, "Vault not found: "+err.Error(), http.StatusNotFound)
+		return
+	}
+
+	userID := "user" // TODO: pull from auth context
+	if _, _, err := h.transactionService.ProcessDeposit(r.Context(), id, userID, amount); err != nil {
+		http.Error(w, "Failed to process deposit: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	// Return updated vault state
+	updated, err := h.vaultService.GetVaultByID(r.Context(), id)
+	if err != nil {
+		http.Error(w, "Failed to load updated vault: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	dto := h.mapVaultToDTO(updated)
+	json.NewEncoder(w).Encode(dto)
 }
 
 func (h *TokenizedVaultHandler) handleWithdraw(w http.ResponseWriter, r *http.Request, id string) {
@@ -449,41 +563,56 @@ func (h *TokenizedVaultHandler) updateTokenizedVault(w http.ResponseWriter, r *h
 }
 
 func (h *TokenizedVaultHandler) deleteTokenizedVault(w http.ResponseWriter, r *http.Request, id string) {
-	// TODO: Implement vault deletion logic
-	http.Error(w, "Not implemented yet", http.StatusNotImplemented)
+	if id == "" {
+		http.Error(w, "Vault ID is required", http.StatusBadRequest)
+		return
+	}
+
+	if err := h.vaultService.DeleteVault(r.Context(), id); err != nil {
+		if strings.Contains(strings.ToLower(err.Error()), "not found") {
+			http.Error(w, "Vault not found", http.StatusNotFound)
+			return
+		}
+		http.Error(w, "Failed to delete vault: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // Helper methods
 
 func (h *TokenizedVaultHandler) mapVaultToDTO(vault *models.Vault) *tokenizedVaultDTO {
 	return &tokenizedVaultDTO{
-		ID:                         vault.ID,
-		Name:                       vault.Name,
-		Description:                vault.Description,
-		Type:                       vault.Type,
-		Status:                     vault.Status,
-		TokenSymbol:                vault.TokenSymbol,
-		TokenDecimals:              vault.TokenDecimals,
-		TotalSupply:                vault.TotalSupply,
-		TotalAssetsUnderManagement: vault.TotalAssetsUnderManagement,
-		CurrentSharePrice:          vault.CurrentSharePrice,
-		InitialSharePrice:          vault.InitialSharePrice,
-		IsUserDefinedPrice:         vault.IsUserDefinedPrice,
-		ManualPricePerShare:        vault.ManualPricePerShare,
-		PriceLastUpdatedBy:         vault.PriceLastUpdatedBy,
-		PriceLastUpdatedAt:         vault.PriceLastUpdatedAt,
-		PriceUpdateNotes:           vault.PriceUpdateNotes,
-		MinDepositAmount:           vault.MinDepositAmount,
-		MaxDepositAmount:           vault.MaxDepositAmount,
-		MinWithdrawalAmount:        vault.MinWithdrawalAmount,
-		IsDepositAllowed:           vault.IsDepositAllowed,
-		IsWithdrawalAllowed:        vault.IsWithdrawalAllowed,
-		InceptionDate:              vault.InceptionDate,
-		LastUpdated:                vault.LastUpdated,
-		PerformanceSinceInception:  vault.CalculatePerformanceSinceInception(),
-		CreatedBy:                  vault.CreatedBy,
-		CreatedAt:                  vault.CreatedAt,
-		UpdatedAt:                  vault.UpdatedAt,
+		ID:                          vault.ID,
+		Name:                        vault.Name,
+		Description:                 vault.Description,
+		Type:                        vault.Type,
+		Status:                      vault.Status,
+		TokenSymbol:                 vault.TokenSymbol,
+		TokenDecimals:               vault.TokenDecimals,
+		TotalSupply:                 vault.TotalSupply,
+		TotalAssetsUnderManagement:  vault.TotalAssetsUnderManagement,
+		CurrentSharePrice:           vault.CurrentSharePrice,
+		InitialSharePrice:           vault.InitialSharePrice,
+		IsUserDefinedPrice:          vault.IsUserDefinedPrice,
+		ManualPricePerShare:         vault.ManualPricePerShare,
+		ManualPricingInitialAUM:     vault.ManualPricingInitialAUM,
+		ManualPricingReferencePrice: vault.ManualPricingReferencePrice,
+		PriceLastUpdatedBy:          vault.PriceLastUpdatedBy,
+		PriceLastUpdatedAt:          vault.PriceLastUpdatedAt,
+		PriceUpdateNotes:            vault.PriceUpdateNotes,
+		MinDepositAmount:            vault.MinDepositAmount,
+		MaxDepositAmount:            vault.MaxDepositAmount,
+		MinWithdrawalAmount:         vault.MinWithdrawalAmount,
+		IsDepositAllowed:            vault.IsDepositAllowed,
+		IsWithdrawalAllowed:         vault.IsWithdrawalAllowed,
+		InceptionDate:               vault.InceptionDate,
+		LastUpdated:                 vault.LastUpdated,
+		PerformanceSinceInception:   vault.CalculatePerformanceSinceInception(),
+		CreatedBy:                   vault.CreatedBy,
+		CreatedAt:                   vault.CreatedAt,
+		UpdatedAt:                   vault.UpdatedAt,
 	}
 }
 

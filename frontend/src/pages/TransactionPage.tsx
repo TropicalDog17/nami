@@ -19,6 +19,7 @@ import {
   actionsApi,
   investmentsApi,
   vaultApi,
+  tokenizedVaultApi,
 } from '../services/api';
 
 type IdType = string | number;
@@ -225,8 +226,12 @@ const TransactionPage: React.FC = () => {
     try {
       const vaultId = investmentData.vaultId as string | undefined;
       if (vaultId) {
-        const { quantity, cost } = investmentData as { quantity: number; cost: number };
-        await vaultApi.depositToVault(vaultId, { quantity, cost });
+        const { quantity, cost, note } = investmentData as { quantity: number; cost: number; note?: string };
+        if (vaultId.startsWith('vault_')) {
+          await tokenizedVaultApi.deposit(vaultId, { amount: cost, notes: note });
+        } else {
+          await vaultApi.depositToVault(vaultId, { quantity, cost, note });
+        }
       } else {
         await createInvestment(investmentData);
       }

@@ -298,7 +298,9 @@ func (s *VaultTransactionServiceImpl) ProcessDeposit(ctx context.Context, vaultI
 	shares := amount.Div(vault.CurrentSharePrice)
 
 	// Create transaction record
+	now := time.Now()
 	transaction := &models.VaultTransaction{
+		ID:               fmt.Sprintf("vtx_%d", now.UnixNano()),
 		VaultID:          vaultID,
 		UserID:           &userID,
 		Type:             models.VaultTxTypeDeposit,
@@ -311,6 +313,9 @@ func (s *VaultTransactionServiceImpl) ProcessDeposit(ctx context.Context, vaultI
 		VaultAUMBefore:   vault.TotalAssetsUnderManagement,
 		UserSharesBefore: decimal.Zero,
 		CreatedBy:        userID,
+		Timestamp:        now,
+		CreatedAt:        now,
+		UpdatedAt:        now,
 	}
 
 	if err := tx.Create(transaction).Error; err != nil {
@@ -410,19 +415,24 @@ func (s *VaultTransactionServiceImpl) ProcessWithdrawal(ctx context.Context, vau
 	}
 
 	// Create transaction record
+	now := time.Now()
 	transaction := &models.VaultTransaction{
-		VaultID:           vaultID,
-		UserID:            &userID,
-		Type:              models.VaultTxTypeWithdrawal,
-		AmountUSD:         amount,
-		Shares:            shares,
-		PricePerShare:     vault.CurrentSharePrice,
-		SharePriceBefore:  vault.CurrentSharePrice,
-		SharePriceAfter:   vault.CurrentSharePrice,
-		Status:            "executed",
-		VaultAUMBefore:    vault.TotalAssetsUnderManagement,
-		UserSharesBefore:  vaultShare.ShareBalance,
-		CreatedBy:         userID,
+		ID:               fmt.Sprintf("vtx_%d", now.UnixNano()),
+		VaultID:          vaultID,
+		UserID:           &userID,
+		Type:             models.VaultTxTypeWithdrawal,
+		AmountUSD:        amount,
+		Shares:           shares,
+		PricePerShare:    vault.CurrentSharePrice,
+		SharePriceBefore: vault.CurrentSharePrice,
+		SharePriceAfter:  vault.CurrentSharePrice,
+		Status:           "executed",
+		VaultAUMBefore:   vault.TotalAssetsUnderManagement,
+		UserSharesBefore: vaultShare.ShareBalance,
+		CreatedBy:        userID,
+		Timestamp:        now,
+		CreatedAt:        now,
+		UpdatedAt:        now,
 	}
 
 	if err := tx.Create(transaction).Error; err != nil {

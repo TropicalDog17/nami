@@ -5,23 +5,36 @@ import { tokenizedVaultApi } from '../../services/api';
 interface ManualPricingControlProps {
   vaultId: string;
   currentPrice: number;
+  currentTotalValue: number;
+  totalSupply: number;
   isManualPricing: boolean;
-  onPriceUpdate: (newPrice: number) => void;
+  onMetricsUpdate: (metrics: { price: number; totalValue: number }) => void;
   onPricingModeChange: (isManual: boolean) => void;
 }
+
+type VaultMetricsResponse = {
+  current_share_price?: string;
+  manual_price_per_share?: string;
+  total_assets_under_management?: string;
+};
 
 const ManualPricingControl: React.FC<ManualPricingControlProps> = ({
   vaultId,
   currentPrice,
+  currentTotalValue,
+  totalSupply,
   isManualPricing,
-  onPriceUpdate,
+  onMetricsUpdate,
   onPricingModeChange,
 }) => {
   const { success: showSuccessToast, error: showErrorToast } = useToast();
   const [showUpdateForm, setShowUpdateForm] = useState(false);
-  const [newPrice, setNewPrice] = useState('');
+  const [newTotalValue, setNewTotalValue] = useState('');
   const [notes, setNotes] = useState('');
+  const [netContribution, setNetContribution] = useState('');
   const [loading, setLoading] = useState(false);
+  const safeTotalValue = Number.isFinite(currentTotalValue) ? currentTotalValue : 0;
+  const safeTotalSupply = Number.isFinite(totalSupply) ? totalSupply : 0;
 
   const handleEnableManualPricing = async () => {
     setLoading(true);
@@ -57,28 +70,47 @@ const ManualPricingControl: React.FC<ManualPricingControlProps> = ({
     }
   };
 
-  const handleUpdatePrice = async (e: React.FormEvent) => {
+  const handleUpdateTotalValue = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    const price = parseFloat(newPrice);
-    if (isNaN(price) || price <= 0) {
-      showErrorToast('Please enter a valid price');
+    const totalValue = parseFloat(newTotalValue);
+    const netContributionDelta = netContribution ? parseFloat(netContribution) : 0;
+    if (isNaN(totalValue) || totalValue <= 0) {
+      showErrorToast('Please enter a valid total vault value greater than 0');
+      return;
+    }
+    if (isNaN(netContributionDelta)) {
+      showErrorToast('Please enter a valid net deposit/withdrawal amount');
       return;
     }
 
     setLoading(true);
     try {
-      await tokenizedVaultApi.updatePrice(vaultId, {
-        new_price: price,
+      const response = await tokenizedVaultApi.updateTotalValue<VaultMetricsResponse>(vaultId, {
+        total_value: totalValue,
+        net_contribution_delta: netContributionDelta !== 0 ? netContributionDelta : undefined,
         notes: notes || undefined,
       });
-      showSuccessToast('Price updated successfully!');
-      onPriceUpdate(price);
+      const updatedPrice =
+        response !== null && response !== undefined
+          ? parseFloat(response.current_share_price ?? response.manual_price_per_share ?? `${currentPrice}`)
+          : Number.NaN;
+      const updatedValue =
+        response !== null && response !== undefined
+          ? parseFloat(response.total_assets_under_management ?? `${totalValue}`)
+          : Number.NaN;
+
+      showSuccessToast('Total vault value updated successfully!');
+      onMetricsUpdate({
+        price: !isNaN(updatedPrice) ? updatedPrice : currentPrice,
+        totalValue: !isNaN(updatedValue) ? updatedValue : totalValue,
+      });
       setShowUpdateForm(false);
-      setNewPrice('');
+      setNewTotalValue('');
+      setNetContribution('');
       setNotes('');
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Failed to update price';
+      const message = err instanceof Error ? err.message : 'Failed to update total vault value';
       showErrorToast(message);
     } finally {
       setLoading(false);
@@ -91,7 +123,10 @@ const ManualPricingControl: React.FC<ManualPricingControlProps> = ({
         <div>
           <h3 className="text-sm font-medium text-gray-900">Token Pricing</h3>
           <p className="text-xs text-gray-500">
-            Current: ${currentPrice.toFixed(4)} {isManualPricing && '(Manual)'}
+            Current price: ${currentPrice.toFixed(4)} {isManualPricing && '(Manual)'}
+          </p>
+          <p className="text-xs text-gray-500">
+            Total vault value: ${safeTotalValue.toLocaleString(undefined, { maximumFractionDigits: 2 })}
           </p>
         </div>
 
@@ -110,7 +145,7 @@ const ManualPricingControl: React.FC<ManualPricingControlProps> = ({
               disabled={loading}
               className="px-3 py-1.5 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700 disabled:opacity-50"
             >
-              Update Price
+              Update Total Value
             </button>
             <button
               onClick={handleDisableManualPricing}
@@ -124,21 +159,54 @@ const ManualPricingControl: React.FC<ManualPricingControlProps> = ({
       </div>
 
       {showUpdateForm && (
-        <form onSubmit={handleUpdatePrice} className="space-y-3">
+        <form onSubmit={handleUpdateTotalValue} className="space-y-3">
           <div>
             <label className="block text-xs font-medium text-gray-700 mb-1">
-              New Price per Token (USD)
+              New Total Vault Value (USD)
             </label>
             <input
               type="number"
-              step="0.0001"
+              step="0.01"
               min="0"
-              value={newPrice}
-              onChange={(e) => setNewPrice(e.target.value)}
-              placeholder={currentPrice.toString()}
+              value={newTotalValue}
+              onChange={(e) => setNewTotalValue(e.target.value)}
+              placeholder={safeTotalValue.toString()}
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
               required
             />
+            {safeTotalSupply > 0 ? (
+              <p className="text-xs text-gray-500 mt-1">
+                Based on {safeTotalSupply.toLocaleString(undefined, { maximumFractionDigits: 2 })} tokens outstanding,
+                this
+                sets the price to $
+                {newTotalValue
+                  ? (parseFloat(newTotalValue) / safeTotalSupply).toFixed(4)
+                  : (safeTotalValue / safeTotalSupply).toFixed(4)}
+                .
+              </p>
+            ) : (
+              <p className="text-xs text-yellow-700 mt-1">
+                Token price will update once shares are minted. For now the vault value snapshot is stored.
+              </p>
+            )}
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-gray-700 mb-1">
+              Net Deposits / Withdrawals Since Last Update (USD)
+            </label>
+            <input
+              type="number"
+              step="0.01"
+              value={netContribution}
+              onChange={(e) => setNetContribution(e.target.value)}
+              placeholder="0"
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+            />
+            <p className="text-xs text-gray-500 mt-1">
+              Positive numbers increase capital (deposits), negative numbers decrease capital (withdrawals). The share
+              price is adjusted using net performance only.
+            </p>
           </div>
 
           <div>
@@ -148,7 +216,7 @@ const ManualPricingControl: React.FC<ManualPricingControlProps> = ({
             <textarea
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
-              placeholder="Why are you updating the price?"
+              placeholder="Why are you updating the vault value?"
               rows={2}
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
             />
@@ -160,13 +228,14 @@ const ManualPricingControl: React.FC<ManualPricingControlProps> = ({
               disabled={loading}
               className="flex-1 bg-blue-600 text-white px-3 py-1.5 rounded-md text-sm hover:bg-blue-700 disabled:opacity-50"
             >
-              {loading ? 'Updating...' : 'Update Price'}
+              {loading ? 'Updating...' : 'Update Total Value'}
             </button>
             <button
               type="button"
               onClick={() => {
                 setShowUpdateForm(false);
-                setNewPrice('');
+                setNewTotalValue('');
+                setNetContribution('');
                 setNotes('');
               }}
               disabled={loading}
@@ -181,7 +250,7 @@ const ManualPricingControl: React.FC<ManualPricingControlProps> = ({
       {isManualPricing && !showUpdateForm && (
         <div className="text-xs text-gray-600">
           <p className="font-medium text-purple-700">Manual Pricing Active</p>
-          <p>You control the token value. Updates are recorded in the vault history.</p>
+          <p>Provide total value plus net deposits/withdrawals so price reflects pure performance; every update is logged.</p>
         </div>
       )}
     </div>

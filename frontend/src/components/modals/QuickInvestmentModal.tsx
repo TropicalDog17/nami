@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 
 import ComboBox from '../ui/ComboBox';
-import { vaultApi } from '../../services/api';
+import { adminApi, tokenizedVaultApi } from '../../services/api';
 
 interface QuickInvestmentModalProps {
   isOpen: boolean;
@@ -23,58 +23,44 @@ const QuickInvestmentModal: React.FC<QuickInvestmentModalProps> = ({ isOpen, onC
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [vaultOptions, setVaultOptions] = useState<{ value: string; label: string }[]>([]);
-  const [vaultIdToInfo, setVaultIdToInfo] = useState<Record<string, unknown>>({});
+  const [vaultIdToInfo, setVaultIdToInfo] = useState<Record<string, { id: string; name: string; token_symbol: string }>>({});
+  const [accountOptions, setAccountOptions] = useState<{ value: string; label: string }[]>([]);
   const [isUsdOnly, setIsUsdOnly] = useState(false);
   const [usdAmount, setUsdAmount] = useState('');
 
   const handleChange = (k: string, v: string) => setFormData((s) => ({ ...s, [k]: v }));
 
-  // Load active vaults when modal opens
+  // Load tokenized vaults and accounts when modal opens
   useEffect(() => {
-    const loadVaults = async () => {
+    const load = async () => {
       try {
-        const data = await vaultApi.getActiveVaults() as unknown[];
-        const byId: Record<string, unknown> = {};
-        const opts = data
-          .filter((v) => {
-            const typedV = v as { is_open?: boolean };
-            return typedV && (typedV.is_open === true || typedV.is_open === undefined);
-          })
-          .map((v) => {
-            const typedV = v as { id: string; asset: string; account: string; horizon?: string };
-            byId[typedV.id] = typedV;
-            const horizon = typedV.horizon ? ` · ${typedV.horizon}` : '';
-            return { value: typedV.id, label: `${typedV.asset} @ ${typedV.account}${horizon}` };
-          });
+        const [vaults, accounts] = await Promise.all([
+          tokenizedVaultApi.list<Array<{ id: string; name: string; token_symbol: string }>>() ,
+          adminApi.listAccounts<Array<{ name: string; type: string }>>()
+        ]);
+
+        const byId: Record<string, { id: string; name: string; token_symbol: string }> = {};
+        const opts = (vaults ?? []).map((v) => {
+          byId[v.id] = { id: v.id, name: v.name, token_symbol: v.token_symbol };
+          return { value: v.id, label: `${v.name} (${v.token_symbol})` };
+        });
         setVaultIdToInfo(byId);
-        setVaultOptions(opts as { value: string; label: string }[]);
+        setVaultOptions(opts);
+
+        const accOpts = (accounts ?? []).map((a) => ({ value: a.name, label: `${a.name} (${a.type})` }));
+        setAccountOptions(accOpts);
       } catch (_e) {
         setVaultOptions([]);
+        setAccountOptions([]);
       }
     };
-    if (isOpen) void loadVaults();
+    if (isOpen) void load();
   }, [isOpen]);
 
   // When vault changes, reflect asset/account for user clarity
   const selectedVault = useMemo(() => {
-    const info = formData.vaultId ? vaultIdToInfo[formData.vaultId] : null;
-    return info ? (info as { asset?: string; account?: string; horizon?: string }) : null;
+    return formData.vaultId ? vaultIdToInfo[formData.vaultId] : null;
   }, [formData.vaultId, vaultIdToInfo]);
-  useEffect(() => {
-    if (selectedVault) {
-      setFormData((s) => ({ 
-        ...s, 
-        asset: selectedVault.asset ?? 'USD', 
-        account: selectedVault.account ?? '' 
-      }));
-      // Auto-enable USD-only mode when vault asset is USD
-      if ((selectedVault.asset ?? '').toUpperCase() === 'USD') {
-        setIsUsdOnly(true);
-      } else {
-        setIsUsdOnly(false);
-      }
-    }
-  }, [selectedVault]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -121,11 +107,27 @@ const QuickInvestmentModal: React.FC<QuickInvestmentModalProps> = ({ isOpen, onC
             />
             {selectedVault && (
               <div className="mt-1 text-xs text-gray-500">
-                {selectedVault.asset} @ {selectedVault.account}
-                {selectedVault.horizon ? ` · ${selectedVault.horizon}` : ''}
+                Selected: {selectedVault.name} ({selectedVault.token_symbol})
               </div>
             )}
           </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Source Account</label>
+            <ComboBox
+              options={accountOptions}
+              value={formData.account}
+              onChange={(val) => handleChange('account', String(val))}
+              placeholder="Select source account"
+              allowCreate
+              onCreate={async (name) => {
+                await adminApi.createAccount({ name, type: 'bank', is_active: true });
+                const accounts = await adminApi.listAccounts<Array<{ name: string; type: string }>>();
+                setAccountOptions((accounts ?? []).map((a) => ({ value: a.name, label: `${a.name} (${a.type})` })));
+                handleChange('account', name);
+              }}
+            />
+          </div>
+
           <div className="flex items-center">
             <label className="flex items-center text-sm text-gray-700">
               <input type="checkbox" className="mr-2" checked={isUsdOnly} onChange={(e) => setIsUsdOnly(e.target.checked)} />

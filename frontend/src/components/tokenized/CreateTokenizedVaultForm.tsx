@@ -77,8 +77,8 @@ const CreateTokenizedVaultForm: React.FC<{
         initial_share_price: parseFloat(formData.initialPrice) || 1,
         enable_manual_pricing: formData.enableManualPricing,
         initial_manual_price: formData.enableManualPricing ? parseFloat(formData.initialPrice) : undefined,
-        // For simplicity, create initial deposit as part of vault creation
-        initial_deposit: parseFloat(formData.initialDeposit),
+        // Seed initial total value (AUM) at creation time to match backend contract
+        initial_total_value: parseFloat(formData.initialDeposit),
       };
 
       await tokenizedVaultApi.create(vaultData);

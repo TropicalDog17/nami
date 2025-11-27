@@ -4,8 +4,9 @@ import { useParams, useNavigate } from 'react-router-dom';
 
 import ComboBox from '../components/ui/ComboBox';
 import DataTable, { TableColumn } from '../components/ui/DataTable';
+import ManualPricingControl from '../components/tokenized/ManualPricingControl';
 import { useToast } from '../components/ui/Toast';
-import { vaultApi, transactionApi } from '../services/api';
+import { vaultApi, transactionApi, tokenizedVaultApi, ApiError } from '../services/api';
 import { formatCurrency, formatPercentage, formatPnL, getDecimalPlaces } from '../utils/currencyFormatter';
 
 type Vault = {
@@ -60,12 +61,65 @@ type ManualMetrics = {
   benchmark_apr_percent?: number;
 };
 
+type TokenizedVaultAsset = {
+  asset: string;
+  quantity: string;
+  current_market_value: string;
+  allocation_percent: string;
+  unrealized_pnl: string;
+  unrealized_pnl_percent: string;
+};
+
+type TokenizedVaultDetails = {
+  id: string;
+  name: string;
+  description?: string | null;
+  type: string;
+  status: string;
+  token_symbol: string;
+  token_decimals: number;
+  total_supply: string;
+  total_assets_under_management: string;
+  current_share_price: string;
+  initial_share_price: string;
+  high_watermark?: string;
+  is_user_defined_price: boolean;
+  manual_price_per_share: string;
+  manual_pricing_initial_aum?: string;
+  manual_pricing_reference_price?: string;
+  price_last_updated_by?: string | null;
+  price_last_updated_at?: string | null;
+  price_update_notes?: string | null;
+  min_deposit_amount: string;
+  max_deposit_amount?: string | null;
+  min_withdrawal_amount: string;
+  is_deposit_allowed: boolean;
+  is_withdrawal_allowed: boolean;
+  inception_date: string;
+  last_updated: string;
+  performance_since_inception: string;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+  as_of?: string;
+  current_price_usd?: number;
+  roi_realtime_percent?: number;
+  benchmark_asset?: string;
+  benchmark_roi_percent?: number;
+  benchmark_apr_percent?: number;
+  asset_breakdown?: TokenizedVaultAsset[];
+};
+
+const MAX_RETRIES = 3;
+
 const VaultDetailPage: React.FC = () => {
   const { vaultName } = useParams<{ vaultName: string }>();
   const navigate = useNavigate();
   const { error: showErrorToast, success: showSuccessToast } = useToast();
 
   const [vault, setVault] = useState<Vault | null>(null);
+  const [tokenizedVaultDetails, setTokenizedVaultDetails] = useState<TokenizedVaultDetails | null>(null);
+  const [isTokenizedVault, setIsTokenizedVault] = useState<boolean>(false);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -75,6 +129,7 @@ const VaultDetailPage: React.FC = () => {
   const [manualMetrics, setManualMetrics] = useState<ManualMetrics | null>(null);
   const [liveMetrics, setLiveMetrics] = useState<ManualMetrics | null>(null);
   const [showLiveMetrics, setShowLiveMetrics] = useState<boolean>(false);
+  const [retryCount, setRetryCount] = useState(0);
 
   // Form states
   const [depositForm, setDepositForm] = useState({
@@ -91,15 +146,79 @@ const VaultDetailPage: React.FC = () => {
   const [withdrawPercent, setWithdrawPercent] = useState<string>('');
 
   const loadVault = useCallback(async (): Promise<void> => {
+    if (!vaultName) {
+      setLoading(false);
+      return;
+    }
+
+    const isTokenizedId = vaultName.startsWith('vault_');
+
+    setLoading(true);
+    setError(null);
+
+    let loadedTokenized = false;
+
+    // First: try tokenized vault API
     try {
-      setLoading(true);
-      if (!vaultName) return;
-      const endpoint = showLiveMetrics ? `/api/vaults/${encodeURIComponent(vaultName)}?enrich=true` : `/api/vaults/${encodeURIComponent(vaultName)}`;
-      const vaultData = await fetch(`${(import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8080')}${endpoint}`).then(async (r) => {
-        const t = await r.text();
-        return t ? (JSON.parse(t) as Vault) : null;
-      });
+      const params = showLiveMetrics ? { enrich: true } : {};
+      const tokenizedData = await tokenizedVaultApi.get<TokenizedVaultDetails>(vaultName, params);
+      if (tokenizedData) {
+        setTokenizedVaultDetails(tokenizedData);
+        setIsTokenizedVault(true);
+        setVault(null);
+        setManualMetrics(null);
+        setLiveMetrics(null);
+        setTransactions([]);
+        loadedTokenized = true;
+        setRetryCount(0);
+      }
+    } catch (err) {
+      const apiErr = err as unknown as ApiError;
+      // If route param looks like a tokenized ID and backend says 404, stop here with a clear error
+      if (apiErr instanceof ApiError && apiErr.status === 404 && isTokenizedId) {
+        setError('Tokenized vault not found');
+        setLoading(false);
+        return;
+      }
+      // For other errors, retry a few times then surface error
+      if (!(apiErr instanceof ApiError && apiErr.status === 404)) {
+        if (retryCount < MAX_RETRIES) {
+          setTimeout(() => setRetryCount(retryCount + 1), 1000 * (retryCount + 1));
+        } else {
+          const message = apiErr instanceof Error ? apiErr.message : 'Failed to load vault';
+          setError(message);
+          showErrorToast('Failed to load vault details after multiple retries');
+          setLoading(false);
+        }
+        return;
+      }
+    }
+
+    if (loadedTokenized) {
+      setLoading(false);
+      return;
+    }
+
+    // Fallback only for legacy investment vault IDs (not prefixed with vault_)
+    if (isTokenizedId) {
+      setError('Tokenized vault not found');
+      setLoading(false);
+      return;
+    }
+
+    try {
+      const endpoint = showLiveMetrics
+        ? `/api/vaults/${encodeURIComponent(vaultName)}?enrich=true`
+        : `/api/vaults/${encodeURIComponent(vaultName)}`;
+      const vaultData = await fetch(`${(import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8080')}${endpoint}`).then(
+        async (r) => {
+          const t = await r.text();
+          return t ? (JSON.parse(t) as Vault) : null;
+        }
+      );
       setVault(vaultData ?? null);
+      setIsTokenizedVault(false);
+      setTokenizedVaultDetails(null);
       if (vaultData && showLiveMetrics) {
         const lm: ManualMetrics = {
           as_of: (vaultData as unknown as { as_of?: string }).as_of,
@@ -114,26 +233,35 @@ const VaultDetailPage: React.FC = () => {
       } else {
         setLiveMetrics(null);
       }
+      setRetryCount(0);
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Failed to load vault';
-      setError(message);
-      showErrorToast('Failed to load vault details');
+      if (retryCount < MAX_RETRIES) {
+        setTimeout(() => setRetryCount(retryCount + 1), 1000 * (retryCount + 1));
+      } else {
+        const message = err instanceof Error ? err.message : 'Failed to load vault';
+        setError(message);
+        showErrorToast('Failed to load vault details after multiple retries');
+      }
     } finally {
       setLoading(false);
     }
-  }, [vaultName, showErrorToast, showLiveMetrics]);
+  }, [vaultName, showErrorToast, showLiveMetrics, retryCount]);
 
   const loadVaultTransactions = useCallback(async (): Promise<void> => {
     try {
-      // Load transactions related to this vault
-      if (!vaultName) return;
+      if (!vaultName || isTokenizedVault) {
+        if (isTokenizedVault) {
+          setTransactions([]);
+        }
+        return;
+      }
       const txs = await transactionApi.list<Transaction[]>({ investment_id: vaultName });
       setTransactions(Array.isArray(txs) ? txs : []);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
       console.error('Failed to load vault transactions:', message);
     }
-  }, [vaultName]);
+  }, [vaultName, isTokenizedVault]);
 
   const loadAccounts = (): void => {
     // This would come from admin API in a real implementation
@@ -144,6 +272,62 @@ const VaultDetailPage: React.FC = () => {
       { value: 'Coinbase', label: 'Coinbase (exchange)' },
     ];
     setAccounts(mockAccounts);
+  };
+
+  const handleTokenizedDelete = async (): Promise<void> => {
+    if (!tokenizedVaultDetails) return;
+    if (!confirm('Delete this tokenized vault permanently? This action cannot be undone.')) {
+      return;
+    }
+    try {
+      await tokenizedVaultApi.delete(tokenizedVaultDetails.id);
+      showSuccessToast('Vault deleted successfully!');
+      navigate('/vaults');
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to delete vault';
+      showErrorToast(message);
+    }
+  };
+
+  const handleTokenizedClose = async (): Promise<void> => {
+    if (!tokenizedVaultDetails) return;
+    if (!confirm('Close this vault? This marks the vault as closed but keeps historical data.')) {
+      return;
+    }
+    try {
+      await tokenizedVaultApi.close(tokenizedVaultDetails.id);
+      showSuccessToast('Vault closed successfully!');
+      await loadVault();
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to close vault';
+      showErrorToast(message);
+    }
+  };
+
+  const handleTokenizedMetricsUpdate = (metrics: { price: number; totalValue: number }): void => {
+    setTokenizedVaultDetails((prev) =>
+      prev
+        ? {
+            ...prev,
+            current_share_price: metrics.price.toString(),
+            manual_price_per_share: metrics.price.toString(),
+            total_assets_under_management: metrics.totalValue.toString(),
+          }
+        : prev
+    );
+    void loadVault();
+  };
+
+  const handleTokenizedPricingModeChange = (isManual: boolean): void => {
+    setTokenizedVaultDetails((prev) =>
+      prev
+        ? {
+            ...prev,
+            is_user_defined_price: isManual,
+          }
+        : prev
+    );
+    void loadVault();
   };
 
   useEffect(() => {
@@ -403,6 +587,53 @@ const VaultDetailPage: React.FC = () => {
     },
   ];
 
+  const tokenizedAssetColumns: TableColumn<TokenizedVaultAsset>[] = [
+    {
+      key: 'asset',
+      title: 'Asset',
+    },
+    {
+      key: 'quantity',
+      title: 'Quantity',
+      type: 'number',
+      decimals: 6,
+      render: (value) => {
+        const num = typeof value === 'string' ? parseFloat(value) : Number(value ?? 0);
+        return isNaN(num) ? '0' : num.toLocaleString(undefined, { maximumFractionDigits: 6 });
+      },
+    },
+    {
+      key: 'current_market_value',
+      title: 'Market Value',
+      type: 'currency',
+      currency: 'USD',
+      render: (value) => formatCurrency(typeof value === 'string' ? parseFloat(value) : Number(value ?? 0)),
+    },
+    {
+      key: 'allocation_percent',
+      title: 'Allocation',
+      render: (value) => {
+        const num = typeof value === 'string' ? parseFloat(value) : Number(value ?? 0);
+        return isNaN(num) ? '0.00%' : `${num.toFixed(2)}%`;
+      },
+    },
+    {
+      key: 'unrealized_pnl',
+      title: 'Unrealized P&L',
+      type: 'currency',
+      currency: 'USD',
+      render: (value) => formatCurrency(typeof value === 'string' ? parseFloat(value) : Number(value ?? 0)),
+    },
+    {
+      key: 'unrealized_pnl_percent',
+      title: 'PnL %',
+      render: (value) => {
+        const num = typeof value === 'string' ? parseFloat(value) : Number(value ?? 0);
+        return isNaN(num) ? '0.00%' : `${num.toFixed(2)}%`;
+      },
+    },
+  ];
+
   const isUsdOnlyVault = useMemo(() => {
     return (vault?.asset ?? '').toUpperCase() === 'USD';
   }, [vault]);
@@ -424,7 +655,14 @@ const VaultDetailPage: React.FC = () => {
     }
   };
 
-  console.log('VaultDetailPage render:', { loading, error, vault: vault ? 'present' : 'null', vaultName });
+  console.log('VaultDetailPage render:', {
+    loading,
+    error,
+    vault: vault ? 'present' : 'null',
+    tokenized: tokenizedVaultDetails ? 'present' : 'null',
+    isTokenizedVault,
+    vaultName,
+  });
 
   if (loading) {
     return (
@@ -436,12 +674,191 @@ const VaultDetailPage: React.FC = () => {
     );
   }
 
-  if (error || !vault) {
+  if (error) {
     return (
       <div className="px-4 py-6 sm:px-0">
         <div className="text-center">
           <h1 className="text-2xl font-bold text-red-600 mb-4">Vault Not Found</h1>
-          <p className="text-gray-600 mb-4">{error ?? 'The requested vault could not be found.'}</p>
+          <p className="text-gray-600 mb-4">{error}</p>
+          <button
+            onClick={() => navigate('/vaults')}
+            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+          >
+            Back to Vaults
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (isTokenizedVault && tokenizedVaultDetails) {
+    const tokenPrice = parseFloat(tokenizedVaultDetails.current_share_price ?? '0');
+    const totalSupply = parseFloat(tokenizedVaultDetails.total_supply ?? '0');
+    const totalValue = parseFloat(tokenizedVaultDetails.total_assets_under_management ?? '0');
+    const performance = parseFloat(tokenizedVaultDetails.performance_since_inception ?? '0');
+    const status = tokenizedVaultDetails.status?.toLowerCase() ?? 'unknown';
+    const statusConfig: Record<string, { label: string; className: string }> = {
+      active: { label: 'Active', className: 'bg-green-100 text-green-800' },
+      paused: { label: 'Paused', className: 'bg-yellow-100 text-yellow-800' },
+      closed: { label: 'Closed', className: 'bg-gray-100 text-gray-800' },
+      liquidating: { label: 'Liquidating', className: 'bg-red-100 text-red-800' },
+    };
+    const statusBadge = statusConfig[status] ?? { label: status, className: 'bg-gray-100 text-gray-800' };
+
+    return (
+      <div className="px-4 py-6 sm:px-0" data-testid="tokenized-vault-detail-page">
+        <div className="mb-6 flex items-center justify-between">
+          <div>
+            <button
+              onClick={() => navigate('/vaults')}
+              className="mb-4 text-blue-600 hover:text-blue-800 flex items-center"
+            >
+              ← Back to Vaults
+            </button>
+            <h1 className="text-3xl font-bold text-gray-900 mb-1">
+              {tokenizedVaultDetails.name} ({tokenizedVaultDetails.token_symbol})
+            </h1>
+            <p className="text-gray-600">{tokenizedVaultDetails.description ?? 'Tokenized vault overview'}</p>
+          </div>
+          <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${statusBadge.className}`}>
+            {statusBadge.label}
+          </span>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+          <div className="bg-white p-4 rounded-lg border border-gray-200">
+            <h3 className="text-sm font-medium text-gray-500 mb-2">Token Price</h3>
+            <p className="text-2xl font-bold text-gray-900">${isNaN(tokenPrice) ? '0.0000' : tokenPrice.toFixed(4)}</p>
+            <p className="text-sm text-gray-600">Live price</p>
+          </div>
+          <div className="bg-white p-4 rounded-lg border border-gray-200">
+            <h3 className="text-sm font-medium text-gray-500 mb-2">Total Supply</h3>
+            <p className="text-2xl font-bold text-gray-900">
+              {isNaN(totalSupply) ? '0' : totalSupply.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+            </p>
+            <p className="text-sm text-gray-600">Tokens issued</p>
+          </div>
+          <div className="bg-white p-4 rounded-lg border border-gray-200">
+            <h3 className="text-sm font-medium text-gray-500 mb-2">Assets Under Management</h3>
+            <p className="text-2xl font-bold text-gray-900">{formatCurrency(isNaN(totalValue) ? 0 : totalValue)}</p>
+            <p className="text-sm text-gray-600">{tokenizedVaultDetails.is_user_defined_price ? 'Manual pricing' : 'Total vault value'}</p>
+          </div>
+          <div className="bg-white p-4 rounded-lg border border-gray-200">
+            <h3 className="text-sm font-medium text-gray-500 mb-2">Performance Since Inception</h3>
+            <p className={`text-2xl font-bold ${performance >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+              {formatPercentage((performance || 0) / 100, 2)}
+            </p>
+            <p className="text-sm text-gray-600">Relative to initial share price</p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+          <div className="bg-white p-4 rounded-lg border border-gray-200">
+            <ManualPricingControl
+              vaultId={tokenizedVaultDetails.id}
+              currentPrice={isNaN(tokenPrice) ? 0 : tokenPrice}
+              currentTotalValue={isNaN(totalValue) ? 0 : totalValue}
+              totalSupply={isNaN(totalSupply) ? 0 : totalSupply}
+              isManualPricing={tokenizedVaultDetails.is_user_defined_price}
+              onMetricsUpdate={handleTokenizedMetricsUpdate}
+              onPricingModeChange={handleTokenizedPricingModeChange}
+            />
+          </div>
+          <div className="bg-white p-4 rounded-lg border border-gray-200">
+            <h3 className="text-sm font-medium text-gray-900 mb-3">Vault Configuration</h3>
+            <dl className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+              <div>
+                <dt className="text-gray-500">Inception Date</dt>
+                <dd className="text-gray-900">{format(new Date(tokenizedVaultDetails.inception_date), 'MMM d, yyyy')}</dd>
+              </div>
+              <div>
+                <dt className="text-gray-500">Last Updated</dt>
+                <dd className="text-gray-900">{format(new Date(tokenizedVaultDetails.last_updated), 'MMM d, yyyy HH:mm')}</dd>
+              </div>
+              <div>
+                <dt className="text-gray-500">Created By</dt>
+                <dd className="text-gray-900">{tokenizedVaultDetails.created_by}</dd>
+              </div>
+              <div>
+                <dt className="text-gray-500">Price Last Updated</dt>
+                <dd className="text-gray-900">
+                  {tokenizedVaultDetails.price_last_updated_at
+                    ? format(new Date(tokenizedVaultDetails.price_last_updated_at), 'MMM d, yyyy HH:mm')
+                    : '—'}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-gray-500">Min Deposit</dt>
+                <dd className="text-gray-900">{formatCurrency(parseFloat(tokenizedVaultDetails.min_deposit_amount ?? '0'))}</dd>
+              </div>
+              <div>
+                <dt className="text-gray-500">Min Withdrawal</dt>
+                <dd className="text-gray-900">{formatCurrency(parseFloat(tokenizedVaultDetails.min_withdrawal_amount ?? '0'))}</dd>
+              </div>
+            </dl>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap gap-3 mb-6">
+          {tokenizedVaultDetails.status === 'active' && (
+            <button
+              onClick={() => {
+                void handleTokenizedClose();
+              }}
+              className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700"
+            >
+              Close Vault
+            </button>
+          )}
+          <button
+            onClick={() => {
+              void handleTokenizedDelete();
+            }}
+            className="px-4 py-2 bg-gray-700 text-white rounded-md hover:bg-gray-800"
+          >
+            Delete Vault
+          </button>
+          <button
+            onClick={() => setShowLiveMetrics((s) => !s)}
+            className="px-4 py-2 bg-yellow-600 text-white rounded-md hover:bg-yellow-700"
+          >
+            {showLiveMetrics ? 'Hide Asset Breakdown' : 'Show Asset Breakdown'}
+          </button>
+          <button
+            onClick={() => {
+              void loadVault();
+            }}
+            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+          >
+            Refresh
+          </button>
+        </div>
+
+        {tokenizedVaultDetails.asset_breakdown && tokenizedVaultDetails.asset_breakdown.length > 0 && (
+          <div className="bg-white p-4 rounded-lg border border-gray-200">
+            <h2 className="text-xl font-semibold mb-4">Asset Breakdown</h2>
+            <DataTable<TokenizedVaultAsset>
+              data={tokenizedVaultDetails.asset_breakdown}
+              columns={tokenizedAssetColumns}
+              loading={false}
+              error={null}
+              emptyMessage="No assets tracked for this vault"
+              editable={false}
+              selectableRows={false}
+              data-testid="tokenized-vault-assets-table"
+            />
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  if (!vault) {
+    return (
+      <div className="px-4 py-6 sm:px-0">
+        <div className="text-center">
+          <h1 className="text-2xl font-bold text-red-600 mb-4">Vault Not Found</h1>
+          <p className="text-gray-600 mb-4">The requested vault could not be found.</p>
           <button
             onClick={() => navigate('/vaults')}
             className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
