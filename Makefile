@@ -39,7 +39,7 @@ test-unit: ## Run Go unit tests
 	@cd backend && go test -v ./... -short
 
 # Isolated test environment (separate from main app)
-test-isolated: test-teardown test-isolated-run test-setup ## Run tests in isolated environment
+test-isolated: test-setup test-isolated-run test-teardown   ## Run tests in isolated environment
 
 test-setup: ## Set up isolated test environment (ports 3001/8001, database 5434)
 	@echo "🚀 Setting up isolated test environment..."
@@ -48,13 +48,20 @@ test-setup: ## Set up isolated test environment (ports 3001/8001, database 5434)
 
 test-isolated-run: ## Run the isolated e2e tests
 	@echo "🧪 Running isolated e2e tests..."
+	@echo "🗄️ Ensuring test Postgres is up on :5434..."
+	@docker-compose -f docker-compose.test.yml up -d postgres-test
+	@echo "🗄️ Running migrations against test DB (localhost:5434)..."
+	@(cd backend/migrations && DB_HOST=localhost DB_PORT=5434 DB_NAME=nami_test DB_USER=nami_test_user DB_PASSWORD=nami_test_password go run migrate.go)
+	@echo "🔧 Starting test backend on :8001 in background..."
+	@(cd backend && ../scripts/start-test-backend.sh) &
+	@sleep 3
 	@cd frontend && npm run test:e2e:isolated
 	@echo "✅ Isolated e2e tests completed"
 
 test-teardown: ## Tear down isolated test environment and clean up resources
 	@echo "🧹 Tearing down isolated test environment..."
 	@docker-compose -f docker-compose.test.yml down
-    # kill backend and frontend
+	# kill backend and frontend
 	@lsof -ti tcp:8001 | xargs kill -TERM 2>/dev/null || true
 	@pkill -f "cmd/server/main.go" 2>/dev/null || true
 	@pkill -f "bin/nami-server" 2>/dev/null || true

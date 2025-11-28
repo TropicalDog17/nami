@@ -11,6 +11,7 @@ echo "🚀 Starting test backend on port 8001..."
 GREEN='\033[0;32m'
 BLUE='\033[0;34m'
 RED='\033[0;31m'
+YELLOW='\033[1;33m'
 NC='\033[0m'
 
 # Configuration
@@ -31,11 +32,23 @@ fi
 # Check if database is running
 echo -e "${BLUE}🔍 Checking database connection...${NC}"
 if command -v docker >/dev/null 2>&1; then
-    if docker-compose -f ../docker-compose.test.yml ps postgres-test | grep -q "Up"; then
-        echo -e "${GREEN}✅ Test database is running${NC}"
+    # Ensure container is up
+    if ! docker-compose -f ../docker-compose.test.yml ps postgres-test | grep -q "Up"; then
+        echo -e "${YELLOW}ℹ️  postgres-test not up, starting it...${NC}"
+        docker-compose -f ../docker-compose.test.yml up -d postgres-test
+    fi
+    echo -e "${BLUE}⏳ Waiting for Postgres to be ready...${NC}"
+    READY=0
+    for i in {1..30}; do
+        if docker-compose -f ../docker-compose.test.yml exec -T postgres-test pg_isready -U nami_test_user -d nami_test >/dev/null 2>&1; then
+            READY=1; break
+        fi
+        sleep 2
+    done
+    if [ "$READY" -eq 1 ]; then
+        echo -e "${GREEN}✅ Test database is ready${NC}"
     else
-        echo -e "${RED}❌ Test database is not running${NC}"
-        echo -e "${YELLOW}Please run: ./scripts/setup-test-env.sh${NC}"
+        echo -e "${RED}❌ Test database failed to become ready${NC}"
         exit 1
     fi
 else
@@ -43,16 +56,20 @@ else
 fi
 
 # Set environment variables
-export GIN_PORT=$BACKEND_PORT
-export POSTGRES_HOST=$DB_HOST
-export POSTGRES_PORT=$DB_PORT
-export POSTGRES_DB=$DB_NAME
-export POSTGRES_USER=$DB_USER
-export POSTGRES_PASSWORD=$DB_PASSWORD
+export SERVER_PORT=$BACKEND_PORT
+export DB_HOST=$DB_HOST
+export DB_PORT=$DB_PORT
+export DB_NAME=$DB_NAME
+export DB_USER=$DB_USER
+export DB_PASSWORD=$DB_PASSWORD
 export DATABASE_URL="postgresql://$DB_USER:$DB_PASSWORD@$DB_HOST:$DB_PORT/$DB_NAME?sslmode=disable"
 
 echo -e "${BLUE}🔧 Environment variables set:${NC}"
-echo -e "   GIN_PORT: $GIN_PORT"
+echo -e "   SERVER_PORT: $SERVER_PORT"
+echo -e "   DB_HOST: $DB_HOST"
+echo -e "   DB_PORT: $DB_PORT"
+echo -e "   DB_NAME: $DB_NAME"
+echo -e "   DB_USER: $DB_USER"
 echo -e "   DATABASE_URL: $DATABASE_URL"
 
 # Check if port is available

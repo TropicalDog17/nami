@@ -101,7 +101,7 @@ const QuickIncomeModal = ({ isOpen, onClose, onSubmit }: Props) => {
                 <option value="">Select account</option>
                 {accounts.filter(a => a.is_active).map(a => (
                   <option key={a.name} value={a.name}>
-                    {a.name} ({a.type ?? 'Unknown'})
+                    {a.name}
                   </option>
                 ))}
               </select>

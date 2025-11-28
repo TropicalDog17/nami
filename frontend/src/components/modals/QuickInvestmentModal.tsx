@@ -137,8 +137,8 @@ const QuickInvestmentModal: React.FC<QuickInvestmentModalProps> = ({ isOpen, onC
           <div>
             {isUsdOnly ? (
               <>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Amount (USD)</label>
-                <input type="number" step="any" value={usdAmount} onChange={(e) => setUsdAmount(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" required />
+                <label htmlFor="usd-amount" className="block text-sm font-medium text-gray-700 mb-1">Amount (USD)</label>
+                <input id="usd-amount" aria-label="Amount (USD)" type="number" step="any" value={usdAmount} onChange={(e) => setUsdAmount(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" required />
                 <div className="mt-1 text-xs text-gray-500">Quantity is fixed to 1 in USD-only mode.</div>
               </>
             ) : (

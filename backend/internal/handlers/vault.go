@@ -355,12 +355,13 @@ func (h *VaultHandler) HandleVaults(w http.ResponseWriter, r *http.Request) {
 	case http.MethodPost:
 		// Create a new vault via stake action
 		var body struct {
-			Asset       string  `json:"asset"`
-			Account     string  `json:"account"`
-			Horizon     *string `json:"horizon,omitempty"`
-			DepositQty  float64 `json:"depositQty"`
-			DepositCost float64 `json:"depositCost"`
-			Date        string  `json:"date"`
+			Asset         string  `json:"asset"`
+			Account       string  `json:"account"`
+			SourceAccount string  `json:"sourceAccount,omitempty"`
+			Horizon       *string `json:"horizon,omitempty"`
+			DepositQty    float64 `json:"depositQty"`
+			DepositCost   float64 `json:"depositCost"`
+			Date          string  `json:"date"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			http.Error(w, "Invalid JSON: "+err.Error(), http.StatusBadRequest)
@@ -407,6 +408,27 @@ func (h *VaultHandler) HandleVaults(w http.ResponseWriter, r *http.Request) {
 		if err := stakeTx.PreSave(); err != nil {
 			http.Error(w, "Invalid stake transaction: "+err.Error(), http.StatusBadRequest)
 			return
+		}
+
+		// Optional: reduce from source account balance via internal transfer_out
+		if body.SourceAccount != "" && body.SourceAccount != body.Account {
+			outTx := &models.Transaction{
+				Date:         depositDate,
+				Type:         "transfer_out",
+				Asset:        body.Asset,
+				Account:      body.SourceAccount,
+				Quantity:     qty,
+				PriceLocal:   unitPriceLocal,
+				InternalFlow: func() *bool { b := true; return &b }(),
+			}
+			if err := outTx.PreSave(); err != nil {
+				http.Error(w, "Invalid source outflow transaction: "+err.Error(), http.StatusBadRequest)
+				return
+			}
+			if err := h.transactionService.CreateTransaction(r.Context(), outTx); err != nil {
+				http.Error(w, "Failed to create source outflow: "+err.Error(), http.StatusBadRequest)
+				return
+			}
 		}
 
 		// Create investment via stake
@@ -552,6 +574,27 @@ func (h *VaultHandler) handleDeposit(w http.ResponseWriter, r *http.Request, id 
 	if err := stakeTx.PreSave(); err != nil {
 		http.Error(w, "Invalid stake transaction: "+err.Error(), http.StatusBadRequest)
 		return
+	}
+
+	// Optional: reduce from source account via internal transfer_out
+	if body.SourceAccount != "" && body.SourceAccount != inv.Account {
+		outTx := &models.Transaction{
+			Date:         time.Now(),
+			Type:         "transfer_out",
+			Asset:        inv.Asset,
+			Account:      body.SourceAccount,
+			Quantity:     qty,
+			PriceLocal:   unitPriceLocal,
+			InternalFlow: func() *bool { b := true; return &b }(),
+		}
+		if err := outTx.PreSave(); err != nil {
+			http.Error(w, "Invalid source outflow transaction: "+err.Error(), http.StatusBadRequest)
+			return
+		}
+		if err := h.transactionService.CreateTransaction(r.Context(), outTx); err != nil {
+			http.Error(w, "Failed to create source outflow: "+err.Error(), http.StatusBadRequest)
+			return
+		}
 	}
 
 	updated, err := h.investmentService.ProcessStake(r.Context(), stakeTx)
