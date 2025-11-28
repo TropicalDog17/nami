@@ -18,7 +18,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.68.0",
-    "@toon-format/toon": "^0.7.0",
+    "@toon-format/toon": "^2.0.0",
     "@types/uuid": "^10.0.0",
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
