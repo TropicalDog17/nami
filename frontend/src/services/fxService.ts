@@ -63,12 +63,12 @@ class FXRateService {
     return date.toISOString().split('T')[0];
   }
 
-  // Convert amount using FX rate
-  private convertAmount(
+  // Convert amount using FX rate (helper)
+  private applyRate(
     amount: number,
     fxRate: number,
-    fromCurrency: string,
-    toCurrency: string
+    _fromCurrency: string,
+    _toCurrency: string
   ): number {
     return amount * fxRate;
   }
@@ -151,7 +151,7 @@ class FXRateService {
   ): Promise<number> {
     try {
       const fxRate = await this.getFXRate(from, to, date);
-      return this.convertAmount(amount, fxRate, from, to);
+      return this.applyRate(amount, fxRate, from, to);
     } catch (error) {
       console.error(`Currency conversion failed ${amount} ${from} to ${to}:`, error);
 
@@ -169,7 +169,7 @@ class FXRateService {
       date?: Date;
     }>
   ): Promise<Array<{ amount: number; rate: number; success: boolean }>> {
-    const results = [];
+    const results: Array<{ amount: number; rate: number; success: boolean }> = [];
     const ratePromises = new Map<string, Promise<number>>();
 
     // First, prepare rate requests (deduplicate same currency pairs/dates)
@@ -179,16 +179,9 @@ class FXRateService {
       const dateKey = item.date ? this.formatDateForAPI(item.date) : 'today';
       const cacheKey = this.getCacheKey(from, to, dateKey);
 
-      // Check cache first
+      // Check cache first; if not cached, queue a fetch
       const cachedRate = this.getCache(cacheKey);
-      if (cachedRate !== null) {
-        results.push({
-          amount: this.convertAmount(item.amount, cachedRate, from, to),
-          rate: cachedRate,
-          success: true,
-        });
-      } else {
-        // Prepare rate fetch request
+      if (cachedRate === null) {
         const requestKey = `${from}-${to}-${dateKey}`;
         if (!ratePromises.has(requestKey)) {
           ratePromises.set(requestKey, this.getFXRate(from, to, item.date));
@@ -207,11 +200,11 @@ class FXRateService {
       const dateKey = item.date ? this.formatDateForAPI(item.date) : 'today';
       const cacheKey = this.getCacheKey(from, to, dateKey);
 
-      // Check cache again (might have been populated by another request)
+      // Check cache again (might have been populated by another request above)
       const cachedRate = this.getCache(cacheKey);
       if (cachedRate !== null) {
         results.push({
-          amount: this.convertAmount(item.amount, cachedRate, from, to),
+          amount: this.applyRate(item.amount, cachedRate, from, to),
           rate: cachedRate,
           success: true,
         });
@@ -221,7 +214,7 @@ class FXRateService {
           const rate = result.value;
           this.setCache(cacheKey, rate);
           results.push({
-            amount: this.convertAmount(item.amount, rate, from, to),
+            amount: this.applyRate(item.amount, rate, from, to),
             rate,
             success: true,
           });

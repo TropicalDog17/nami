@@ -69,6 +69,10 @@ const QuickInvestmentModal: React.FC<QuickInvestmentModalProps> = ({ isOpen, onC
       if (!formData.vaultId) {
         throw new Error('Select a vault');
       }
+      const isTokenized = formData.vaultId.startsWith('vault_');
+      if (isTokenized && !formData.account) {
+        throw new Error('Please choose a source account');
+      }
       const qty = isUsdOnly ? 1 : parseFloat(formData.quantity ?? '0');
       const cost = isUsdOnly ? parseFloat(usdAmount ?? '0') : parseFloat(formData.quantity ?? '0') * parseFloat(formData.price_local ?? '1');
       if (!cost || cost <= 0) {
@@ -78,6 +82,7 @@ const QuickInvestmentModal: React.FC<QuickInvestmentModalProps> = ({ isOpen, onC
         vaultId: formData.vaultId,
         quantity: qty,
         cost,
+        account: formData.account || undefined,
         note: formData.note || null,
         date: formData.date,
       });

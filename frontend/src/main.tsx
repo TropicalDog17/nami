@@ -6,7 +6,5 @@ import './styles/globals.css'
 
 const container = document.getElementById('root') as HTMLElement
 createRoot(container).render(
-  <React.StrictMode>
-    <App />
-  </React.StrictMode>,
+  <App />
 )

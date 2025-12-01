@@ -4,9 +4,10 @@ import { useNavigate } from 'react-router-dom';
 
 import DataTable, { TableColumn } from '../components/ui/DataTable';
 import { useToast } from '../components/ui/Toast';
-import { tokenizedVaultApi } from '../services/api';
+import { tokenizedVaultApi, ApiError } from '../services/api';
 import { formatCurrency, formatPercentage } from '../utils/currencyFormatter';
 import CreateTokenizedVaultForm from '../components/tokenized/CreateTokenizedVaultForm';
+import { useBackendStatus } from '../context/BackendStatusContext';
 
 type TokenizedVault = {
   id: string;
@@ -37,7 +38,9 @@ type Option = { value: string; label: string };
 
 const VaultsPage: React.FC = () => {
   const navigate = useNavigate();
+  const { isOnline } = useBackendStatus();
   const { error: showErrorToast, success: showSuccessToast } = useToast();
+  const shouldToast = (e: unknown) => !(e instanceof ApiError && e.status === 0);
 
   const [vaults, setVaults] = useState<TokenizedVault[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
@@ -54,7 +57,7 @@ const VaultsPage: React.FC = () => {
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Failed to load vaults';
       setError(message);
-      showErrorToast('Failed to load vaults');
+      if (shouldToast(err)) showErrorToast('Failed to load vaults');
     } finally {
       setLoading(false);
     }

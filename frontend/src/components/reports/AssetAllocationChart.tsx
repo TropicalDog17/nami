@@ -27,9 +27,9 @@ const AssetAllocationChart: React.FC<AssetAllocationChartProps> = ({
   const assets = Object.entries(data.by_asset ?? {})
     .map(([asset, info]) => {
       const value = currency === 'USD' ? (info.value_usd ?? 0) : (info.value_vnd ?? 0);
-      // Display rule: For USD vaults, show actual currency amount instead of vault share count
-      const isUsdVault = asset.toUpperCase().startsWith('USD') && asset.toLowerCase().includes('(vault)');
-      const quantityForDisplay = isUsdVault ? value : (info.quantity || 0);
+      // Display rule: For any vault, show actual currency amount instead of vault share count
+      const isVault = asset.toLowerCase().includes('vault');
+      const quantityForDisplay = isVault ? value : (info.quantity || 0);
       return {
         asset,
         value,
@@ -55,8 +55,8 @@ const AssetAllocationChart: React.FC<AssetAllocationChartProps> = ({
     const cryptoAssets = ['BTC', 'ETH', 'USDT', 'USDC', 'BNB', 'ADA', 'DOT', 'SOL', 'MATIC'];
     const upper = asset.toUpperCase();
     if (cryptoAssets.includes(upper)) return 8;
-    // USD-style assets (e.g., 'USD', 'USD (vault)') should render like fiat
-    if (upper === 'USD' || (upper.startsWith('USD') && upper.includes('(VAULT)'))) return 2;
+    // Any vault should render like fiat with 2 decimals
+    if (upper.includes('(VAULT)') || upper === 'USD') return 2;
     return 4;
   };
 

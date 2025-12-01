@@ -343,11 +343,21 @@ func (h *VaultHandler) HandleVaults(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		// Map and return
+		enrich := false
+		if v := r.URL.Query().Get("enrich"); v != "" {
+			if b, err := strconv.ParseBool(v); err == nil {
+				enrich = b
+			}
+		}
 		result := make([]*vaultDTO, 0, len(invs))
 		for _, inv := range invs {
 			inv.RealizedPnL = inv.PnL
 			inv.RemainingQty = inv.DepositQty.Sub(inv.WithdrawalQty)
-			result = append(result, mapInvestmentToVaultDTO(inv))
+			dto := mapInvestmentToVaultDTO(inv)
+			if enrich {
+				h.enrichVaultWithLiveMetrics(r, inv, dto)
+			}
+			result = append(result, dto)
 		}
 		json.NewEncoder(w).Encode(result)
 		return
@@ -661,6 +671,23 @@ func (h *VaultHandler) handleWithdraw(w http.ResponseWriter, r *http.Request, id
 		http.Error(w, "Failed to process withdrawal: "+err.Error(), http.StatusBadRequest)
 		return
 	}
+
+	// Optional: add inflow to target account via internal transfer_in
+	if body.TargetAccount != "" && body.TargetAccount != inv.Account {
+		inTx := &models.Transaction{
+			Date:         time.Now(),
+			Type:         "transfer_in",
+			Asset:        inv.Asset,
+			Account:      body.TargetAccount,
+			Quantity:     qty,
+			PriceLocal:   unitPriceLocal,
+			InternalFlow: func() *bool { b := true; return &b }(),
+		}
+		if err := inTx.PreSave(); err == nil {
+			_ = h.transactionService.CreateTransaction(r.Context(), inTx)
+		}
+	}
+
     updated.RealizedPnL = updated.PnL
     updated.RemainingQty = updated.DepositQty.Sub(updated.WithdrawalQty)
     dto := mapInvestmentToVaultDTO(updated)

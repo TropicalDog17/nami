@@ -131,7 +131,16 @@ const VaultDetailPage: React.FC = () => {
   const [showLiveMetrics, setShowLiveMetrics] = useState<boolean>(false);
   const [retryCount, setRetryCount] = useState(0);
 
-  // Form states
+  // Tokenized vault deposit/withdraw UI state
+  const [showTokenizedDepositForm, setShowTokenizedDepositForm] = useState<boolean>(false);
+  const [showTokenizedWithdrawForm, setShowTokenizedWithdrawForm] = useState<boolean>(false);
+  const [tokenizedDepositAmount, setTokenizedDepositAmount] = useState<string>('');
+  const [tokenizedWithdrawAmount, setTokenizedWithdrawAmount] = useState<string>('');
+  const [tokenizedNotes, setTokenizedNotes] = useState<string>('');
+  const [tokenizedSourceAccount, setTokenizedSourceAccount] = useState<string>('');
+  const [tokenizedTargetAccount, setTokenizedTargetAccount] = useState<string>('');
+
+  // Form states (legacy vault)
   const [depositForm, setDepositForm] = useState({
     quantity: '',
     cost: '',
@@ -330,6 +339,74 @@ const VaultDetailPage: React.FC = () => {
     void loadVault();
   };
 
+  const handleTokenizedDeposit = async (): Promise<void> => {
+    if (!tokenizedVaultDetails) return;
+    const amount = parseFloat(tokenizedDepositAmount ?? '');
+    if (!amount || amount <= 0) {
+      showErrorToast('Enter a valid USD amount to deposit');
+      return;
+    }
+    const minDep = parseFloat(tokenizedVaultDetails.min_deposit_amount || '0');
+    if (minDep && amount < minDep) {
+      showErrorToast(`Minimum deposit is ${formatCurrency(minDep)}`);
+      return;
+    }
+    try {
+      await tokenizedVaultApi.deposit(tokenizedVaultDetails.id, { amount, notes: tokenizedNotes || undefined, source_account: tokenizedSourceAccount || undefined });
+      showSuccessToast('Deposit recorded');
+      setShowTokenizedDepositForm(false);
+      setTokenizedDepositAmount('');
+      setTokenizedNotes('');
+      setTokenizedSourceAccount('');
+      await loadVault();
+      await loadVaultTransactions();
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to deposit to vault';
+      showErrorToast(message);
+    }
+  };
+
+  const handleTokenizedWithdraw = async (): Promise<void> => {
+    if (!tokenizedVaultDetails) return;
+    const amount = parseFloat(tokenizedWithdrawAmount ?? '');
+    if (!amount || amount <= 0) {
+      showErrorToast('Enter a valid USD amount to withdraw');
+      return;
+    }
+    const minW = parseFloat(tokenizedVaultDetails.min_withdrawal_amount || '0');
+    if (minW && amount < minW) {
+      showErrorToast(`Minimum withdrawal is ${formatCurrency(minW)}`);
+      return;
+    }
+    try {
+      await tokenizedVaultApi.withdraw(tokenizedVaultDetails.id, { amount, notes: tokenizedNotes || undefined });
+      // Also reflect on Transactions if a target account was provided
+      if (tokenizedTargetAccount) {
+        await transactionApi.create({
+          date: new Date().toISOString(),
+          type: 'withdraw',
+          asset: 'USD',
+          account: tokenizedTargetAccount,
+          quantity: amount,
+          price_local: 1,
+          counterparty: `Tokenized ${tokenizedVaultDetails.id}`,
+          note: tokenizedNotes || null,
+          fx_to_usd: 1,
+          fx_to_vnd: 0,
+        });
+      }
+      showSuccessToast('Withdrawal recorded');
+      setShowTokenizedWithdrawForm(false);
+      setTokenizedWithdrawAmount('');
+      setTokenizedNotes('');
+      await loadVault();
+      await loadVaultTransactions();
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to withdraw from vault';
+      showErrorToast(message);
+    }
+  };
+
   useEffect(() => {
     if (vaultName) {
       void loadVault();
@@ -351,6 +428,22 @@ const VaultDetailPage: React.FC = () => {
         cost: parseFloat(depositForm.cost),
         ...(depositForm.sourceAccount ? { sourceAccount: depositForm.sourceAccount } : {}),
       });
+
+      // Reflect on Transactions if a source account is provided
+      if (depositForm.sourceAccount) {
+        await transactionApi.create({
+          date: new Date().toISOString(),
+          type: 'deposit',
+          asset: 'USD',
+          account: depositForm.sourceAccount,
+          quantity: parseFloat(depositForm.cost),
+          price_local: 1,
+          counterparty: `Vault ${vaultName}`,
+          note: null,
+          fx_to_usd: 1,
+          fx_to_vnd: 0,
+        });
+      }
 
       showSuccessToast('Deposit successful!');
       setShowDepositForm(false);
@@ -705,6 +798,9 @@ const VaultDetailPage: React.FC = () => {
     };
     const statusBadge = statusConfig[status] ?? { label: status, className: 'bg-gray-100 text-gray-800' };
 
+    const canDeposit = tokenizedVaultDetails.status === 'active' && tokenizedVaultDetails.is_deposit_allowed;
+    const canWithdraw = tokenizedVaultDetails.status === 'active' && tokenizedVaultDetails.is_withdrawal_allowed;
+
     return (
       <div className="px-4 py-6 sm:px-0" data-testid="tokenized-vault-detail-page">
         <div className="mb-6 flex items-center justify-between">
@@ -832,7 +928,117 @@ const VaultDetailPage: React.FC = () => {
           >
             Refresh
           </button>
+          {canDeposit && (
+            <button
+              onClick={() => {
+                setShowTokenizedDepositForm((s) => !s);
+                setShowTokenizedWithdrawForm(false);
+              }}
+              className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700"
+            >
+              Deposit
+            </button>
+          )}
+          {canWithdraw && (
+            <button
+              onClick={() => {
+                setShowTokenizedWithdrawForm((s) => !s);
+                setShowTokenizedDepositForm(false);
+              }}
+              className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+            >
+              Withdraw
+            </button>
+          )}
         </div>
+
+        {(showTokenizedDepositForm || showTokenizedWithdrawForm) && (
+          <div className="bg-white p-4 rounded-lg border border-gray-200 mb-6">
+            <h3 className="text-lg font-semibold mb-4">
+              {showTokenizedDepositForm ? 'Deposit to Vault' : 'Withdraw from Vault'}
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Amount (USD)</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={showTokenizedDepositForm ? tokenizedDepositAmount : tokenizedWithdrawAmount}
+                  onChange={(e) =>
+                    showTokenizedDepositForm
+                      ? setTokenizedDepositAmount(e.target.value)
+                      : setTokenizedWithdrawAmount(e.target.value)
+                  }
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                  placeholder={showTokenizedDepositForm
+                    ? tokenizedVaultDetails.min_deposit_amount
+                    : tokenizedVaultDetails.min_withdrawal_amount}
+                />
+              </div>
+
+              {showTokenizedDepositForm ? (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Source Account (optional)</label>
+                  <ComboBox
+                    options={accounts}
+                    value={tokenizedSourceAccount}
+                    onChange={(v) => setTokenizedSourceAccount(String(v))}
+                    placeholder="Choose account to deduct from"
+                  />
+                </div>
+              ) : (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Target Account (optional)</label>
+                  <ComboBox
+                    options={accounts}
+                    value={tokenizedTargetAccount}
+                    onChange={(v) => setTokenizedTargetAccount(String(v))}
+                    placeholder="Choose account to increase"
+                  />
+                </div>
+              )}
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Notes (optional)</label>
+                <input
+                  type="text"
+                  value={tokenizedNotes}
+                  onChange={(e) => setTokenizedNotes(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                  placeholder="Reason or memo"
+                />
+              </div>
+            </div>
+            <div className="flex space-x-3">
+              {showTokenizedDepositForm ? (
+                <button
+                  onClick={() => { void handleTokenizedDeposit(); }}
+                  className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700"
+                >
+                  Deposit
+                </button>
+              ) : (
+                <button
+                  onClick={() => { void handleTokenizedWithdraw(); }}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+                >
+                  Withdraw
+                </button>
+              )}
+              <button
+                onClick={() => {
+                  setShowTokenizedDepositForm(false);
+                  setShowTokenizedWithdrawForm(false);
+                  setTokenizedNotes('');
+                }}
+                className="px-4 py-2 border border-gray-300 rounded-md hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
 
         {tokenizedVaultDetails.asset_breakdown && tokenizedVaultDetails.asset_breakdown.length > 0 && (
           <div className="bg-white p-4 rounded-lg border border-gray-200">

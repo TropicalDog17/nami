@@ -265,8 +265,8 @@ export const healthApi = {
 
 // Vault API
 export const vaultApi = {
-  getActiveVaults: <T = unknown>() => api.get<T>('/api/vaults'),
-  getVaultByName: <T = unknown>(name: string) => api.get<T>(`/api/vaults/${encodeURIComponent(name)}`),
+  getActiveVaults: <T = unknown>(params: Record<string, unknown> = {}) => api.get<T>('/api/vaults', params),
+  getVaultByName: <T = unknown>(name: string, params: Record<string, unknown> = {}) => api.get<T>(`/api/vaults/${encodeURIComponent(name)}`, params),
   createVault: <T = unknown>(vault: unknown) => api.post<T>('/api/vaults', vault),
   depositToVault: <T = unknown>(name: string, deposit: unknown) => api.post<T>(`/api/vaults/${encodeURIComponent(name)}/deposit`, deposit),
   withdrawFromVault: <T = unknown>(name: string, withdrawal: unknown) => api.post<T>(`/api/vaults/${encodeURIComponent(name)}/withdraw`, withdrawal),
@@ -311,9 +311,9 @@ export const tokenizedVaultApi = {
     api.post<T>(`/api/tokenized-vaults/${id}/disable-manual-pricing`, {}),
 
   // Deposits and withdrawals
-  deposit: <T = unknown>(id: string, data: { amount: number; notes?: string }) =>
+  deposit: <T = unknown>(id: string, data: { amount: number; notes?: string; source_account?: string }) =>
     api.post<T>(`/api/tokenized-vaults/${id}/deposit`, data),
-  withdraw: <T = unknown>(id: string, data: { amount: number; notes?: string }) =>
+  withdraw: <T = unknown>(id: string, data: { amount: number; notes?: string; target_account?: string }) =>
     api.post<T>(`/api/tokenized-vaults/${id}/withdraw`, data),
 
   // Vault management

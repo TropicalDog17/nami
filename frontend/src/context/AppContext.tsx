@@ -2,6 +2,7 @@
 import React, { createContext, useContext, useReducer, useEffect, useCallback, useMemo } from 'react';
 
 import { adminApi } from '../services/api';
+import { useBackendStatus } from './BackendStatusContext';
 
 type TransactionType = {
   id?: string | number;
@@ -295,6 +296,7 @@ const AppContext = createContext<AppContextValue | undefined>(undefined);
 // Provider component
 export function AppProvider({ children }: { children: React.ReactNode }) {
   const [state, dispatch] = useReducer(appReducer, initialState);
+  const { isOnline } = useBackendStatus();
 
   // Action creators
   const actions: Actions = useMemo(() => ({
@@ -535,8 +537,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, [actions]);
 
   useEffect(() => {
-    void loadAllMasterData();
-  }, [loadAllMasterData]);
+    if (isOnline) {
+      void loadAllMasterData();
+    }
+  }, [isOnline, loadAllMasterData]);
 
   const value: AppContextValue = {
     ...state,

@@ -7,7 +7,7 @@ import { PnLChart, SpendingChart, DailySpendingChart } from '../components/repor
 import DataTable, { TableColumn, TableRowBase } from '../components/ui/DataTable';
 import DateInput from '../components/ui/DateInput';
 import { useBackendStatus } from '../context/BackendStatusContext';
-import { reportsApi, investmentsApi } from '../services/api';
+import { reportsApi, investmentsApi, vaultApi, tokenizedVaultApi } from '../services/api';
 import QuickBuyModal from '../components/modals/QuickBuyModal';
 import QuickSellModal from '../components/modals/QuickSellModal';
 
@@ -70,9 +70,90 @@ const ReportsPage = () => {
           break;
         case 'allocation':
           result = await reportsApi.holdingsSummary({ as_of: filters.asOf });
+          try {
+            // Augment with tokenized vaults' live AUM so total assets reflect vault fluctuations
+            const tokenized: Array<any> | null = await tokenizedVaultApi.list();
+            const usdToVnd = await (async () => {
+              try {
+                const dt = new Date(filters.asOf);
+                const rate = await (await import('../services/fxService')).fxService.getFXRate('USD', 'VND', isNaN(dt.getTime()) ? undefined : dt);
+                return rate || 24000;
+              } catch {
+                return 24000;
+              }
+            })();
+            const summary = (result as any) ?? { by_asset: {}, total_value_usd: 0, total_value_vnd: 0 };
+            const byAsset = summary.by_asset ?? {};
+            let addUSD = 0;
+            let addVND = 0;
+            for (const v of (tokenized ?? [])) {
+              if ((v.status ?? '').toLowerCase() !== 'active') continue;
+              const aumUSD = Number(v.total_assets_under_management ?? 0) || 0;
+              if (aumUSD <= 0) continue;
+              const label = `${v.name ?? v.token_symbol ?? 'Vault'} (vault)`;
+              const rec = byAsset[label] ?? { quantity: 0, value_usd: 0, value_vnd: 0, percentage: 0 };
+              rec.quantity = aumUSD; // display as fiat for vaults in chart
+              rec.value_usd = (Number(rec.value_usd || 0) + aumUSD);
+              rec.value_vnd = (Number(rec.value_vnd || 0) + aumUSD * usdToVnd);
+              byAsset[label] = rec;
+              addUSD += aumUSD;
+              addVND += aumUSD * usdToVnd;
+            }
+            summary.by_asset = byAsset;
+            summary.total_value_usd = Number(summary.total_value_usd || 0) + addUSD;
+            summary.total_value_vnd = Number(summary.total_value_vnd || 0) + addVND;
+            const totalUSD = Number(summary.total_value_usd || 0) || 0;
+            if (totalUSD > 0) {
+              for (const key of Object.keys(byAsset)) {
+                const v = byAsset[key];
+                const usd = Number(v.value_usd || 0);
+                v.percentage = totalUSD > 0 ? (usd / totalUSD) * 100 : 0;
+              }
+            }
+            result = summary;
+          } catch (e) {
+            // ignore vault augmentation errors and keep base summary
+          }
           break;
         case 'investments':
-          result = await investmentsApi.list({ is_open: true });
+          // Try legacy vaults (investments) enriched
+          try {
+            const legacy = await vaultApi.getActiveVaults({ is_open: true, enrich: true });
+            result = legacy ?? [];
+          } catch (e) {
+            result = [];
+          }
+          // If empty, fallback to tokenized vaults and map to investment-like rows
+          if (Array.isArray(result) && result.length === 0) {
+            try {
+              const tokenized: Array<any> | null = await tokenizedVaultApi.list();
+              const mapped = (tokenized ?? []).map((v: any) => {
+                const contributed = Number(v.total_contributed_usd ?? 0);
+                const withdrawn = Number(v.total_withdrawn_usd ?? 0);
+                const currentValue = Number(v.total_assets_under_management ?? 0);
+                const roi = contributed > 0 ? ((currentValue + withdrawn - contributed) / contributed) * 100 : 0;
+                return ({
+                  id: v.id,
+                  asset: v.name ?? v.token_symbol ?? 'Vault',
+                  account: v.token_symbol ?? 'Tokenized',
+                  horizon: '',
+                  deposit_date: v.inception_date,
+                  deposit_qty: v.total_supply,
+                  remaining_qty: v.total_supply,
+                  deposit_cost: contributed,
+                  withdrawal_value: withdrawn,
+                  current_price_usd: Number(v.current_share_price ?? 0),
+                  current_value_usd: currentValue,
+                  roi_realtime_percent: roi,
+                  realized_pnl: 0,
+                  is_open: (v.status ?? '').toLowerCase() === 'active',
+                });
+              });
+              result = mapped;
+            } catch (e) {
+              // ignore
+            }
+          }
           break;
         case 'cashflow':
           result = await reportsApi.cashFlow({
@@ -130,6 +211,13 @@ const ReportsPage = () => {
             Filters
           </h3>
           <div className="flex gap-2">
+            <button
+              onClick={() => { void fetchData(); }}
+              className="px-3 py-2 border border-gray-300 text-gray-700 rounded hover:bg-gray-50"
+              title="Refresh data"
+            >
+              Refresh
+            </button>
             <button
               onClick={() => setShowQuickBuy(true)}
               className="px-3 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
@@ -367,10 +455,16 @@ const ReportsPage = () => {
       deposit_qty?: number | string;
       remaining_qty?: number | string;
       deposit_cost?: number | string;
+      // legacy fields
       current_price?: number | string;
       deposit_unit_cost?: number | string;
       realized_pnl?: number | string;
+      withdrawal_value?: number | string;
       is_open?: boolean;
+      // enriched vault-only fields
+      current_price_usd?: number | string;
+      current_value_usd?: number | string;
+      roi_realtime_percent?: number | string;
     };
     const rawInvestments = data.investments as InvestmentRow[] ?? [];
     const displayInvestments: InvestmentRow[] = Array.isArray(rawInvestments) ? rawInvestments : [];
@@ -420,12 +514,18 @@ const ReportsPage = () => {
         title: `Current Value (${currency})`,
         type: 'currency',
         render: (_value, _col, row) => {
-          const currentPrice = Number(row.current_price as string ?? row.deposit_unit_cost as string ?? '1');
           const remainingQty = Number(row.remaining_qty as string ?? '0');
-          const currentValue = remainingQty * currentPrice;
+          const enrichedCV = row.current_value_usd !== undefined && row.current_value_usd !== null
+            ? Number(row.current_value_usd as string)
+            : NaN;
+          let currentValue = enrichedCV;
+          if (isNaN(currentValue)) {
+            const unit = Number((row.current_price_usd as string) ?? (row.current_price as string) ?? (row.deposit_unit_cost as string) ?? '1');
+            currentValue = remainingQty * unit;
+          }
           return currency === 'USD'
-            ? `$${currentValue.toLocaleString()}`
-            : `₫${currentValue.toLocaleString()}`;
+            ? `${Number(currentValue || 0).toLocaleString()}`
+            : `₫${Number(currentValue || 0).toLocaleString()}`;
         },
       },
       {
@@ -436,23 +536,34 @@ const ReportsPage = () => {
           const val = value as number | string | undefined;
           const num = parseFloat(String(val ?? 0));
           const formatted = currency === 'USD'
-            ? `$${Math.abs(num).toLocaleString()}`
+            ? `${Math.abs(num).toLocaleString()}`
             : `₫${Math.abs(num).toLocaleString()}`;
           return num >= 0 ? `+${formatted}` : `-${formatted}`;
         },
       },
-      // Unrealized P&L removed
+      // Performance now based on updated value and withdrawals
       {
         key: 'pnl_percent',
         title: 'P&L %',
         type: 'percentage',
         render: (_value, _col, row) => {
-          const currentPrice = Number(row.current_price as string ?? row.deposit_unit_cost as string ?? '1');
-          const depositUnitCost = Number(row.deposit_unit_cost as string ?? '0');
-          if (depositUnitCost === 0) return '0.00%';
-          const pnlPercent = ((currentPrice - depositUnitCost) / depositUnitCost) * 100;
-          const sign = pnlPercent >= 0 ? '+' : '';
-          return `${sign}${pnlPercent.toFixed(2)}%`;
+          // Prefer enriched ROI if available
+          const enriched = row.roi_realtime_percent as number | string | undefined;
+          let roi = enriched !== undefined ? Number(enriched) : NaN;
+          if (isNaN(roi)) {
+            const depositCost = Number(row.deposit_cost as string ?? '0');
+            const withdrawals = Number(row.withdrawal_value as string ?? '0');
+            const remainingQty = Number(row.remaining_qty as string ?? '0');
+            const unit = Number((row.current_price_usd as string) ?? (row.current_price as string) ?? (row.deposit_unit_cost as string) ?? '1');
+            const currentValue = remainingQty * unit;
+            if (depositCost > 0) {
+              roi = ((currentValue + withdrawals) - depositCost) / depositCost * 100;
+            } else {
+              roi = 0;
+            }
+          }
+          const sign = roi >= 0 ? '+' : '';
+          return `${sign}${(roi || 0).toFixed(2)}%`;
         },
       },
       {
@@ -468,13 +579,23 @@ const ReportsPage = () => {
     ];
 
     // Calculate summary stats
+    // Net invested capital = deposits - withdrawals
     const totalDepositCost = displayInvestments.reduce(
-      (sum: number, inv: unknown) => sum + parseFloat(String(((inv as { deposit_cost?: number | string }).deposit_cost ?? 0))), 0
+      (sum: number, inv: unknown) => {
+        const dep = parseFloat(String(((inv as { deposit_cost?: number | string }).deposit_cost ?? 0)));
+        const w = parseFloat(String(((inv as { withdrawal_value?: number | string }).withdrawal_value ?? 0)));
+        return sum + (dep - w);
+      }, 0
     );
     const totalRemainingValue = displayInvestments.reduce((sum: number, inv: unknown) => {
-      const currentPrice = Number((inv as { current_price?: unknown }).current_price ?? (inv as { deposit_unit_cost?: unknown }).deposit_unit_cost ?? '1');
-      const remainingQty = Number((inv as { remaining_qty?: unknown }).remaining_qty ?? '0');
-      return sum + (remainingQty * currentPrice);
+      const enrichedCV = (inv as { current_value_usd?: unknown }).current_value_usd as number | string | undefined;
+      let currentValue = enrichedCV !== undefined && enrichedCV !== null ? Number(enrichedCV) : NaN;
+      if (isNaN(currentValue)) {
+        const currentPrice = Number((inv as { current_price_usd?: unknown }).current_price_usd ?? (inv as { current_price?: unknown }).current_price ?? (inv as { deposit_unit_cost?: unknown }).deposit_unit_cost ?? '1');
+        const remainingQty = Number((inv as { remaining_qty?: unknown }).remaining_qty ?? '0');
+        currentValue = remainingQty * currentPrice;
+      }
+      return sum + Number(currentValue || 0);
     }, 0);
     const totalRealizedPnl = displayInvestments.reduce(
       (sum: number, inv: unknown) => sum + parseFloat(String(((inv as { realized_pnl?: number | string }).realized_pnl ?? 0))), 0

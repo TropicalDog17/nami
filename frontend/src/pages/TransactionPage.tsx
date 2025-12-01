@@ -11,7 +11,8 @@ import DataTable, { TableColumn, TableRowBase } from '../components/ui/DataTable
 import DateInput from '../components/ui/DateInput';
 import { useToast } from '../components/ui/Toast';
 import { useApp } from '../context/AppContext';
-// import { useBackendStatus } from '../context/BackendStatusContext';
+import { fxService } from '../services/fxService';
+import { useBackendStatus } from '../context/BackendStatusContext';
 import { useQuickCreate } from '../hooks/useQuickCreate';
 import {
   transactionApi,
@@ -20,6 +21,7 @@ import {
   investmentsApi,
   vaultApi,
   tokenizedVaultApi,
+  ApiError,
 } from '../services/api';
 
 type IdType = string | number;
@@ -29,6 +31,7 @@ type MasterData = Record<string, Option[]>;
 // Columns now use the generic TableColumn<Transaction>
 
 const TransactionPage: React.FC = () => {
+  const { isOnline } = useBackendStatus();
   const { currency, actions } = useApp() as unknown as {
     currency: string;
     actions: {
@@ -57,6 +60,8 @@ const TransactionPage: React.FC = () => {
   // FX conversion states
   const [fxConversionCache, setFxConversionCache] = useState<Map<string, number>>(new Map());
   const [fxLoadingStates, setFxLoadingStates] = useState<Map<string, boolean>>(new Map());
+  // Online FX rates cache keyed by from-to-date
+  const [fxRateCache, setFxRateCache] = useState<Map<string, number>>(new Map());
   const [isQuickExpenseOpen, setIsQuickExpenseOpen] = useState(false);
   const [isQuickIncomeOpen, setIsQuickIncomeOpen] = useState(false);
   const [isQuickVaultOpen, setIsQuickVaultOpen] = useState(false);
@@ -144,9 +149,11 @@ const TransactionPage: React.FC = () => {
   }, [filters, actions]);
 
   useEffect(() => {
-    void loadTransactions();
-    void loadMasterData();
-  }, [loadTransactions, loadMasterData]);
+    if (isOnline) {
+      void loadTransactions();
+      void loadMasterData();
+    }
+  }, [isOnline, loadTransactions, loadMasterData]);
 
   // Global keyboard shortcut: 'n' to toggle Quick Add menu
   useEffect(() => {
@@ -177,6 +184,8 @@ const TransactionPage: React.FC = () => {
   // Removed legacy spot_buy auto price hook (Quick Add handles simple flows)
 
 
+  const shouldToast = (e: unknown) => !(e instanceof ApiError && e.status === 0);
+
   const handleQuickExpenseSubmit = async (data: unknown): Promise<void> => {
     const transactionData = data as Record<string, unknown>;
     try {
@@ -187,7 +196,7 @@ const TransactionPage: React.FC = () => {
     } catch (e: unknown) {
       const msg = (e as { message?: string } | null)?.message ?? 'Failed to add expense';
       actions.setError(msg);
-      showErrorToast(msg);
+      if (shouldToast(e)) showErrorToast(msg);
       throw e;
     }
   };
@@ -202,7 +211,7 @@ const TransactionPage: React.FC = () => {
     } catch (e: unknown) {
       const msg = (e as { message?: string } | null)?.message ?? 'Failed to add income';
       actions.setError(msg);
-      showErrorToast(msg);
+      if (shouldToast(e)) showErrorToast(msg);
       throw e;
     }
   };
@@ -216,7 +225,7 @@ const TransactionPage: React.FC = () => {
     } catch (e: unknown) {
       const msg = (e as { message?: string } | null)?.message ?? 'Failed to create vault';
       actions.setError(msg);
-      showErrorToast(msg);
+      if (shouldToast(e)) showErrorToast(msg);
       throw e;
     }
   };
@@ -228,9 +237,43 @@ const TransactionPage: React.FC = () => {
       if (vaultId) {
         const { quantity, cost, note } = investmentData as { quantity: number; cost: number; note?: string };
         if (vaultId.startsWith('vault_')) {
+          // Tokenized vault deposit (USD amount)
           await tokenizedVaultApi.deposit(vaultId, { amount: cost, notes: note });
+          // Also record a neutral cash movement so it shows up in Transactions table
+          const account = (investmentData as any).account as string | undefined;
+          if (account) {
+            await transactionApi.create({
+              date: toISODateTime((investmentData as any).date as string | undefined),
+              type: 'deposit',
+              asset: 'USD',
+              account,
+              quantity: cost,
+              price_local: 1,
+              counterparty: `Tokenized ${vaultId}`,
+              note: note ?? null,
+              fx_to_usd: 1,
+              fx_to_vnd: 0,
+            });
+          }
         } else {
+          // Legacy investment vault deposit (qty x cost)
           await vaultApi.depositToVault(vaultId, { quantity, cost, note });
+          // Also reflect as a neutral deposit in Transactions if a source account is provided
+          const account = (investmentData as any).account as string | undefined;
+          if (account) {
+            await transactionApi.create({
+              date: toISODateTime((investmentData as any).date as string | undefined),
+              type: 'deposit',
+              asset: 'USD',
+              account,
+              quantity: cost,
+              price_local: 1,
+              counterparty: `Vault ${vaultId}`,
+              note: note ?? null,
+              fx_to_usd: 1,
+              fx_to_vnd: 0,
+            });
+          }
         }
       } else {
         await createInvestment(investmentData);
@@ -638,7 +681,7 @@ const TransactionPage: React.FC = () => {
     } catch (err: unknown) {
       const msg = (err as { message?: string } | null)?.message ?? 'Failed to create transaction.';
       actions.setError(msg);
-      showErrorToast(msg);
+      if (!(err instanceof ApiError && err.status === 0)) showErrorToast(msg);
     }
   };
 
@@ -766,85 +809,80 @@ const TransactionPage: React.FC = () => {
     const cacheKey = getFXCacheKey(rowId, targetCurrency);
 
     const amountLocal = Number(row?.amount_local ?? 0);
-    const localCurrency = row?.local_currency as string || 'USD';
+    const localCurrency = (row?.local_currency as string) || 'USD';
     const cashflowLocal = Number(row?.cashflow_local ?? 0);
 
-    // Check cache first
+    // Check cached converted value first
     if (fxConversionCache.has(cacheKey)) {
       const cachedAmount = fxConversionCache.get(cacheKey)!;
-      return {
-        amount: cachedAmount,
-        cashflow: cachedAmount,
-        isLoading: false
-      };
+      return { amount: cachedAmount, cashflow: cachedAmount, isLoading: false };
     }
 
     // If same currency, no conversion needed
     if (localCurrency === targetCurrency) {
-      return {
-        amount: amountLocal,
-        cashflow: cashflowLocal,
-        isLoading: false
-      };
+      return { amount: amountLocal, cashflow: cashflowLocal, isLoading: false };
     }
 
-    // Use FX rates from API response if available
+    // 1) Use FX rates from backend response if available
     if (row?.fx_rates) {
       const fxRates = row.fx_rates as Record<string, number>;
-      const rateKey = `${localCurrency}-${targetCurrency}`;
-      const rate = fxRates[rateKey];
-
+      const directKey = `${localCurrency}-${targetCurrency}`;
+      const rate = fxRates[directKey];
       if (rate && rate > 0) {
         const convertedAmount = amountLocal * rate;
         const convertedCashflow = cashflowLocal * rate;
-
-        // Cache the result
         setFxConversionCache(prev => new Map(prev).set(cacheKey, convertedAmount));
-
-        return {
-          amount: convertedAmount,
-          cashflow: convertedCashflow,
-          isLoading: false
-        };
+        return { amount: convertedAmount, cashflow: convertedCashflow, isLoading: false };
       }
     }
 
-    // Fallback: use legacy fields if available (backwards compatibility)
-    const amountUsd = Number(row?.amount_usd ?? 0);
-    const amountVnd = Number(row?.amount_vnd ?? 0);
-    const cashflowUsd = Number(row?.cashflow_usd ?? 0);
-    const cashflowVnd = Number(row?.cashflow_vnd ?? 0);
-
-    if (targetCurrency === 'USD' && amountUsd > 0) {
-      return {
-        amount: amountUsd,
-        cashflow: cashflowUsd,
-        isLoading: false
-      };
+    // 2) Try a cached online rate (per date)
+    const dateStr = (() => {
+      const raw = row?.date as string | undefined;
+      if (!raw) return 'today';
+      const d = new Date(raw);
+      return isNaN(d.getTime()) ? 'today' : d.toISOString().split('T')[0];
+    })();
+    const rateKey = `${localCurrency}-${targetCurrency}-${dateStr}`;
+    if (fxRateCache.has(rateKey)) {
+      const rate = fxRateCache.get(rateKey)!;
+      const convertedAmount = amountLocal * rate;
+      const convertedCashflow = cashflowLocal * rate;
+      setFxConversionCache(prev => new Map(prev).set(cacheKey, convertedAmount));
+      return { amount: convertedAmount, cashflow: convertedCashflow, isLoading: false };
     }
 
-    if (targetCurrency === 'VND' && amountVnd > 0) {
-      return {
-        amount: amountVnd,
-        cashflow: cashflowVnd,
-        isLoading: false
-      };
+    // 3) Kick off an async online fetch if not already loading
+    if (!fxLoadingStates.get(rateKey)) {
+      setFxLoadingStates(prev => new Map(prev).set(rateKey, true));
+      const rawDate = row?.date as string | undefined;
+      const dt = rawDate ? new Date(rawDate) : undefined;
+      void fxService.getFXRate(localCurrency, targetCurrency, dt).then((rate) => {
+        setFxRateCache(prev => new Map(prev).set(rateKey, rate));
+        const amt = amountLocal * rate;
+        setFxConversionCache(prev => new Map(prev).set(cacheKey, amt));
+      }).catch(() => {
+        // ignore, we'll fall back below
+      }).finally(() => {
+        setFxLoadingStates(prev => new Map(prev).set(rateKey, false));
+      });
     }
 
-    // Final fallback to hardcoded rates
-    const fallbackRate = targetCurrency === 'USD' ? 1 : 24000;
+    // 4) Fallback while online fetch is in-flight: compute deterministic USD/VND pair fallback
+    let fallbackRate = 1;
+    const lc = localCurrency.toUpperCase();
+    const tc = targetCurrency.toUpperCase();
+    if (lc === 'USD' && tc === 'VND') fallbackRate = 24000;
+    else if (lc === 'VND' && tc === 'USD') fallbackRate = 1 / 24000;
+    else if (tc === 'VND') fallbackRate = 24000; // best-effort when converting to VND
+    else fallbackRate = 1;
+
     const convertedAmount = amountLocal * fallbackRate;
     const convertedCashflow = cashflowLocal * fallbackRate;
 
-    // Cache the fallback result
-    setFxConversionCache(prev => new Map(prev).set(cacheKey, convertedAmount));
-
-    return {
-      amount: convertedAmount,
-      cashflow: convertedCashflow,
-      isLoading: false
-    };
-  }, [fxConversionCache]);
+    // IMPORTANT: do NOT cache the fallback so the UI can update once the online rate arrives
+    return { amount: convertedAmount, cashflow: convertedCashflow, isLoading: true };
+  }, [fxConversionCache, fxRateCache, fxLoadingStates]);
 
   const columns: TableColumn<Transaction>[] = [
     {

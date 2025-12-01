@@ -15,26 +15,29 @@ import (
 
 // TokenizedVaultHandler handles operations for tokenized vaults
 type TokenizedVaultHandler struct {
-	vaultService       services.VaultService
-	vaultShareService  services.VaultShareService
-	vaultAssetService  services.VaultAssetService
-	transactionService services.VaultTransactionService
-	priceService       services.AssetPriceService
+	vaultService        services.VaultService
+	vaultShareService   services.VaultShareService
+	vaultAssetService   services.VaultAssetService
+	vaultTxService      services.VaultTransactionService
+	generalTxService    services.TransactionService
+	priceService        services.AssetPriceService
 }
 
 func NewTokenizedVaultHandler(
 	vaultService services.VaultService,
 	vaultShareService services.VaultShareService,
 	vaultAssetService services.VaultAssetService,
-	transactionService services.VaultTransactionService,
+	vaultTxService services.VaultTransactionService,
+	generalTxService services.TransactionService,
 	priceService services.AssetPriceService,
 ) *TokenizedVaultHandler {
 	return &TokenizedVaultHandler{
-		vaultService:       vaultService,
-		vaultShareService:  vaultShareService,
-		vaultAssetService:  vaultAssetService,
-		transactionService: transactionService,
-		priceService:       priceService,
+		vaultService:      vaultService,
+		vaultShareService: vaultShareService,
+		vaultAssetService: vaultAssetService,
+		vaultTxService:    vaultTxService,
+		generalTxService:  generalTxService,
+		priceService:      priceService,
 	}
 }
 
@@ -77,6 +80,11 @@ type tokenizedVaultDTO struct {
 	InceptionDate             time.Time       `json:"inception_date"`
 	LastUpdated               time.Time       `json:"last_updated"`
 	PerformanceSinceInception decimal.Decimal `json:"performance_since_inception"`
+
+	// Contributions summary
+	TotalContributedUSD decimal.Decimal `json:"total_contributed_usd"`
+	TotalWithdrawnUSD   decimal.Decimal `json:"total_withdrawn_usd"`
+	NetContributionUSD  decimal.Decimal `json:"net_contribution_usd"`
 
 	// Live metrics (optional, computed at request time)
 	AsOf                *time.Time       `json:"as_of,omitempty"`
@@ -226,6 +234,8 @@ func (h *TokenizedVaultHandler) listTokenizedVaults(w http.ResponseWriter, r *ht
 	result := make([]*tokenizedVaultDTO, 0, len(vaults))
 	for _, vault := range vaults {
 		dto := h.mapVaultToDTO(vault)
+		// Add contributions summary from vault_transactions
+		h.fillContributions(r.Context(), vault, dto)
 		// Optionally enrich with live data
 		if r.URL.Query().Get("enrich") == "true" {
 			h.enrichVaultWithLiveMetrics(r, vault, dto)
@@ -339,7 +349,18 @@ func (h *TokenizedVaultHandler) getTokenizedVault(w http.ResponseWriter, r *http
 		return
 	}
 
+	// Defensive: reconcile total supply from aggregated user shares.
+	// This fixes cases where an earlier action (e.g. switching pricing modes) may have
+	// left the persisted vault.total_supply out of sync with vault_shares.
+	if err := h.reconcileVaultSupply(r.Context(), vault); err == nil {
+		// Reload to reflect any changes
+		vault, _ = h.vaultService.GetVaultByID(r.Context(), id)
+	}
+
 	dto := h.mapVaultToDTO(vault)
+
+	// Add contributions summary
+	h.fillContributions(r.Context(), vault, dto)
 
 	// Enrich with additional data if requested
 	if r.URL.Query().Get("enrich") == "true" {
@@ -390,7 +411,7 @@ func (h *TokenizedVaultHandler) handleUpdatePrice(w http.ResponseWriter, r *http
 		CreatedBy:     updatedBy,
 		Timestamp:     time.Now(),
 	}
-	if _, err := h.transactionService.CreateTransaction(r.Context(), tx); err != nil {
+	if _, err := h.vaultTxService.CreateTransaction(r.Context(), tx); err != nil {
 		// Log error but don't fail the response
 		// TODO: Add proper logging
 	}
@@ -445,7 +466,7 @@ func (h *TokenizedVaultHandler) handleUpdateTotalValue(w http.ResponseWriter, r 
 		SharePriceBefore: previousPrice,
 		SharePriceAfter:  vault.CurrentSharePrice,
 	}
-	if _, err := h.transactionService.CreateTransaction(r.Context(), tx); err != nil {
+	if _, err := h.vaultTxService.CreateTransaction(r.Context(), tx); err != nil {
 		// TODO: add structured logging
 	}
 
@@ -468,6 +489,9 @@ func (h *TokenizedVaultHandler) handleEnableManualPricing(w http.ResponseWriter,
 		http.Error(w, "Vault not found: "+err.Error(), http.StatusNotFound)
 		return
 	}
+
+	// Defensive: make sure total_supply is in sync with user shares before switching modes
+	_ = h.reconcileVaultSupply(r.Context(), vault)
 
 	updatedBy := "user" // TODO: Get from auth context
 	if err := vault.EnableManualPricing(body.InitialPrice, updatedBy); err != nil {
@@ -504,8 +528,10 @@ func (h *TokenizedVaultHandler) handleDisableManualPricing(w http.ResponseWriter
 
 func (h *TokenizedVaultHandler) handleDeposit(w http.ResponseWriter, r *http.Request, id string) {
 	var body struct {
-		Amount decimal.Decimal `json:"amount"`
-		Notes  *string         `json:"notes,omitempty"`
+		Amount        decimal.Decimal `json:"amount"`
+		Notes         *string         `json:"notes,omitempty"`
+		SourceAccount string          `json:"source_account"`
+		SourceAsset   string          `json:"source_asset"`
 		// Back-compat: allow "cost" as alias
 		Cost decimal.Decimal `json:"cost"`
 	}
@@ -525,15 +551,97 @@ func (h *TokenizedVaultHandler) handleDeposit(w http.ResponseWriter, r *http.Req
 	}
 
 	// Verify vault exists first
+	v, err := h.vaultService.GetVaultByID(r.Context(), id)
+	if err != nil {
+		http.Error(w, "Vault not found: "+err.Error(), http.StatusNotFound)
+		return
+	}
+
+	userID := "user" // TODO: pull from auth context
+	if _, _, err := h.vaultTxService.ProcessDeposit(r.Context(), id, userID, amount); err != nil {
+		http.Error(w, "Failed to process deposit: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	// Optional: deduct from a source account via internal transfer_out (USD)
+	if strings.TrimSpace(body.SourceAccount) != "" {
+		outTx := &models.Transaction{
+			Date:         time.Now().UTC(),
+			Type:         "transfer_out",
+			Asset:        "USD",
+			Account:      body.SourceAccount,
+			Quantity:     amount,
+			PriceLocal:   decimal.NewFromInt(1),
+			InternalFlow: func() *bool { b := true; return &b }(),
+			Note:         body.Notes,
+			Horizon:      nil,
+		}
+		if err := outTx.PreSave(); err == nil {
+			_ = h.generalTxService.CreateTransaction(r.Context(), outTx)
+		}
+	}
+
+	// Return updated vault state
+	updated, err := h.vaultService.GetVaultByID(r.Context(), v.ID)
+	if err != nil {
+		http.Error(w, "Failed to load updated vault: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	dto := h.mapVaultToDTO(updated)
+	json.NewEncoder(w).Encode(dto)
+}
+
+func (h *TokenizedVaultHandler) handleWithdraw(w http.ResponseWriter, r *http.Request, id string) {
+	var body struct {
+		Amount         decimal.Decimal `json:"amount"`
+		Notes          *string         `json:"notes,omitempty"`
+		TargetAccount  string          `json:"target_account"`
+		// Back-compat: allow "value" as alias
+		Value decimal.Decimal `json:"value"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, "Invalid JSON: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	amount := body.Amount
+	if amount.IsZero() && body.Value.IsPositive() {
+		amount = body.Value
+	}
+	if !amount.IsPositive() {
+		http.Error(w, "amount must be positive", http.StatusBadRequest)
+		return
+	}
+
+	// Verify vault exists first
 	if _, err := h.vaultService.GetVaultByID(r.Context(), id); err != nil {
 		http.Error(w, "Vault not found: "+err.Error(), http.StatusNotFound)
 		return
 	}
 
 	userID := "user" // TODO: pull from auth context
-	if _, _, err := h.transactionService.ProcessDeposit(r.Context(), id, userID, amount); err != nil {
-		http.Error(w, "Failed to process deposit: "+err.Error(), http.StatusBadRequest)
+	if _, _, err := h.vaultTxService.ProcessWithdrawal(r.Context(), id, userID, amount); err != nil {
+		http.Error(w, "Failed to process withdrawal: "+err.Error(), http.StatusBadRequest)
 		return
+	}
+
+	// Optional: add cash back to a destination account via internal transfer_in
+	if strings.TrimSpace(body.TargetAccount) != "" {
+		inTx := &models.Transaction{
+			Date:         time.Now().UTC(),
+			Type:         "transfer_in",
+			Asset:        "USD",
+			Account:      body.TargetAccount,
+			Quantity:     amount,
+			PriceLocal:   decimal.NewFromInt(1),
+			InternalFlow: func() *bool { b := true; return &b }(),
+			Note:         body.Notes,
+		}
+		if err := inTx.PreSave(); err == nil {
+			_ = h.generalTxService.CreateTransaction(r.Context(), inTx)
+		}
 	}
 
 	// Return updated vault state
@@ -545,11 +653,6 @@ func (h *TokenizedVaultHandler) handleDeposit(w http.ResponseWriter, r *http.Req
 
 	dto := h.mapVaultToDTO(updated)
 	json.NewEncoder(w).Encode(dto)
-}
-
-func (h *TokenizedVaultHandler) handleWithdraw(w http.ResponseWriter, r *http.Request, id string) {
-	// TODO: Implement withdrawal logic
-	http.Error(w, "Not implemented yet", http.StatusNotImplemented)
 }
 
 func (h *TokenizedVaultHandler) handleClose(w http.ResponseWriter, r *http.Request, id string) {
@@ -627,6 +730,20 @@ func (h *TokenizedVaultHandler) enrichVaultWithLiveMetrics(r *http.Request, vaul
 	dto.AsOf = &now
 }
 
+func (h *TokenizedVaultHandler) fillContributions(ctx context.Context, vault *models.Vault, dto *tokenizedVaultDTO) {
+	if h.vaultTxService == nil || vault == nil || dto == nil {
+		return
+	}
+	filter := &models.VaultTransactionFilter{VaultID: &vault.ID}
+	summary, err := h.vaultTxService.GetTransactionSummary(ctx, filter)
+	if err != nil || summary == nil {
+		return
+	}
+	dto.TotalContributedUSD = summary.TotalDeposits
+	dto.TotalWithdrawnUSD = summary.TotalWithdrawals
+	dto.NetContributionUSD = summary.NetDepositFlow
+}
+
 func (h *TokenizedVaultHandler) loadAssetBreakdown(ctx context.Context, vault *models.Vault, dto *tokenizedVaultDTO) {
 	// Load assets for this vault
 	assetFilter := &models.VaultAssetFilter{
@@ -655,4 +772,33 @@ func (h *TokenizedVaultHandler) loadAssetBreakdown(ctx context.Context, vault *m
 	}
 
 	dto.AssetBreakdown = breakdown
+}
+
+// reconcileVaultSupply ensures vault.total_supply matches the sum of user share balances.
+// If there's a mismatch (e.g., after switching pricing modes), we correct total_supply
+// and recompute AUM from the effective share price.
+func (h *TokenizedVaultHandler) reconcileVaultSupply(ctx context.Context, vault *models.Vault) error {
+	if h.vaultShareService == nil || h.vaultService == nil {
+		return nil
+	}
+
+	filter := &models.VaultShareFilter{VaultID: &vault.ID}
+	shares, err := h.vaultShareService.GetVaultShares(ctx, filter)
+	if err != nil {
+		return err
+	}
+
+	sum := decimal.Zero
+	for _, s := range shares {
+		sum = sum.Add(s.ShareBalance)
+	}
+
+	if vault.TotalSupply.Sub(sum).Abs().GreaterThan(decimal.NewFromFloat(0.00000001)) {
+		vault.TotalSupply = sum
+		price := vault.GetEffectivePrice()
+		vault.TotalAssetsUnderManagement = sum.Mul(price)
+		vault.LastUpdated = time.Now()
+		return h.vaultService.UpdateVault(ctx, vault)
+	}
+	return nil
 }
