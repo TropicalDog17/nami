@@ -21,11 +21,8 @@ require (
 	github.com/gorilla/mux v1.8.1
 	github.com/stretchr/testify v1.9.0
 	gorm.io/driver/postgres v1.6.0
-	gorm.io/driver/sqlite v1.6.0
 	gorm.io/gorm v1.31.0
 )
-
-require github.com/mattn/go-sqlite3 v1.14.22 // indirect
 
 require (
 	dario.cat/mergo v1.0.0 // indirect

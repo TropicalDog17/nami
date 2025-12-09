@@ -71,7 +71,7 @@ func TestInvestmentService_StakeIntoExisting_ThenUnstake_PartialAndFull(t *testi
 	// Stake more into the same investment by specifying InvestmentID
 	invID := inv.ID
 	stake2 := buildStakeTx(date1, "Futures", "USDT", 300, 1.00, &invID, nil)
-	inv, err = invSvc.ProcessStake(ctx, stake2)
+	_, err = invSvc.ProcessStake(ctx, stake2)
 	if err != nil {
 		t.Fatalf("ProcessStake (existing) failed: %v", err)
 	}

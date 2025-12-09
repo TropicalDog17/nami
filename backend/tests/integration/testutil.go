@@ -129,7 +129,7 @@ func setupTestTables(database *db.DB) error {
 	return nil
 }
 
-func createMigrationsTable(db *sql.DB) error {
+func createMigrationsTable(dbConn *sql.DB) error {
 	query := `
 		CREATE TABLE IF NOT EXISTS schema_migrations (
 			version INTEGER PRIMARY KEY,
@@ -137,7 +137,7 @@ func createMigrationsTable(db *sql.DB) error {
 			executed_at TIMESTAMP DEFAULT NOW()
 		)
 	`
-	_, err := db.Exec(query)
+	_, err := dbConn.Exec(query)
 	return err
 }
 
@@ -204,8 +204,8 @@ func loadMigrations() ([]Migration, error) {
 	return migrations, nil
 }
 
-func runMigration(db *sql.DB, migration Migration) error {
-	tx, err := db.Begin()
+func runMigration(dbConn *sql.DB, migration Migration) error {
+	tx, err := dbConn.Begin()
 	if err != nil {
 		return err
 	}
@@ -239,30 +239,27 @@ func runMigration(db *sql.DB, migration Migration) error {
 	return tx.Commit()
 }
 
-func isMigrationApplied(db *sql.DB, id int) (bool, error) {
+func isMigrationApplied(dbConn *sql.DB, id int) (bool, error) {
 	var exists bool
-	err := db.QueryRow("SELECT EXISTS (SELECT 1 FROM schema_migrations WHERE version = $1)", id).Scan(&exists)
+	err := dbConn.QueryRow("SELECT EXISTS (SELECT 1 FROM schema_migrations WHERE version = $1)", id).Scan(&exists)
 	return exists, err
 }
 
+// splitSQLStatements splits a SQL script into individual statements, respecting
+// dollar-quoted strings ($tag$...$tag$ or $$...$$), single quotes, double quotes,
+// and both line (--) and block (/* */) comments.
 func splitSQLStatements(sqlContent string) []string {
-	var pre strings.Builder
-	for _, line := range strings.Split(sqlContent, "\n") {
-		trimmed := line
-		if idx := strings.Index(trimmed, "--"); idx >= 0 {
-			trimmed = trimmed[:idx]
-		}
-		pre.WriteString(trimmed)
-		pre.WriteString("\n")
-	}
-
-	s := pre.String()
 	statements := make([]string, 0)
 	var buf strings.Builder
 
 	inDollar := false
 	dollarTag := ""
+	inSingle := false // inside '...'
+	inDouble := false // inside "..."
+	inLineComment := false
+	inBlockComment := false
 
+	// Attempts to read a dollar-quote tag starting at index i where s[i] == '$'.
 	readDollarTag := func(src string, start int) (tag string, end int, ok bool) {
 		j := start + 1
 		for j < len(src) {
@@ -278,14 +275,51 @@ func splitSQLStatements(sqlContent string) []string {
 		return "", start, false
 	}
 
+	s := sqlContent
 	for i := 0; i < len(s); i++ {
 		ch := s[i]
 
-		if ch == '$' {
+		// Handle line comments
+		if !inSingle && !inDouble && !inDollar && !inBlockComment {
+			if ch == '-' && i+1 < len(s) && s[i+1] == '-' {
+				inLineComment = true
+				buf.WriteByte(ch)
+				continue
+			}
+		}
+		if inLineComment {
+			buf.WriteByte(ch)
+			if ch == '\n' {
+				inLineComment = false
+			}
+			continue
+		}
+
+		// Handle block comments
+		if !inSingle && !inDouble && !inDollar && !inLineComment {
+			if !inBlockComment && ch == '/' && i+1 < len(s) && s[i+1] == '*' {
+				inBlockComment = true
+				buf.WriteByte(ch)
+				continue
+			}
+			if inBlockComment {
+				buf.WriteByte(ch)
+				if ch == '*' && i+1 < len(s) && s[i+1] == '/' {
+					// consume the '/'
+					i++
+					buf.WriteByte('/')
+					inBlockComment = false
+				}
+				continue
+			}
+		}
+
+		// Handle start/end of dollar-quoted strings
+		if ch == '$' && !inSingle && !inDouble && !inLineComment && !inBlockComment {
 			if !inDollar {
 				if tag, end, ok := readDollarTag(s, i); ok {
 					inDollar = true
-					dollarTag = tag
+					dollarTag = tag // may be empty for $$
 					buf.WriteString(s[i : end+1])
 					i = end
 					continue
@@ -301,7 +335,33 @@ func splitSQLStatements(sqlContent string) []string {
 			}
 		}
 
-		if ch == ';' && !inDollar {
+		if !inDollar && !inLineComment && !inBlockComment {
+			// Handle single-quoted strings with escaped ''
+			if ch == '\'' && !inDouble {
+				buf.WriteByte(ch)
+				if inSingle {
+					// check escaped ''
+					if i+1 < len(s) && s[i+1] == '\'' {
+						buf.WriteByte('\'')
+						i++
+					}
+					inSingle = false
+				} else {
+					inSingle = true
+				}
+				continue
+			}
+
+			// Handle double-quoted identifiers
+			if ch == '"' && !inSingle {
+				inDouble = !inDouble
+				buf.WriteByte(ch)
+				continue
+			}
+		}
+
+		// Split on semicolon only when not inside any quoted/comment context
+		if ch == ';' && !inDollar && !inSingle && !inDouble && !inLineComment && !inBlockComment {
 			stmt := strings.TrimSpace(buf.String())
 			if stmt != "" {
 				statements = append(statements, stmt)
@@ -343,93 +403,9 @@ func isIgnorableSQLError(err error, stmt string) bool {
 
 // --- End of Migration Logic ---
 
-// Common helper functions for integration tests
-
-func makeStakeTx(date time.Time, asset, account string, qty, priceUSD float64) *models.Transaction {
-	return &models.Transaction{
-		Date:          date,
-		Type:          models.ActionStake,
-		Asset:         asset,
-		Account:       account,
-		Quantity:      decimal.NewFromFloat(qty),
-		PriceLocal:    decimal.NewFromFloat(priceUSD),
-		LocalCurrency: "USD",
-		FeeLocal:      decimal.Zero,
-	}
-}
-
-func getDecimal(v interface{}) decimal.Decimal {
-	switch x := v.(type) {
-	case string:
-		if x == "" {
-			return decimal.Zero
-		}
-		if d, err := decimal.NewFromString(x); err == nil {
-			return d
-		}
-		if f, err := strconv.ParseFloat(x, 64); err == nil {
-			return decimal.NewFromFloat(f)
-		}
-		return decimal.Zero
-	case float64:
-		return decimal.NewFromFloat(x)
-	case json.Number:
-		if f, err := x.Float64(); err == nil {
-			return decimal.NewFromFloat(f)
-		}
-		return decimal.Zero
-	default:
-		return decimal.Zero
-	}
-}
-
-type mockAssetPriceService struct {
-	price decimal.Decimal
-}
-
-func (m *mockAssetPriceService) GetDaily(ctx context.Context, symbol, currency string, date time.Time) (*models.AssetPrice, error) {
-	return &models.AssetPrice{
-		Symbol:   symbol,
-		Currency: currency,
-		Price:    m.price,
-		Date:     date,
-	}, nil
-}
-
-func (m *mockAssetPriceService) GetRange(ctx context.Context, symbol, currency string, start, end time.Time) ([]*models.AssetPrice, error) {
-	res := make([]*models.AssetPrice, 0)
-	for d := start; !d.After(end); d = d.AddDate(0, 0, 1) {
-		res = append(res, &models.AssetPrice{
-			Symbol:   symbol,
-			Currency: currency,
-			Price:    m.price,
-			Date:     d,
-		})
-	}
-	return res, nil
-}
-
-func (m *mockAssetPriceService) GetLatest(ctx context.Context, symbol, currency string) (*models.AssetPrice, error) {
-	return &models.AssetPrice{
-		Symbol:    symbol,
-		Currency:  currency,
-		Price:     m.price,
-		Date:      time.Now(),
-		Source:    "coingecko",
-		CreatedAt: time.Now(),
-	}, nil
-}
-
 // Shared pointer helpers for tests
 func stringPtr(s string) *string     { return &s }
 func boolPtr(b bool) *bool           { return &b }
-func timePtr(t time.Time) *time.Time { return &t }
 func floatPtr(f float64) *float64    { return &f }
 
-func assertApproxEqual(t *testing.T, a, b decimal.Decimal, toleranceBPS int64) {
-	diff := a.Sub(b).Abs()
-	tol := a.Mul(decimal.NewFromInt(toleranceBPS)).Div(decimal.NewFromInt(10000)).Abs()
-	if diff.GreaterThan(tol) {
-		t.Errorf("Values not approximately equal: %s vs %s (diff: %s > tol: %s)", a.String(), b.String(), diff.String(), tol.String())
-	}
-}
+

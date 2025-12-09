@@ -204,7 +204,7 @@ func (h *TransactionHandler) listTransactions(w http.ResponseWriter, r *http.Req
 	}
 
 	// Check if FX conversion is requested
-	targetCurrencies := []string{}
+	var targetCurrencies []string
 	if currencies := r.URL.Query().Get("currencies"); currencies != "" {
 		targetCurrencies = strings.Split(currencies, ",")
 	} else {

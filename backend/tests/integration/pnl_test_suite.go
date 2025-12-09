@@ -25,7 +25,7 @@ type PnLTestSuite struct {
 func NewPnLTestSuite(t *testing.T) *PnLTestSuite {
 	tdb := setupTestDB(t)
 	ctx := context.Background()
-	
+
 	txService := services.NewTransactionService(tdb.database)
 	linkService := services.NewLinkService(tdb.database)
 	investmentRepo := repositories.NewInvestmentRepository(tdb.database)

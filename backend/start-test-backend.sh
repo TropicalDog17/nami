@@ -30,16 +30,26 @@ fi
 
 # Check if database is running
 echo -e "${BLUE}🔍 Checking database connection...${NC}"
-if command -v docker >/dev/null 2>&1; then
-    if docker-compose -f ../docker-compose.test.yml ps postgres-test | grep -q "Up"; then
-        echo -e "${GREEN}✅ Test database is running${NC}"
-    else
-        echo -e "${RED}❌ Test database is not running${NC}"
-        echo -e "${YELLOW}Please run: ./scripts/setup-test-env.sh${NC}"
-        exit 1
+check_db_running() {
+    if command -v docker >/dev/null 2>&1; then
+        if command -v docker-compose >/dev/null 2>&1; then
+            docker-compose -f ../docker-compose.test.yml ps postgres-test | grep -q "Up"
+            return $?
+        else
+            # Fallback to docker compose (plugin)
+            docker compose -f ../docker-compose.test.yml ps postgres-test | grep -q "Up"
+            return $?
+        fi
     fi
+    # No docker; assume managed externally
+    return 0
+}
+if check_db_running; then
+    echo -e "${GREEN}✅ Test database is running${NC}"
 else
-    echo -e "${YELLOW}⚠️  Docker not available, assuming database is running${NC}"
+    echo -e "${RED}❌ Test database is not running${NC}"
+    echo -e "${YELLOW}Please run: ./scripts/setup-test-env.sh${NC}"
+    exit 1
 fi
 
 # Set environment variables

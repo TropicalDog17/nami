@@ -9,43 +9,43 @@ import (
 
 // VaultAsset represents a specific asset held within a vault
 type VaultAsset struct {
-	ID               string          `json:"id" gorm:"primaryKey;column:id;type:varchar(255)"`
-	VaultID          string          `json:"vault_id" gorm:"column:vault_id;type:varchar(255);not null;index"`
-	Asset            string          `json:"asset" gorm:"column:asset;type:varchar(50);not null;index"`
-	Account          string          `json:"account" gorm:"column:account;type:varchar(100);not null;index"`
+	ID      string `json:"id" gorm:"primaryKey;column:id;type:varchar(255)"`
+	VaultID string `json:"vault_id" gorm:"column:vault_id;type:varchar(255);not null;index"`
+	Asset   string `json:"asset" gorm:"column:asset;type:varchar(50);not null;index"`
+	Account string `json:"account" gorm:"column:account;type:varchar(100);not null;index"`
 
 	// Position information
-	Quantity         decimal.Decimal `json:"quantity" gorm:"column:quantity;type:decimal(30,18);not null;default:0"`
-	AvgCostBasis     decimal.Decimal `json:"avg_cost_basis" gorm:"column:avg_cost_basis;type:decimal(30,18);not null;default:0"`
-	CurrentPrice     decimal.Decimal `json:"current_price" gorm:"column:current_price;type:decimal(30,18);not null;default:0"`
+	Quantity           decimal.Decimal `json:"quantity" gorm:"column:quantity;type:decimal(30,18);not null;default:0"`
+	AvgCostBasis       decimal.Decimal `json:"avg_cost_basis" gorm:"column:avg_cost_basis;type:decimal(30,18);not null;default:0"`
+	CurrentPrice       decimal.Decimal `json:"current_price" gorm:"column:current_price;type:decimal(30,18);not null;default:0"`
 	CurrentMarketValue decimal.Decimal `json:"current_market_value" gorm:"column:current_market_value;type:decimal(30,18);not null;default:0"`
 
 	// Allocation settings
-	TargetAllocation  *decimal.Decimal `json:"target_allocation,omitempty" gorm:"column:target_allocation;type:decimal(5,4)"`  // Percentage 0.0000 to 1.0000
-	MinAllocation     *decimal.Decimal `json:"min_allocation,omitempty" gorm:"column:min_allocation;type:decimal(5,4)"`        // Percentage 0.0000 to 1.0000
-	MaxAllocation     *decimal.Decimal `json:"max_allocation,omitempty" gorm:"column:max_allocation;type:decimal(5,4)"`        // Percentage 0.0000 to 1.0000
-	IsRebalancing     bool            `json:"is_rebalancing" gorm:"column:is_rebalancing;type:boolean;not null;default:false"`
+	TargetAllocation *decimal.Decimal `json:"target_allocation,omitempty" gorm:"column:target_allocation;type:decimal(5,4)"` // Percentage 0.0000 to 1.0000
+	MinAllocation    *decimal.Decimal `json:"min_allocation,omitempty" gorm:"column:min_allocation;type:decimal(5,4)"`       // Percentage 0.0000 to 1.0000
+	MaxAllocation    *decimal.Decimal `json:"max_allocation,omitempty" gorm:"column:max_allocation;type:decimal(5,4)"`       // Percentage 0.0000 to 1.0000
+	IsRebalancing    bool             `json:"is_rebalancing" gorm:"column:is_rebalancing;type:boolean;not null;default:false"`
 
 	// Performance tracking
-	UnrealizedPnL     decimal.Decimal `json:"unrealized_pnl" gorm:"column:unrealized_pnl;type:decimal(30,18);not null;default:0"`
+	UnrealizedPnL        decimal.Decimal `json:"unrealized_pnl" gorm:"column:unrealized_pnl;type:decimal(30,18);not null;default:0"`
 	UnrealizedPnLPercent decimal.Decimal `json:"unrealized_pnl_percent" gorm:"column:unrealized_pnl_percent;type:decimal(30,18);not null;default:0"`
-	RealizedPnL       decimal.Decimal `json:"realized_pnl" gorm:"column:realized_pnl;type:decimal(30,18);not null;default:0"`
+	RealizedPnL          decimal.Decimal `json:"realized_pnl" gorm:"column:realized_pnl;type:decimal(30,18);not null;default:0"`
 
 	// Transaction tracking
-	TotalBought       decimal.Decimal `json:"total_bought" gorm:"column:total_bought;type:decimal(30,18);not null;default:0"`
-	TotalSold         decimal.Decimal `json:"total_sold" gorm:"column:total_sold;type:decimal(30,18);not null;default:0"`
-	TotalCost         decimal.Decimal `json:"total_cost" gorm:"column:total_cost;type:decimal(30,18);not null;default:0"`
-	TotalProceeds     decimal.Decimal `json:"total_proceeds" gorm:"column:total_proceeds;type:decimal(30,18);not null;default:0"`
+	TotalBought   decimal.Decimal `json:"total_bought" gorm:"column:total_bought;type:decimal(30,18);not null;default:0"`
+	TotalSold     decimal.Decimal `json:"total_sold" gorm:"column:total_sold;type:decimal(30,18);not null;default:0"`
+	TotalCost     decimal.Decimal `json:"total_cost" gorm:"column:total_cost;type:decimal(30,18);not null;default:0"`
+	TotalProceeds decimal.Decimal `json:"total_proceeds" gorm:"column:total_proceeds;type:decimal(30,18);not null;default:0"`
 
 	// Yield and income tracking
-	IncomeReceived    decimal.Decimal `json:"income_received" gorm:"column:income_received;type:decimal(30,18);not null;default:0"`
-	YieldRate         *decimal.Decimal `json:"yield_rate,omitempty" gorm:"column:yield_rate;type:decimal(8,8)"`  // Annual yield rate
+	IncomeReceived decimal.Decimal  `json:"income_received" gorm:"column:income_received;type:decimal(30,18);not null;default:0"`
+	YieldRate      *decimal.Decimal `json:"yield_rate,omitempty" gorm:"column:yield_rate;type:decimal(8,8)"` // Annual yield rate
 
 	// Metadata
-	FirstAcquiredDate time.Time       `json:"first_acquired_date" gorm:"column:first_acquired_date;type:timestamptz;index"`
-	LastUpdated       time.Time       `json:"last_updated" gorm:"column:last_updated;type:timestamptz;not null;index"`
-	CreatedAt         time.Time       `json:"created_at" gorm:"column:created_at;type:timestamptz;autoCreateTime"`
-	UpdatedAt         time.Time       `json:"updated_at" gorm:"column:updated_at;type:timestamptz;autoUpdateTime"`
+	FirstAcquiredDate time.Time `json:"first_acquired_date" gorm:"column:first_acquired_date;type:timestamptz;index"`
+	LastUpdated       time.Time `json:"last_updated" gorm:"column:last_updated;type:timestamptz;not null;index"`
+	CreatedAt         time.Time `json:"created_at" gorm:"column:created_at;type:timestamptz;autoCreateTime"`
+	UpdatedAt         time.Time `json:"updated_at" gorm:"column:updated_at;type:timestamptz;autoUpdateTime"`
 }
 
 // TableName returns the table name for the VaultAsset model

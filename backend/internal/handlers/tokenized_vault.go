@@ -15,12 +15,12 @@ import (
 
 // TokenizedVaultHandler handles operations for tokenized vaults
 type TokenizedVaultHandler struct {
-	vaultService        services.VaultService
-	vaultShareService   services.VaultShareService
-	vaultAssetService   services.VaultAssetService
-	vaultTxService      services.VaultTransactionService
-	generalTxService    services.TransactionService
-	priceService        services.AssetPriceService
+	vaultService      services.VaultService
+	vaultShareService services.VaultShareService
+	vaultAssetService services.VaultAssetService
+	vaultTxService    services.VaultTransactionService
+	generalTxService  services.TransactionService
+	priceService      services.AssetPriceService
 }
 
 func NewTokenizedVaultHandler(
@@ -594,9 +594,9 @@ func (h *TokenizedVaultHandler) handleDeposit(w http.ResponseWriter, r *http.Req
 
 func (h *TokenizedVaultHandler) handleWithdraw(w http.ResponseWriter, r *http.Request, id string) {
 	var body struct {
-		Amount         decimal.Decimal `json:"amount"`
-		Notes          *string         `json:"notes,omitempty"`
-		TargetAccount  string          `json:"target_account"`
+		Amount        decimal.Decimal `json:"amount"`
+		Notes         *string         `json:"notes,omitempty"`
+		TargetAccount string          `json:"target_account"`
 		// Back-compat: allow "value" as alias
 		Value decimal.Decimal `json:"value"`
 	}

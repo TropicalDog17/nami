@@ -9,13 +9,13 @@ import (
 
 // VaultShare represents a user's ownership shares in a vault
 type VaultShare struct {
-	ID           string          `json:"id" gorm:"primaryKey;column:id;type:varchar(255)"`
-	VaultID      string          `json:"vault_id" gorm:"column:vault_id;type:varchar(255);not null;index"`
-	UserID       string          `json:"user_id" gorm:"column:user_id;type:varchar(255);not null;index"`
+	ID      string `json:"id" gorm:"primaryKey;column:id;type:varchar(255)"`
+	VaultID string `json:"vault_id" gorm:"column:vault_id;type:varchar(255);not null;index"`
+	UserID  string `json:"user_id" gorm:"column:user_id;type:varchar(255);not null;index"`
 
 	// Share information
-	ShareBalance decimal.Decimal `json:"share_balance" gorm:"column:share_balance;type:decimal(30,18);not null;default:0"`
-	CostBasis    decimal.Decimal `json:"cost_basis" gorm:"column:cost_basis;type:decimal(30,18);not null;default:0"`
+	ShareBalance    decimal.Decimal `json:"share_balance" gorm:"column:share_balance;type:decimal(30,18);not null;default:0"`
+	CostBasis       decimal.Decimal `json:"cost_basis" gorm:"column:cost_basis;type:decimal(30,18);not null;default:0"`
 	AvgCostPerShare decimal.Decimal `json:"avg_cost_per_share" gorm:"column:avg_cost_per_share;type:decimal(30,18);not null;default:0"`
 
 	// Transaction tracking
@@ -24,12 +24,12 @@ type VaultShare struct {
 	NetDeposits      decimal.Decimal `json:"net_deposits" gorm:"column:net_deposits;type:decimal(30,18);not null;default:0"`
 
 	// Performance metrics
-	CurrentMarketValue decimal.Decimal `json:"current_market_value" gorm:"column:current_market_value;type:decimal(30,18);not null;default:0"`
-	UnrealizedPnL       decimal.Decimal `json:"unrealized_pnl" gorm:"column:unrealized_pnl;type:decimal(30,18);not null;default:0"`
+	CurrentMarketValue   decimal.Decimal `json:"current_market_value" gorm:"column:current_market_value;type:decimal(30,18);not null;default:0"`
+	UnrealizedPnL        decimal.Decimal `json:"unrealized_pnl" gorm:"column:unrealized_pnl;type:decimal(30,18);not null;default:0"`
 	UnrealizedPnLPercent decimal.Decimal `json:"unrealized_pnl_percent" gorm:"column:unrealized_pnl_percent;type:decimal(30,18);not null;default:0"`
 
 	// Realized P&L from share transactions
-	RealizedPnL       decimal.Decimal `json:"realized_pnl" gorm:"column:realized_pnl;type:decimal(30,18);not null;default:0"`
+	RealizedPnL        decimal.Decimal `json:"realized_pnl" gorm:"column:realized_pnl;type:decimal(30,18);not null;default:0"`
 	RealizedPnLPercent decimal.Decimal `json:"realized_pnl_percent" gorm:"column:realized_pnl_percent;type:decimal(30,18);not null;default:0"`
 
 	// Fee tracking
@@ -178,45 +178,45 @@ func (vs *VaultShare) GetTotalReturn() decimal.Decimal {
 
 // VaultShareFilter represents filters for querying vault shares
 type VaultShareFilter struct {
-	VaultID            *string
-	UserID             *string
-	MinShareBalance    *decimal.Decimal
-	MaxShareBalance    *decimal.Decimal
-	MinMarketValue     *decimal.Decimal
-	MaxMarketValue     *decimal.Decimal
-	HasUnrealizedPnL   *bool
-	HasRealizedPnL     *bool
-	StartDate          *time.Time
-	EndDate            *time.Time
-	Limit              int
-	Offset             int
+	VaultID          *string
+	UserID           *string
+	MinShareBalance  *decimal.Decimal
+	MaxShareBalance  *decimal.Decimal
+	MinMarketValue   *decimal.Decimal
+	MaxMarketValue   *decimal.Decimal
+	HasUnrealizedPnL *bool
+	HasRealizedPnL   *bool
+	StartDate        *time.Time
+	EndDate          *time.Time
+	Limit            int
+	Offset           int
 }
 
 // VaultShareHistory tracks the history of share transactions
 type VaultShareHistory struct {
-	ID               string          `json:"id" gorm:"primaryKey;column:id;type:varchar(255)"`
-	VaultShareID     string          `json:"vault_share_id" gorm:"column:vault_share_id;type:varchar(255);not null;index"`
-	VaultID          string          `json:"vault_id" gorm:"column:vault_id;type:varchar(255);not null;index"`
-	UserID           string          `json:"user_id" gorm:"column:user_id;type:varchar(255);not null;index"`
+	ID           string `json:"id" gorm:"primaryKey;column:id;type:varchar(255)"`
+	VaultShareID string `json:"vault_share_id" gorm:"column:vault_share_id;type:varchar(255);not null;index"`
+	VaultID      string `json:"vault_id" gorm:"column:vault_id;type:varchar(255);not null;index"`
+	UserID       string `json:"user_id" gorm:"column:user_id;type:varchar(255);not null;index"`
 
 	// Transaction details
-	Type             string          `json:"type" gorm:"column:type;type:varchar(20);not null"` // "mint" or "burn"
-	Shares           decimal.Decimal `json:"shares" gorm:"column:shares;type:decimal(30,18);not null"`
-	PricePerShare    decimal.Decimal `json:"price_per_share" gorm:"column:price_per_share;type:decimal(30,18);not null"`
-	TotalAmount      decimal.Decimal `json:"total_amount" gorm:"column:total_amount;type:decimal(30,18);not null"`
+	Type          string          `json:"type" gorm:"column:type;type:varchar(20);not null"` // "mint" or "burn"
+	Shares        decimal.Decimal `json:"shares" gorm:"column:shares;type:decimal(30,18);not null"`
+	PricePerShare decimal.Decimal `json:"price_per_share" gorm:"column:price_per_share;type:decimal(30,18);not null"`
+	TotalAmount   decimal.Decimal `json:"total_amount" gorm:"column:total_amount;type:decimal(30,18);not null"`
 
 	// Fee information
-	FeeAmount        decimal.Decimal `json:"fee_amount" gorm:"column:fee_amount;type:decimal(30,18);not null;default:0"`
-	FeeType          string          `json:"fee_type" gorm:"column:fee_type;type:varchar(20)"`
+	FeeAmount decimal.Decimal `json:"fee_amount" gorm:"column:fee_amount;type:decimal(30,18);not null;default:0"`
+	FeeType   string          `json:"fee_type" gorm:"column:fee_type;type:varchar(20)"`
 
 	// Balance snapshot
-	BalanceBefore    decimal.Decimal `json:"balance_before" gorm:"column:balance_before;type:decimal(30,18);not null"`
-	BalanceAfter     decimal.Decimal `json:"balance_after" gorm:"column:balance_after;type:decimal(30,18);not null"`
+	BalanceBefore decimal.Decimal `json:"balance_before" gorm:"column:balance_before;type:decimal(30,18);not null"`
+	BalanceAfter  decimal.Decimal `json:"balance_after" gorm:"column:balance_after;type:decimal(30,18);not null"`
 
 	// Metadata
-	Timestamp        time.Time       `json:"timestamp" gorm:"column:timestamp;type:timestamptz;not null;index"`
-	TransactionHash  *string         `json:"transaction_hash,omitempty" gorm:"column:transaction_hash;type:varchar(255)"`
-	Notes            *string         `json:"notes,omitempty" gorm:"column:notes;type:text"`
+	Timestamp       time.Time `json:"timestamp" gorm:"column:timestamp;type:timestamptz;not null;index"`
+	TransactionHash *string   `json:"transaction_hash,omitempty" gorm:"column:transaction_hash;type:varchar(255)"`
+	Notes           *string   `json:"notes,omitempty" gorm:"column:notes;type:text"`
 }
 
 // TableName returns the table name for the VaultShareHistory model

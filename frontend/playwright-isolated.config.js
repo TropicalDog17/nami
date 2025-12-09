@@ -28,9 +28,11 @@ export default defineConfig({
 
   projects: [
     {
-      name: 'chromium',
+      name: 'chrome-channel',
       use: {
         ...devices['Desktop Chrome'],
+        channel: 'chrome',
+        headless: true,
         launchOptions: {
           slowMo: process.env.CI ? 0 : 50,
         },
@@ -38,8 +40,9 @@ export default defineConfig({
     },
   ],
 
-  webServer: {
-    command: 'PORT=3001 VITE_API_BASE_URL=http://localhost:8001 npm run dev',
+  // Make backend URL configurable and allow disabling webServer via NO_WEBSERVER=1
+  webServer: process.env.NO_WEBSERVER ? undefined : {
+    command: `PORT=3001 VITE_API_BASE_URL=${process.env.VITE_API_BASE_URL || 'http://localhost:8001'} npm run dev`,
     url: 'http://localhost:3001',
     reuseExistingServer: true,
     timeout: 300000,

@@ -91,21 +91,13 @@ func main() {
 	investmentHandler := handlers.NewInvestmentHandler(investmentService)
 	vaultHandler := handlers.NewVaultHandler(investmentService, transactionService, assetPriceService)
 
-	// Initialize tokenized vault services and handlers
-	vaultService := services.NewTokenizedVaultService(database.DB)
-	vaultShareService := services.NewTokenizedVaultShareService(database.DB)
-	// TODO: Implement VaultAssetService
-	// vaultAssetService := services.NewVaultAssetService(database.DB)
-	vaultTransactionService := services.NewVaultTransactionService(database.DB)
+	// Consolidated vault service and handler (single entrypoint, test-friendly)
+	consolidatedSvc := services.NewVaultServicesConsolidated(database.DB)
+	consolidatedHandler := handlers.NewConsolidatedVaultHandler(consolidatedSvc)
 
-	tokenizedVaultHandler := handlers.NewTokenizedVaultHandler(
-		vaultService,
-		vaultShareService,
-		nil, // TODO: Implement VaultAssetService
-		vaultTransactionService,
-		transactionService,
-		assetPriceService,
-	)
+	// Transaction-ledger repository + handler (derived state from vault_transactions)
+	vaultTxRepo := repositories.NewVaultTransactionRepository(database)
+	vaultLedgerHandler := handlers.NewVaultLedgerHandler(vaultTxRepo)
 
 	// Setup HTTP server
 	mux := http.NewServeMux()
@@ -240,21 +232,45 @@ func main() {
 	mux.HandleFunc("/api/vaults", vaultHandler.HandleVaults)
 	mux.HandleFunc("/api/vaults/", func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasPrefix(r.URL.Path, "/api/vaults/") && len(strings.TrimPrefix(r.URL.Path, "/api/vaults/")) > 0 {
+			rest := strings.TrimPrefix(r.URL.Path, "/api/vaults/")
+			parts := strings.Split(rest, "/")
+			if len(parts) >= 2 {
+				seg := parts[1]
+				if seg == "holdings" || seg == "transactions" || seg == "user" || seg == "assets" {
+					vaultLedgerHandler.Handle(w, r)
+					return
+				}
+			}
 			vaultHandler.HandleVault(w, r)
 			return
 		}
 		vaultHandler.HandleVaults(w, r)
 	})
 
-	// Tokenized Vault endpoints
-	mux.HandleFunc("/api/tokenized-vaults", tokenizedVaultHandler.HandleTokenizedVaults)
-	mux.HandleFunc("/api/tokenized-vaults/", func(w http.ResponseWriter, r *http.Request) {
-		if strings.HasPrefix(r.URL.Path, "/api/tokenized-vaults/") && len(strings.TrimPrefix(r.URL.Path, "/api/tokenized-vaults/")) > 0 {
-			tokenizedVaultHandler.HandleTokenizedVault(w, r)
+	// Tokenized Vault endpoints (DEPRECATED) -> return 410 Gone with guidance
+	deprecate := func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusGone)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"error":       "tokenized vault API is deprecated",
+			"migrate_to":  "/api/cons-vaults",
+			"status_code": 410,
+		})
+	}
+	mux.HandleFunc("/api/tokenized-vaults", deprecate)
+	mux.HandleFunc("/api/tokenized-vaults/", deprecate)
+
+	// Consolidated vault endpoints (single entrypoint)
+	mux.HandleFunc("/api/cons-vaults", consolidatedHandler.HandleVaults)
+	mux.HandleFunc("/api/cons-vaults/", func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/api/cons-vaults/") && len(strings.TrimPrefix(r.URL.Path, "/api/cons-vaults/")) > 0 {
+			consolidatedHandler.HandleVault(w, r)
 			return
 		}
-		tokenizedVaultHandler.HandleTokenizedVaults(w, r)
+		consolidatedHandler.HandleVaults(w, r)
 	})
+	// Smoke route for CI
+	mux.HandleFunc("/api/_smoke/consolidated", consolidatedHandler.HandleSmoke)
 
 	// Crypto tokens management
 	mux.HandleFunc("/api/admin/crypto/tokens", adminHandler.HandleCryptoTokens)

@@ -6,7 +6,7 @@ import ComboBox from '../components/ui/ComboBox';
 import DataTable, { TableColumn } from '../components/ui/DataTable';
 import ManualPricingControl from '../components/tokenized/ManualPricingControl';
 import { useToast } from '../components/ui/Toast';
-import { vaultApi, transactionApi, tokenizedVaultApi, ApiError } from '../services/api';
+import { vaultApi, transactionApi, tokenizedVaultApi, vaultLedgerApi, ApiError } from '../services/api';
 import { formatCurrency, formatPercentage, formatPnL, getDecimalPlaces } from '../utils/currencyFormatter';
 
 type Vault = {
@@ -119,6 +119,8 @@ const VaultDetailPage: React.FC = () => {
 
   const [vault, setVault] = useState<Vault | null>(null);
   const [tokenizedVaultDetails, setTokenizedVaultDetails] = useState<TokenizedVaultDetails | null>(null);
+  const [ledgerHoldings, setLedgerHoldings] = useState<null | { total_shares?: string | number; total_aum?: string | number; share_price?: string | number; transaction_count?: number; last_transaction_at?: string }>(null);
+  const [ledgerTransactions, setLedgerTransactions] = useState<any[]>([]);
   const [isTokenizedVault, setIsTokenizedVault] = useState<boolean>(false);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
@@ -178,6 +180,19 @@ const VaultDetailPage: React.FC = () => {
         setManualMetrics(null);
         setLiveMetrics(null);
         setTransactions([]);
+        // Load ledger data for tokenized vaults
+        try {
+          const [h, tx] = await Promise.all([
+            vaultLedgerApi.holdings<any>(vaultName),
+            vaultLedgerApi.transactions<any[]>(vaultName, { limit: 100 }),
+          ]);
+          setLedgerHoldings(h ?? null);
+          setLedgerTransactions(Array.isArray(tx) ? tx : []);
+        } catch (e) {
+          console.warn('Failed to load ledger data', e);
+          setLedgerHoldings(null);
+          setLedgerTransactions([]);
+        }
         loadedTokenized = true;
         setRetryCount(0);
       }
@@ -228,6 +243,8 @@ const VaultDetailPage: React.FC = () => {
       setVault(vaultData ?? null);
       setIsTokenizedVault(false);
       setTokenizedVaultDetails(null);
+      setLedgerHoldings(null);
+      setLedgerTransactions([]);
       if (vaultData && showLiveMetrics) {
         const lm: ManualMetrics = {
           as_of: (vaultData as unknown as { as_of?: string }).as_of,
@@ -1055,6 +1072,83 @@ const VaultDetailPage: React.FC = () => {
             />
           </div>
         )}
+
+        {/* Ledger-derived holdings and transaction history */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mt-6">
+          <div className="bg-white p-4 rounded-lg border border-gray-200 lg:col-span-1">
+            <h2 className="text-lg font-semibold mb-3">Ledger Holdings</h2>
+            {ledgerHoldings ? (
+              <dl className="grid grid-cols-2 gap-3 text-sm">
+                <div>
+                  <dt className="text-gray-500">Total Shares</dt>
+                  <dd className="text-gray-900">{(() => {
+                    const v = ledgerHoldings.total_shares as unknown as string | number | undefined;
+                    const n = typeof v === 'string' ? parseFloat(v) : (v ?? 0);
+                    return isNaN(Number(n)) ? '0' : Number(n).toLocaleString(undefined, { maximumFractionDigits: 6 });
+                  })()}</dd>
+                </div>
+                <div>
+                  <dt className="text-gray-500">Total AUM</dt>
+                  <dd className="text-gray-900">{(() => {
+                    const v = ledgerHoldings.total_aum as unknown as string | number | undefined;
+                    const n = typeof v === 'string' ? parseFloat(v) : (v ?? 0);
+                    return formatCurrency(isNaN(Number(n)) ? 0 : Number(n));
+                  })()}</dd>
+                </div>
+                <div>
+                  <dt className="text-gray-500">Share Price</dt>
+                  <dd className="text-gray-900">{(() => {
+                    const v = ledgerHoldings.share_price as unknown as string | number | undefined;
+                    const n = typeof v === 'string' ? parseFloat(v) : (v ?? 0);
+                    return `${isNaN(Number(n)) ? '0.0000' : Number(n).toFixed(4)}`;
+                  })()}</dd>
+                </div>
+                <div>
+                  <dt className="text-gray-500">Transactions</dt>
+                  <dd className="text-gray-900">{ledgerHoldings.transaction_count ?? 0}</dd>
+                </div>
+                <div className="col-span-2">
+                  <dt className="text-gray-500">Last Activity</dt>
+                  <dd className="text-gray-900">{ledgerHoldings.last_transaction_at ? format(new Date(String(ledgerHoldings.last_transaction_at)), 'MMM d, yyyy HH:mm') : '—'}</dd>
+                </div>
+              </dl>
+            ) : (
+              <div className="text-sm text-gray-600">No ledger holdings available.</div>
+            )}
+          </div>
+          <div className="bg-white p-4 rounded-lg border border-gray-200 lg:col-span-2">
+            <h2 className="text-lg font-semibold mb-3">Ledger Transactions</h2>
+            <DataTable<any>
+              data={ledgerTransactions}
+              columns={[
+                { key: 'timestamp', title: 'Time', render: (v) => (v ? format(new Date(String(v)), 'MMM d, yyyy HH:mm') : '—') },
+                { key: 'type', title: 'Type' },
+                { key: 'status', title: 'Status' },
+                { key: 'amount_usd', title: 'Amount (USD)', render: (v) => formatCurrency(typeof v === 'string' ? parseFloat(v) : Number(v ?? 0)) },
+                { key: 'shares', title: 'Shares', render: (v) => {
+                  const n = typeof v === 'string' ? parseFloat(v) : Number(v ?? 0);
+                  return isNaN(n) ? '0' : n.toLocaleString(undefined, { maximumFractionDigits: 6 });
+                } },
+                { key: 'price_per_share', title: 'PPS', render: (v) => {
+                  const n = typeof v === 'string' ? parseFloat(v) : Number(v ?? 0);
+                  return isNaN(n) ? '—' : `${n.toFixed(4)}`;
+                } },
+                { key: 'asset', title: 'Asset' },
+                { key: 'account', title: 'Account' },
+                { key: 'asset_quantity', title: 'Qty', render: (v) => {
+                  const n = typeof v === 'string' ? parseFloat(v) : Number(v ?? 0);
+                  return isNaN(n) ? '—' : n.toLocaleString(undefined, { maximumFractionDigits: 6 });
+                } },
+              ]}
+              loading={false}
+              error={null}
+              emptyMessage="No ledger transactions"
+              editable={false}
+              selectableRows={false}
+              data-testid="tokenized-vault-ledger-table"
+            />
+          </div>
+        </div>
       </div>
     );
   }

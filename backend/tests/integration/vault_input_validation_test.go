@@ -26,10 +26,10 @@ func TestVault_DepositValidation(t *testing.T) {
 	invSvc := services.NewInvestmentService(invRepo, txRepo)
 	txSvc := services.NewTransactionService(tdb.database)
 	invHandler := handlers.NewInvestmentHandler(invSvc)
-    vaultHandler := handlers.NewVaultHandler(invSvc, txSvc, nil)
+	vaultHandler := handlers.NewVaultHandler(invSvc, txSvc, nil)
 
 	// Seed an investment via stake
-    seed := makeStakeTx(time.Now(), "USDT", "Kyberswap", 10, 1)
+	seed := makeStakeTx(time.Now(), "USDT", "Kyberswap", 10, 1)
 	b, _ := json.Marshal(seed)
 	req := httptest.NewRequest(http.MethodPost, "/api/investments/stake", bytes.NewReader(b))
 	rr := httptest.NewRecorder()
@@ -90,10 +90,10 @@ func TestVault_WithdrawValidation(t *testing.T) {
 	invSvc := services.NewInvestmentService(invRepo, txRepo)
 	txSvc := services.NewTransactionService(tdb.database)
 	invHandler := handlers.NewInvestmentHandler(invSvc)
-    vaultHandler := handlers.NewVaultHandler(invSvc, txSvc, nil)
+	vaultHandler := handlers.NewVaultHandler(invSvc, txSvc, nil)
 
 	// Seed an investment via stake
-    seed := makeStakeTx(time.Now(), "BTC", "Kyberswap", 5, 2)
+	seed := makeStakeTx(time.Now(), "BTC", "Kyberswap", 5, 2)
 	b, _ := json.Marshal(seed)
 	req := httptest.NewRequest(http.MethodPost, "/api/investments/stake", bytes.NewReader(b))
 	rr := httptest.NewRecorder()
@@ -343,7 +343,7 @@ func TestVault_RouteMisuseAndUnknownActions(t *testing.T) {
 	invRepo := repositories.NewInvestmentRepository(tdb.database)
 	invSvc := services.NewInvestmentService(invRepo, txRepo)
 	txSvc := services.NewTransactionService(tdb.database)
-    vaultHandler := handlers.NewVaultHandler(invSvc, txSvc, nil)
+	vaultHandler := handlers.NewVaultHandler(invSvc, txSvc, nil)
 
 	// POST on GET-only route (now allowed for creation, so expects 400 Bad Request due to nil body)
 	r := httptest.NewRequest(http.MethodPost, "/api/vaults", nil)
@@ -379,10 +379,10 @@ func TestVault_EndZeroROI_APRAbsent(t *testing.T) {
 	invSvc := services.NewInvestmentService(invRepo, txRepo)
 	txSvc := services.NewTransactionService(tdb.database)
 	invHandler := handlers.NewInvestmentHandler(invSvc)
-    vaultHandler := handlers.NewVaultHandler(invSvc, txSvc, nil)
+	vaultHandler := handlers.NewVaultHandler(invSvc, txSvc, nil)
 
 	// Stake 10 @ $1
-    seed := makeStakeTx(time.Now().Add(-24*time.Hour), "USDT", "Kyberswap", 10, 1)
+	seed := makeStakeTx(time.Now().Add(-24*time.Hour), "USDT", "Kyberswap", 10, 1)
 	b, _ := json.Marshal(seed)
 	req := httptest.NewRequest(http.MethodPost, "/api/investments/stake", bytes.NewReader(b))
 	rr := httptest.NewRecorder()
@@ -440,11 +440,11 @@ func TestVault_ListFilter_IsOpen(t *testing.T) {
 	invSvc := services.NewInvestmentService(invRepo, txRepo)
 	txSvc := services.NewTransactionService(tdb.database)
 	invHandler := handlers.NewInvestmentHandler(invSvc)
-    vaultHandler := handlers.NewVaultHandler(invSvc, txSvc, nil)
+	vaultHandler := handlers.NewVaultHandler(invSvc, txSvc, nil)
 
 	// Seed two investments
 	// Open one (no withdraw)
-    seedOpen := makeStakeTx(time.Now().Add(-24*time.Hour), "USDT", "Kyberswap", 10, 1)
+	seedOpen := makeStakeTx(time.Now().Add(-24*time.Hour), "USDT", "Kyberswap", 10, 1)
 	b1, _ := json.Marshal(seedOpen)
 	r1 := httptest.NewRequest(http.MethodPost, "/api/investments/stake", bytes.NewReader(b1))
 	w1 := httptest.NewRecorder()
@@ -454,7 +454,7 @@ func TestVault_ListFilter_IsOpen(t *testing.T) {
 	}
 
 	// Closed one (withdraw all then end)
-    seedClosed := makeStakeTx(time.Now().Add(-24*time.Hour), "BTC", "Kyberswap", 5, 2)
+	seedClosed := makeStakeTx(time.Now().Add(-24*time.Hour), "BTC", "Kyberswap", 5, 2)
 	b2, _ := json.Marshal(seedClosed)
 	r2 := httptest.NewRequest(http.MethodPost, "/api/investments/stake", bytes.NewReader(b2))
 	w2 := httptest.NewRecorder()
@@ -532,10 +532,10 @@ func TestVault_OverWithdraw_CorrectPnL(t *testing.T) {
 	invSvc := services.NewInvestmentService(invRepo, txRepo)
 	txSvc := services.NewTransactionService(tdb.database)
 	invHandler := handlers.NewInvestmentHandler(invSvc)
-    vaultHandler := handlers.NewVaultHandler(invSvc, txSvc, nil)
+	vaultHandler := handlers.NewVaultHandler(invSvc, txSvc, nil)
 
 	// Stake 10 @ $1, then deposit +5 @ $1 (total cost 15)
-    seed := makeStakeTx(time.Now().Add(-48*time.Hour), "USDT", "Kyberswap", 10, 1)
+	seed := makeStakeTx(time.Now().Add(-48*time.Hour), "USDT", "Kyberswap", 10, 1)
 	b, _ := json.Marshal(seed)
 	req := httptest.NewRequest(http.MethodPost, "/api/investments/stake", bytes.NewReader(b))
 	rr := httptest.NewRecorder()
@@ -594,10 +594,10 @@ func TestVaultPnLAndROI_ComputesCorrectly_OnFullExit(t *testing.T) {
 	invSvc := services.NewInvestmentService(invRepo, txRepo)
 	txSvc := services.NewTransactionService(tdb.database)
 	invHandler := handlers.NewInvestmentHandler(invSvc)
-    vaultHandler := handlers.NewVaultHandler(invSvc, txSvc, nil)
+	vaultHandler := handlers.NewVaultHandler(invSvc, txSvc, nil)
 
 	// Seed: deposit 10 @ $1 (USD) two days ago
-    seed := makeStakeTx(time.Now().Add(-48*time.Hour), "USDT", "Kyberswap", 10, 1)
+	seed := makeStakeTx(time.Now().Add(-48*time.Hour), "USDT", "Kyberswap", 10, 1)
 	b, _ := json.Marshal(seed)
 	req := httptest.NewRequest(http.MethodPost, "/api/investments/stake", bytes.NewReader(b))
 	rr := httptest.NewRecorder()
@@ -670,10 +670,10 @@ func TestVaultPnL_RemainsZero_OnPartialWhileOpen(t *testing.T) {
 	invSvc := services.NewInvestmentService(invRepo, txRepo)
 	txSvc := services.NewTransactionService(tdb.database)
 	invHandler := handlers.NewInvestmentHandler(invSvc)
-    vaultHandler := handlers.NewVaultHandler(invSvc, txSvc, nil)
+	vaultHandler := handlers.NewVaultHandler(invSvc, txSvc, nil)
 
 	// One deposit 10 @ $2
-    seed := makeStakeTx(time.Now().Add(-24*time.Hour), "BTC", "Kyberswap", 10, 2)
+	seed := makeStakeTx(time.Now().Add(-24*time.Hour), "BTC", "Kyberswap", 10, 2)
 	b, _ := json.Marshal(seed)
 	req := httptest.NewRequest(http.MethodPost, "/api/investments/stake", bytes.NewReader(b))
 	rr := httptest.NewRecorder()
@@ -712,104 +712,4 @@ func TestVaultPnL_RemainsZero_OnPartialWhileOpen(t *testing.T) {
 	}
 }
 
-// Table-driven deposit validation helper
-type depositValidationCase struct {
-	name         string
-	body         map[string]interface{}
-	expectedCode int
-}
 
-func runDepositValidationTests(t *testing.T, tdb *testDB, invHandler handlers.InvestmentHandler, vaultHandler handlers.VaultHandler, createdID string) {
-	tests := []depositValidationCase{
-		{"bad JSON", map[string]interface{}{}, http.StatusBadRequest},
-		{"quantity < 0", map[string]interface{}{"quantity": -1, "cost": 0}, http.StatusBadRequest},
-		{"quantity = 0 should be allowed", map[string]interface{}{"quantity": 0, "cost": 0}, http.StatusCreated},
-		{"cost < 0", map[string]interface{}{"quantity": 1, "cost": -1}, http.StatusBadRequest},
-		{"not found", map[string]interface{}{"quantity": 1, "cost": 1}, http.StatusNotFound},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			depJSON, _ := json.Marshal(tc.body)
-			path := "/api/vaults/" + createdID + "/deposit"
-			if tc.name == "not found" {
-				path = "/api/vaults/not-found-id/deposit"
-			}
-			r := httptest.NewRequest(http.MethodPost, path, bytes.NewReader(depJSON))
-			w := httptest.NewRecorder()
-			vaultHandler.HandleVault(w, r)
-			assert.Equal(t, tc.expectedCode, w.Code)
-		})
-	}
-
-	// Valid case
-	validBody := map[string]interface{}{"quantity": 1, "cost": 1}
-	validJSON, _ := json.Marshal(validBody)
-	rValid := httptest.NewRequest(http.MethodPost, "/api/vaults/"+createdID+"/deposit", bytes.NewReader(validJSON))
-	wValid := httptest.NewRecorder()
-	vaultHandler.HandleVault(wValid, rValid)
-	assert.Equal(t, http.StatusCreated, wValid.Code)
-}
-
-// Table-driven withdraw validation helper
-type withdrawValidationCase struct {
-	name         string
-	body         map[string]interface{}
-	expectedCode int
-}
-
-func runWithdrawValidationTests(t *testing.T, tdb *testDB, invHandler handlers.InvestmentHandler, vaultHandler handlers.VaultHandler, createdID string) {
-	tests := []withdrawValidationCase{
-		{"bad JSON", map[string]interface{}{}, http.StatusBadRequest},
-		{"quantity <= 0", map[string]interface{}{"quantity": 0, "value": 0}, http.StatusBadRequest},
-		{"value < 0", map[string]interface{}{"quantity": 1, "value": -1}, http.StatusBadRequest},
-		{"not found", map[string]interface{}{"quantity": 1, "value": 1}, http.StatusNotFound},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			wdJSON, _ := json.Marshal(tc.body)
-			path := "/api/vaults/" + createdID + "/withdraw"
-			if tc.name == "not found" {
-				path = "/api/vaults/not-found-id/withdraw"
-			}
-			r := httptest.NewRequest(http.MethodPost, path, bytes.NewReader(wdJSON))
-			w := httptest.NewRecorder()
-			vaultHandler.HandleVault(w, r)
-			assert.Equal(t, tc.expectedCode, w.Code)
-		})
-	}
-
-	// Valid case
-	validBody := map[string]interface{}{"quantity": 1, "value": 1}
-	validJSON, _ := json.Marshal(validBody)
-	rValid := httptest.NewRequest(http.MethodPost, "/api/vaults/"+createdID+"/withdraw", bytes.NewReader(validJSON))
-	wValid := httptest.NewRecorder()
-	vaultHandler.HandleVault(wValid, rValid)
-	assert.Equal(t, http.StatusCreated, wValid.Code)
-}
-
-// Table-driven route misuse validation helper
-type routeMisuseCase struct {
-	method       string
-	path         string
-	expectedCode int
-	handler      http.HandlerFunc
-}
-
-func runRouteMisuseTests(t *testing.T, tdb *testDB, vaultHandler handlers.VaultHandler) {
-	tests := []routeMisuseCase{
-		{"POST", "/api/vaults", http.StatusMethodNotAllowed, vaultHandler.HandleVaults},
-		{"GET", "/api/vaults/some-id/withdraw", http.StatusMethodNotAllowed, vaultHandler.HandleVault},
-		{"POST", "/api/vaults/some-id/unknown", http.StatusNotFound, vaultHandler.HandleVault},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.method+" "+tc.path, func(t *testing.T) {
-			r := httptest.NewRequest(tc.method, tc.path, nil)
-			w := httptest.NewRecorder()
-			tc.handler(w, r)
-			assert.Equal(t, tc.expectedCode, w.Code)
-		})
-	}
-}

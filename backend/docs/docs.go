@@ -35,7 +35,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/github_com_tropicaldog17_nami_internal_models.ActionRequest"
+                            "$ref": "#/definitions/models.ActionRequest"
                         }
                     }
                 ],
@@ -43,7 +43,7 @@ const docTemplate = `{
                     "201": {
                         "description": "Created",
                         "schema": {
-                            "$ref": "#/definitions/github_com_tropicaldog17_nami_internal_models.ActionResponse"
+                            "$ref": "#/definitions/models.ActionResponse"
                         }
                     },
                     "400": {
@@ -209,7 +209,7 @@ const docTemplate = `{
                         "schema": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/github_com_tropicaldog17_nami_internal_models.Investment"
+                                "$ref": "#/definitions/models.Investment"
                             }
                         }
                     },
@@ -263,7 +263,7 @@ const docTemplate = `{
                         "schema": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/github_com_tropicaldog17_nami_internal_models.Investment"
+                                "$ref": "#/definitions/models.Investment"
                             }
                         }
                     },
@@ -302,7 +302,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/github_com_tropicaldog17_nami_internal_models.Transaction"
+                            "$ref": "#/definitions/models.Transaction"
                         }
                     }
                 ],
@@ -310,7 +310,7 @@ const docTemplate = `{
                     "201": {
                         "description": "Created",
                         "schema": {
-                            "$ref": "#/definitions/github_com_tropicaldog17_nami_internal_models.Investment"
+                            "$ref": "#/definitions/models.Investment"
                         }
                     },
                     "400": {
@@ -371,7 +371,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/github_com_tropicaldog17_nami_internal_models.InvestmentSummary"
+                            "$ref": "#/definitions/models.InvestmentSummary"
                         }
                     },
                     "500": {
@@ -403,7 +403,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/github_com_tropicaldog17_nami_internal_models.Transaction"
+                            "$ref": "#/definitions/models.Transaction"
                         }
                     }
                 ],
@@ -411,7 +411,7 @@ const docTemplate = `{
                     "201": {
                         "description": "Created",
                         "schema": {
-                            "$ref": "#/definitions/github_com_tropicaldog17_nami_internal_models.Investment"
+                            "$ref": "#/definitions/models.Investment"
                         }
                     },
                     "400": {
@@ -455,7 +455,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/github_com_tropicaldog17_nami_internal_models.Investment"
+                            "$ref": "#/definitions/models.Investment"
                         }
                     },
                     "404": {
@@ -565,7 +565,7 @@ const docTemplate = `{
                         "schema": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/github_com_tropicaldog17_nami_internal_models.OutstandingBorrow"
+                                "$ref": "#/definitions/models.OutstandingBorrow"
                             }
                         }
                     },
@@ -612,7 +612,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/github_com_tropicaldog17_nami_internal_models.CashFlowReport"
+                            "$ref": "#/definitions/models.CashFlowReport"
                         }
                     },
                     "400": {
@@ -654,7 +654,7 @@ const docTemplate = `{
                         "schema": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/github_com_tropicaldog17_nami_internal_models.OutflowProjection"
+                                "$ref": "#/definitions/models.OutflowProjection"
                             }
                         }
                     },
@@ -691,7 +691,7 @@ const docTemplate = `{
                         "schema": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/github_com_tropicaldog17_nami_internal_models.Holding"
+                                "$ref": "#/definitions/models.Holding"
                             }
                         }
                     },
@@ -726,7 +726,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/github_com_tropicaldog17_nami_internal_models.HoldingSummary"
+                            "$ref": "#/definitions/models.HoldingSummary"
                         }
                     },
                     "500": {
@@ -772,7 +772,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/github_com_tropicaldog17_nami_internal_models.PnLReport"
+                            "$ref": "#/definitions/models.PnLReport"
                         }
                     },
                     "400": {
@@ -824,7 +824,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/github_com_tropicaldog17_nami_internal_models.SpendingReport"
+                            "$ref": "#/definitions/models.SpendingReport"
                         }
                     },
                     "400": {
@@ -899,6 +899,12 @@ const docTemplate = `{
                         "in": "query"
                     },
                     {
+                        "type": "string",
+                        "description": "Target currencies for FX conversion (comma-separated), defaults to USD,VND",
+                        "name": "currencies",
+                        "in": "query"
+                    },
+                    {
                         "type": "integer",
                         "description": "Limit",
                         "name": "limit",
@@ -913,11 +919,11 @@ const docTemplate = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "OK",
+                        "description": "Basic transactions without FX conversion",
                         "schema": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/github_com_tropicaldog17_nami_internal_models.Transaction"
+                                "$ref": "#/definitions/models.Transaction"
                             }
                         }
                     },
@@ -991,6 +997,12 @@ const docTemplate = `{
                         "in": "query"
                     },
                     {
+                        "type": "string",
+                        "description": "Target currencies for FX conversion (comma-separated), defaults to USD,VND",
+                        "name": "currencies",
+                        "in": "query"
+                    },
+                    {
                         "type": "integer",
                         "description": "Limit",
                         "name": "limit",
@@ -1005,11 +1017,11 @@ const docTemplate = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "OK",
+                        "description": "Basic transactions without FX conversion",
                         "schema": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/github_com_tropicaldog17_nami_internal_models.Transaction"
+                                "$ref": "#/definitions/models.Transaction"
                             }
                         }
                     },
@@ -1054,7 +1066,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/github_com_tropicaldog17_nami_internal_models.Transaction"
+                            "$ref": "#/definitions/models.Transaction"
                         }
                     },
                     "400": {
@@ -1102,7 +1114,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/github_com_tropicaldog17_nami_internal_models.Transaction"
+                            "$ref": "#/definitions/models.Transaction"
                         }
                     },
                     "400": {
@@ -1150,7 +1162,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/github_com_tropicaldog17_nami_internal_models.Transaction"
+                            "$ref": "#/definitions/models.Transaction"
                         }
                     },
                     "400": {
@@ -1173,10 +1185,315 @@ const docTemplate = `{
                     }
                 }
             }
+        },
+        "/vaults/{vaultId}/assets/{asset}/holdings": {
+            "get": {
+                "description": "Get derived holdings for a specific asset/account within a vault",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "vaults"
+                ],
+                "summary": "Get asset holdings in a vault (derived)",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Vault ID",
+                        "name": "vaultId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Asset symbol",
+                        "name": "asset",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Account name",
+                        "name": "account",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Bad request",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/vaults/{vaultId}/holdings": {
+            "get": {
+                "description": "Get derived vault holdings from transaction ledger",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "vaults"
+                ],
+                "summary": "Get vault holdings (derived)",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Vault ID",
+                        "name": "vaultId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/vaults/{vaultId}/transactions": {
+            "get": {
+                "description": "List transactions for a vault (supports limit, offset, type, status)",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "vaults"
+                ],
+                "summary": "List vault transactions",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Vault ID",
+                        "name": "vaultId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Limit",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Offset",
+                        "name": "offset",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Transaction type",
+                        "name": "type",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Status",
+                        "name": "status",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/models.VaultTransaction"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "description": "Create a new transaction recorded in the vault ledger",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "vaults"
+                ],
+                "summary": "Create a vault transaction",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Vault ID",
+                        "name": "vaultId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Vault transaction payload",
+                        "name": "payload",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.VaultTransaction"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/models.VaultTransaction"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad request",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/vaults/{vaultId}/user/{userId}/holdings": {
+            "get": {
+                "description": "Get derived user holdings in a vault from transaction ledger",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "vaults"
+                ],
+                "summary": "Get user holdings (derived)",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Vault ID",
+                        "name": "vaultId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "User ID",
+                        "name": "userId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/vaults/{vaultId}/user/{userId}/transactions": {
+            "get": {
+                "description": "List transactions for a user in a vault (supports limit, offset)",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "vaults"
+                ],
+                "summary": "List user transactions in a vault",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Vault ID",
+                        "name": "vaultId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "User ID",
+                        "name": "userId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Limit",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Offset",
+                        "name": "offset",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/models.VaultTransaction"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
         }
     },
     "definitions": {
-        "github_com_tropicaldog17_nami_internal_models.AccountPnL": {
+        "models.AccountPnL": {
             "type": "object",
             "properties": {
                 "account": {
@@ -1202,7 +1519,7 @@ const docTemplate = `{
                 }
             }
         },
-        "github_com_tropicaldog17_nami_internal_models.ActionRequest": {
+        "models.ActionRequest": {
             "type": "object",
             "properties": {
                 "action": {
@@ -1214,7 +1531,7 @@ const docTemplate = `{
                 }
             }
         },
-        "github_com_tropicaldog17_nami_internal_models.ActionResponse": {
+        "models.ActionResponse": {
             "type": "object",
             "properties": {
                 "action": {
@@ -1226,12 +1543,12 @@ const docTemplate = `{
                 "transactions": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/github_com_tropicaldog17_nami_internal_models.Transaction"
+                        "$ref": "#/definitions/models.Transaction"
                     }
                 }
             }
         },
-        "github_com_tropicaldog17_nami_internal_models.AssetPnL": {
+        "models.AssetPnL": {
             "type": "object",
             "properties": {
                 "asset": {
@@ -1263,7 +1580,7 @@ const docTemplate = `{
                 }
             }
         },
-        "github_com_tropicaldog17_nami_internal_models.CashFlowByType": {
+        "models.CashFlowByType": {
             "type": "object",
             "properties": {
                 "count": {
@@ -1289,19 +1606,19 @@ const docTemplate = `{
                 }
             }
         },
-        "github_com_tropicaldog17_nami_internal_models.CashFlowReport": {
+        "models.CashFlowReport": {
             "type": "object",
             "properties": {
                 "by_tag": {
                     "type": "object",
                     "additionalProperties": {
-                        "$ref": "#/definitions/github_com_tropicaldog17_nami_internal_models.CashFlowByType"
+                        "$ref": "#/definitions/models.CashFlowByType"
                     }
                 },
                 "by_type": {
                     "type": "object",
                     "additionalProperties": {
-                        "$ref": "#/definitions/github_com_tropicaldog17_nami_internal_models.CashFlowByType"
+                        "$ref": "#/definitions/models.CashFlowByType"
                     }
                 },
                 "combined_in_usd": {
@@ -1368,7 +1685,7 @@ const docTemplate = `{
                     "type": "number"
                 },
                 "period": {
-                    "$ref": "#/definitions/github_com_tropicaldog17_nami_internal_models.Period"
+                    "$ref": "#/definitions/models.Period"
                 },
                 "total_in_usd": {
                     "type": "number"
@@ -1384,7 +1701,7 @@ const docTemplate = `{
                 }
             }
         },
-        "github_com_tropicaldog17_nami_internal_models.CostBasisMethod": {
+        "models.CostBasisMethod": {
             "type": "string",
             "enum": [
                 "fifo",
@@ -1397,7 +1714,7 @@ const docTemplate = `{
                 "CostBasisAverage"
             ]
         },
-        "github_com_tropicaldog17_nami_internal_models.Holding": {
+        "models.Holding": {
             "type": "object",
             "properties": {
                 "account": {
@@ -1430,7 +1747,7 @@ const docTemplate = `{
                 }
             }
         },
-        "github_com_tropicaldog17_nami_internal_models.HoldingSummary": {
+        "models.HoldingSummary": {
             "type": "object",
             "properties": {
                 "by_account": {
@@ -1438,14 +1755,14 @@ const docTemplate = `{
                     "additionalProperties": {
                         "type": "array",
                         "items": {
-                            "$ref": "#/definitions/github_com_tropicaldog17_nami_internal_models.Holding"
+                            "$ref": "#/definitions/models.Holding"
                         }
                     }
                 },
                 "by_asset": {
                     "type": "object",
                     "additionalProperties": {
-                        "$ref": "#/definitions/github_com_tropicaldog17_nami_internal_models.Holding"
+                        "$ref": "#/definitions/models.Holding"
                     }
                 },
                 "last_updated": {
@@ -1459,7 +1776,7 @@ const docTemplate = `{
                 }
             }
         },
-        "github_com_tropicaldog17_nami_internal_models.Investment": {
+        "models.Investment": {
             "type": "object",
             "properties": {
                 "account": {
@@ -1472,7 +1789,7 @@ const docTemplate = `{
                     "description": "Configuration",
                     "allOf": [
                         {
-                            "$ref": "#/definitions/github_com_tropicaldog17_nami_internal_models.CostBasisMethod"
+                            "$ref": "#/definitions/models.CostBasisMethod"
                         }
                     ]
                 },
@@ -1502,6 +1819,9 @@ const docTemplate = `{
                 "id": {
                     "type": "string"
                 },
+                "is_migrated": {
+                    "type": "boolean"
+                },
                 "is_open": {
                     "description": "Status and quantities",
                     "type": "boolean"
@@ -1523,6 +1843,10 @@ const docTemplate = `{
                 "updated_at": {
                     "type": "string"
                 },
+                "vault_id": {
+                    "description": "Vault migration fields",
+                    "type": "string"
+                },
                 "withdrawal_date": {
                     "description": "Withdrawal information (if closed)",
                     "type": "string"
@@ -1538,7 +1862,7 @@ const docTemplate = `{
                 }
             }
         },
-        "github_com_tropicaldog17_nami_internal_models.InvestmentSummary": {
+        "models.InvestmentSummary": {
             "type": "object",
             "properties": {
                 "closed_investments": {
@@ -1573,7 +1897,7 @@ const docTemplate = `{
                 }
             }
         },
-        "github_com_tropicaldog17_nami_internal_models.OutflowProjection": {
+        "models.OutflowProjection": {
             "type": "object",
             "properties": {
                 "account": {
@@ -1599,7 +1923,7 @@ const docTemplate = `{
                 }
             }
         },
-        "github_com_tropicaldog17_nami_internal_models.OutstandingBorrow": {
+        "models.OutstandingBorrow": {
             "type": "object",
             "properties": {
                 "account": {
@@ -1613,7 +1937,7 @@ const docTemplate = `{
                 }
             }
         },
-        "github_com_tropicaldog17_nami_internal_models.Period": {
+        "models.Period": {
             "type": "object",
             "properties": {
                 "end_date": {
@@ -1624,23 +1948,23 @@ const docTemplate = `{
                 }
             }
         },
-        "github_com_tropicaldog17_nami_internal_models.PnLReport": {
+        "models.PnLReport": {
             "type": "object",
             "properties": {
                 "by_account": {
                     "type": "object",
                     "additionalProperties": {
-                        "$ref": "#/definitions/github_com_tropicaldog17_nami_internal_models.AccountPnL"
+                        "$ref": "#/definitions/models.AccountPnL"
                     }
                 },
                 "by_asset": {
                     "type": "object",
                     "additionalProperties": {
-                        "$ref": "#/definitions/github_com_tropicaldog17_nami_internal_models.AssetPnL"
+                        "$ref": "#/definitions/models.AssetPnL"
                     }
                 },
                 "period": {
-                    "$ref": "#/definitions/github_com_tropicaldog17_nami_internal_models.Period"
+                    "$ref": "#/definitions/models.Period"
                 },
                 "realized_pnl_usd": {
                     "type": "number"
@@ -1659,7 +1983,7 @@ const docTemplate = `{
                 }
             }
         },
-        "github_com_tropicaldog17_nami_internal_models.SpendingByDay": {
+        "models.SpendingByDay": {
             "type": "object",
             "properties": {
                 "amount_usd": {
@@ -1673,7 +1997,7 @@ const docTemplate = `{
                 }
             }
         },
-        "github_com_tropicaldog17_nami_internal_models.SpendingByTag": {
+        "models.SpendingByTag": {
             "type": "object",
             "properties": {
                 "amount_usd": {
@@ -1690,35 +2014,35 @@ const docTemplate = `{
                 }
             }
         },
-        "github_com_tropicaldog17_nami_internal_models.SpendingReport": {
+        "models.SpendingReport": {
             "type": "object",
             "properties": {
                 "by_counterparty": {
                     "type": "object",
                     "additionalProperties": {
-                        "$ref": "#/definitions/github_com_tropicaldog17_nami_internal_models.SpendingByTag"
+                        "$ref": "#/definitions/models.SpendingByTag"
                     }
                 },
                 "by_day": {
                     "description": "Daily breakdown of spending (outflows only) keyed by YYYY-MM-DD",
                     "type": "object",
                     "additionalProperties": {
-                        "$ref": "#/definitions/github_com_tropicaldog17_nami_internal_models.SpendingByDay"
+                        "$ref": "#/definitions/models.SpendingByDay"
                     }
                 },
                 "by_tag": {
                     "type": "object",
                     "additionalProperties": {
-                        "$ref": "#/definitions/github_com_tropicaldog17_nami_internal_models.SpendingByTag"
+                        "$ref": "#/definitions/models.SpendingByTag"
                     }
                 },
                 "period": {
-                    "$ref": "#/definitions/github_com_tropicaldog17_nami_internal_models.Period"
+                    "$ref": "#/definitions/models.Period"
                 },
                 "top_expenses": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/github_com_tropicaldog17_nami_internal_models.TransactionSummary"
+                        "$ref": "#/definitions/models.TransactionSummary"
                     }
                 },
                 "total_usd": {
@@ -1729,20 +2053,14 @@ const docTemplate = `{
                 }
             }
         },
-        "github_com_tropicaldog17_nami_internal_models.Transaction": {
+        "models.Transaction": {
             "type": "object",
             "properties": {
                 "account": {
                     "type": "string"
                 },
                 "amount_local": {
-                    "description": "FX and dual currency",
-                    "type": "number"
-                },
-                "amount_usd": {
-                    "type": "number"
-                },
-                "amount_vnd": {
+                    "description": "Amount fields",
                     "type": "number"
                 },
                 "asset": {
@@ -1758,16 +2076,14 @@ const docTemplate = `{
                 "borrow_term_days": {
                     "type": "integer"
                 },
-                "cashflow_usd": {
-                    "type": "number"
-                },
-                "cashflow_vnd": {
+                "cashflow_local": {
                     "type": "number"
                 },
                 "counterparty": {
                     "type": "string"
                 },
                 "created_at": {
+                    "description": "Audit fields",
                     "type": "string"
                 },
                 "date": {
@@ -1783,27 +2099,8 @@ const docTemplate = `{
                 "exit_date": {
                     "type": "string"
                 },
-                "fee_usd": {
-                    "description": "Fees",
-                    "type": "number"
-                },
-                "fee_vnd": {
-                    "type": "number"
-                },
-                "fx_impact": {
-                    "type": "number"
-                },
-                "fx_source": {
-                    "description": "Audit fields",
-                    "type": "string"
-                },
-                "fx_timestamp": {
-                    "type": "string"
-                },
-                "fx_to_usd": {
-                    "type": "number"
-                },
-                "fx_to_vnd": {
+                "fee_local": {
+                    "description": "Fees (stored in local currency, will be converted dynamically)",
                     "type": "number"
                 },
                 "horizon": {
@@ -1819,6 +2116,9 @@ const docTemplate = `{
                 },
                 "investment_id": {
                     "description": "Enhanced investment tracking - links transaction to investment position",
+                    "type": "string"
+                },
+                "local_currency": {
                     "type": "string"
                 },
                 "note": {
@@ -1842,7 +2142,7 @@ const docTemplate = `{
                 }
             }
         },
-        "github_com_tropicaldog17_nami_internal_models.TransactionSummary": {
+        "models.TransactionSummary": {
             "type": "object",
             "properties": {
                 "account": {
@@ -1876,6 +2176,233 @@ const docTemplate = `{
                     "type": "string"
                 }
             }
+        },
+        "models.TransactionWithFX": {
+            "type": "object",
+            "properties": {
+                "account": {
+                    "type": "string"
+                },
+                "amount_local": {
+                    "description": "Amount fields",
+                    "type": "number"
+                },
+                "asset": {
+                    "type": "string"
+                },
+                "borrow_active": {
+                    "type": "boolean"
+                },
+                "borrow_apr": {
+                    "description": "Borrow metadata (for type = 'borrow')",
+                    "type": "number"
+                },
+                "borrow_term_days": {
+                    "type": "integer"
+                },
+                "cashflow_local": {
+                    "type": "number"
+                },
+                "counterparty": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "description": "Audit fields",
+                    "type": "string"
+                },
+                "date": {
+                    "type": "string"
+                },
+                "delta_qty": {
+                    "description": "Derived metrics",
+                    "type": "number"
+                },
+                "entry_date": {
+                    "type": "string"
+                },
+                "exit_date": {
+                    "type": "string"
+                },
+                "fee_local": {
+                    "description": "Fees (stored in local currency, will be converted dynamically)",
+                    "type": "number"
+                },
+                "fx_rates": {
+                    "description": "Map of currency pairs to rates, e.g., \"USD-VND\": 24000",
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "number"
+                    }
+                },
+                "horizon": {
+                    "description": "Optional tracking",
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "internal_flow": {
+                    "description": "Flow flags",
+                    "type": "boolean"
+                },
+                "investment_id": {
+                    "description": "Enhanced investment tracking - links transaction to investment position",
+                    "type": "string"
+                },
+                "local_currency": {
+                    "type": "string"
+                },
+                "note": {
+                    "type": "string"
+                },
+                "price_local": {
+                    "type": "number"
+                },
+                "quantity": {
+                    "description": "Amount fields",
+                    "type": "number"
+                },
+                "tag": {
+                    "type": "string"
+                },
+                "type": {
+                    "type": "string"
+                },
+                "updated_at": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.VaultTransaction": {
+            "type": "object",
+            "properties": {
+                "account": {
+                    "type": "string"
+                },
+                "amount_usd": {
+                    "description": "Financial amounts",
+                    "type": "number"
+                },
+                "asset": {
+                    "description": "Asset information (for rebalancing and asset-specific transactions)",
+                    "type": "string"
+                },
+                "asset_price": {
+                    "type": "number"
+                },
+                "asset_quantity": {
+                    "type": "number"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "created_by": {
+                    "description": "Audit fields",
+                    "type": "string"
+                },
+                "executed_at": {
+                    "type": "string"
+                },
+                "external_tx_id": {
+                    "type": "string"
+                },
+                "fee_amount": {
+                    "description": "Fee information",
+                    "type": "number"
+                },
+                "fee_rate": {
+                    "type": "number"
+                },
+                "fee_type": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "notes": {
+                    "type": "string"
+                },
+                "price_per_share": {
+                    "type": "number"
+                },
+                "share_price_after": {
+                    "type": "number"
+                },
+                "share_price_before": {
+                    "type": "number"
+                },
+                "shares": {
+                    "type": "number"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "timestamp": {
+                    "description": "Metadata",
+                    "type": "string"
+                },
+                "transaction_hash": {
+                    "type": "string"
+                },
+                "type": {
+                    "description": "Transaction details",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/models.VaultTransactionType"
+                        }
+                    ]
+                },
+                "updated_at": {
+                    "type": "string"
+                },
+                "user_id": {
+                    "type": "string"
+                },
+                "user_shares_after": {
+                    "type": "number"
+                },
+                "user_shares_before": {
+                    "description": "User balance snapshots",
+                    "type": "number"
+                },
+                "vault_aum_after": {
+                    "type": "number"
+                },
+                "vault_aum_before": {
+                    "description": "Price and valuation information",
+                    "type": "number"
+                },
+                "vault_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.VaultTransactionType": {
+            "type": "string",
+            "enum": [
+                "deposit",
+                "withdrawal",
+                "mint_shares",
+                "burn_shares",
+                "rebalance",
+                "fee",
+                "yield",
+                "income",
+                "expense",
+                "valuation"
+            ],
+            "x-enum-varnames": [
+                "VaultTxTypeDeposit",
+                "VaultTxTypeWithdrawal",
+                "VaultTxTypeMintShares",
+                "VaultTxTypeBurnShares",
+                "VaultTxTypeRebalance",
+                "VaultTxTypeFee",
+                "VaultTxTypeYield",
+                "VaultTxTypeIncome",
+                "VaultTxTypeExpense",
+                "VaultTxTypeValuation"
+            ]
         }
     }
 }`

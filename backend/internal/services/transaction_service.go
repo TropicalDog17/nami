@@ -94,16 +94,7 @@ func (s *transactionService) DeleteActionGroup(ctx context.Context, oneID string
 	return s.txRepo.DeleteActionGroup(ctx, oneID)
 }
 
-// pqStringArray converts []string to a driver-friendly array parameter
-func pqStringArray(items []string) interface{} {
-	// Rely on pq array inference by using the pg-style array literal via sql package isn't straightforward here.
-	// We can use the text[] cast pattern.
-	// However, since we're using Exec with ANY($1), most drivers require pq.Array.
-	// To avoid importing lib/pq here, we pass as []any for IN building; keep simple using ANY with text[] literal.
-	// Fallback: build a text array literal. Ensure proper escaping is not needed for UUIDs.
-	// NOTE: Using this helper for simplicity within this codebase; consider pq.Array in future.
-	return interface{}(items)
-}
+
 
 // RecalculateFX recalculates FX rates and derived amounts for existing transactions.
 // If onlyMissing is true, only updates rows where FX is zero for either USD or VND.
