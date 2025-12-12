@@ -13,7 +13,8 @@ Able to record new spending of User
 
 
 ## 5. Preconditions
-- User at the homepage/transaction page
+- User has at least one account to spend from
+- User is on any screen where “Add Expense” button is available
 
 ## 6. Trigger
 User click: "Add Expense" or similar functionaltity button.
@@ -49,10 +50,15 @@ E2 – Database write fails
 ## 10. Postconditions
 
 ### Success
-- 
+- The expense transaction is recorded in the database
+- A new expense rows is shown in the Transaction page
+- The Account balance is deducted
+- The Cashflow outflow is increased
 
 ### Failure
 - 
-
+- No new record is recorded in the database
+- No new row added in the Transaction page
+- Everything stay the same
 ---
 
