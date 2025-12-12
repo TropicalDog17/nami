@@ -327,9 +327,17 @@ export const tokenizedVaultApi = {
 
   // Deposits and withdrawals (consolidated endpoints)
   deposit: <T = unknown>(id: string, data: { amount: number; notes?: string; source_account?: string }) =>
-    api.post<T>(`/api/cons-vaults/${id}/deposit`, { amount: data.amount }),
+    api.post<T>(`/api/cons-vaults/${id}/deposit`, {
+      amount: data.amount,
+      ...(data.notes ? { notes: data.notes } : {}),
+      ...(data.source_account ? { source_account: data.source_account } : {}),
+    }),
   withdraw: <T = unknown>(id: string, data: { amount: number; notes?: string; target_account?: string }) =>
-    api.post<T>(`/api/cons-vaults/${id}/withdraw`, { amount: data.amount }),
+    api.post<T>(`/api/cons-vaults/${id}/withdraw`, {
+      amount: data.amount,
+      ...(data.notes ? { notes: data.notes } : {}),
+      ...(data.target_account ? { target_account: data.target_account } : {}),
+    }),
 
   // Vault management (deprecated)
   close: <T = unknown>(id: string) => api.post<T>(`/api/cons-vaults/${id}/close`, {}),

@@ -1,0 +1,279 @@
+{
+  "transactions": [
+    {
+      "id": "bf583a19-83fb-493d-91c8-1a969b4effd1",
+      "type": "INITIAL",
+      "asset": {
+        "type": "CRYPTO",
+        "symbol": "USDT"
+      },
+      "amount": 1000,
+      "createdAt": "2025-12-11T00:00:00.000Z",
+      "account": "Bank",
+      "rate": {
+        "asset": {
+          "type": "CRYPTO",
+          "symbol": "USDT"
+        },
+        "rateUSD": 1,
+        "timestamp": "2025-12-11T00:00:00.000Z",
+        "source": "COINGECKO"
+      },
+      "usdAmount": 1000
+    },
+    {
+      "id": "dd9eab83-a009-4a89-8f72-c56515afb25f",
+      "type": "INCOME",
+      "note": "",
+      "asset": {
+        "type": "FIAT",
+        "symbol": "USD"
+      },
+      "amount": 1,
+      "createdAt": "2025-12-11T16:33:34.480Z",
+      "account": "Binance",
+      "rate": {
+        "asset": {
+          "type": "FIAT",
+          "symbol": "USD"
+        },
+        "rateUSD": 1,
+        "timestamp": "2025-12-11T16:33:00.000Z",
+        "source": "FIXED"
+      },
+      "usdAmount": 1
+    },
+    {
+      "id": "95009433-0b1c-49ea-a904-40f2d19c48a6",
+      "type": "EXPENSE",
+      "note": "",
+      "asset": {
+        "type": "FIAT",
+        "symbol": "USD"
+      },
+      "amount": 1,
+      "createdAt": "2025-12-11T16:41:29.959Z",
+      "account": "Cash",
+      "rate": {
+        "asset": {
+          "type": "FIAT",
+          "symbol": "USD"
+        },
+        "rateUSD": 1,
+        "timestamp": "2025-12-11T16:41:00.000Z",
+        "source": "FIXED"
+      },
+      "usdAmount": 1
+    },
+    {
+      "id": "47e45d45-ac71-4d5c-911d-e18862b832b1",
+      "type": "INCOME",
+      "asset": {
+        "type": "FIAT",
+        "symbol": "USD"
+      },
+      "amount": 1000,
+      "createdAt": "2025-12-11",
+      "account": "Vault",
+      "rate": {
+        "asset": {
+          "type": "FIAT",
+          "symbol": "USD"
+        },
+        "rateUSD": 1,
+        "timestamp": "2025-12-11T00:00:00.000Z",
+        "source": "FIXED"
+      },
+      "usdAmount": 1000
+    },
+    {
+      "id": "40f0b54a-9766-467f-8464-0f33463b184a",
+      "type": "INCOME",
+      "asset": {
+        "type": "FIAT",
+        "symbol": "USD"
+      },
+      "amount": 1000,
+      "createdAt": "2025-12-11T16:59:08.111Z",
+      "account": "Vault",
+      "rate": {
+        "asset": {
+          "type": "FIAT",
+          "symbol": "USD"
+        },
+        "rateUSD": 1,
+        "timestamp": "2025-12-11T16:59:00.000Z",
+        "source": "FIXED"
+      },
+      "usdAmount": 1000
+    },
+    {
+      "id": "47d1cb04-414e-469e-9e14-349e87c211a5",
+      "type": "EXPENSE",
+      "note": "deposit",
+      "asset": {
+        "type": "FIAT",
+        "symbol": "USD"
+      },
+      "amount": 1000,
+      "createdAt": "2025-12-11T16:59:08.115Z",
+      "rate": {
+        "asset": {
+          "type": "FIAT",
+          "symbol": "USD"
+        },
+        "rateUSD": 1,
+        "timestamp": "2025-12-11T16:59:00.000Z",
+        "source": "FIXED"
+      },
+      "usdAmount": 1000,
+      "account": "Bank"
+    }
+  ],
+  "vaults": [
+    {
+      "name": "Vault",
+      "status": "ACTIVE",
+      "createdAt": "2025-12-11T16:58:49.108Z"
+    }
+  ],
+  "vaultEntries": [
+    {
+      "vault": "Vault",
+      "type": "DEPOSIT",
+      "asset": {
+        "type": "FIAT",
+        "symbol": "USD"
+      },
+      "amount": 1000,
+      "usdValue": 1000,
+      "at": "2025-12-11"
+    },
+    {
+      "vault": "Vault",
+      "type": "DEPOSIT",
+      "asset": {
+        "type": "FIAT",
+        "symbol": "USD"
+      },
+      "amount": 1000,
+      "usdValue": 1000,
+      "at": "2025-12-11T16:59:08.111Z"
+    }
+  ],
+  "adminTypes": [
+    {
+      "id": 1,
+      "name": "INITIAL",
+      "description": "Starting balance entries for assets/accounts",
+      "is_active": true,
+      "created_at": "2025-12-11T16:54:50.960Z"
+    },
+    {
+      "id": 2,
+      "name": "INCOME",
+      "description": "Incoming funds (salary, sales, deposits)",
+      "is_active": true,
+      "created_at": "2025-12-11T16:54:50.960Z"
+    },
+    {
+      "id": 3,
+      "name": "EXPENSE",
+      "description": "Outgoing funds (purchases, fees, withdrawals)",
+      "is_active": true,
+      "created_at": "2025-12-11T16:54:50.960Z"
+    },
+    {
+      "id": 4,
+      "name": "BORROW",
+      "description": "Borrowed funds creating a liability",
+      "is_active": true,
+      "created_at": "2025-12-11T16:54:50.960Z"
+    },
+    {
+      "id": 5,
+      "name": "LOAN",
+      "description": "Lent funds creating a receivable",
+      "is_active": true,
+      "created_at": "2025-12-11T16:54:50.960Z"
+    },
+    {
+      "id": 6,
+      "name": "REPAY",
+      "description": "Repayment against a borrow/loan",
+      "is_active": true,
+      "created_at": "2025-12-11T16:54:50.960Z"
+    },
+    {
+      "id": 7,
+      "name": "TRANSFER_OUT",
+      "description": "Transfer out from an account",
+      "is_active": true,
+      "created_at": "2025-12-11T16:54:50.960Z"
+    },
+    {
+      "id": 8,
+      "name": "TRANSFER_IN",
+      "description": "Transfer in to an account",
+      "is_active": true,
+      "created_at": "2025-12-11T16:54:50.960Z"
+    }
+  ],
+  "adminAccounts": [
+    {
+      "id": 1,
+      "name": "Cash",
+      "type": "Cash",
+      "is_active": true,
+      "created_at": "2025-12-10T14:44:31.324Z"
+    },
+    {
+      "id": 2,
+      "name": "Bank",
+      "type": "Bank",
+      "is_active": true,
+      "created_at": "2025-12-10T14:44:38.709Z"
+    },
+    {
+      "id": 3,
+      "name": "Binance",
+      "type": "Exchange",
+      "is_active": true,
+      "created_at": "2025-12-10T14:44:45.338Z"
+    }
+  ],
+  "adminAssets": [
+    {
+      "id": 1,
+      "symbol": "USDT",
+      "name": "Tether USD",
+      "decimals": 2,
+      "is_active": true,
+      "created_at": "2025-12-10T15:06:52.339Z"
+    },
+    {
+      "id": 2,
+      "symbol": "BTC",
+      "name": "Bitcoin",
+      "decimals": 8,
+      "is_active": true,
+      "created_at": "2025-12-10T15:07:18.023Z"
+    }
+  ],
+  "adminTags": [
+    {
+      "id": 1,
+      "name": "abc",
+      "category": "",
+      "is_active": true,
+      "created_at": "2025-12-11T16:41:07.916Z"
+    },
+    {
+      "id": 2,
+      "name": "Food",
+      "category": "",
+      "is_active": true,
+      "created_at": "2025-12-11T16:41:19.487Z"
+    }
+  ]
+}

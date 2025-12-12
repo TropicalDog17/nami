@@ -28,7 +28,7 @@ async function seedTokenizedVault(request) {
     type: 'user_defined',
     token_symbol: 'K',
     token_decimals: 18,
-    initial_share_price: 1,
+    initial_share_price: '1',
     // Keep fees/limits minimal and allow deposits
     min_deposit_amount: 0,
     min_withdrawal_amount: 0,
@@ -40,7 +40,7 @@ async function seedTokenizedVault(request) {
     initial_total_value: 0,
   };
 
-  const res = await request.post(`${BACKEND}/api/tokenized-vaults`, { data: body });
+  const res = await request.post(`${BACKEND}/api/cons-vaults`, { data: body });
   if (!res.ok()) {
     const text = await res.text();
     throw new Error(`Failed to seed tokenized vault (${res.status()}): ${text}`);
@@ -93,7 +93,7 @@ test.describe('Tokenized Vaults - Quick Deposit regression (DB-backed)', () => {
     // Watch the deposit request
     const waitDeposit = page.waitForResponse((res) => {
       const u = res.url();
-      return res.request().method() === 'POST' && u.includes(`/api/tokenized-vaults/${vault.id}/deposit`);
+      return res.request().method() === 'POST' && u.includes(`/api/cons-vaults/${vault.id}/deposit`);
     });
 
     // Save deposit
@@ -106,7 +106,7 @@ test.describe('Tokenized Vaults - Quick Deposit regression (DB-backed)', () => {
     await waitModalClosedByHeading(page, 'Deposit to Vault', 15000);
 
     // Verify DB reflects change by reloading the vault
-    const reload = await request.get(`${BACKEND}/api/tokenized-vaults/${vault.id}`);
+    const reload = await request.get(`${BACKEND}/api/cons-vaults/${vault.id}`);
     expect(reload.ok()).toBeTruthy();
     const dto = await reload.json();
     const aum = parseFloat(String(dto.total_assets_under_management ?? '0'));

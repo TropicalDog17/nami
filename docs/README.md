@@ -1,11 +1,11 @@
 # Documentation
 
-Project documentation for the Nami transaction tracking system architecture and components.
+Architecture and development guides for the Nami transaction tracking system.
 
-## Structure
+## Contents
 
-- **`backend-structure.md`** - Detailed backend architecture and service documentation
-- **`frontend-structure.md`** - Frontend component architecture and UI documentation
+- **`backend-structure.md`** - Backend architecture and service documentation
+- **`frontend-structure.md`** - Frontend component architecture
 - **`ai-service-structure.md`** - AI service integration and Telegram bot documentation
-
-Contains architectural documentation, service explanations, and development guides for all system components.
+- **`ci-setup.md`** - CI/CD pipeline configuration
+- **`ci-quickstart.md`** - Quick start guide for CI workflows

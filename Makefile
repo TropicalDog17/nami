@@ -96,11 +96,11 @@ run-dev: ## Run both backend and frontend simultaneously (requires database)
 	@echo ""
 	@echo "Press Ctrl+C to stop all services"
 	@echo ""
-	@(cd backend && go run cmd/server/main.go) & (cd frontend && npm run dev) & wait
+	@(cd backend && npm run dev) & (cd frontend && npm run dev) & wait
 
 run-backend: ## Run only the backend server (requires database)
 	@echo "🚀 Starting backend..."
-	@cd backend && go run cmd/server/main.go
+	@cd backend && npm run dev
 
 run-frontend: ## Run only the frontend (requires backend)
 	@echo "🚀 Starting frontend..."

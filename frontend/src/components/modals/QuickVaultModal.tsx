@@ -15,54 +15,36 @@ interface AssetLite {
   name?: string;
 }
 
-interface AccountLite {
-  name: string;
-  type?: string;
-}
-
 const QuickVaultModal: React.FC<QuickVaultModalProps> = ({ isOpen, onClose, onSubmit }) => {
   const today = useMemo(() => new Date().toISOString().split('T')[0], []);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isUsdOnly, setIsUsdOnly] = useState(false);
   const [form, setForm] = useState({
+    name: '',
     asset: '',
-    account: '',
     horizon: '',
     depositQty: '',
     depositCost: '',
     date: today,
   });
   const [assets, setAssets] = useState<{ value: string; label: string }[]>([]);
-  const [accounts, setAccounts] = useState<{ value: string; label: string }[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   // Load master data when opening
   useEffect(() => {
     const load = async () => {
       try {
-        const [assetsData, accountsData] = (await Promise.all([
-          adminApi.listAssets(),
-          adminApi.listAccounts(),
-        ])) as [AssetLite[] | null, AccountLite[] | null];
+        const assetsData = (await adminApi.listAssets()) as AssetLite[] | null;
         setAssets(((assetsData ?? [])).map((a) => {
           const symbol = String(a.symbol ?? '');
           const name = String(a.name ?? symbol);
           return { value: symbol, label: `${symbol} - ${name}` };
-        }));
-        setAccounts(((accountsData ?? [])).map((a) => {
-          const name = String(a.name ?? '');
-          const type = String(a.type ?? '');
-          return { value: name, label: `${name} (${type})` };
         }));
       } catch (_e) {
         setAssets([
           { value: 'BTC', label: 'BTC - Bitcoin' },
           { value: 'ETH', label: 'ETH - Ethereum' },
           { value: 'USD', label: 'USD - U.S. Dollar' },
-        ]);
-        setAccounts([
-          { value: 'Cash - USD', label: 'Cash - USD (bank)' },
-          { value: 'Binance', label: 'Binance (exchange)' },
         ]);
       }
     };
@@ -77,7 +59,7 @@ const QuickVaultModal: React.FC<QuickVaultModalProps> = ({ isOpen, onClose, onSu
   }, [form.depositQty, form.depositCost]);
 
   const validate = (): string | null => {
-    if (!form.account) return 'Account is required';
+    if (!form.name) return 'Name is required';
     if (!isUsdOnly && !form.asset) return 'Asset is required';
     if (!form.depositCost || Number(form.depositCost) <= 0) return 'Deposit cost must be > 0';
     if (!isUsdOnly && (!form.depositQty || Number(form.depositQty) <= 0)) return 'Deposit quantity must be > 0';
@@ -96,8 +78,8 @@ const QuickVaultModal: React.FC<QuickVaultModalProps> = ({ isOpen, onClose, onSu
     setIsSubmitting(true);
     try {
       const payload = {
+        name: form.name,
         asset: isUsdOnly ? 'USD' : form.asset,
-        account: form.account,
         horizon: form.horizon ?? null,
         depositQty: isUsdOnly ? 1 : parseFloat(form.depositQty ?? ''),
         depositCost: parseFloat(form.depositCost ?? ''),
@@ -105,7 +87,7 @@ const QuickVaultModal: React.FC<QuickVaultModalProps> = ({ isOpen, onClose, onSu
       };
       onSubmit(payload);
       onClose();
-      setForm({ asset: '', account: '', horizon: '', depositQty: '', depositCost: '', date: today });
+      setForm({ asset: '', horizon: '', depositQty: '', depositCost: '', date: today });
       setIsUsdOnly(false);
     } finally {
       setIsSubmitting(false);
@@ -125,6 +107,16 @@ const QuickVaultModal: React.FC<QuickVaultModalProps> = ({ isOpen, onClose, onSu
           <div className="mb-3 text-sm text-red-700 bg-red-50 border border-red-200 rounded p-2">{error}</div>
         )}
         <form onSubmit={(e) => { void submit(e); }} className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Name</label>
+            <input
+              type="text"
+              placeholder="Unique vault name"
+              value={form.name}
+              onChange={(e) => setForm((s) => ({ ...s, name: e.target.value }))}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md"
+            />
+          </div>
           <div className="flex items-center">
             <label className="flex items-center text-sm text-gray-700">
               <input
@@ -151,15 +143,6 @@ const QuickVaultModal: React.FC<QuickVaultModalProps> = ({ isOpen, onClose, onSu
               />
             </div>
           )}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Account</label>
-            <ComboBox
-              options={accounts}
-              value={form.account}
-              onChange={(v) => setForm((s) => ({ ...s, account: String(v) }))}
-              placeholder="Account"
-            />
-          </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Horizon (optional)</label>
             <select

@@ -88,10 +88,19 @@ export const AdminAssetsTab: React.FC = () => {
 
   const handleCreate = async (data: unknown) => {
     try {
-      await adminApi.createAsset(data as Asset);
+      // Accept either top-level fields or nested { asset, mapping }
+      const payload =
+        data && typeof data === 'object' && 'asset' in (data as Record<string, unknown>)
+          ? {
+              ...(data as any).asset,
+              ...(((data as any).mapping) ? { mapping: (data as any).mapping } : {}),
+            }
+          : data;
+
+      await adminApi.createAsset(payload as Asset);
       actions.setSuccess('Asset created successfully');
       setShowForm(false);
-      void loadAssets();  // added void
+      void loadAssets();
     } catch (error: unknown) {
       actions.setError(`Failed to create asset: ${(error as Error).message}`);
     }

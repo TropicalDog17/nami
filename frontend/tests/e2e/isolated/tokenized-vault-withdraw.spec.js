@@ -10,9 +10,9 @@ async function createConsVault(request) {
     type: 'user_defined',
     token_symbol: 'TV',
     token_decimals: 18,
-    initial_share_price: 1,
-    min_deposit_amount: 0,
-    min_withdrawal_amount: 0,
+    initial_share_price: '1',
+    min_deposit_amount: '0',
+    min_withdrawal_amount: '0',
     is_deposit_allowed: true,
     is_withdrawal_allowed: true,
     // manual pricing enabled to keep math simple

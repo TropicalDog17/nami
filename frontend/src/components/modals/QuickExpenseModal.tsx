@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, KeyboardEvent } from 'react';
 
 import { useApp } from '../../context/AppContext';
 
@@ -8,12 +8,14 @@ interface QuickExpenseModalProps {
   onSubmit: (transactionData: unknown) => Promise<void>;
 }
 
+const ADD_NEW_VALUE = '__ADD_NEW__';
+
 const QuickExpenseModal: React.FC<QuickExpenseModalProps> = ({
   isOpen,
   onClose,
   onSubmit
 }) => {
-  const { accounts, assets, tags } = useApp();
+  const { accounts, assets, tags, actions } = useApp();
   const today = new Date().toISOString().split('T')[0];
 
   const [formData, setFormData] = useState({
@@ -27,6 +29,12 @@ const QuickExpenseModal: React.FC<QuickExpenseModalProps> = ({
   });
 
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Add-new-category inline state
+  const [isAddingCategory, setIsAddingCategory] = useState(false);
+  const [newCategory, setNewCategory] = useState('');
+  const [isSavingCategory, setIsSavingCategory] = useState(false);
+  const [categoryError, setCategoryError] = useState<string | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -70,6 +78,43 @@ const QuickExpenseModal: React.FC<QuickExpenseModalProps> = ({
 
   const handleInputChange = (field: string, value: string) => {
     setFormData(prev => ({ ...prev, [field]: value }));
+  };
+
+  const onCategoryChange = (value: string) => {
+    if (value === ADD_NEW_VALUE) {
+      setIsAddingCategory(true);
+      setCategoryError(null);
+      return;
+    }
+    handleInputChange('category', value);
+  };
+
+  const saveNewCategory = async () => {
+    const name = newCategory.trim();
+    if (!name) return;
+    try {
+      setIsSavingCategory(true);
+      setCategoryError(null);
+      await actions.createTag({ name, is_active: true });
+      handleInputChange('category', name);
+      setIsAddingCategory(false);
+      setNewCategory('');
+    } catch (e: unknown) {
+      const msg = (e as { message?: string } | null)?.message ?? 'Failed to add category';
+      setCategoryError(msg);
+    } finally {
+      setIsSavingCategory(false);
+    }
+  };
+
+  const onNewCategoryKey = async (ev: KeyboardEvent<HTMLInputElement>) => {
+    if (ev.key === 'Enter') {
+      ev.preventDefault();
+      await saveNewCategory();
+    } else if (ev.key === 'Escape') {
+      setIsAddingCategory(false);
+      setNewCategory('');
+    }
   };
 
   if (!isOpen) return null;
@@ -151,19 +196,52 @@ const QuickExpenseModal: React.FC<QuickExpenseModalProps> = ({
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
-              <select
-                value={formData.category}
-                onChange={(e) => handleInputChange('category', e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                required
-              >
-                <option value="">Select category</option>
-                {tags?.filter(t => t.is_active).map(tag => (
-                  <option key={tag.name} value={tag.name}>
-                    {tag.name}
-                  </option>
-                ))}
-              </select>
+              {!isAddingCategory ? (
+                <select
+                  value={formData.category}
+                  onChange={(e) => onCategoryChange(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  required
+                >
+                  <option value="">Select category</option>
+                  {tags?.filter(t => t.is_active).map(tag => (
+                    <option key={tag.name} value={tag.name}>
+                      {tag.name}
+                    </option>
+                  ))}
+                  <option value={ADD_NEW_VALUE}>+ Add new category…</option>
+                </select>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={newCategory}
+                    onChange={(e) => setNewCategory(e.target.value)}
+                    onKeyDown={onNewCategoryKey}
+                    className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="New category name"
+                    autoFocus
+                  />
+                  <button
+                    type="button"
+                    onClick={() => void saveNewCategory()}
+                    disabled={isSavingCategory || !newCategory.trim()}
+                    className="px-3 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:opacity-50"
+                  >
+                    {isSavingCategory ? 'Adding…' : 'Add'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setIsAddingCategory(false); setNewCategory(''); }}
+                    className="px-3 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              )}
+              {categoryError ? (
+                <p className="text-sm text-red-600 mt-1">{categoryError}</p>
+              ) : null}
             </div>
 
             <div>

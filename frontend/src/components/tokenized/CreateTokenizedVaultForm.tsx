@@ -3,7 +3,7 @@ import { format } from 'date-fns';
 import { useToast } from '../ui/Toast';
 import { tokenizedVaultApi } from '../../services/api';
 
-type VaultType = 'user_defined' | 'single_asset' | 'multi_asset';
+type VaultType = 'user_defined';
 
 interface FormData {
   name: string;
@@ -32,20 +32,24 @@ const CreateTokenizedVaultForm: React.FC<{
   });
 
   const vaultTypes = [
-    { value: 'user_defined', label: 'User-Defined Token (Manual Pricing)', description: 'Create a token where you manually set the value' },
-    { value: 'single_asset', label: 'Single Asset Vault', description: 'Track a single cryptocurrency or asset' },
-    { value: 'multi_asset', label: 'Multi-Asset Portfolio', description: 'Track multiple assets in one vault' },
+    {
+      value: 'user_defined',
+      label: 'User-Defined Token (Manual Pricing)',
+      description: 'Create a token where you manually set the value',
+    },
   ];
 
   const generateTokenSymbol = (name: string): string => {
-    return name
-      .toUpperCase()
-      .replace(/[^A-Z0-9]/g, '')
-      .slice(0, 10) || 'TOKEN';
+    return (
+      name
+        .toUpperCase()
+        .replace(/[^A-Z0-9]/g, '')
+        .slice(0, 10) || 'TOKEN'
+    );
   };
 
   const handleNameChange = (name: string) => {
-    setFormData(prev => ({
+    setFormData((prev) => ({
       ...prev,
       name,
       tokenSymbol: prev.tokenSymbol || generateTokenSymbol(name),
@@ -61,7 +65,9 @@ const CreateTokenizedVaultForm: React.FC<{
     }
 
     if (formData.enableManualPricing && !formData.initialPrice) {
-      showErrorToast('Initial price is required when manual pricing is enabled');
+      showErrorToast(
+        'Initial price is required when manual pricing is enabled'
+      );
       return;
     }
 
@@ -72,20 +78,26 @@ const CreateTokenizedVaultForm: React.FC<{
         name: formData.name,
         description: formData.description || undefined,
         type: formData.type,
+        status: 'active',
         token_symbol: formData.tokenSymbol,
         token_decimals: 18,
-        initial_share_price: parseFloat(formData.initialPrice) || 1,
-        enable_manual_pricing: formData.enableManualPricing,
-        initial_manual_price: formData.enableManualPricing ? parseFloat(formData.initialPrice) : undefined,
-        // Seed initial total value (AUM) at creation time to match backend contract
-        initial_total_value: parseFloat(formData.initialDeposit),
+        // Backend expects strings for decimal fields
+        initial_share_price:
+          formData.initialPrice && formData.initialPrice !== ''
+            ? String(formData.initialPrice)
+            : '1',
+        min_deposit_amount: '0',
+        is_deposit_allowed: true,
+        is_withdrawal_allowed: true,
+        created_by: 'web',
       };
 
       await tokenizedVaultApi.create(vaultData);
       showSuccessToast('Tokenized vault created successfully!');
       onSuccess();
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Failed to create vault';
+      const message =
+        err instanceof Error ? err.message : 'Failed to create vault';
       showErrorToast(message);
     } finally {
       setLoading(false);
@@ -104,31 +116,15 @@ const CreateTokenizedVaultForm: React.FC<{
 
       <form onSubmit={handleSubmit} className="space-y-4">
         {/* Vault Type Selection */}
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            Vault Type
-          </label>
-          <div className="space-y-2">
-            {vaultTypes.map((type) => (
-              <label key={type.value} className="flex items-start space-x-3 cursor-pointer">
-                <input
-                  type="radio"
-                  name="vaultType"
-                  value={type.value}
-                  checked={formData.type === type.value}
-                  onChange={(e) => setFormData(prev => ({
-                    ...prev,
-                    type: e.target.value as VaultType,
-                    enableManualPricing: e.target.value === 'user_defined'
-                  }))}
-                  className="mt-1"
-                />
-                <div>
-                  <div className="font-medium">{type.label}</div>
-                  <div className="text-sm text-gray-500">{type.description}</div>
-                </div>
-              </label>
-            ))}
+        <div className="bg-blue-50 p-4 rounded-md border border-blue-200">
+          <div className="text-sm font-medium text-gray-700">Vault Type</div>
+          <div className="mt-2">
+            <div className="font-medium text-blue-900">
+              {vaultTypes[0].label}
+            </div>
+            <div className="text-sm text-blue-700">
+              {vaultTypes[0].description}
+            </div>
           </div>
         </div>
 
@@ -155,7 +151,14 @@ const CreateTokenizedVaultForm: React.FC<{
             <input
               type="text"
               value={formData.tokenSymbol}
-              onChange={(e) => setFormData(prev => ({ ...prev, tokenSymbol: e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '') }))}
+              onChange={(e) =>
+                setFormData((prev) => ({
+                  ...prev,
+                  tokenSymbol: e.target.value
+                    .toUpperCase()
+                    .replace(/[^A-Z0-9]/g, ''),
+                }))
+              }
               placeholder="e.g., TRADE1"
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
               maxLength={10}
@@ -170,7 +173,9 @@ const CreateTokenizedVaultForm: React.FC<{
           </label>
           <textarea
             value={formData.description}
-            onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
+            onChange={(e) =>
+              setFormData((prev) => ({ ...prev, description: e.target.value }))
+            }
             placeholder="Optional description of your vault strategy"
             rows={3}
             className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -187,14 +192,20 @@ const CreateTokenizedVaultForm: React.FC<{
               type="number"
               step="0.01"
               value={formData.initialDeposit}
-              onChange={(e) => setFormData(prev => ({ ...prev, initialDeposit: e.target.value }))}
+              onChange={(e) =>
+                setFormData((prev) => ({
+                  ...prev,
+                  initialDeposit: e.target.value,
+                }))
+              }
               placeholder="1000.00"
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
               required
             />
           </div>
 
-          {(formData.type === 'user_defined' || formData.enableManualPricing) && (
+          {(formData.type === 'user_defined' ||
+            formData.enableManualPricing) && (
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Initial Price per Token (USD) *
@@ -203,7 +214,12 @@ const CreateTokenizedVaultForm: React.FC<{
                 type="number"
                 step="0.01"
                 value={formData.initialPrice}
-                onChange={(e) => setFormData(prev => ({ ...prev, initialPrice: e.target.value }))}
+                onChange={(e) =>
+                  setFormData((prev) => ({
+                    ...prev,
+                    initialPrice: e.target.value,
+                  }))
+                }
                 placeholder="1.00"
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                 required={formData.enableManualPricing}
@@ -212,47 +228,35 @@ const CreateTokenizedVaultForm: React.FC<{
           )}
         </div>
 
-        {/* Manual Pricing Toggle */}
-        {formData.type !== 'user_defined' && (
-          <div className="flex items-center space-x-3">
-            <input
-              type="checkbox"
-              id="manualPricing"
-              checked={formData.enableManualPricing}
-              onChange={(e) => setFormData(prev => ({
-                ...prev,
-                enableManualPricing: e.target.checked,
-                initialPrice: e.target.checked ? prev.initialPrice : ''
-              }))}
-              className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-            />
-            <label htmlFor="manualPricing" className="text-sm font-medium text-gray-700">
-              Enable Manual Pricing
-            </label>
-          </div>
-        )}
-
         {/* Preview */}
-        {formData.initialDeposit && (formData.initialPrice || !formData.enableManualPricing) && (
-          <div className="bg-blue-50 p-4 rounded-md">
-            <h3 className="font-medium text-blue-900 mb-2">Preview</h3>
-            <div className="text-sm text-blue-800 space-y-1">
-              <div>Vault: {formData.name} ({formData.tokenSymbol})</div>
-              <div>
-                Initial Deposit: ${parseFloat(formData.initialDeposit).toLocaleString()}
-              </div>
-              <div>
-                Initial Price: ${formData.enableManualPricing ? parseFloat(formData.initialPrice || '1').toFixed(2) : 'Market Price'}
-              </div>
-              <div>
-                {formData.tokenSymbol} Tokens Created: {calculateShares()}
-              </div>
-              <div>
-                Later, you can update 1 {formData.tokenSymbol} = any value you want
+        {formData.initialDeposit &&
+          (formData.initialPrice || !formData.enableManualPricing) && (
+            <div className="bg-blue-50 p-4 rounded-md">
+              <h3 className="font-medium text-blue-900 mb-2">Preview</h3>
+              <div className="text-sm text-blue-800 space-y-1">
+                <div>
+                  Vault: {formData.name} ({formData.tokenSymbol})
+                </div>
+                <div>
+                  Initial Deposit: $
+                  {parseFloat(formData.initialDeposit).toLocaleString()}
+                </div>
+                <div>
+                  Initial Price: $
+                  {formData.enableManualPricing
+                    ? parseFloat(formData.initialPrice || '1').toFixed(2)
+                    : 'Market Price'}
+                </div>
+                <div>
+                  {formData.tokenSymbol} Tokens Created: {calculateShares()}
+                </div>
+                <div>
+                  Later, you can update 1 {formData.tokenSymbol} = any value you
+                  want
+                </div>
               </div>
             </div>
-          </div>
-        )}
+          )}
 
         {/* Actions */}
         <div className="flex space-x-3 pt-4">
