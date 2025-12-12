@@ -260,3 +260,5 @@ $RECYCLE.BIN/
 
 nami
 .claude/settings.local.json
+
+backend/data/
