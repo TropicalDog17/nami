@@ -113,7 +113,8 @@ type TokenizedVaultDetails = {
 const MAX_RETRIES = 3;
 
 const VaultDetailPage: React.FC = () => {
-  const { vaultName } = useParams<{ vaultName: string }>();
+  const { vaultId: _vaultId, vaultName: _vaultName } = useParams<{ vaultId?: string; vaultName?: string }>();
+  const vaultId = _vaultId ?? _vaultName ?? '';
   const navigate = useNavigate();
   const { error: showErrorToast, success: showSuccessToast } = useToast();
 
@@ -157,12 +158,12 @@ const VaultDetailPage: React.FC = () => {
   const [withdrawPercent, setWithdrawPercent] = useState<string>('');
 
   const loadVault = useCallback(async (): Promise<void> => {
-    if (!vaultName) {
+    if (!vaultId) {
       setLoading(false);
       return;
     }
 
-    const isTokenizedId = vaultName.startsWith('vault_');
+    const isTokenizedId = vaultId.startsWith('vault_');
 
     setLoading(true);
     setError(null);
@@ -172,7 +173,7 @@ const VaultDetailPage: React.FC = () => {
     // First: try tokenized vault API
     try {
       const params = showLiveMetrics ? { enrich: true } : {};
-      const tokenizedData = await tokenizedVaultApi.get<TokenizedVaultDetails>(vaultName, params);
+      const tokenizedData = await tokenizedVaultApi.get<TokenizedVaultDetails>(vaultId, params);
       if (tokenizedData) {
         setTokenizedVaultDetails(tokenizedData);
         setIsTokenizedVault(true);
@@ -183,11 +184,29 @@ const VaultDetailPage: React.FC = () => {
         // Load ledger data for tokenized vaults
         try {
           const [h, tx] = await Promise.all([
-            vaultLedgerApi.holdings<any>(vaultName),
-            vaultLedgerApi.transactions<any[]>(vaultName, { limit: 100 }),
+            vaultLedgerApi.holdings<any>(vaultId),
+            vaultLedgerApi.transactions<any[]>(vaultId, { limit: 100 }),
           ]);
           setLedgerHoldings(h ?? null);
-          setLedgerTransactions(Array.isArray(tx) ? tx : []);
+          const ppsRaw = (h as any)?.share_price;
+          const pps = typeof ppsRaw === 'string' ? parseFloat(ppsRaw) : (ppsRaw ?? 1);
+          const mapped = (Array.isArray(tx) ? tx : []).map((e: any) => {
+            const usd = typeof e?.usdValue === 'string' ? parseFloat(e.usdValue) : Number(e?.usdValue ?? 0);
+            const qty = typeof e?.amount === 'string' ? parseFloat(e.amount) : Number(e?.amount ?? 0);
+            const price = Number(pps) || 1;
+            return {
+              timestamp: e?.at ?? e?.timestamp ?? null,
+              type: String(e?.type ?? '').toUpperCase(),
+              status: e?.status ?? '-',
+              amount_usd: isNaN(usd) ? 0 : usd,
+              shares: isNaN(usd) ? 0 : usd / price,
+              price_per_share: price,
+              asset: typeof e?.asset === 'object' && e?.asset ? String(e.asset.symbol || '') : String(e?.asset ?? ''),
+              account: e?.account ?? null,
+              asset_quantity: isNaN(qty) ? 0 : qty,
+            };
+          });
+          setLedgerTransactions(mapped);
         } catch (e) {
           console.warn('Failed to load ledger data', e);
           setLedgerHoldings(null);
@@ -232,8 +251,8 @@ const VaultDetailPage: React.FC = () => {
 
     try {
       const endpoint = showLiveMetrics
-        ? `/api/vaults/${encodeURIComponent(vaultName)}?enrich=true`
-        : `/api/vaults/${encodeURIComponent(vaultName)}`;
+        ? `/api/vaults/${encodeURIComponent(vaultId)}?enrich=true`
+        : `/api/vaults/${encodeURIComponent(vaultId)}`;
       const vaultData = await fetch(`${(import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8080')}${endpoint}`).then(
         async (r) => {
           const t = await r.text();
@@ -271,23 +290,23 @@ const VaultDetailPage: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [vaultName, showErrorToast, showLiveMetrics, retryCount]);
+  }, [vaultId, showErrorToast, showLiveMetrics, retryCount]);
 
   const loadVaultTransactions = useCallback(async (): Promise<void> => {
     try {
-      if (!vaultName || isTokenizedVault) {
+      if (!vaultId || isTokenizedVault) {
         if (isTokenizedVault) {
           setTransactions([]);
         }
         return;
       }
-      const txs = await transactionApi.list<Transaction[]>({ investment_id: vaultName });
+      const txs = await transactionApi.list<Transaction[]>({ investment_id: vaultId });
       setTransactions(Array.isArray(txs) ? txs : []);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
       console.error('Failed to load vault transactions:', message);
     }
-  }, [vaultName, isTokenizedVault]);
+  }, [vaultId, isTokenizedVault]);
 
   const loadAccounts = (): void => {
     // This would come from admin API in a real implementation
@@ -425,12 +444,12 @@ const VaultDetailPage: React.FC = () => {
   };
 
   useEffect(() => {
-    if (vaultName) {
+    if (vaultId) {
       void loadVault();
       void loadVaultTransactions();
       loadAccounts();
     }
-  }, [vaultName, loadVault, loadVaultTransactions, showLiveMetrics]);
+  }, [vaultId, loadVault, loadVaultTransactions, showLiveMetrics]);
 
   const handleDeposit = async (): Promise<void> => {
     if (!depositForm.quantity || !depositForm.cost) {
@@ -439,8 +458,8 @@ const VaultDetailPage: React.FC = () => {
     }
 
     try {
-      if (!vaultName) return;
-      await vaultApi.depositToVault(vaultName, {
+      if (!vaultId) return;
+      await vaultApi.depositToVault(vaultId, {
         quantity: parseFloat(depositForm.quantity),
         cost: parseFloat(depositForm.cost),
         ...(depositForm.sourceAccount ? { sourceAccount: depositForm.sourceAccount } : {}),
@@ -455,7 +474,7 @@ const VaultDetailPage: React.FC = () => {
           account: depositForm.sourceAccount,
           quantity: parseFloat(depositForm.cost),
           price_local: 1,
-          counterparty: `Vault ${vaultName}`,
+          counterparty: `Vault ${vaultId}`,
           note: null,
           fx_to_usd: 1,
           fx_to_vnd: 0,
@@ -482,8 +501,8 @@ const VaultDetailPage: React.FC = () => {
     }
 
     try {
-      if (!vaultName) return;
-      await vaultApi.withdrawFromVault(vaultName, {
+      if (!vaultId) return;
+      await vaultApi.withdrawFromVault(vaultId, {
         quantity: parseFloat(withdrawForm.quantity),
         value: parseFloat(withdrawForm.value),
         ...(withdrawForm.targetAccount ? { targetAccount: withdrawForm.targetAccount } : {}),
@@ -508,8 +527,8 @@ const VaultDetailPage: React.FC = () => {
     }
 
     try {
-      if (!vaultName) return;
-      await vaultApi.endVault(vaultName);
+      if (!vaultId) return;
+      await vaultApi.endVault(vaultId);
       showSuccessToast('Vault ended successfully!');
       await loadVault();
       await loadVaultTransactions();
@@ -524,8 +543,8 @@ const VaultDetailPage: React.FC = () => {
       return;
     }
     try {
-      if (!vaultName) return;
-      await vaultApi.deleteVault(vaultName);
+      if (!vaultId) return;
+      await vaultApi.deleteVault(vaultId);
       showSuccessToast('Vault deleted successfully!');
       navigate('/vaults');
     } catch (err: unknown) {
@@ -543,8 +562,8 @@ const VaultDetailPage: React.FC = () => {
       return;
     }
     try {
-      if (!vaultName) return;
-      const data = await vaultApi.refresh<ManualMetrics>(vaultName, { current_value_usd: value, persist: true });
+      if (!vaultId) return;
+      const data = await vaultApi.refresh<ManualMetrics>(vaultId, { current_value_usd: value, persist: true });
       if (data) {
         setManualMetrics(data);
         showSuccessToast('Manual update calculated');
@@ -771,7 +790,7 @@ const VaultDetailPage: React.FC = () => {
     vault: vault ? 'present' : 'null',
     tokenized: tokenizedVaultDetails ? 'present' : 'null',
     isTokenizedVault,
-    vaultName,
+    vaultId,
   });
 
   if (loading) {
