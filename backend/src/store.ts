@@ -47,14 +47,25 @@ export interface AdminTag {
   created_at: string;
 }
 
+import { LoanAgreement, LoanCreateRequest } from "./types";
+
 interface StoreShape {
   transactions: Transaction[];
+  loans: LoanAgreement[];
   vaults: Vault[];
   vaultEntries: VaultEntry[];
   adminTypes: AdminType[];
   adminAccounts: AdminAccount[];
   adminAssets: AdminAsset[];
   adminTags: AdminTag[];
+  settings?: {
+    borrowingVaultName?: string;
+    borrowingMonthlyRate?: number; // e.g., 0.02 means 2% per month
+    borrowingLastAccrualAt?: string; // ISO date at start of month
+    migratedVaultOnly?: boolean;
+    migratedBorrowingPrincipal?: boolean;
+    defaultSpendingVaultName?: string; // single dedicated spending vault name
+  };
 }
 
 function ensureDataFile(): void {
@@ -62,15 +73,25 @@ function ensureDataFile(): void {
   if (!fs.existsSync(STORE_FILE)) {
     const initial: StoreShape = {
       transactions: [],
+      loans: [],
       vaults: [],
       vaultEntries: [],
       adminTypes: [],
       adminAccounts: [],
       adminAssets: [],
       adminTags: [],
+      settings: {},
     };
     fs.writeFileSync(STORE_FILE, JSON.stringify(initial, null, 2));
   }
+}
+
+function startOfMonthUTC(d: Date): Date {
+  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1, 0, 0, 0, 0));
+}
+function endOfMonthUTC(d: Date): Date {
+  const start = startOfMonthUTC(d);
+  return new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + 1, 0, 23, 59, 59, 999));
 }
 
 function readStore(): StoreShape {
@@ -80,15 +101,17 @@ function readStore(): StoreShape {
     const data = JSON.parse(raw);
     return {
       transactions: Array.isArray(data.transactions) ? data.transactions : [],
+      loans: Array.isArray(data.loans) ? data.loans : [],
       vaults: Array.isArray(data.vaults) ? data.vaults : [],
       vaultEntries: Array.isArray(data.vaultEntries) ? data.vaultEntries : [],
       adminTypes: Array.isArray(data.adminTypes) ? data.adminTypes : [],
       adminAccounts: Array.isArray(data.adminAccounts) ? data.adminAccounts : [],
       adminAssets: Array.isArray(data.adminAssets) ? data.adminAssets : [],
       adminTags: Array.isArray(data.adminTags) ? data.adminTags : [],
+      settings: typeof data.settings === 'object' && data.settings ? data.settings : {},
     } as StoreShape;
   } catch {
-    return { transactions: [], vaults: [], vaultEntries: [], adminTypes: [], adminAccounts: [], adminAssets: [], adminTags: [] } as StoreShape;
+    return { transactions: [], loans: [], vaults: [], vaultEntries: [], adminTypes: [], adminAccounts: [], adminAssets: [], adminTags: [], settings: {} } as StoreShape;
   }
 }
 
@@ -132,7 +155,304 @@ function seedDefaultTypesIfEmpty(): void {
   writeStore(s);
 }
 
+// Default admin assets and accounts seeding ---------------------------------
+const DEFAULT_ADMIN_ASSETS: Array<Pick<AdminAsset, 'symbol' | 'name' | 'decimals'>> = [
+  { symbol: 'BTC', name: 'Bitcoin', decimals: 8 },
+  { symbol: 'ETH', name: 'Ethereum', decimals: 18 },
+  { symbol: 'USDT', name: 'Tether USD', decimals: 6 },
+  { symbol: 'VND', name: 'Vietnamese Dong', decimals: 0 },
+];
+
+function seedDefaultAdminAssetsIfEmpty(): void {
+  const s = readStore();
+  if ((s.adminAssets?.length ?? 0) > 0) return;
+  const now = new Date().toISOString();
+  s.adminAssets = DEFAULT_ADMIN_ASSETS.map((a, idx) => ({
+    id: idx + 1,
+    symbol: a.symbol.toUpperCase(),
+    name: a.name ?? '',
+    decimals: typeof a.decimals === 'number' ? a.decimals : 8,
+    is_active: true,
+    created_at: now,
+  }));
+  writeStore(s);
+}
+
+const DEFAULT_ADMIN_ACCOUNTS: Array<Pick<AdminAccount, 'name' | 'type'>> = [
+  { name: 'Binance', type: 'exchange' },
+  { name: 'Web3 Wallet', type: 'wallet' },
+  { name: 'Cash', type: 'cash' },
+];
+
+function seedDefaultAdminAccountsIfEmpty(): void {
+  // No-op in vault-only model to remove account concept
+  const s = readStore();
+  if ((s.adminAccounts?.length ?? 0) > 0) return;
+  s.adminAccounts = [];
+  writeStore(s);
+}
+
 export const store = {
+  // Migration and settings --------------------------------------------------
+  ensureBorrowingSettings(): { name: string; rate: number; lastAccrualStart: string } {
+    const s = readStore();
+    const name = s.settings?.borrowingVaultName?.trim() || 'Borrowings';
+    const rate = typeof s.settings?.borrowingMonthlyRate === 'number' ? (s.settings!.borrowingMonthlyRate as number) : 0.02;
+    const last = s.settings?.borrowingLastAccrualAt || startOfMonthUTC(new Date()).toISOString();
+    if (!s.settings) s.settings = {} as any;
+    if (!s.settings.borrowingVaultName) s.settings.borrowingVaultName = name;
+    if (s.settings.borrowingMonthlyRate === undefined) s.settings.borrowingMonthlyRate = rate;
+    if (!s.settings.borrowingLastAccrualAt) s.settings.borrowingLastAccrualAt = last;
+    // Ensure borrowing vault exists
+    const existed = this.getVault(name);
+    if (!existed) {
+      this.ensureVault(name);
+    }
+    writeStore(s);
+    return { name, rate, lastAccrualStart: s.settings.borrowingLastAccrualAt! };
+  },
+  getDefaultSpendingVaultName(): string {
+    const s = readStore();
+    const name = s.settings?.defaultSpendingVaultName?.trim() || 'Spend';
+    if (!s.settings) (s as any).settings = {};
+    if (!s.settings!.defaultSpendingVaultName) s.settings!.defaultSpendingVaultName = name;
+    if (!this.getVault(name)) this.ensureVault(name);
+    writeStore(s);
+    return name;
+  },
+  setDefaultSpendingVaultName(name: string): string {
+    const s = readStore();
+    const trimmed = String(name || '').trim() || 'Spend';
+    if (!s.settings) (s as any).settings = {};
+    s.settings!.defaultSpendingVaultName = trimmed;
+    if (!this.getVault(trimmed)) this.ensureVault(trimmed);
+    writeStore(s);
+    return trimmed;
+  },
+  async migrateToVaultOnly(): Promise<void> {
+    const s = readStore();
+    if (s.settings?.migratedVaultOnly) return; // already migrated
+
+    // 1) Ensure every transaction account is a vault; if missing, route to 'Main'
+    const mainVault = 'Main';
+    if (!this.getVault(mainVault)) this.ensureVault(mainVault);
+
+    const seenAccounts = new Set<string>();
+    for (const tx of s.transactions) {
+      if (!tx.account || !String(tx.account).trim()) {
+        tx.account = mainVault;
+      }
+      const acc = String(tx.account).trim();
+      if (acc) seenAccounts.add(acc);
+    }
+    // Create vaults for all seen accounts
+    for (const acc of seenAccounts) {
+      if (!this.getVault(acc)) this.ensureVault(acc);
+    }
+
+    // 2) Clear adminAccounts (remove account concept)
+    s.adminAccounts = [];
+
+    // 3) Seed borrowing settings and ensure vault, baseline principal as negative USD in borrowing vault once
+    const { name } = this.ensureBorrowingSettings();
+    if (!this.getVault(name)) this.ensureVault(name);
+    if (!s.settings?.migratedBorrowingPrincipal) {
+      const outstandingUSD = await this.outstandingBorrowUSD();
+      if (outstandingUSD > 1e-8) {
+        const usd: Asset = { type: 'FIAT', symbol: 'USD' };
+        await this.recordExpenseTx({ asset: usd, amount: outstandingUSD, at: new Date().toISOString(), account: name, note: 'Borrowing principal baseline' });
+      }
+      if (!s.settings) s.settings = {} as any;
+      s.settings.migratedBorrowingPrincipal = true;
+    }
+
+    // 4) Mark migrated
+    if (!s.settings) s.settings = {} as any;
+    s.settings.migratedVaultOnly = true;
+
+    writeStore(s);
+  },
+  async accrueBorrowingInterestIfDue(): Promise<number> {
+    const cfg = this.ensureBorrowingSettings();
+    const s = readStore();
+    const startFrom = new Date(cfg.lastAccrualStart);
+    const now = new Date();
+    let cursor = startOfMonthUTC(startFrom);
+    const end = startOfMonthUTC(now);
+    let created = 0;
+
+    while (cursor < end) {
+      // Compute outstanding BORROW principal in USD as of this month end
+      const monthEnd = endOfMonthUTC(cursor);
+      const outstandingUSD = await this.outstandingBorrowUSD();
+      const interest = outstandingUSD * cfg.rate;
+      if (interest > 1e-8) {
+        // Record EXPENSE in borrowing vault (USD)
+        const asset: Asset = { type: 'FIAT', symbol: 'USD' };
+        await this.recordExpenseTx({ asset, amount: interest, at: monthEnd.toISOString(), account: cfg.name, note: `Monthly borrowing interest ${cursor.getUTCFullYear()}-${String(cursor.getUTCMonth()+1).padStart(2,'0')}` });
+        created++;
+      }
+      // advance to next month
+      cursor = startOfMonthUTC(new Date(Date.UTC(cursor.getUTCFullYear(), cursor.getUTCMonth() + 1, 1)));
+      s.settings!.borrowingLastAccrualAt = cursor.toISOString();
+      writeStore(s);
+    }
+    return created;
+  },
+  async outstandingBorrowUSD(at?: string): Promise<number> {
+    const s = readStore();
+    let outstandingUSD = 0;
+    // Aggregate per asset as-of time
+    const cutoff = at ? new Date(at).toISOString() : undefined;
+    const agg = new Map<string, { asset: Asset; units: number }>();
+    for (const tx of s.transactions) {
+      if (cutoff && tx.createdAt > cutoff) continue;
+      if (tx.type === 'BORROW') {
+        const k = assetKey(tx.asset);
+        const cur = agg.get(k) || { asset: tx.asset, units: 0 };
+        cur.units += tx.amount;
+        agg.set(k, cur);
+      } else if (tx.type === 'REPAY' && (tx as any).direction === 'BORROW') {
+        const k = assetKey(tx.asset);
+        const cur = agg.get(k) || { asset: tx.asset, units: 0 };
+        cur.units -= tx.amount;
+        agg.set(k, cur);
+      }
+    }
+    for (const v of agg.values()) {
+      if (v.units > 1e-12) {
+        const rate = await priceService.getRateUSD(v.asset, cutoff);
+        outstandingUSD += v.units * rate.rateUSD;
+      }
+    }
+    return outstandingUSD;
+  },
+
+  // Loans -------------------------------------------------------------------
+  createLoan: async (data: LoanCreateRequest): Promise<{ loan: LoanAgreement; tx: Transaction }> => {
+    const s = readStore();
+    const id = uuidv4();
+    const startAt = data.startAt ?? new Date().toISOString();
+    const createdAt = new Date().toISOString();
+    const loan: LoanAgreement = {
+      id,
+      counterparty: data.counterparty || "general",
+      asset: data.asset,
+      principal: data.principal,
+      interestRate: data.interestRate,
+      period: data.period,
+      startAt,
+      maturityAt: data.maturityAt,
+      note: data.note,
+      account: data.account,
+      status: "ACTIVE",
+      createdAt,
+    };
+    // Record LOAN transaction that funds the loan (cash out)
+    const rate = await priceService.getRateUSD(data.asset, startAt);
+    const tx: Transaction = {
+      id: uuidv4(),
+      type: "LOAN",
+      asset: data.asset,
+      amount: data.principal,
+      createdAt: startAt,
+      account: data.account,
+      note: data.note ?? `Loan to ${loan.counterparty}`,
+      counterparty: loan.counterparty,
+      loanId: id,
+      rate,
+      usdAmount: data.principal * rate.rateUSD,
+    } as Transaction;
+
+    s.loans.push(loan);
+    s.transactions.push(tx);
+    writeStore(s);
+    return { loan, tx };
+  },
+  listLoans(): LoanAgreement[] { return readStore().loans; },
+  getLoan(id: string): LoanAgreement | undefined { return readStore().loans.find(l => l.id === id); },
+  async listLoansView() {
+    const s = readStore();
+    const out: any[] = [];
+    for (const loan of s.loans) {
+      const view = await this.getLoanView(loan.id);
+      if (view) out.push(view);
+    }
+    return out;
+  },
+  async getLoanView(id: string) {
+    const s = readStore();
+    const loan = s.loans.find(l => l.id === id);
+    if (!loan) return undefined;
+    const related = s.transactions.filter(t => t.loanId === id);
+    const principalIssued = related.filter(t => t.type === "LOAN").reduce((sum, t) => sum + t.amount, 0);
+    const principalRepaid = related.filter(t => t.type === "REPAY" && (t as any).direction === "LOAN").reduce((sum, t) => sum + t.amount, 0);
+    const principalOutstanding = Math.max(0, principalIssued - principalRepaid);
+    const interestTxs = related.filter(t => t.type === "INCOME" && (t.category === "INTEREST_INCOME" || /interest/i.test(t.note || "")));
+    const interestReceived = interestTxs.reduce((sum, t) => sum + t.amount, 0);
+    const rate = await priceService.getRateUSD(loan.asset);
+    const metrics = {
+      principalIssued,
+      principalRepaid,
+      principalOutstanding,
+      principalOutstandingUSD: principalOutstanding * rate.rateUSD,
+      interestRate: loan.interestRate,
+      period: loan.period,
+      suggestedNextPeriodInterest: principalOutstanding * loan.interestRate,
+      totalInterestReceived: interestReceived,
+      totalInterestReceivedUSD: interestReceived * rate.rateUSD,
+    };
+    return { loan, metrics, transactions: related };
+  },
+  async recordLoanPrincipalRepayment(loanId: string, input: { amount: number; at?: string; account?: string; note?: string; }) {
+    const s = readStore();
+    const loan = s.loans.find(l => l.id === loanId);
+    if (!loan) return undefined;
+    const at = input.at ?? new Date().toISOString();
+    const rate = await priceService.getRateUSD(loan.asset, at);
+    const tx: Transaction = {
+      id: uuidv4(),
+      type: "REPAY",
+      asset: loan.asset,
+      amount: input.amount,
+      createdAt: at,
+      account: input.account,
+      note: input.note ?? `Repay principal for loan ${loan.id}`,
+      direction: "LOAN" as any,
+      counterparty: loan.counterparty,
+      loanId: loan.id,
+      rate,
+      usdAmount: input.amount * rate.rateUSD,
+    } as Transaction;
+    s.transactions.push(tx);
+    writeStore(s);
+    return tx;
+  },
+  async recordLoanInterestIncome(loanId: string, input: { amount: number; at?: string; account?: string; note?: string; }) {
+    const s = readStore();
+    const loan = s.loans.find(l => l.id === loanId);
+    if (!loan) return undefined;
+    const at = input.at ?? new Date().toISOString();
+    const rate = await priceService.getRateUSD(loan.asset, at);
+    const tx: Transaction = {
+      id: uuidv4(),
+      type: "INCOME",
+      asset: loan.asset,
+      amount: input.amount,
+      createdAt: at,
+      account: input.account,
+      note: input.note ?? `Interest income for loan ${loan.id}`,
+      category: "INTEREST_INCOME",
+      counterparty: loan.counterparty,
+      loanId: loan.id,
+      rate,
+      usdAmount: input.amount * rate.rateUSD,
+    } as Transaction;
+    s.transactions.push(tx);
+    writeStore(s);
+    return tx;
+  },
+
   // Transactions -------------------------------------------------------------
   addTransaction(tx: Transaction) {
     const s = readStore();
@@ -142,13 +462,15 @@ export const store = {
   async recordIncomeTx({ asset, amount, at, account, note }: { asset: Asset; amount: number; at?: string; account?: string; note?: string; }) {
     const createdAt = at ?? new Date().toISOString();
     const rate = await priceService.getRateUSD(asset, at);
+    const acc = normAccount(account) || this.getDefaultSpendingVaultName();
+    if (acc) this.ensureVault(acc);
     const tx: Transaction = {
       id: uuidv4(),
       type: 'INCOME',
       asset,
       amount,
       createdAt,
-      account: normAccount(account),
+      account: acc,
       note,
       rate,
       usdAmount: amount * rate.rateUSD,
@@ -159,13 +481,15 @@ export const store = {
   async recordExpenseTx({ asset, amount, at, account, note }: { asset: Asset; amount: number; at?: string; account?: string; note?: string; }) {
     const createdAt = at ?? new Date().toISOString();
     const rate = await priceService.getRateUSD(asset, at);
+    const acc = normAccount(account) || this.getDefaultSpendingVaultName();
+    if (acc) this.ensureVault(acc);
     const tx: Transaction = {
       id: uuidv4(),
       type: 'EXPENSE',
       asset,
       amount,
       createdAt,
-      account: normAccount(account),
+      account: acc,
       note,
       rate,
       usdAmount: amount * rate.rateUSD,
@@ -233,136 +557,72 @@ export const store = {
     const deposited = entries.filter(e => e.type === 'DEPOSIT').reduce((sum, e) => sum + (e.usdValue || 0), 0);
     const withdrawn = entries.filter(e => e.type === 'WITHDRAW').reduce((sum, e) => sum + (e.usdValue || 0), 0);
 
-    const rep = await this.report();
-    const vaultHoldings = rep.holdings.filter(h => h.account === name);
-    // If no transactions yet, fallback to net invested? No, true AUM should be based on holdings. 
-    // If we haven't migrated old entries to transactions, this might be 0.
-    // For now we assume transactions will be created.
-    const aum = vaultHoldings.reduce((sum, h) => sum + h.valueUSD, 0);
+    // Compute current AUM from vault entries only (positions)
+    const byAsset = new Map<string, { asset: Asset; units: number }>();
+    for (const e of entries) {
+      if (e.type === 'DEPOSIT' || e.type === 'WITHDRAW') {
+        const k = assetKey(e.asset);
+        const cur = byAsset.get(k) || { asset: e.asset, units: 0 };
+        cur.units += e.type === 'DEPOSIT' ? e.amount : -e.amount;
+        byAsset.set(k, cur);
+      }
+    }
+    let aum = 0;
+    for (const v of byAsset.values()) {
+      if (Math.abs(v.units) < 1e-12) continue;
+      const rate = await priceService.getRateUSD(v.asset);
+      aum += v.units * rate.rateUSD;
+    }
+
+    // If there is a valuation entry, override AUM with the latest valuation's usdValue
+    const valuation = entries
+      .filter(e => e.type === 'VALUATION')
+      .sort((a, b) => String(b.at).localeCompare(String(a.at)))[0];
+    if (valuation && typeof valuation.usdValue === 'number') {
+      aum = valuation.usdValue;
+    }
 
     return { totalDepositedUSD: deposited, totalWithdrawnUSD: withdrawn, aumUSD: aum };
   },
 
   // Reports -----------------------------------------------------------------
   async report(): Promise<PortfolioReport> {
-    const txs = readStore().transactions;
-
-    // Holdings balances per asset+account
+    // Vault-only report: compute balances from vault entries
+    const s = readStore();
     const balances = new Map<string, { asset: Asset; account?: string; units: number }>();
 
-    // Obligations
-    const liabilities = new Map<string, { counterparty: string; asset: Asset; units: number }>();
-    const receivables = new Map<string, { counterparty: string; asset: Asset; units: number }>();
-
-    for (const tx of txs) {
-      const acc = normAccount(tx.account);
-      const k = `${assetKey(tx.asset)}|${acc ?? 'default'}`;
-      if (!balances.has(k)) balances.set(k, { asset: tx.asset, account: acc, units: 0 });
-
-      switch (tx.type) {
-        case "INITIAL":
-        case "INCOME":
-          balances.get(k)!.units += tx.amount;
-          break;
-        case "EXPENSE":
-          balances.get(k)!.units -= tx.amount;
-          break;
-        case "BORROW": {
-          balances.get(k)!.units += tx.amount;
-          const key = `${(tx as any).counterparty}|${assetKey(tx.asset)}`;
-          const cur = liabilities.get(key) || { counterparty: (tx as any).counterparty, asset: tx.asset, units: 0 };
-          cur.units += tx.amount;
-          liabilities.set(key, cur);
-          break;
-        }
-        case "LOAN": {
-          balances.get(k)!.units -= tx.amount;
-          const key = `${(tx as any).counterparty}|${assetKey(tx.asset)}`;
-          const cur = receivables.get(key) || { counterparty: (tx as any).counterparty, asset: tx.asset, units: 0 };
-          cur.units += tx.amount;
-          receivables.set(key, cur);
-          break;
-        }
-        case "REPAY": {
-          if ((tx as any).direction === "BORROW") {
-            balances.get(k)!.units -= tx.amount;
-            const cp = (tx as any).counterparty || "general";
-            const key = `${cp}|${assetKey(tx.asset)}`;
-            const cur = liabilities.get(key) || { counterparty: cp, asset: tx.asset, units: 0 };
-            cur.units -= tx.amount; // reduce liability
-            liabilities.set(key, cur);
-          } else {
-            balances.get(k)!.units += tx.amount;
-            const cp = (tx as any).counterparty || "general";
-            const key = `${cp}|${assetKey(tx.asset)}`;
-            const cur = receivables.get(key) || { counterparty: cp, asset: tx.asset, units: 0 };
-            cur.units -= tx.amount; // reduce receivable
-            receivables.set(key, cur);
-          }
-          break;
-        }
-        case "TRANSFER_OUT":
-          balances.get(k)!.units -= tx.amount;
-          break;
-        case "TRANSFER_IN":
-          balances.get(k)!.units += tx.amount;
-          break;
-      }
-    }
-
-    // Filter out near-zero obligations
-    const liabs: ObligationItem[] = [];
-    for (const v of liabilities.values()) {
-      if (Math.abs(v.units) > 1e-12) liabs.push({ counterparty: v.counterparty, asset: v.asset, amount: v.units, rateUSD: 0, valueUSD: 0 });
-    }
-    const recs: ObligationItem[] = [];
-    for (const v of receivables.values()) {
-      if (Math.abs(v.units) > 1e-12) recs.push({ counterparty: v.counterparty, asset: v.asset, amount: v.units, rateUSD: 0, valueUSD: 0 });
+    for (const e of s.vaultEntries) {
+      const account = e.vault;
+      const k = `${assetKey(e.asset)}|${account}`;
+      const cur = balances.get(k) || { asset: e.asset, account, units: 0 };
+      cur.units += e.type === 'DEPOSIT' ? e.amount : -e.amount;
+      balances.set(k, cur);
     }
 
     const holdings: PortfolioReportItem[] = [];
     for (const v of balances.values()) {
-      // If balance is negative, treat as liability?
-      // For simplicity, strict "liabilities" from BORROW are separate.
-      // But if a bank/CC balance is negative, it's effectively a liability.
-      // The original code pushed all > 1e-12 to holdings. 
-      // We will keep negative balances in holdings for now, but `netWorthUSD` arithmetic needs to handle it.
-      // `valueUSD` will be negative for negative balance.
       if (Math.abs(v.units) > 1e-12) {
         holdings.push({ asset: v.asset, account: v.account, balance: v.units, rateUSD: 0, valueUSD: 0 });
       }
     }
 
-    // Fetch current minute rates for valuation
     for (const h of holdings) {
       const rate = await priceService.getRateUSD(h.asset);
       h.rateUSD = rate.rateUSD;
       h.valueUSD = h.balance * rate.rateUSD;
     }
-    for (const o of liabs) {
-      const rate = await priceService.getRateUSD(o.asset);
-      o.rateUSD = rate.rateUSD;
-      o.valueUSD = o.amount * rate.rateUSD;
-    }
-    for (const o of recs) {
-      const rate = await priceService.getRateUSD(o.asset);
-      o.rateUSD = rate.rateUSD;
-      o.valueUSD = o.amount * rate.rateUSD;
-    }
 
-    const holdingsUSD = holdings.reduce((s, i) => s + i.valueUSD, 0); // can be negative if some holdings are negative
-    const liabilitiesUSD = liabs.reduce((s, i) => s + i.valueUSD, 0);
-    const receivablesUSD = recs.reduce((s, i) => s + i.valueUSD, 0);
+    const holdingsUSD = holdings.reduce((s, i) => s + i.valueUSD, 0);
 
     return {
       holdings,
-      liabilities: liabs,
-      receivables: recs,
+      liabilities: [],
+      receivables: [],
       totals: {
         holdingsUSD,
-        liabilitiesUSD,
-        receivablesUSD,
-        netWorthUSD: holdingsUSD - liabilitiesUSD + receivablesUSD,
+        liabilitiesUSD: 0,
+        receivablesUSD: 0,
+        netWorthUSD: holdingsUSD,
       },
     };
   },
@@ -401,7 +661,7 @@ export const store = {
     return s.adminTypes.length < before;
   },
 
-  listAccounts(): AdminAccount[] { return readStore().adminAccounts; },
+  listAccounts(): AdminAccount[] { seedDefaultAdminAccountsIfEmpty(); return readStore().adminAccounts; },
   getAccount(id: number): AdminAccount | undefined { return readStore().adminAccounts.find(t => t.id === id); },
   createAccount(data: Partial<AdminAccount> & { name: string }): AdminAccount {
     const s = readStore();
@@ -434,7 +694,7 @@ export const store = {
     return s.adminAccounts.length < before;
   },
 
-  listAdminAssets(): AdminAsset[] { return readStore().adminAssets; },
+  listAdminAssets(): AdminAsset[] { seedDefaultAdminAssetsIfEmpty(); return readStore().adminAssets; },
   getAdminAsset(id: number): AdminAsset | undefined { return readStore().adminAssets.find(t => t.id === id); },
   createAdminAsset(data: Partial<AdminAsset> & { symbol: string }): AdminAsset {
     const s = readStore();

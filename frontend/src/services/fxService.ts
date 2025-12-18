@@ -43,11 +43,12 @@ class FXRateService {
   }
 
   // Store rate in cache
-  private setCache(key: string, rate: number): void {
+  private setCache(key: string, rate: number, ttlMs?: number): void {
+    const ttl = typeof ttlMs === 'number' && ttlMs > 0 ? ttlMs : this.CACHE_DURATION;
     this.cache[key] = {
       rate,
       timestamp: Date.now(),
-      expiry: Date.now() + this.CACHE_DURATION,
+      expiry: Date.now() + ttl,
     };
   }
 
@@ -136,7 +137,7 @@ class FXRateService {
         else if (toUpper === 'VND') fallback = this.FALLBACK_VND_RATE; // generic best-effort
         else fallback = 1.0;
         // Cache fallback briefly to avoid burst retries
-        this.setCache(cacheKey, fallback);
+        this.setCache(cacheKey, fallback, 30 * 1000); // 30s TTL for fallbacks so we re-try quickly for real price
         return fallback;
       } finally {
         this.pending.delete(cacheKey);

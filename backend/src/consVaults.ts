@@ -125,26 +125,19 @@ consVaultsRouter.post('/cons-vaults/:id/update-total-value', async (req, res) =>
   if (!v) return res.status(404).json({ error: 'not found' });
   const totalValue = Number(req.body?.total_value || 0) || 0;
   const notes = req.body?.notes ? String(req.body.notes) : undefined;
+  const at = new Date().toISOString();
   const asset: Asset = { type: 'FIAT', symbol: 'USD' };
 
-  // Persist by adjusting vault account balance with an INCOME/EXPENSE delta so that
-  // AUM (based on holdings) matches totalValue. This keeps the ledger consistent.
-  try {
-    const stats = await store.vaultStats(id);
-    const currentAUM = stats.aumUSD || 0;
-    const delta = totalValue - currentAUM;
-    if (Math.abs(delta) > 1e-6) {
-      const note = `Manual revaluation to ${totalValue}` + (notes ? `: ${notes}` : '');
-      if (delta > 0) {
-        await store.recordIncomeTx({ asset, amount: delta, at: new Date().toISOString(), account: id, note });
-      } else {
-        await store.recordExpenseTx({ asset, amount: -delta, at: new Date().toISOString(), account: id, note });
-      }
-    }
-  } catch (e) {
-    // If anything fails, still return echo response but log to console
-    console.warn('update-total-value adjustment failed', e);
-  }
+  // Record a valuation entry so reporting/ROI uses this point-in-time total value
+  store.addVaultEntry({
+    vault: id,
+    type: 'VALUATION',
+    asset,
+    amount: 0, // informational entry
+    usdValue: totalValue,
+    at,
+    note: notes ? `Valuation: ${notes}` : 'Valuation',
+  });
 
   const price = 1;
   res.json({ current_share_price: String(price.toFixed(4)), total_assets_under_management: String(totalValue) });

@@ -3,6 +3,33 @@ import { store } from './store';
 
 export const adminRouter = Router();
 
+// ----- Settings: Default Spending Vault -----
+adminRouter.get('/admin/settings', (_req, res) => {
+  try {
+    const spending = store.getDefaultSpendingVaultName();
+    const borrow = store.ensureBorrowingSettings();
+    res.json({
+      default_spending_vault: spending,
+      borrowing_vault: borrow.name,
+      borrowing_monthly_rate: borrow.rate,
+      borrowing_last_accrual_at: borrow.lastAccrualStart,
+    });
+  } catch (e: any) {
+    res.status(500).json({ error: e?.message || 'Failed to read settings' });
+  }
+});
+
+adminRouter.post('/admin/settings/spending-vault', (req, res) => {
+  try {
+    const name = String(req.body?.name || '').trim();
+    if (!name) return res.status(400).json({ error: 'name is required' });
+    const set = store.setDefaultSpendingVaultName(name);
+    res.status(200).json({ default_spending_vault: set });
+  } catch (e: any) {
+    res.status(400).json({ error: e?.message || 'failed to set spending vault' });
+  }
+});
+
 // ----- Transaction Types -----
 adminRouter.get('/admin/types', (_req, res) => {
   res.json(store.listTypes());

@@ -137,6 +137,13 @@ export const AdminAssetsTab: React.FC = () => {
 
   const formatPrice = (price?: number) => {
     if (price === undefined) return '-';
+    // Show more precision for very small USD prices (e.g., VND ~ $0.00004)
+    if (price > 0 && price < 0.01) {
+      return '$' + new Intl.NumberFormat('en-US', {
+        minimumFractionDigits: 4,
+        maximumFractionDigits: 8,
+      }).format(price);
+    }
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
       currency: 'USD',
@@ -285,4 +292,3 @@ export const AdminAssetsTab: React.FC = () => {
     </div>
   );
 };
-

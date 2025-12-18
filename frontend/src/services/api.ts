@@ -154,6 +154,10 @@ export const transactionApi = {
       `/api/transactions/${id}/recalc?only_missing=${onlyMissing ? 'true' : 'false'}`,
       {}
     ),
+  // Domain-specific helpers
+  borrow: <T = unknown>(payload: unknown) => api.post<T>('/api/transactions/borrow', payload),
+  loan: <T = unknown>(payload: unknown) => api.post<T>('/api/transactions/loan', payload),
+  repay: <T = unknown>(payload: unknown) => api.post<T>('/api/transactions/repay', payload),
 };
 
 // Actions API
@@ -278,6 +282,11 @@ export const vaultApi = {
 
 export default api;
 export { ApiError };
+
+// Portfolio aggregate report (holdings, liabilities, receivables)
+export const portfolioApi = {
+  report: <T = unknown>() => api.get<T>('/api/report'),
+};
 
 // Vault Ledger API (transaction-based derived state)
 export const vaultLedgerApi = {

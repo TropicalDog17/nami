@@ -1,12 +1,14 @@
-import { format } from 'date-fns';
+import { format, differenceInDays } from 'date-fns';
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 
 import ComboBox from '../components/ui/ComboBox';
 import DataTable, { TableColumn } from '../components/ui/DataTable';
 import ManualPricingControl from '../components/tokenized/ManualPricingControl';
+import QuickBorrowLoanModal from '../components/modals/QuickBorrowLoanModal';
+import QuickRepayModal from '../components/modals/QuickRepayModal';
 import { useToast } from '../components/ui/Toast';
-import { vaultApi, transactionApi, tokenizedVaultApi, vaultLedgerApi, ApiError } from '../services/api';
+import { vaultApi, transactionApi, tokenizedVaultApi, vaultLedgerApi, portfolioApi, ApiError } from '../services/api';
 import { formatCurrency, formatPercentage, formatPnL, getDecimalPlaces } from '../utils/currencyFormatter';
 
 type Vault = {
@@ -133,6 +135,14 @@ const VaultDetailPage: React.FC = () => {
   const [liveMetrics, setLiveMetrics] = useState<ManualMetrics | null>(null);
   const [showLiveMetrics, setShowLiveMetrics] = useState<boolean>(false);
   const [retryCount, setRetryCount] = useState(0);
+
+  // Borrowings special UI state
+  const [borrowingsSummary, setBorrowingsSummary] = useState<null | {
+    outstandingUSD: number;
+    liabilities: Array<{ counterparty: string; asset: string; amount: number; valueUSD: number }>;
+  }>(null);
+  const [showBorrowModal, setShowBorrowModal] = useState(false);
+  const [showRepayModal, setShowRepayModal] = useState(false);
 
   // Tokenized vault deposit/withdraw UI state
   const [showTokenizedDepositForm, setShowTokenizedDepositForm] = useState<boolean>(false);
@@ -451,6 +461,34 @@ const VaultDetailPage: React.FC = () => {
     }
   }, [vaultId, loadVault, loadVaultTransactions, showLiveMetrics]);
 
+  // Load Borrowings summary when viewing the Borrowings vault
+  useEffect(() => {
+    const fetchBorrowings = async () => {
+      try {
+        const isBorrowings = isTokenizedVault
+          ? String(tokenizedVaultDetails?.name || '').toLowerCase() === 'borrowings'
+          : String(vault?.account || vaultId || '').toLowerCase() === 'borrowings';
+        if (!isBorrowings) {
+          setBorrowingsSummary(null);
+          return;
+        }
+        const r = await portfolioApi.report<any>();
+        const liabs = Array.isArray(r?.liabilities) ? r.liabilities : [];
+        const mapped = liabs.map((o: any) => ({
+          counterparty: String(o?.counterparty ?? ''),
+          asset: typeof o?.asset === 'object' && o?.asset ? String(o.asset.symbol || '') : String(o?.asset ?? ''),
+          amount: Number(o?.amount ?? 0),
+          valueUSD: Number(o?.valueUSD ?? 0),
+        }));
+        const outstandingUSD = mapped.reduce((s: number, x: any) => s + (Number(x.valueUSD) || 0), 0);
+        setBorrowingsSummary({ outstandingUSD, liabilities: mapped });
+      } catch (e) {
+        setBorrowingsSummary(null);
+      }
+    };
+    void fetchBorrowings();
+  }, [isTokenizedVault, tokenizedVaultDetails, vault, vaultId]);
+
   const handleDeposit = async (): Promise<void> => {
     if (!depositForm.quantity || !depositForm.cost) {
       showErrorToast('Please enter quantity and cost');
@@ -767,6 +805,14 @@ const VaultDetailPage: React.FC = () => {
     return (vault?.asset ?? '').toUpperCase() === 'USD';
   }, [vault]);
 
+  // Whether the current vault represents the special Borrowings view
+  const isBorrowings = useMemo(() => {
+    if (isTokenizedVault) {
+      return String(tokenizedVaultDetails?.name || '').toLowerCase() === 'borrowings';
+    }
+    return String(vault?.account || vaultId || '').toLowerCase() === 'borrowings';
+  }, [isTokenizedVault, tokenizedVaultDetails, vault, vaultId]);
+
   useEffect(() => {
     // When opening deposit form for USD vault, default qty to 1
     if (isUsdOnlyVault && showDepositForm) {
@@ -784,6 +830,58 @@ const VaultDetailPage: React.FC = () => {
     }
   };
 
+  // Helpers and handlers for Borrowings quick actions
+  const toAssetObj = (symbol: string) => ({
+    type: (symbol.toUpperCase() === 'USD' || symbol.length === 3) ? 'FIAT' as const : 'CRYPTO' as const,
+    symbol: symbol.toUpperCase(),
+  });
+
+  const refreshBorrowings = useCallback(async () => {
+    try {
+      const r = await portfolioApi.report<any>();
+      const liabs = Array.isArray(r?.liabilities) ? r.liabilities : [];
+      const mapped = liabs.map((o: any) => ({
+        counterparty: String(o?.counterparty ?? ''),
+        asset: typeof o?.asset === 'object' && o?.asset ? String(o.asset.symbol || '') : String(o?.asset ?? ''),
+        amount: Number(o?.amount ?? 0),
+        valueUSD: Number(o?.valueUSD ?? 0),
+      }));
+      const outstandingUSD = mapped.reduce((s: number, x: any) => s + (Number(x.valueUSD) || 0), 0);
+      setBorrowingsSummary({ outstandingUSD, liabilities: mapped });
+    } catch {}
+  }, []);
+
+  const handleBorrowSubmit = useCallback(async (d: { date: string; amount: number; account?: string; asset: string; counterparty?: string; note?: string; }) => {
+    await transactionApi.borrow({
+      asset: toAssetObj(d.asset),
+      amount: Number(d.amount),
+      account: d.account || undefined,
+      counterparty: d.counterparty || 'general',
+      note: d.note || undefined,
+      at: d.date,
+    } as any);
+    await loadVault();
+    await loadVaultTransactions();
+    await refreshBorrowings();
+    setShowBorrowModal(false);
+  }, [loadVault, loadVaultTransactions, refreshBorrowings]);
+
+  const handleRepaySubmit = useCallback(async (d: { date: string; amount: number; account?: string; asset: string; counterparty?: string; note?: string; direction: 'BORROW' | 'LOAN' }) => {
+    await transactionApi.repay({
+      asset: toAssetObj(d.asset),
+      amount: Number(d.amount),
+      account: d.account || undefined,
+      counterparty: d.counterparty || 'general',
+      note: d.note || undefined,
+      direction: 'BORROW',
+      at: d.date,
+    } as any);
+    await loadVault();
+    await loadVaultTransactions();
+    await refreshBorrowings();
+    setShowRepayModal(false);
+  }, [loadVault, loadVaultTransactions, refreshBorrowings]);
+
   console.log('VaultDetailPage render:', {
     loading,
     error,
@@ -799,6 +897,23 @@ const VaultDetailPage: React.FC = () => {
         <div className="flex items-center justify-center h-64">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
         </div>
+
+        {/* Borrow/Repay modals for Borrowings */}
+        {isBorrowings && (
+          <>
+            <QuickBorrowLoanModal
+              isOpen={showBorrowModal}
+              mode="borrow"
+              onClose={() => setShowBorrowModal(false)}
+              onSubmit={async (d) => { await handleBorrowSubmit(d); }}
+            />
+            <QuickRepayModal
+              isOpen={showRepayModal}
+              onClose={() => setShowRepayModal(false)}
+              onSubmit={async (d) => { await handleRepaySubmit(d); }}
+            />
+          </>
+        )}
       </div>
     );
   }
@@ -825,6 +940,14 @@ const VaultDetailPage: React.FC = () => {
     const totalSupply = parseFloat(tokenizedVaultDetails.total_supply ?? '0');
     const totalValue = parseFloat(tokenizedVaultDetails.total_assets_under_management ?? '0');
     const performance = parseFloat(tokenizedVaultDetails.performance_since_inception ?? '0');
+    const inceptionDate = new Date(tokenizedVaultDetails.inception_date);
+    const asOfDate = tokenizedVaultDetails.as_of ? new Date(tokenizedVaultDetails.as_of) : new Date();
+    const daysSinceInception = Math.max(1, differenceInDays(asOfDate, inceptionDate));
+    const yearsSinceInception = daysSinceInception / 365.25;
+    const roiDecimal = (performance || 0) / 100;
+    const aprSinceInception = (1 + roiDecimal) > 0 && yearsSinceInception > 0
+      ? (Math.pow(1 + roiDecimal, 1 / yearsSinceInception) - 1) * 100
+      : 0;
     const status = tokenizedVaultDetails.status?.toLowerCase() ?? 'unknown';
     const statusConfig: Record<string, { label: string; className: string }> = {
       active: { label: 'Active', className: 'bg-green-100 text-green-800' },
@@ -833,9 +956,57 @@ const VaultDetailPage: React.FC = () => {
       liquidating: { label: 'Liquidating', className: 'bg-red-100 text-red-800' },
     };
     const statusBadge = statusConfig[status] ?? { label: status, className: 'bg-gray-100 text-gray-800' };
+    const isBorrowings = (tokenizedVaultDetails.name || '').toLowerCase() === 'borrowings';
 
     const canDeposit = tokenizedVaultDetails.status === 'active' && tokenizedVaultDetails.is_deposit_allowed;
     const canWithdraw = tokenizedVaultDetails.status === 'active' && tokenizedVaultDetails.is_withdrawal_allowed;
+
+    const toAssetObj = (symbol: string) => ({ type: (symbol.toUpperCase() === 'USD' || symbol.length === 3) ? 'FIAT' as const : 'CRYPTO' as const, symbol: symbol.toUpperCase() });
+    const refreshBorrowings = async () => {
+      try {
+        const r = await portfolioApi.report<any>();
+        const liabs = Array.isArray(r?.liabilities) ? r.liabilities : [];
+        const mapped = liabs.map((o: any) => ({
+          counterparty: String(o?.counterparty ?? ''),
+          asset: typeof o?.asset === 'object' && o?.asset ? String(o.asset.symbol || '') : String(o?.asset ?? ''),
+          amount: Number(o?.amount ?? 0),
+          valueUSD: Number(o?.valueUSD ?? 0),
+        }));
+        const outstandingUSD = mapped.reduce((s: number, x: any) => s + (Number(x.valueUSD) || 0), 0);
+        setBorrowingsSummary({ outstandingUSD, liabilities: mapped });
+      } catch {}
+    };
+
+    const handleBorrowSubmit = async (d: { date: string; amount: number; account?: string; asset: string; counterparty?: string; note?: string; }) => {
+      await transactionApi.borrow({
+        asset: toAssetObj(d.asset),
+        amount: Number(d.amount),
+        account: d.account || undefined,
+        counterparty: d.counterparty || 'general',
+        note: d.note || undefined,
+        at: d.date,
+      } as any);
+      await loadVault();
+      await loadVaultTransactions();
+      await refreshBorrowings();
+      setShowBorrowModal(false);
+    };
+
+    const handleRepaySubmit = async (d: { date: string; amount: number; account?: string; asset: string; counterparty?: string; note?: string; direction: 'BORROW' | 'LOAN' }) => {
+      await transactionApi.repay({
+        asset: toAssetObj(d.asset),
+        amount: Number(d.amount),
+        account: d.account || undefined,
+        counterparty: d.counterparty || 'general',
+        note: d.note || undefined,
+        direction: 'BORROW',
+        at: d.date,
+      } as any);
+      await loadVault();
+      await loadVaultTransactions();
+      await refreshBorrowings();
+      setShowRepayModal(false);
+    };
 
     return (
       <div className="px-4 py-6 sm:px-0" data-testid="tokenized-vault-detail-page">
@@ -857,7 +1028,70 @@ const VaultDetailPage: React.FC = () => {
           </span>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+        {/* Borrowings special summary */}
+        {isBorrowings && (
+          <div className="bg-white p-4 rounded-lg border border-gray-200 mb-6">
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-lg font-semibold">Borrowings Overview</h2>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => { setShowBorrowModal(true); setShowRepayModal(false); }}
+                  className="px-3 py-1.5 bg-red-600 text-white rounded-md hover:bg-red-700"
+                >
+                  Borrow
+                </button>
+                <button
+                  onClick={() => { setShowRepayModal(true); setShowBorrowModal(false); }}
+                  className="px-3 py-1.5 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+                >
+                  Repay
+                </button>
+              </div>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div>
+                <div className="text-gray-500 text-sm">Outstanding Balance</div>
+                <div className="text-2xl font-bold text-red-700">{formatCurrency(Math.abs(borrowingsSummary?.outstandingUSD ?? 0))}</div>
+                <div className="text-xs text-gray-500">Liability</div>
+              </div>
+              <div>
+                <div className="text-gray-500 text-sm">Entries</div>
+                <div className="text-xl font-semibold">{borrowingsSummary?.liabilities?.length ?? 0}</div>
+              </div>
+              <div>
+                <div className="text-gray-500 text-sm">Updated</div>
+                <div className="text-sm">{new Date().toLocaleString()}</div>
+              </div>
+            </div>
+            {borrowingsSummary && borrowingsSummary.liabilities.length > 0 && (
+              <div className="mt-4 overflow-x-auto">
+                <table className="min-w-full text-sm">
+                  <thead>
+                    <tr className="text-left text-gray-600">
+                      <th className="py-2 pr-4">Counterparty</th>
+                      <th className="py-2 pr-4">Asset</th>
+                      <th className="py-2 pr-4">Amount</th>
+                      <th className="py-2 pr-4">Value (USD)</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {borrowingsSummary.liabilities.map((o, idx) => (
+                      <tr key={idx} className="border-t">
+                        <td className="py-2 pr-4">{o.counterparty || 'general'}</td>
+                        <td className="py-2 pr-4">{o.asset}</td>
+                        <td className="py-2 pr-4">{Number(o.amount).toLocaleString(undefined, { maximumFractionDigits: 6 })}</td>
+                        <td className="py-2 pr-4">{formatCurrency(o.valueUSD)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+
+        {!isBorrowings && (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
           <div className="bg-white p-4 rounded-lg border border-gray-200">
             <h3 className="text-sm font-medium text-gray-500 mb-2">Token Price</h3>
             <p className="text-2xl font-bold text-gray-900">${isNaN(tokenPrice) ? '0.0000' : tokenPrice.toFixed(4)}</p>
@@ -882,7 +1116,15 @@ const VaultDetailPage: React.FC = () => {
             </p>
             <p className="text-sm text-gray-600">Relative to initial share price</p>
           </div>
+          <div className="bg-white p-4 rounded-lg border border-gray-200">
+            <h3 className="text-sm font-medium text-gray-500 mb-2">APR Since Inception</h3>
+            <p className={`text-2xl font-bold ${aprSinceInception >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+              {formatPercentage((aprSinceInception || 0) / 100, 2)}
+            </p>
+            <p className="text-sm text-gray-600">Annualized from inception</p>
+          </div>
         </div>
+        )}
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
           <div className="bg-white p-4 rounded-lg border border-gray-200">

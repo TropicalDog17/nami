@@ -1,6 +1,7 @@
-import React, { useState, KeyboardEvent } from 'react';
+import React, { useState, KeyboardEvent, useEffect } from 'react';
 
 import { useApp } from '../../context/AppContext';
+import { vaultApi } from '../../services/api';
 
 interface QuickExpenseModalProps {
   isOpen: boolean;
@@ -10,20 +11,27 @@ interface QuickExpenseModalProps {
 
 const ADD_NEW_VALUE = '__ADD_NEW__';
 
+type SimpleVault = { name?: string; id?: string; status?: string };
+
 const QuickExpenseModal: React.FC<QuickExpenseModalProps> = ({
   isOpen,
   onClose,
   onSubmit
 }) => {
-  const { accounts, assets, tags, actions } = useApp();
+  const { assets, tags, actions } = useApp();
   const today = new Date().toISOString().split('T')[0];
+
+  const [vaults, setVaults] = useState<SimpleVault[]>([]);
+  const [isLoadingVaults, setIsLoadingVaults] = useState<boolean>(false);
+  const [vaultsError, setVaultsError] = useState<string | null>(null);
 
   const [formData, setFormData] = useState({
     date: today,
+    dueDate: '',
     amount: '',
     category: '',
     note: '',
-    account: '',
+    account: '', // now represents the paying vault name
     asset: 'USD',
     payee: ''
   });
@@ -35,6 +43,29 @@ const QuickExpenseModal: React.FC<QuickExpenseModalProps> = ({
   const [newCategory, setNewCategory] = useState('');
   const [isSavingCategory, setIsSavingCategory] = useState(false);
   const [categoryError, setCategoryError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const loadVaults = async () => {
+      try {
+        setIsLoadingVaults(true);
+        setVaultsError(null);
+        // Prefer active vaults only
+        const list = await vaultApi.getActiveVaults<SimpleVault[]>({ is_open: true });
+        const arr = (list ?? []).map(v => ({ name: (v.name ?? (v as any).id) as string, id: (v as any).id ?? v.name, status: v.status }))
+          .filter(v => !!v.name);
+        setVaults(arr);
+        // Default paying vault if none selected
+        setFormData(prev => ({ ...prev, account: prev.account || (arr[0]?.name ?? '') }));
+      } catch (e) {
+        const msg = (e as { message?: string } | null)?.message ?? 'Failed to load vaults';
+        setVaultsError(msg);
+      } finally {
+        setIsLoadingVaults(false);
+      }
+    };
+    void loadVaults();
+  }, [isOpen]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -51,12 +82,15 @@ const QuickExpenseModal: React.FC<QuickExpenseModalProps> = ({
       const transactionData = {
         date: toISODateTime(formData.date),
         type: 'expense',
-        quantity: '1',
-        price_local: formData.amount,
+        // For income/expense, backend expects the amount in 'quantity' units of the asset
+        quantity: formData.amount, // e.g., 42.50 USD
+        price_local: '1',
         amount_local: formData.amount,
         asset: formData.asset,
-        account: formData.account || 'Default',
+        account: formData.account, // vault name
+        // Support both legacy 'tag' and new 'category'
         tag: formData.category,
+        category: formData.category,
         note: formData.note,
         counterparty: formData.payee || undefined,
         fx_to_usd: '1.0',
@@ -146,6 +180,16 @@ const QuickExpenseModal: React.FC<QuickExpenseModalProps> = ({
             </div>
 
             <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Due Date (optional)</label>
+              <input
+                type="date"
+                value={formData.dueDate}
+                onChange={(e) => handleInputChange('dueDate', e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+
+            <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Amount</label>
               <input
                 type="number"
@@ -159,22 +203,21 @@ const QuickExpenseModal: React.FC<QuickExpenseModalProps> = ({
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Paying Account</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Paying Vault</label>
               <select
                 value={formData.account}
                 onChange={(e) => handleInputChange('account', e.target.value)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                 required
               >
-                <option value="">Select account</option>
-                {(accounts ?? []).filter((a: unknown) => {
-                  const typedA = a as { is_active: boolean; name: string };
-                  return typedA.is_active;
-                }).map((a: unknown) => {
-                  const typedA = a as { name: string };
-                  return <option key={typedA.name} value={typedA.name}>{typedA.name}</option>;
-                })}
+                <option value="">{isLoadingVaults ? 'Loading vaults…' : 'Select vault'}</option>
+                {vaults.map((v) => (
+                  <option key={v.name} value={v.name}>{v.name}</option>
+                ))}
               </select>
+              {vaultsError ? (
+                <p className="text-sm text-red-600 mt-1">{vaultsError}</p>
+              ) : null}
             </div>
 
             <div>

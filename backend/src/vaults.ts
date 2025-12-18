@@ -166,46 +166,7 @@ vaultsRouter.post('/vaults/:name/deposit', async (req, res) => {
     };
     store.addVaultEntry(entry);
 
-    // Mirror into Transactions so AUM reflects immediately
-    const rate = await priceService.getRateUSD(payload.asset, at);
-    if (payload.asset.symbol.toUpperCase() === 'USD') {
-      if (payload.account) {
-        // Transfer from source account to the vault account
-        const transferId = uuidv4();
-        store.addTransaction({
-          id: uuidv4(),
-          type: 'TRANSFER_OUT',
-          asset: payload.asset,
-          amount: payload.amount,
-          createdAt: at,
-          account: payload.account,
-          note: `Deposit to ${name}` + (payload.note ? `: ${payload.note}` : ''),
-          transferId,
-          rate,
-          usdAmount: payload.amount * rate.rateUSD,
-        } as any);
-        store.addTransaction({
-          id: uuidv4(),
-          type: 'TRANSFER_IN',
-          asset: payload.asset,
-          amount: payload.amount,
-          createdAt: at,
-          account: name,
-          note: `Deposit from ${payload.account}` + (payload.note ? `: ${payload.note}` : ''),
-          transferId,
-          rate,
-          usdAmount: payload.amount * rate.rateUSD,
-        } as any);
-      } else {
-        // Treat as Income into the vault account
-        await store.recordIncomeTx({ asset: payload.asset, amount: payload.amount, at, account: name, note: payload.note });
-      }
-    } else {
-      // Non-USD: increase vault holdings of the asset (income). If a source account is provided,
-      // we still treat it as income to avoid duplicating non-USD pair logic here.
-      await store.recordIncomeTx({ asset: payload.asset, amount: payload.amount, at, account: name, note: payload.note });
-    }
-
+    // No mirroring into Transactions - vault-only model
     res.status(201).json({ ok: true, entry });
   } catch (e: any) {
     res.status(400).json({ error: e?.message || 'invalid deposit' });
@@ -258,6 +219,23 @@ vaultsRouter.post('/vaults/:name/refresh', async (req, res) => {
   if (!v) return res.status(404).json({ error: 'not found' });
   const stats = await store.vaultStats(name);
   const current_value_usd = Number(req.body?.current_value_usd ?? stats.aumUSD) || 0;
+  const persist = String(req.body?.persist || '').toLowerCase() === 'true' || req.body?.persist === true;
+
+  // If persist requested, record a VALUATION entry
+  if (persist) {
+    const at = new Date().toISOString();
+    const asset = { type: 'FIAT', symbol: 'USD' } as const;
+    store.addVaultEntry({
+      vault: name,
+      type: 'VALUATION',
+      asset: asset as any,
+      amount: 0,
+      usdValue: current_value_usd,
+      at,
+      note: 'Manual valuation update',
+    });
+  }
+
   const roi_realtime_percent = stats.totalDepositedUSD > 0
     ? ((current_value_usd + stats.totalWithdrawnUSD - stats.totalDepositedUSD) / stats.totalDepositedUSD) * 100
     : 0;

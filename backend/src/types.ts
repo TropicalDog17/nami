@@ -23,7 +23,7 @@ export interface Rate {
     asset: Asset;
     rateUSD: number; // 1 asset -> USD
     timestamp: string; // ISO, minute precision
-    source: "COINGECKO" | "EXCHANGE_RATE_HOST" | "FIXED";
+    source: "COINGECKO" | "EXCHANGE_RATE_HOST" | "FRANKFURTER" | "ER_API" | "FALLBACK" | "FIXED";
 }
 
 export interface TransactionBase {
@@ -34,9 +34,12 @@ export interface TransactionBase {
     createdAt: string; // ISO date
     account?: string; // optional account/source of funds
     note?: string;
-    category?: string;
-    tags?: string[];
+    category?: string; // primary category or tag
+    tags?: string[]; // additional tags
+    counterparty?: string; // merchant, payee, or related party
+    dueDate?: string; // ISO date for due/billing date if applicable
     transferId?: string; // Links TRANSFER_OUT and TRANSFER_IN pairs
+    loanId?: string; // optional link to a specific loan agreement (for LOAN, REPAY principal, interest income)
     rate: Rate; // rate used at the time of transaction
     usdAmount: number; // amount * rateUSD (may be negative based on delta sign)
 }
@@ -95,7 +98,7 @@ export interface Vault {
     status: VaultStatus;
     createdAt: string;
 }
-export type VaultEntryType = 'DEPOSIT' | 'WITHDRAW';
+export type VaultEntryType = 'DEPOSIT' | 'WITHDRAW' | 'VALUATION';
 export interface VaultEntry {
     vault: string; // vault name
     type: VaultEntryType;
@@ -105,6 +108,24 @@ export interface VaultEntry {
     at: string; // ISO
     account?: string;
     note?: string;
+}
+
+// Loans
+export type InterestPeriod = "DAY" | "MONTH" | "YEAR";
+export type LoanStatus = "ACTIVE" | "CLOSED";
+export interface LoanAgreement {
+    id: string;
+    counterparty: string;
+    asset: Asset;
+    principal: number; // original principal amount
+    interestRate: number; // fixed rate per period (e.g., 0.02 means 2% per period)
+    period: InterestPeriod; // interest period for the fixed rate
+    startAt: string; // ISO date when loan is issued
+    maturityAt?: string; // optional maturity date
+    note?: string;
+    account?: string; // account/source of funds used to issue the loan
+    status: LoanStatus;
+    createdAt: string;
 }
 
 // Zod Schemas
@@ -133,6 +154,10 @@ export const IncomeExpenseSchema = z.object({
     account: z.string().optional(),
     note: z.string().optional(),
     at: z.string().datetime().optional(),
+    category: z.string().optional(),
+    tags: z.array(z.string()).optional(),
+    counterparty: z.string().optional(),
+    dueDate: z.string().datetime().optional(),
 });
 
 export const BorrowLoanSchema = z.object({
@@ -158,6 +183,22 @@ export type InitialRequest = z.infer<typeof InitialRequestSchema>;
 export type IncomeExpenseRequest = z.infer<typeof IncomeExpenseSchema>;
 export type BorrowLoanRequest = z.infer<typeof BorrowLoanSchema>;
 export type RepayRequest = z.infer<typeof RepaySchema>;
+
+// Loan Schemas
+export const LoanCreateSchema = z.object({
+    asset: AssetSchema,
+    principal: z.number().positive(),
+    counterparty: z.string().min(1),
+    interestRate: z.number().nonnegative(), // e.g., 0.02
+    period: z.enum(["DAY", "MONTH", "YEAR"]),
+    startAt: z.string().datetime().optional(),
+    maturityAt: z.string().datetime().optional(),
+    account: z.string().optional(),
+    note: z.string().optional(),
+});
+export const LoanCreateBatchSchema = z.object({ items: z.array(LoanCreateSchema).min(1) });
+export type LoanCreateRequest = z.infer<typeof LoanCreateSchema>;
+export type LoanCreateBatchRequest = z.infer<typeof LoanCreateBatchSchema>;
 
 export function assetKey(a: Asset): string {
     return `${a.type}:${a.symbol.toUpperCase()}`;

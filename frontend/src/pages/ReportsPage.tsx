@@ -11,6 +11,7 @@ import { reportsApi, investmentsApi, vaultApi, tokenizedVaultApi } from '../serv
 import QuickBuyModal from '../components/modals/QuickBuyModal';
 import QuickSellModal from '../components/modals/QuickSellModal';
 
+
 const ReportsPage = () => {
   const [activeTab, setActiveTab] = useState('holdings');
   const [currency, setCurrency] = useState<'USD' | 'VND'>('USD');
@@ -218,13 +219,15 @@ const ReportsPage = () => {
             >
               Refresh
             </button>
+
             <button
               onClick={() => setShowQuickBuy(true)}
-              className="px-3 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+              className="px-3 py-2 bg-green-600 text-white rounded hover:bg-green-700"
               title="Record a crypto spot buy"
             >
               Quick Buy
             </button>
+
             <button
               onClick={() => setShowQuickSell(true)}
               className="px-3 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700"

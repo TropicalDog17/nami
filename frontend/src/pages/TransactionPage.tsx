@@ -12,6 +12,10 @@ import QuickInitBalanceModal from '../components/modals/QuickInitBalanceModal';
 import QuickInvestmentModal from '../components/modals/QuickInvestmentModal';
 import QuickVaultModal from '../components/modals/QuickVaultModal';
 import QuickTransferModal from '../components/modals/QuickTransferModal';
+import QuickBorrowLoanModal from '../components/modals/QuickBorrowLoanModal';
+import QuickRepayModal from '../components/modals/QuickRepayModal';
+import QuickBuyModal from '../components/modals/QuickBuyModal';
+import QuickSellModal from '../components/modals/QuickSellModal';
 import TransactionForm from '../components/forms/TransactionForm';
 import ComboBox from '../components/ui/ComboBox';
 import DataTable, {
@@ -86,6 +90,11 @@ const TransactionPage: React.FC = () => {
   const [isQuickInitOpen, setIsQuickInitOpen] = useState(false);
   const [isQuickInvestmentOpen, setIsQuickInvestmentOpen] = useState(false);
   const [isQuickTransferOpen, setIsQuickTransferOpen] = useState(false);
+  const [isQuickBorrowOpen, setIsQuickBorrowOpen] = useState(false);
+  const [isQuickLoanOpen, setIsQuickLoanOpen] = useState(false);
+  const [isQuickRepayOpen, setIsQuickRepayOpen] = useState(false);
+  const [isQuickBuyOpen, setIsQuickBuyOpen] = useState(false);
+  const [isQuickSellOpen, setIsQuickSellOpen] = useState(false);
   const [isQuickMenuOpen, setIsQuickMenuOpen] = useState(false);
   const quickMenuRef = useRef<HTMLDivElement | null>(null);
 
@@ -438,6 +447,79 @@ const TransactionPage: React.FC = () => {
         showErrorToast(msg);
         throw e;
       }
+  };
+
+  // Borrow/Loan/Repay helpers
+  const toAssetObj = (symbol: string) => ({
+    type: (symbol.toUpperCase() === 'USD' || symbol.length === 3) ? 'FIAT' as const : 'CRYPTO' as const,
+    symbol: symbol.toUpperCase(),
+  });
+
+  const handleQuickBorrowSubmit = async (data: { date: string; amount: number; account?: string; asset: string; counterparty?: string; note?: string; }): Promise<void> => {
+    try {
+      const payload = {
+        asset: toAssetObj(data.asset),
+        amount: Number(data.amount),
+        account: data.account || undefined,
+        counterparty: data.counterparty || 'general',
+        note: data.note || undefined,
+        at: toISODateTime(data.date),
+      };
+      await transactionApi.borrow(payload);
+      await loadTransactions();
+      actions.setError(null);
+      showSuccessToast('Borrow recorded');
+    } catch (e: unknown) {
+      const msg = (e as { message?: string } | null)?.message ?? 'Failed to record borrow';
+      actions.setError(msg);
+      showErrorToast(msg);
+      throw e;
+    }
+  };
+
+  const handleQuickLoanSubmit = async (data: { date: string; amount: number; account?: string; asset: string; counterparty?: string; note?: string; }): Promise<void> => {
+    try {
+      const payload = {
+        asset: toAssetObj(data.asset),
+        amount: Number(data.amount),
+        account: data.account || undefined,
+        counterparty: data.counterparty || 'general',
+        note: data.note || undefined,
+        at: toISODateTime(data.date),
+      };
+      await transactionApi.loan(payload);
+      await loadTransactions();
+      actions.setError(null);
+      showSuccessToast('Loan recorded');
+    } catch (e: unknown) {
+      const msg = (e as { message?: string } | null)?.message ?? 'Failed to record loan';
+      actions.setError(msg);
+      showErrorToast(msg);
+      throw e;
+    }
+  };
+
+  const handleQuickRepaySubmit = async (data: { date: string; amount: number; account?: string; asset: string; counterparty?: string; note?: string; direction: 'BORROW' | 'LOAN'; }): Promise<void> => {
+    try {
+      const payload = {
+        asset: toAssetObj(data.asset),
+        amount: Number(data.amount),
+        account: data.account || undefined,
+        direction: data.direction,
+        counterparty: data.counterparty || 'general',
+        note: data.note || undefined,
+        at: toISODateTime(data.date),
+      } as any;
+      await transactionApi.repay(payload);
+      await loadTransactions();
+      actions.setError(null);
+      showSuccessToast('Repayment recorded');
+    } catch (e: unknown) {
+      const msg = (e as { message?: string } | null)?.message ?? 'Failed to record repayment';
+      actions.setError(msg);
+      showErrorToast(msg);
+      throw e;
+    }
   };
 
   // Quick Add helpers (reuse existing toISODateTime defined above for actions)
@@ -1522,6 +1604,51 @@ const TransactionPage: React.FC = () => {
                       className="w-full text-left px-4 py-2 text-sm hover:bg-gray-50"
                       onClick={() => {
                         setIsQuickMenuOpen(false);
+                        setIsQuickBorrowOpen(true);
+                      }}
+                    >
+                      Borrow
+                    </button>
+                    <button
+                      className="w-full text-left px-4 py-2 text-sm hover:bg-gray-50"
+                      onClick={() => {
+                        setIsQuickMenuOpen(false);
+                        setIsQuickLoanOpen(true);
+                      }}
+                    >
+                      Loan
+                    </button>
+                    <button
+                      className="w-full text-left px-4 py-2 text-sm hover:bg-gray-50"
+                      onClick={() => {
+                        setIsQuickMenuOpen(false);
+                        setIsQuickRepayOpen(true);
+                      }}
+                    >
+                      Repay
+                    </button>
+                    <button
+                      className="w-full text-left px-4 py-2 text-sm hover:bg-gray-50"
+                      onClick={() => {
+                        setIsQuickMenuOpen(false);
+                        setIsQuickBuyOpen(true);
+                      }}
+                    >
+                      Quick Buy
+                    </button>
+                    <button
+                      className="w-full text-left px-4 py-2 text-sm hover:bg-gray-50"
+                      onClick={() => {
+                        setIsQuickMenuOpen(false);
+                        setIsQuickSellOpen(true);
+                      }}
+                    >
+                      Quick Sell
+                    </button>
+                    <button
+                      className="w-full text-left px-4 py-2 text-sm hover:bg-gray-50"
+                      onClick={() => {
+                        setIsQuickMenuOpen(false);
                         setIsQuickVaultOpen(true);
                       }}
                     >
@@ -1795,6 +1922,45 @@ const TransactionPage: React.FC = () => {
         isOpen={isQuickTransferOpen}
         onClose={() => setIsQuickTransferOpen(false)}
         onSubmit={handleQuickTransferSubmit}
+      />
+      <QuickBuyModal
+        isOpen={isQuickBuyOpen}
+        onClose={() => setIsQuickBuyOpen(false)}
+        onSubmitted={async () => {
+          await loadTransactions();
+          showSuccessToast('Buy recorded');
+        }}
+      />
+      <QuickSellModal
+        isOpen={isQuickSellOpen}
+        onClose={() => setIsQuickSellOpen(false)}
+        onSubmitted={async () => {
+          await loadTransactions();
+          showSuccessToast('Sell recorded');
+        }}
+      />
+      <QuickBorrowLoanModal
+        isOpen={isQuickBorrowOpen}
+        mode="borrow"
+        onClose={() => setIsQuickBorrowOpen(false)}
+        onSubmit={async (d) => {
+          await handleQuickBorrowSubmit(d);
+        }}
+      />
+      <QuickBorrowLoanModal
+        isOpen={isQuickLoanOpen}
+        mode="loan"
+        onClose={() => setIsQuickLoanOpen(false)}
+        onSubmit={async (d) => {
+          await handleQuickLoanSubmit(d);
+        }}
+      />
+      <QuickRepayModal
+        isOpen={isQuickRepayOpen}
+        onClose={() => setIsQuickRepayOpen(false)}
+        onSubmit={async (d) => {
+          await handleQuickRepaySubmit(d);
+        }}
       />
       {quickError && (
         <div className="mt-3 text-sm text-red-700">{quickError}</div>

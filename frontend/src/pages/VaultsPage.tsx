@@ -129,7 +129,15 @@ const VaultsPage: React.FC = () => {
     {
       key: 'type',
       title: 'Type',
-      render: (value) => {
+      render: (value, _c, row) => {
+        const isBorrowings = String(row.name || '').toLowerCase() === 'borrowings';
+        if (isBorrowings) {
+          return (
+            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800`}>
+              Liability
+            </span>
+          );
+        }
         const typeConfig = {
           user_defined: { label: 'User-Defined', class: 'bg-purple-100 text-purple-800' },
           single_asset: { label: 'Single Asset', class: 'bg-blue-100 text-blue-800' },
@@ -150,6 +158,10 @@ const VaultsPage: React.FC = () => {
       type: 'currency',
       currency: 'USD',
       render: (value, _column, row) => {
+        const isBorrowings = String(row.name || '').toLowerCase() === 'borrowings';
+        if (isBorrowings) {
+          return <span className="text-gray-500">—</span>;
+        }
         const price = typeof value === 'string' && value !== '' ? parseFloat(value) : 0;
         const isManual = row.is_user_defined_price;
         return (
@@ -167,14 +179,21 @@ const VaultsPage: React.FC = () => {
       title: 'Total Value',
       type: 'currency',
       currency: 'USD',
-      render: (value) => formatCurrency(typeof value === 'string' && value !== '' ? parseFloat(value) : 0),
+      render: (value, _c, row) => {
+        const num = typeof value === 'string' && value !== '' ? parseFloat(value) : 0;
+        const isBorrowings = String(row.name || '').toLowerCase() === 'borrowings';
+        const cls = isBorrowings && num < 0 ? 'text-red-700 font-medium' : '';
+        return <span className={cls}>{formatCurrency(num)}</span>;
+      },
     },
     {
       key: 'total_supply',
       title: 'Total Supply',
       type: 'number',
       decimals: 6,
-      render: (value) => {
+      render: (value, _c, row) => {
+        const isBorrowings = String(row.name || '').toLowerCase() === 'borrowings';
+        if (isBorrowings) return <span className="text-gray-500">—</span>;
         const supply = typeof value === 'string' && value !== '' ? parseFloat(value) : 0;
         return supply.toLocaleString(undefined, { maximumFractionDigits: 6 });
       },
@@ -184,7 +203,9 @@ const VaultsPage: React.FC = () => {
       title: 'Performance',
       type: 'number',
       decimals: 2,
-      render: (value) => {
+      render: (value, _c, row) => {
+        const isBorrowings = String(row.name || '').toLowerCase() === 'borrowings';
+        if (isBorrowings) return <span className="text-gray-500">—</span>;
         const perf = typeof value === 'string' && value !== '' ? parseFloat(value) : 0;
         const isPositive = perf > 0;
         const className = isPositive ? 'text-green-700' : perf < 0 ? 'text-red-700' : 'text-gray-700';

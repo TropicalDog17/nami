@@ -32,11 +32,12 @@ async function buildTransactionBase(
     account?: string
 ) {
     const rate = await priceService.getRateUSD(asset, at);
+    const acc = (account && String(account).trim().length ? String(account).trim() : store.getDefaultSpendingVaultName());
     return {
         asset,
         amount,
         createdAt: at ?? nowISO(),
-        account,
+        account: acc,
         rate,
         usdAmount: amount * rate.rateUSD,
     };
@@ -84,6 +85,10 @@ router.post("/transactions/income", async (req, res) => {
             id: uuidv4(),
             type: "INCOME",
             note: body.note,
+            category: body.category,
+            tags: body.tags,
+            counterparty: body.counterparty,
+            dueDate: body.dueDate,
             ...base,
         } as Transaction;
         store.addTransaction(tx);
@@ -106,6 +111,12 @@ router.post("/transactions/expense", async (req, res) => {
             id: uuidv4(),
             type: "EXPENSE",
             note: body.note,
+            category: body.category,
+            tags: body.tags,
+            counterparty: body.counterparty,
+            dueDate: body.dueDate,
+            // legacy alias for UI
+            ...(body.category ? { tag: body.category } : {} as any),
             ...base,
         } as Transaction;
         store.addTransaction(tx);
@@ -201,22 +212,52 @@ router.get("/transactions", (req, res) => {
     const investmentId = (req.query.investment_id as string | undefined)?.toString();
     if (investmentId) {
         const entries = store.getVaultEntries(investmentId);
-        const mapped = entries.map((e) => ({
-            id: `${investmentId}-${e.at}-${e.type}`,
-            date: e.at,
-            type: e.type === 'DEPOSIT' ? 'deposit' : 'withdrawal',
-            asset: e.asset.symbol,
-            account: e.account ?? investmentId,
-            quantity: e.asset.symbol === 'USD' ? e.usdValue : e.amount,
-            amount_usd: e.usdValue,
-            amount_vnd: undefined,
-            counterparty: investmentId,
-            note: e.note,
-            investment_id: investmentId,
-        }));
+        const mapped = entries.map((e, idx) => {
+            const isVal = e.type === 'VALUATION';
+            return {
+                id: `${investmentId}-${e.at}-${e.type}-${idx}`,
+                date: e.at,
+                type: e.type === 'DEPOSIT' ? 'deposit' : (e.type === 'WITHDRAW' ? 'withdraw' : 'valuation'),
+                asset: isVal ? 'USD' : e.asset.symbol,
+                account: e.account ?? investmentId,
+                quantity: isVal ? e.usdValue : (e.asset.symbol === 'USD' ? e.usdValue : e.amount),
+                amount_usd: e.usdValue,
+                amount_vnd: undefined,
+                counterparty: investmentId,
+                note: e.note,
+                investment_id: investmentId,
+            };
+        });
         return res.json(mapped);
     }
-    res.json(store.all());
+    const transactions = store.all();
+    if (!transactions || transactions.length === 0) {
+        // Vault-only fallback: surface vault entries as pseudo-transactions
+        const vaults = store.listVaults();
+        const rows: any[] = [];
+        for (const v of vaults) {
+            const entries = store.getVaultEntries(v.name);
+            entries.forEach((e, idx) => {
+                rows.push({
+                    id: `${v.name}-${e.at}-${e.type}-${idx}`,
+                    date: e.at,
+                    type: e.type === 'DEPOSIT' ? 'deposit' : 'withdraw',
+                    asset: e.asset.symbol,
+                    account: e.account ?? v.name,
+                    quantity: e.asset.symbol === 'USD' ? e.usdValue : e.amount,
+                    amount_usd: e.usdValue,
+                    amount_vnd: undefined,
+                    counterparty: v.name,
+                    note: e.note,
+                    investment_id: v.name,
+                });
+            });
+        }
+        // Sort newest first for a nicer UX
+        rows.sort((a, b) => String(b.date).localeCompare(String(a.date)));
+        return res.json(rows);
+    }
+    res.json(transactions);
 });
 
 // Delete a transaction by id
@@ -242,7 +283,7 @@ router.post("/transactions", async (req, res) => {
             const symbol = String(body.asset || 'USD').toUpperCase();
             const qty = Number(body.quantity || body.amount || 0);
             const at = String(body.date || body.at || '') || undefined;
-            const account = body.account ? String(body.account) : undefined;
+            const account = body.account ? String(body.account) : store.getDefaultSpendingVaultName();
             if (!symbol || !(qty > 0)) {
                 return res.status(400).json({ error: 'Invalid payload' });
             }
@@ -281,6 +322,12 @@ router.post("/transactions", async (req, res) => {
                 id: uuidv4(),
                 type: type.toUpperCase() === 'INCOME' ? 'INCOME' : 'EXPENSE',
                 note: body.note,
+                category: body.category ?? body.tag,
+                tags: body.tags,
+                counterparty: body.counterparty,
+                dueDate: body.dueDate,
+                // legacy alias for UI's `tag` column
+                ...(body.category ? { tag: body.category } : body.tag ? { tag: body.tag } : {} as any),
                 ...base,
             } as Transaction;
             store.addTransaction(tx);
