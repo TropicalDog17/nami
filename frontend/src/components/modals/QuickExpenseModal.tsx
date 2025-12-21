@@ -7,6 +7,8 @@ interface QuickExpenseModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSubmit: (transactionData: unknown) => Promise<void>;
+  // If provided, prefill the Paying Vault with this account name (e.g., 'Spend' or 'Borrowings')
+  defaultAccount?: string;
 }
 
 const ADD_NEW_VALUE = '__ADD_NEW__';
@@ -16,7 +18,8 @@ type SimpleVault = { name?: string; id?: string; status?: string };
 const QuickExpenseModal: React.FC<QuickExpenseModalProps> = ({
   isOpen,
   onClose,
-  onSubmit
+  onSubmit,
+  defaultAccount,
 }) => {
   const { assets, tags, actions } = useApp();
   const today = new Date().toISOString().split('T')[0];
@@ -52,11 +55,17 @@ const QuickExpenseModal: React.FC<QuickExpenseModalProps> = ({
         setVaultsError(null);
         // Prefer active vaults only
         const list = await vaultApi.getActiveVaults<SimpleVault[]>({ is_open: true });
-        const arr = (list ?? []).map(v => ({ name: (v.name ?? (v as any).id) as string, id: (v as any).id ?? v.name, status: v.status }))
+        let arr = (list ?? []).map(v => ({ name: (v.name ?? (v as any).id) as string, id: (v as any).id ?? v.name, status: v.status }))
           .filter(v => !!v.name);
+
+        // Ensure the defaultAccount (if provided) is present in the list so it shows in the dropdown
+        if (defaultAccount && !arr.find(v => v.name === defaultAccount)) {
+          arr = [{ name: defaultAccount, id: defaultAccount, status: 'active' }, ...arr];
+        }
+
         setVaults(arr);
         // Default paying vault if none selected
-        setFormData(prev => ({ ...prev, account: prev.account || (arr[0]?.name ?? '') }));
+        setFormData(prev => ({ ...prev, account: prev.account || defaultAccount || (arr[0]?.name ?? '') }));
       } catch (e) {
         const msg = (e as { message?: string } | null)?.message ?? 'Failed to load vaults';
         setVaultsError(msg);
@@ -65,7 +74,7 @@ const QuickExpenseModal: React.FC<QuickExpenseModalProps> = ({
       }
     };
     void loadVaults();
-  }, [isOpen]);
+  }, [isOpen, defaultAccount]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

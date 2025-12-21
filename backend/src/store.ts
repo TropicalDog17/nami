@@ -553,33 +553,51 @@ export const store = {
   },
   async vaultStats(name: string): Promise<{ totalDepositedUSD: number; totalWithdrawnUSD: number; aumUSD: number; }> {
     const s = readStore();
-    const entries = s.vaultEntries.filter(e => e.vault === name);
-    const deposited = entries.filter(e => e.type === 'DEPOSIT').reduce((sum, e) => sum + (e.usdValue || 0), 0);
-    const withdrawn = entries.filter(e => e.type === 'WITHDRAW').reduce((sum, e) => sum + (e.usdValue || 0), 0);
+    const entries = s.vaultEntries
+      .filter(e => e.vault === name)
+      .sort((a, b) => String(a.at).localeCompare(String(b.at)));
 
-    // Compute current AUM from vault entries only (positions)
-    const byAsset = new Map<string, { asset: Asset; units: number }>();
+    let deposited = 0;
+    let withdrawn = 0;
+
+    // Track positions and support rolling AUM: last valuation + net flows since valuation
+    const positions = new Map<string, { asset: Asset; units: number }>();
+    let lastValuationUSD: number | undefined = undefined;
+    let netFlowSinceValUSD = 0; // deposits - withdrawals since the last valuation snapshot
+
     for (const e of entries) {
-      if (e.type === 'DEPOSIT' || e.type === 'WITHDRAW') {
+      if (e.type === 'DEPOSIT') {
+        const usd = Number(e.usdValue || 0);
+        deposited += usd;
         const k = assetKey(e.asset);
-        const cur = byAsset.get(k) || { asset: e.asset, units: 0 };
-        cur.units += e.type === 'DEPOSIT' ? e.amount : -e.amount;
-        byAsset.set(k, cur);
+        const cur = positions.get(k) || { asset: e.asset, units: 0 };
+        cur.units += e.amount;
+        positions.set(k, cur);
+        if (typeof lastValuationUSD === 'number') netFlowSinceValUSD += usd;
+      } else if (e.type === 'WITHDRAW') {
+        const usd = Number(e.usdValue || 0);
+        withdrawn += usd;
+        const k = assetKey(e.asset);
+        const cur = positions.get(k) || { asset: e.asset, units: 0 };
+        cur.units -= e.amount;
+        positions.set(k, cur);
+        if (typeof lastValuationUSD === 'number') netFlowSinceValUSD -= usd;
+      } else if (e.type === 'VALUATION') {
+        if (typeof e.usdValue === 'number') lastValuationUSD = e.usdValue;
+        netFlowSinceValUSD = 0; // reset after recording a valuation snapshot
       }
     }
-    let aum = 0;
-    for (const v of byAsset.values()) {
-      if (Math.abs(v.units) < 1e-12) continue;
-      const rate = await priceService.getRateUSD(v.asset);
-      aum += v.units * rate.rateUSD;
-    }
 
-    // If there is a valuation entry, override AUM with the latest valuation's usdValue
-    const valuation = entries
-      .filter(e => e.type === 'VALUATION')
-      .sort((a, b) => String(b.at).localeCompare(String(a.at)))[0];
-    if (valuation && typeof valuation.usdValue === 'number') {
-      aum = valuation.usdValue;
+    // Compute AUM: prefer rolling valuation if available, else mark-to-market from positions
+    let aum = 0;
+    if (typeof lastValuationUSD === 'number') {
+      aum = lastValuationUSD + netFlowSinceValUSD;
+    } else {
+      for (const v of positions.values()) {
+        if (Math.abs(v.units) < 1e-12) continue;
+        const rate = await priceService.getRateUSD(v.asset);
+        aum += v.units * rate.rateUSD;
+      }
     }
 
     return { totalDepositedUSD: deposited, totalWithdrawnUSD: withdrawn, aumUSD: aum };

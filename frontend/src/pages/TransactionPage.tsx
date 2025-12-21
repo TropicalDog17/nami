@@ -85,6 +85,7 @@ const TransactionPage: React.FC = () => {
     new Map()
   );
   const [isQuickExpenseOpen, setIsQuickExpenseOpen] = useState(false);
+  const [expenseDefaultAccount, setExpenseDefaultAccount] = useState<string | undefined>(undefined);
   const [isQuickIncomeOpen, setIsQuickIncomeOpen] = useState(false);
   const [isQuickVaultOpen, setIsQuickVaultOpen] = useState(false);
   const [isQuickInitOpen, setIsQuickInitOpen] = useState(false);
@@ -1586,10 +1587,31 @@ const TransactionPage: React.FC = () => {
                       className="w-full text-left px-4 py-2 text-sm hover:bg-gray-50"
                       onClick={() => {
                         setIsQuickMenuOpen(false);
+                        setExpenseDefaultAccount(undefined);
                         setIsQuickExpenseOpen(true);
                       }}
                     >
                       Expense
+                    </button>
+                    <button
+                      className="w-full text-left px-4 py-2 text-sm hover:bg-gray-50"
+                      onClick={() => {
+                        setIsQuickMenuOpen(false);
+                        setExpenseDefaultAccount('Spend');
+                        setIsQuickExpenseOpen(true);
+                      }}
+                    >
+                      Cash Expense
+                    </button>
+                    <button
+                      className="w-full text-left px-4 py-2 text-sm hover:bg-gray-50"
+                      onClick={() => {
+                        setIsQuickMenuOpen(false);
+                        setExpenseDefaultAccount('Borrowings');
+                        setIsQuickExpenseOpen(true);
+                      }}
+                    >
+                      Credit Expense
                     </button>
                     <button
                       className="w-full text-left px-4 py-2 text-sm hover:bg-gray-50"
@@ -1897,6 +1919,7 @@ const TransactionPage: React.FC = () => {
         isOpen={isQuickExpenseOpen}
         onClose={() => setIsQuickExpenseOpen(false)}
         onSubmit={handleQuickExpenseSubmit}
+        defaultAccount={expenseDefaultAccount}
       />
       <QuickIncomeModal
         isOpen={isQuickIncomeOpen}

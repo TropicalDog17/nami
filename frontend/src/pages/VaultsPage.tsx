@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 
 import DataTable, { TableColumn } from '../components/ui/DataTable';
 import { useToast } from '../components/ui/Toast';
-import { tokenizedVaultApi, ApiError } from '../services/api';
+import { tokenizedVaultApi, ApiError, reportsApi } from '../services/api';
 import { formatCurrency, formatPercentage } from '../utils/currencyFormatter';
 import CreateTokenizedVaultForm from '../components/tokenized/CreateTokenizedVaultForm';
 import { useBackendStatus } from '../context/BackendStatusContext';
@@ -29,6 +29,7 @@ type TokenizedVault = {
   inception_date: string;
   last_updated: string;
   performance_since_inception: string;
+  apr_percent?: string | number; // backend APR since inception
   created_by: string;
   created_at: string;
   updated_at: string;
@@ -51,9 +52,18 @@ const VaultsPage: React.FC = () => {
   const loadVaults = useCallback(async (): Promise<void> => {
     try {
       setLoading(true);
-      // Fetch tokenized vaults
-      const vaultsData = await tokenizedVaultApi.list<TokenizedVault[]>();
-      setVaults(vaultsData ?? []);
+      // Fetch tokenized vaults and backend APR summary in parallel
+      const [vaultsData, summary] = await Promise.all([
+        tokenizedVaultApi.list<TokenizedVault[]>(),
+        reportsApi.vaultsSummary<{ rows: Array<{ vault: string; apr_percent: number; aum_usd: number }> }>(),
+      ]);
+      const mapAPR = new Map<string, number>();
+      const rows = (summary as any)?.rows as Array<{ vault: string; apr_percent: number }>; // tolerate null
+      if (Array.isArray(rows)) {
+        for (const r of rows) mapAPR.set(r.vault, Number(r.apr_percent) || 0);
+      }
+      const vts = (vaultsData ?? []).map((v) => ({ ...v, apr_percent: mapAPR.get(v.id) }));
+      setVaults(vts);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Failed to load vaults';
       setError(message);
@@ -199,17 +209,20 @@ const VaultsPage: React.FC = () => {
       },
     },
     {
-      key: 'performance_since_inception',
-      title: 'Performance',
+      key: 'apr_percent',
+      title: 'APR Since Inception',
       type: 'number',
       decimals: 2,
-      render: (value, _c, row) => {
+      render: (_value, _c, row) => {
         const isBorrowings = String(row.name || '').toLowerCase() === 'borrowings';
         if (isBorrowings) return <span className="text-gray-500">—</span>;
-        const perf = typeof value === 'string' && value !== '' ? parseFloat(value) : 0;
-        const isPositive = perf > 0;
-        const className = isPositive ? 'text-green-700' : perf < 0 ? 'text-red-700' : 'text-gray-700';
-        return <span className={className}>{formatPercentage(perf / 100, 2)}</span>;
+        const raw = typeof row.apr_percent === 'string' ? parseFloat(row.apr_percent) : (row.apr_percent as number | undefined);
+        if (!(typeof raw === 'number' && isFinite(raw))) {
+          return <span className="text-gray-500">—</span>;
+        }
+        const isPositive = raw > 0;
+        const className = isPositive ? 'text-green-700' : raw < 0 ? 'text-red-700' : 'text-gray-700';
+        return <span className={className}>{formatPercentage(raw / 100, 2)}</span>;
       },
     },
     {
@@ -281,16 +294,18 @@ const VaultsPage: React.FC = () => {
       activeVaults: filteredVaults.filter(v => v.status === 'active').length,
       totalAUM: 0,
       totalSupply: 0,
-      totalPerformance: 0,
-    };
+      totalAPRWeighted: 0,
+    } as { totalVaults: number; activeVaults: number; totalAUM: number; totalSupply: number; totalAPRWeighted: number };
 
     filteredVaults.forEach(vault => {
       const aum = parseFloat(vault.total_assets_under_management || '0');
       const supply = parseFloat(vault.total_supply || '0');
-      const performance = parseFloat(vault.performance_since_inception || '0');
+      const apr = typeof vault.apr_percent === 'string' ? parseFloat(vault.apr_percent) : (vault.apr_percent ?? NaN as number);
       stats.totalAUM += aum;
       stats.totalSupply += supply;
-      stats.totalPerformance += performance * aum / 100; // Weighted performance
+      if (isFinite(apr)) {
+        stats.totalAPRWeighted += apr * aum / 100; // Weighted APR
+      }
     });
 
     return stats;
@@ -318,8 +333,8 @@ const VaultsPage: React.FC = () => {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         <div className="bg-white p-4 rounded-lg border border-gray-200">
           <h3 className="text-sm font-medium text-gray-500 mb-2">Total Vaults</h3>
-          <p className="text-2xl font-bold text-gray-900">{totalStats.totalVaults}</p>
-          <p className="text-sm text-gray-600">{totalStats.activeVaults} active</p>
+          <p className="text-2xl font-bold text-gray-900">{filteredVaults.length}</p>
+          <p className="text-sm text-gray-600">{filteredVaults.filter(v => v.status === 'active').length} active</p>
         </div>
 
         <div className="bg-white p-4 rounded-lg border border-gray-200">
@@ -335,11 +350,11 @@ const VaultsPage: React.FC = () => {
         </div>
 
         <div className="bg-white p-4 rounded-lg border border-gray-200">
-          <h3 className="text-sm font-medium text-gray-500 mb-2">Avg Performance</h3>
-          <p className={`text-2xl font-bold ${totalStats.totalAUM > 0 ? (totalStats.totalPerformance / totalStats.totalAUM * 100) >= 0 ? 'text-green-600' : 'text-red-600' : 'text-gray-600'}`}>
-            {totalStats.totalAUM > 0 ? formatPercentage(totalStats.totalPerformance / totalStats.totalAUM, 2) : '0%'}
+          <h3 className="text-sm font-medium text-gray-500 mb-2">Avg APR</h3>
+          <p className={`text-2xl font-bold ${totalStats.totalAUM > 0 ? (totalStats.totalAPRWeighted / totalStats.totalAUM * 100) >= 0 ? 'text-green-600' : 'text-red-600' : 'text-gray-600'}`}>
+            {totalStats.totalAUM > 0 ? formatPercentage(totalStats.totalAPRWeighted / totalStats.totalAUM, 2) : '—'}
           </p>
-          <p className="text-sm text-gray-600">Since inception</p>
+          <p className="text-sm text-gray-600">Since inception (weighted by AUM)</p>
         </div>
       </div>
 

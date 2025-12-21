@@ -75,7 +75,7 @@ export const HoldingsChart: React.FC<{ data: HoldingsData; currency?: Currency }
     maintainAspectRatio: false,
     plugins: {
       legend: {
-        position: 'bottom',
+        position: 'bottom' as const,
         labels: {
           boxWidth: 12,
           padding: 10,
@@ -141,7 +141,7 @@ export const CashFlowChart: React.FC<{ data: { by_type?: CashFlowByType }; curre
     maintainAspectRatio: false,
     plugins: {
       legend: {
-        position: 'top',
+        position: 'top' as const,
         labels: {
           boxWidth: 12,
           padding: 8,
@@ -163,7 +163,7 @@ export const CashFlowChart: React.FC<{ data: { by_type?: CashFlowByType }; curre
       y: {
         beginAtZero: true,
         ticks: {
-          fontSize: 10,
+          // @ts-ignore - chartjs types
           callback: function (value: number | string) {
             const n = typeof value === 'number' ? value : parseFloat(String(value))
             return Math.abs(n).toLocaleString()
@@ -171,6 +171,7 @@ export const CashFlowChart: React.FC<{ data: { by_type?: CashFlowByType }; curre
         }
       },
       x: {
+        // @ts-ignore - chartjs types
         ticks: {
           fontSize: 10
         }
@@ -214,7 +215,7 @@ export const SpendingChart: React.FC<{ data: { by_tag?: SpendingByTag }; currenc
     maintainAspectRatio: false,
     plugins: {
       legend: {
-        position: 'bottom',
+        position: 'bottom' as const,
         labels: {
           boxWidth: 12,
           padding: 10,
@@ -241,7 +242,7 @@ export const SpendingChart: React.FC<{ data: { by_tag?: SpendingByTag }; currenc
 
 type PnLData = { realized_pnl_usd?: number | string; realized_pnl_vnd?: number | string; total_pnl_usd?: number | string; total_pnl_vnd?: number | string }
 
-// P&L Chart (simple for now)
+// P&L Chart (bar)
 export const PnLChart: React.FC<{ data: PnLData; currency?: Currency }> = ({ data, currency = 'USD' }) => {
   if (!data) return null
 
@@ -290,6 +291,7 @@ export const PnLChart: React.FC<{ data: PnLData; currency?: Currency }> = ({ dat
       y: {
         beginAtZero: true,
         ticks: {
+          // @ts-ignore - chartjs types
           callback: function (value: number | string) {
             const n = typeof value === 'number' ? value : parseFloat(String(value))
             return n.toLocaleString()
@@ -305,9 +307,210 @@ export const PnLChart: React.FC<{ data: PnLData; currency?: Currency }> = ({ dat
   return <Bar data={chartData} options={options} />
 }
 
-type DailySpendingData = { by_day?: Record<string, { amount_usd?: number | string; amount_vnd?: number | string }> }
+// P&L Line Chart
+export const PnLLineChart: React.FC<{ data: PnLData; currency?: Currency }> = ({ data, currency = 'USD' }) => {
+  if (!data) return null
+
+  const realizedPnL = parseFloat(String(currency === 'USD' ? (data.realized_pnl_usd ?? 0) : (data.realized_pnl_vnd ?? 0)))
+  const totalPnL = parseFloat(String(currency === 'USD' ? (data.total_pnl_usd ?? 0) : (data.total_pnl_vnd ?? 0)))
+
+  const chartData = {
+    labels: ['Realized P&L', 'Total P&L'],
+    datasets: [
+      {
+        label: `P&L (${currency})`,
+        data: [realizedPnL, totalPnL],
+        borderColor: '#10B981',
+        backgroundColor: 'rgba(16, 185, 129, 0.15)',
+        borderWidth: 2,
+        tension: 0.3,
+        fill: true,
+        pointRadius: 4,
+      },
+    ],
+  }
+
+  const options = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: { display: false },
+      title: { display: false },
+      tooltip: {
+        callbacks: {
+          label: function (context: { parsed: { y: number }; label?: string }) {
+            const value = context.parsed.y
+            return `${context.label ?? 'Value'}: ${value.toLocaleString()} ${currency}`
+          }
+        }
+      }
+    },
+    scales: {
+      y: {
+        beginAtZero: true,
+        ticks: {
+          // @ts-ignore - chartjs types
+          callback: function (value: number | string) {
+            const n = typeof value === 'number' ? value : parseFloat(String(value))
+            return n.toLocaleString()
+          }
+        }
+      }
+    }
+  }
+
+  return <Line data={chartData} options={options} />
+}
+
+// APR Comparison Chart (vault APR vs benchmark)
+export const AprChart: React.FC<{ apr?: number; benchmarkApr?: number }> = ({ apr = 0, benchmarkApr = 0 }) => {
+  const labels = ['Vault APR', 'Benchmark APR']
+  const dataset = [apr, benchmarkApr]
+  const chartData = {
+    labels,
+    datasets: [
+      {
+        label: 'APR (%)',
+        data: dataset,
+        backgroundColor: ['#3B82F6', '#9CA3AF'],
+        borderColor: ['#3B82F6', '#9CA3AF'],
+        borderWidth: 1,
+      },
+    ],
+  }
+  const options = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: { display: false },
+      tooltip: {
+        callbacks: {
+          label: function (context: { parsed: { y: number }; label?: string }) {
+            const value = context.parsed.y
+            return `${context.label ?? 'APR'}: ${Number(value).toFixed(2)}%`
+          }
+        }
+      }
+    },
+    scales: {
+      y: {
+        beginAtZero: true,
+        ticks: {
+          // @ts-ignore
+          callback: function (value: number | string) {
+            const n = typeof value === 'number' ? value : parseFloat(String(value))
+            return `${Number(n).toFixed(2)}%`
+          }
+        }
+      }
+    }
+  }
+  return <Bar data={chartData} options={options} />
+}
+
+// APR as Line chart
+export const AprLineChart: React.FC<{ apr?: number; benchmarkApr?: number }> = ({ apr = 0, benchmarkApr = 0 }) => {
+  const labels = ['Vault APR', 'Benchmark APR']
+  const dataset = [apr, benchmarkApr]
+  const chartData = {
+    labels,
+    datasets: [
+      {
+        label: 'APR (%)',
+        data: dataset,
+        borderColor: '#3B82F6',
+        backgroundColor: 'rgba(59, 130, 246, 0.2)',
+        tension: 0.3,
+        fill: true,
+        pointRadius: 4,
+      },
+    ],
+  }
+  const options = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: { display: false },
+      tooltip: {
+        callbacks: {
+          label: function (context: { parsed: { y: number }; label?: string }) {
+            const value = context.parsed.y
+            return `${context.label ?? 'APR'}: ${Number(value).toFixed(2)}%`
+          }
+        }
+      }
+    },
+    scales: {
+      y: {
+        beginAtZero: true,
+        ticks: {
+          // @ts-ignore
+          callback: function (value: number | string) {
+            const n = typeof value === 'number' ? value : parseFloat(String(value))
+            return `${Number(n).toFixed(2)}%`
+          }
+        }
+      }
+    }
+  }
+  return <Line data={chartData} options={options} />
+}
+
+// Generic time-series line chart
+export const TimeSeriesLineChart: React.FC<{
+  labels: string[];
+  datasets: Array<{ label: string; data: number[]; color?: string; fill?: boolean }>;
+  yFormat?: 'percent' | 'currency' | 'number';
+  currency?: Currency;
+}> = ({ labels, datasets, yFormat = 'number', currency = 'USD' }) => {
+  const chartData = {
+    labels,
+    datasets: datasets.map(ds => ({
+      label: ds.label,
+      data: ds.data,
+      borderColor: ds.color || '#3B82F6',
+      backgroundColor: (ds.color ? `${ds.color}33` : '#3B82F633'),
+      tension: 0.25,
+      fill: ds.fill ?? true,
+      pointRadius: 2,
+    })),
+  }
+  const options = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: { position: 'top' as const },
+      tooltip: {
+        callbacks: {
+          label: function (context: { parsed: { y: number }; dataset: { label?: string } }) {
+            const value = context.parsed.y
+            if (yFormat === 'percent') return `${context.dataset.label ?? ''}: ${Number(value).toFixed(2)}%`
+            if (yFormat === 'currency') return `${context.dataset.label ?? ''}: ${value.toLocaleString()} ${currency}`
+            return `${context.dataset.label ?? ''}: ${value.toLocaleString()}`
+          }
+        }
+      }
+    },
+    scales: {
+      y: {
+        beginAtZero: true,
+        ticks: {
+          // @ts-ignore
+          callback: function (value: number | string) {
+            const n = typeof value === 'number' ? value : parseFloat(String(value))
+            if (yFormat === 'percent') return `${Number(n).toFixed(2)}%`
+            if (yFormat === 'currency') return `${n.toLocaleString()}`
+            return `${n.toLocaleString()}`
+          }
+        }
+      }
+    }
+  }
+  return <Line data={chartData} options={options} />
+}
 
 // Daily Spending Line Chart
+type DailySpendingData = { by_day?: Record<string, { amount_usd?: number | string; amount_vnd?: number | string }> }
 export const DailySpendingChart: React.FC<{ data: DailySpendingData; currency?: Currency }> = ({ data, currency = 'USD' }) => {
   if (!data?.by_day) return null
 
@@ -339,7 +542,7 @@ export const DailySpendingChart: React.FC<{ data: DailySpendingData; currency?: 
     responsive: true,
     maintainAspectRatio: false,
     plugins: {
-      legend: { position: 'top' },
+      legend: { position: 'top' as const },
       tooltip: {
         callbacks: {
           label: function (context: { parsed: { y: number }; dataset: { label: string } }) {
@@ -353,6 +556,7 @@ export const DailySpendingChart: React.FC<{ data: DailySpendingData; currency?: 
       y: {
         beginAtZero: true,
         ticks: {
+          // @ts-ignore - chartjs types
           callback: function (value: number | string) {
             const n = typeof value === 'number' ? value : parseFloat(String(value))
             return Math.abs(n).toLocaleString()
@@ -374,7 +578,7 @@ export const SummaryStats: React.FC<{ title: string; stats: Array<{ label: strin
         {stats.map((stat, index) => (
           <div key={index} className="flex justify-between items-center">
             <span className="text-sm text-gray-500">{stat.label}</span>
-            <span className={`text-sm font-medium ${stat.value >= 0 ? 'text-green-600' : 'text-red-600'
+            <span className={`text-sm font-medium ${Number(stat.value) >= 0 ? 'text-green-600' : 'text-red-600'
               }`}>
               {typeof stat.value === 'number'
                 ? `${stat.value.toLocaleString()} ${currency}`

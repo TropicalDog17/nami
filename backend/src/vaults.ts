@@ -247,3 +247,89 @@ vaultsRouter.post('/vaults/:name/refresh', async (req, res) => {
   };
   res.json(resp);
 });
+
+// Distribute a reward: mark valuation to include the gain, then move only the reward to a destination vault.
+// Body:
+//   {
+//     amount: number,                  // reward USD
+//     destination?: string,            // destination vault name (default 'Spend')
+//     at?: string, date?: string,      // ISO datetime for entries
+//     note?: string,                   // optional note
+//     mark?: boolean,                  // default true; if true, persist valuation before distribution
+//     new_total_usd?: number,          // optional explicit valuation total; defaults to current AUM + amount
+//     create_income?: boolean          // if true, also record an INCOME transaction in destination for analytics
+//   }
+vaultsRouter.post('/vaults/:name/distribute-reward', async (req, res) => {
+  try {
+    const name = String(req.params.name);
+    if (!store.getVault(name)) store.ensureVault(name);
+
+    const amount = Number(req.body?.amount ?? req.body?.reward_usd ?? req.body?.reward ?? 0) || 0;
+    if (!(amount > 0)) return res.status(400).json({ error: 'amount>0 required' });
+
+    const destination = String(req.body?.destination ?? req.body?.dest ?? req.body?.target_account ?? 'Spend').trim() || 'Spend';
+    if (!store.getVault(destination)) store.ensureVault(destination);
+
+    const at: string = String(req.body?.at ?? req.body?.date ?? '') || new Date().toISOString();
+    const note: string | undefined = req.body?.note ? String(req.body.note) : undefined;
+    const shouldMark: boolean = req.body?.mark === false ? false : true;
+
+    // Step 1: persist valuation so AUM includes the reward before distribution
+    let marked_to: number | undefined = undefined;
+    if (shouldMark) {
+      const stats = await store.vaultStats(name);
+      const intended = Number(req.body?.new_total_usd ?? 0) || (stats.aumUSD + amount);
+      const asset = { type: 'FIAT', symbol: 'USD' } as const;
+      store.addVaultEntry({
+        vault: name,
+        type: 'VALUATION',
+        asset: asset as any,
+        amount: 0,
+        usdValue: intended,
+        at,
+        note: note ? `Valuation before reward: ${note}` : 'Valuation before reward',
+      });
+      marked_to = intended;
+    }
+
+    const usd = { type: 'FIAT', symbol: 'USD' } as const;
+
+    // Step 2: withdraw only the reward from the source vault
+    store.addVaultEntry({
+      vault: name,
+      type: 'WITHDRAW',
+      asset: usd as any,
+      amount: amount,
+      usdValue: amount,
+      at,
+      note: note ?? 'Reward distribution',
+    });
+
+    // Step 3: deposit reward into destination vault
+    store.addVaultEntry({
+      vault: destination,
+      type: 'DEPOSIT',
+      asset: usd as any,
+      amount: amount,
+      usdValue: amount,
+      at,
+      note: `Reward from ${name}${note ? `: ${note}` : ''}`,
+    });
+
+    // Optional: create an INCOME transaction for analytics
+    const createIncome = String(req.body?.create_income || '').toLowerCase() === 'true' || req.body?.create_income === true;
+    if (createIncome) {
+      await store.recordIncomeTx({
+        asset: usd as any,
+        amount,
+        at,
+        account: destination,
+        note: `Reward from ${name}${note ? `: ${note}` : ''}`,
+      });
+    }
+
+    res.status(201).json({ ok: true, source: name, destination, reward_usd: amount, marked_to });
+  } catch (e: any) {
+    res.status(400).json({ error: e?.message || 'Failed to distribute reward' });
+  }
+});

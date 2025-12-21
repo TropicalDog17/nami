@@ -27,6 +27,126 @@ function dateDiffInDays(a: Date, b: Date): number {
   return Math.floor(ms / (24 * 3600 * 1000));
 }
 
+/**
+ * Calculate Internal Rate of Return (IRR) using Newton-Raphson method.
+ *
+ * Cash flows are represented as { amount, daysFromStart }:
+ * - Negative amounts = deposits (money going in)
+ * - Positive amounts = withdrawals or terminal value (money coming out)
+ *
+ * IRR satisfies: Σ (CF_i / (1 + r)^(days_i/365)) = 0
+ *
+ * @param cashFlows Array of { amount, daysFromStart }
+ * @param maxIterations Maximum Newton-Raphson iterations
+ * @param tolerance Convergence tolerance
+ * @returns Daily rate as decimal (not percentage), or 0 if cannot converge
+ */
+function calculateIRR(
+  cashFlows: Array<{ amount: number; daysFromStart: number }>,
+  maxIterations = 100,
+  tolerance = 1e-10
+): number {
+  if (cashFlows.length === 0) return 0;
+
+  // Check if there are meaningful cash flows
+  const totalIn = cashFlows.filter(cf => cf.amount < 0).reduce((s, cf) => s + Math.abs(cf.amount), 0);
+  const totalOut = cashFlows.filter(cf => cf.amount > 0).reduce((s, cf) => s + cf.amount, 0);
+
+  if (totalIn < 1e-8) return 0; // No meaningful deposits
+
+  // Simple case: single deposit and single terminal value
+  if (cashFlows.length === 2 && cashFlows[0].amount < 0 && cashFlows[1].amount > 0) {
+    const pv = -cashFlows[0].amount;
+    const fv = cashFlows[1].amount;
+    const days = cashFlows[1].daysFromStart - cashFlows[0].daysFromStart;
+    if (days <= 0 || pv <= 0) return 0;
+    // IRR = (FV/PV)^(1/years) - 1, where years = days/365
+    const ratio = fv / pv;
+    if (ratio <= 0) return -1; // Total loss
+    return Math.pow(ratio, 365 / days) - 1;
+  }
+
+  // NPV function: NPV(r) = Σ CF_i / (1 + r)^(t_i/365)
+  const npv = (rate: number): number => {
+    let sum = 0;
+    for (const cf of cashFlows) {
+      const years = cf.daysFromStart / 365;
+      sum += cf.amount / Math.pow(1 + rate, years);
+    }
+    return sum;
+  };
+
+  // Derivative of NPV: dNPV/dr = Σ -CF_i * (t_i/365) / (1 + r)^(t_i/365 + 1)
+  const npvDerivative = (rate: number): number => {
+    let sum = 0;
+    for (const cf of cashFlows) {
+      const years = cf.daysFromStart / 365;
+      sum += -cf.amount * years / Math.pow(1 + rate, years + 1);
+    }
+    return sum;
+  };
+
+  // Initial guess based on simple return
+  let rate = (totalOut - totalIn) / totalIn;
+
+  // Newton-Raphson iteration
+  for (let i = 0; i < maxIterations; i++) {
+    const f = npv(rate);
+    const fPrime = npvDerivative(rate);
+
+    if (Math.abs(fPrime) < 1e-12) {
+      // Derivative too small, try bisection or give up
+      break;
+    }
+
+    const newRate = rate - f / fPrime;
+
+    // Clamp to reasonable range (-99.9% to +1000%)
+    const clampedRate = Math.max(-0.999, Math.min(10, newRate));
+
+    if (Math.abs(clampedRate - rate) < tolerance) {
+      return clampedRate;
+    }
+
+    rate = clampedRate;
+  }
+
+  // If Newton-Raphson didn't converge, fall back to simple annualized return
+  const totalDays = Math.max(...cashFlows.map(cf => cf.daysFromStart));
+  if (totalDays > 0 && totalIn > 0) {
+    const simpleReturn = (totalOut - totalIn) / totalIn;
+    return Math.pow(1 + simpleReturn, 365 / totalDays) - 1;
+  }
+
+  return 0;
+}
+
+/**
+ * Calculate annualized APR using IRR (Money-Weighted Return).
+ * For periods < 30 days, returns non-annualized ROI to avoid misleading extrapolation.
+ *
+ * @param cashFlows Array of { amount, daysFromStart } - deposits negative, withdrawals/terminal positive
+ * @param totalDays Total days from first deposit to measurement date
+ * @param roi Simple ROI as decimal (for fallback on short periods)
+ * @returns APR as percentage
+ */
+function calculateIRRBasedAPR(
+  cashFlows: Array<{ amount: number; daysFromStart: number }>,
+  totalDays: number,
+  roi: number
+): number {
+  // For very short periods (< 30 days), don't annualize to avoid misleading extrapolation
+  if (totalDays < 30) {
+    return roi * 100;
+  }
+
+  const irr = calculateIRR(cashFlows);
+
+  // IRR is already annualized (annual rate)
+  // Convert to percentage
+  return irr * 100;
+}
+
 async function computeMarkToMarketUSD(positions: Map<string, { asset: Asset; units: number }>, at?: string): Promise<number> {
   let aum = 0;
   for (const p of positions.values()) {
@@ -51,7 +171,13 @@ async function buildVaultDailySeries(vaultName: string, start?: string, end?: st
   let withdrawnCum = 0;
   const positions = new Map<string, { asset: Asset; units: number }>();
   let lastValuationUSD: number | undefined = undefined;
+  let netFlowSinceValUSD = 0; // deposits - withdrawals since the last valuation that has been applied
   let firstDepositDate: string | undefined = undefined;
+  let firstDepositDateObj: Date | undefined = undefined;
+
+  // Track all cash flows for IRR calculation
+  // Deposits are negative (money going in), withdrawals are positive (money coming out)
+  const cashFlows: Array<{ amount: number; daysFromStart: number; date: string }> = [];
 
   const series: Array<{ date: string; aum_usd: number; deposits_cum_usd: number; withdrawals_cum_usd: number; pnl_usd: number; roi_percent: number; apr_percent: number }> = [];
 
@@ -61,37 +187,74 @@ async function buildVaultDailySeries(vaultName: string, start?: string, end?: st
     while (idx < entries.length && String(entries[idx].at).slice(0, 10) <= day) {
       const e = entries[idx++] as VaultEntry;
       if (e.type === 'DEPOSIT') {
-        depositedCum += (e.usdValue || 0);
-        if (!firstDepositDate) firstDepositDate = String(e.at).slice(0, 10);
+        const usd = (e.usdValue || 0);
+        depositedCum += usd;
+        const entryDate = String(e.at).slice(0, 10);
+        if (!firstDepositDate) {
+          firstDepositDate = entryDate;
+          firstDepositDateObj = new Date(firstDepositDate);
+        }
+        // Add deposit as negative cash flow (money going in)
+        const daysFromStart = dateDiffInDays(firstDepositDateObj!, new Date(entryDate));
+        cashFlows.push({ amount: -usd, daysFromStart, date: entryDate });
+
         const k = `${e.asset.type}:${e.asset.symbol.toUpperCase()}`;
         const cur = positions.get(k) || { asset: e.asset, units: 0 };
         cur.units += e.amount;
         positions.set(k, cur);
+        if (typeof lastValuationUSD === 'number') {
+          netFlowSinceValUSD += usd; // deposits increase AUM since last valuation
+        }
       } else if (e.type === 'WITHDRAW') {
-        withdrawnCum += (e.usdValue || 0);
+        const usd = (e.usdValue || 0);
+        withdrawnCum += usd;
+        const entryDate = String(e.at).slice(0, 10);
+        // Add withdrawal as positive cash flow (money coming out)
+        if (firstDepositDateObj) {
+          const daysFromStart = dateDiffInDays(firstDepositDateObj, new Date(entryDate));
+          cashFlows.push({ amount: usd, daysFromStart, date: entryDate });
+        }
+
         const k = `${e.asset.type}:${e.asset.symbol.toUpperCase()}`;
         const cur = positions.get(k) || { asset: e.asset, units: 0 };
         cur.units -= e.amount;
         positions.set(k, cur);
+        if (typeof lastValuationUSD === 'number') {
+          netFlowSinceValUSD -= usd; // withdrawals decrease AUM since last valuation
+        }
       } else if (e.type === 'VALUATION') {
         lastValuationUSD = typeof e.usdValue === 'number' ? e.usdValue : lastValuationUSD;
+        netFlowSinceValUSD = 0; // reset net flows after capturing a new valuation snapshot
       }
     }
 
     // AUM preference: use last valuation if any, else mark-to-market (current rates)
     let aum = 0;
     if (typeof lastValuationUSD === 'number') {
-      aum = lastValuationUSD;
+      // Rolling AUM: last valuation plus net flows since that valuation
+      aum = lastValuationUSD + netFlowSinceValUSD;
     } else {
+      // If no valuation yet, mark-to-market from positions
       aum = await computeMarkToMarketUSD(positions, day + 'T23:59:59Z');
     }
 
-    const pnl = aum + withdrawnCum - depositedCum;
-    const roi = depositedCum > 0 ? (pnl / depositedCum) * 100 : 0;
+    const pnl = aum + withdrawnCum - depositedCum; // profit = equity - net_contributed
+    const netContributed = depositedCum - withdrawnCum;
+    const roi = netContributed > 1e-8 ? (pnl / netContributed) * 100 : 0;
+
     let apr = 0;
-    if (depositedCum > 0 && firstDepositDate) {
-      const daysElapsed = Math.max(1, dateDiffInDays(new Date(firstDepositDate), new Date(day)) + 1);
-      apr = roi * (365 / daysElapsed);
+    if (firstDepositDateObj) {
+      const daysElapsed = Math.max(1, dateDiffInDays(firstDepositDateObj, new Date(day)) + 1);
+
+      // Build cash flows for IRR calculation up to this day, plus terminal value
+      const cashFlowsForDay = cashFlows
+        .filter(cf => cf.date <= day)
+        .map(cf => ({ amount: cf.amount, daysFromStart: cf.daysFromStart }));
+
+      // Add terminal value (current AUM) as positive cash flow
+      cashFlowsForDay.push({ amount: aum, daysFromStart: daysElapsed - 1 });
+
+      apr = calculateIRRBasedAPR(cashFlowsForDay, daysElapsed, roi / 100);
     }
 
     series.push({ date: day, aum_usd: aum, deposits_cum_usd: depositedCum, withdrawals_cum_usd: withdrawnCum, pnl_usd: pnl, roi_percent: roi, apr_percent: apr });
@@ -151,34 +314,119 @@ reportsRouter.get('/reports/holdings/summary', async (_req, res) => {
 });
 
 // Minimal stubs for other report endpoints expected by frontend
-reportsRouter.get('/reports/cashflow', async (_req, res) => {
-  res.json({
-    combined_in_usd: 0,
-    combined_in_vnd: 0,
-    combined_out_usd: 0,
-    combined_out_vnd: 0,
-    combined_net_usd: 0,
-    combined_net_vnd: 0,
-    total_in_usd: 0,
-    total_out_usd: 0,
-    net_usd: 0,
-    total_in_vnd: 0,
-    total_out_vnd: 0,
-    net_vnd: 0,
-    operating_in_usd: 0,
-    operating_in_vnd: 0,
-    operating_out_usd: 0,
-    operating_out_vnd: 0,
-    operating_net_usd: 0,
-    operating_net_vnd: 0,
-    financing_in_usd: 0,
-    financing_in_vnd: 0,
-    financing_out_usd: 0,
-    financing_out_vnd: 0,
-    financing_net_usd: 0,
-    financing_net_vnd: 0,
-    by_type: {},
-  });
+reportsRouter.get('/reports/cashflow', async (req, res) => {
+  try {
+    const start = req.query.start_date ? new Date(String(req.query.start_date)) : undefined;
+    const end = req.query.end_date ? new Date(String(req.query.end_date)) : undefined;
+    const account = req.query.account ? String(req.query.account) : undefined; // optional per-vault filter
+
+    // Collect vault entries across all vaults (or a single vault if filtered)
+    const vaultNames = account ? [account] : store.listVaults().map(v => v.name);
+    const entries = vaultNames.flatMap(name => store.getVaultEntries(name));
+
+    const inRange = (d: string) => {
+      const dt = new Date(d);
+      if (Number.isNaN(dt.getTime())) return false;
+      if (start && dt < start) return false;
+      if (end && dt > end) return false;
+      return true;
+    };
+
+    const selected = entries.filter(e => inRange(e.at));
+
+    let inflowUSD = 0;   // cash received (withdraw from vaults)
+    let outflowUSD = 0;  // cash paid (deposit into vaults)
+
+    const by_type: Record<string, { inflow_usd: number; outflow_usd: number; net_usd: number; inflow_vnd: number; outflow_vnd: number; net_vnd: number; count: number }>
+      = {};
+
+    if (selected.length > 0) {
+      for (const e of selected) {
+        const t = e.type === 'DEPOSIT' ? 'deposit' : (e.type === 'WITHDRAW' ? 'withdraw' : 'valuation');
+        if (!by_type[t]) by_type[t] = { inflow_usd: 0, outflow_usd: 0, net_usd: 0, inflow_vnd: 0, outflow_vnd: 0, net_vnd: 0, count: 0 };
+        const usd = Number(e.usdValue || 0);
+        if (e.type === 'DEPOSIT') {
+          inflowUSD += usd; // deposit -> cash in
+          by_type[t].inflow_usd += usd;
+        } else if (e.type === 'WITHDRAW') {
+          outflowUSD += usd; // withdraw -> cash out
+          by_type[t].outflow_usd += usd;
+        }
+        by_type[t].count += 1;
+      }
+    } else {
+      // Legacy fallback: derive from transaction ledger if no vault entries found in range
+      const txs = store.all().filter(t => inRange(t.createdAt));
+      for (const tx of txs) {
+        const t = tx.type.toLowerCase();
+        if (!by_type[t]) by_type[t] = { inflow_usd: 0, outflow_usd: 0, net_usd: 0, inflow_vnd: 0, outflow_vnd: 0, net_vnd: 0, count: 0 };
+        const usd = Number(tx.usdAmount || 0);
+        if (tx.type === 'INCOME' || tx.type === 'TRANSFER_IN') {
+          inflowUSD += usd;
+          by_type[t].inflow_usd += usd;
+        } else if (tx.type === 'EXPENSE' || tx.type === 'TRANSFER_OUT') {
+          outflowUSD += usd;
+          by_type[t].outflow_usd += usd;
+        }
+        by_type[t].count += 1;
+      }
+    }
+
+    const netUSD = inflowUSD - outflowUSD;
+    const vndRate = await usdToVnd();
+    const inflowVND = inflowUSD * vndRate;
+    const outflowVND = outflowUSD * vndRate;
+    const netVND = netUSD * vndRate;
+
+    // finalize by_type VND and net values
+    for (const k of Object.keys(by_type)) {
+      const r = by_type[k];
+      r.net_usd = (r.inflow_usd || 0) - (r.outflow_usd || 0);
+      r.inflow_vnd = (r.inflow_usd || 0) * vndRate;
+      r.outflow_vnd = (r.outflow_usd || 0) * vndRate;
+      r.net_vnd = r.net_usd * vndRate;
+    }
+
+    // For now, treat all as operating; no financing flows tracked via vault entries
+    const resp = {
+      combined_in_usd: inflowUSD,
+      combined_in_vnd: inflowVND,
+      combined_out_usd: outflowUSD,
+      combined_out_vnd: outflowVND,
+      combined_net_usd: netUSD,
+      combined_net_vnd: netVND,
+
+      total_in_usd: inflowUSD,
+      total_out_usd: outflowUSD,
+      net_usd: netUSD,
+      total_in_vnd: inflowVND,
+      total_out_vnd: outflowVND,
+      net_vnd: netVND,
+
+      operating_in_usd: inflowUSD,
+      operating_in_vnd: inflowVND,
+      operating_out_usd: outflowUSD,
+      operating_out_vnd: outflowVND,
+      operating_net_usd: netUSD,
+      operating_net_vnd: netVND,
+
+      financing_in_usd: 0,
+      financing_in_vnd: 0,
+      financing_out_usd: 0,
+      financing_out_vnd: 0,
+      financing_net_usd: 0,
+      financing_net_vnd: 0,
+
+      by_type,
+      account: account || 'ALL',
+      start_date: start ? start.toISOString().slice(0,10) : undefined,
+      end_date: end ? end.toISOString().slice(0,10) : undefined,
+    };
+
+    res.json(resp);
+  } catch (e: any) {
+    res.status(500).json({ error: e?.message || 'Failed to compute cashflow' });
+  }
 });
 
 reportsRouter.get('/reports/spending', async (req, res) => {
@@ -236,7 +484,124 @@ reportsRouter.get('/reports/pnl', async (_req, res) => {
   });
 });
 
+// --- New: Per-vault header metrics (rolling AUM, ROI, APR) ---
+async function buildVaultHeaderMetrics(vaultName: string) {
+  const entries = store.getVaultEntries(vaultName).sort((a, b) => String(a.at).localeCompare(String(b.at)));
+  if (entries.length === 0) {
+    return {
+      vault: vaultName,
+      aum_usd: 0,
+      pnl_usd: 0,
+      roi_percent: 0,
+      apr_percent: 0,
+      last_valuation_usd: 0,
+      net_flow_since_valuation_usd: 0,
+      deposits_cum_usd: 0,
+      withdrawals_cum_usd: 0,
+      as_of: new Date().toISOString(),
+    };
+  }
+
+  let depositedCum = 0;
+  let withdrawnCum = 0;
+  const positions = new Map<string, { asset: Asset; units: number }>();
+  let lastValuationUSD: number | undefined = undefined;
+  let netFlowSinceValUSD = 0;
+  let firstDepositDate: string | undefined = undefined;
+  let firstDepositDateObj: Date | undefined = undefined;
+
+  // Track all cash flows for IRR calculation
+  const cashFlows: Array<{ amount: number; daysFromStart: number }> = [];
+
+  for (const e of entries) {
+    if (e.type === 'DEPOSIT') {
+      const usd = (e.usdValue || 0);
+      depositedCum += usd;
+      const entryDate = String(e.at).slice(0, 10);
+      if (!firstDepositDate) {
+        firstDepositDate = entryDate;
+        firstDepositDateObj = new Date(firstDepositDate);
+      }
+      // Add deposit as negative cash flow (money going in)
+      const daysFromStart = dateDiffInDays(firstDepositDateObj!, new Date(entryDate));
+      cashFlows.push({ amount: -usd, daysFromStart });
+
+      const k = `${e.asset.type}:${e.asset.symbol.toUpperCase()}`;
+      const cur = positions.get(k) || { asset: e.asset, units: 0 };
+      cur.units += e.amount;
+      positions.set(k, cur);
+      if (typeof lastValuationUSD === 'number') netFlowSinceValUSD += usd;
+    } else if (e.type === 'WITHDRAW') {
+      const usd = (e.usdValue || 0);
+      withdrawnCum += usd;
+      const entryDate = String(e.at).slice(0, 10);
+      // Add withdrawal as positive cash flow (money coming out)
+      if (firstDepositDateObj) {
+        const daysFromStart = dateDiffInDays(firstDepositDateObj, new Date(entryDate));
+        cashFlows.push({ amount: usd, daysFromStart });
+      }
+
+      const k = `${e.asset.type}:${e.asset.symbol.toUpperCase()}`;
+      const cur = positions.get(k) || { asset: e.asset, units: 0 };
+      cur.units -= e.amount;
+      positions.set(k, cur);
+      if (typeof lastValuationUSD === 'number') netFlowSinceValUSD -= usd;
+    } else if (e.type === 'VALUATION') {
+      lastValuationUSD = typeof e.usdValue === 'number' ? e.usdValue : lastValuationUSD;
+      netFlowSinceValUSD = 0; // reset on new valuation
+    }
+  }
+
+  // AUM preference: last valuation + flows, else mark-to-market today
+  let aum = 0;
+  if (typeof lastValuationUSD === 'number') {
+    aum = lastValuationUSD + netFlowSinceValUSD;
+  } else {
+    aum = await computeMarkToMarketUSD(positions);
+  }
+
+  const pnl = aum + withdrawnCum - depositedCum; // equity - net_contributed
+  const netContributed = depositedCum - withdrawnCum;
+  const roi = netContributed > 1e-8 ? (pnl / netContributed) * 100 : 0;
+
+  let apr = 0;
+  if (firstDepositDateObj) {
+    const daysElapsed = Math.max(1, dateDiffInDays(firstDepositDateObj, new Date()) + 1);
+
+    // Add terminal value (current AUM) as positive cash flow
+    const cashFlowsWithTerminal = [...cashFlows, { amount: aum, daysFromStart: daysElapsed - 1 }];
+
+    apr = calculateIRRBasedAPR(cashFlowsWithTerminal, daysElapsed, roi / 100);
+  }
+
+  return {
+    vault: vaultName,
+    aum_usd: aum,
+    pnl_usd: pnl,
+    roi_percent: roi,
+    apr_percent: apr,
+    last_valuation_usd: typeof lastValuationUSD === 'number' ? lastValuationUSD : 0,
+    net_flow_since_valuation_usd: netFlowSinceValUSD,
+    deposits_cum_usd: depositedCum,
+    withdrawals_cum_usd: withdrawnCum,
+    as_of: new Date().toISOString(),
+  };
+}
+
 // --- New: Per-vault daily time series for AUM, PnL, ROI, APR ---
+// Header metrics endpoint
+reportsRouter.get('/reports/vaults/:name/header', async (req, res) => {
+  try {
+    const name = String(req.params.name);
+    const v = store.getVault(name);
+    if (!v) return res.status(404).json({ error: 'vault not found' });
+    const metrics = await buildVaultHeaderMetrics(name);
+    res.json(metrics);
+  } catch (e: any) {
+    res.status(500).json({ error: e?.message || 'Failed to build header metrics' });
+  }
+});
+
 reportsRouter.get('/reports/vaults/:name/series', async (req, res) => {
   try {
     const name = String(req.params.name);

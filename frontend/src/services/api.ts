@@ -260,6 +260,17 @@ export const reportsApi = {
     api.get<T>('/api/reports/spending', params),
   pnl: <T = unknown>(params: Record<string, unknown> = {}) =>
     api.get<T>('/api/reports/pnl', params),
+  // New: per-vault header metrics and daily time series of AUM, PnL, ROI, APR
+  vaultHeader: <T = unknown>(name: string) =>
+    api.get<T>(`/api/reports/vaults/${encodeURIComponent(name)}/header`),
+  vaultSeries: <T = unknown>(name: string, params: Record<string, unknown> = {}) =>
+    api.get<T>(`/api/reports/vaults/${encodeURIComponent(name)}/series`, params),
+  // New: aggregate series (optionally filter by account=vaultName)
+  series: <T = unknown>(params: Record<string, unknown> = {}) =>
+    api.get<T>('/api/reports/series', params),
+  // New: summary across vaults
+  vaultsSummary: <T = unknown>(params: Record<string, unknown> = {}) =>
+    api.get<T>('/api/reports/vaults/summary', params),
 };
 
 // Health check
@@ -274,6 +285,8 @@ export const vaultApi = {
   createVault: <T = unknown>(vault: unknown) => api.post<T>('/api/vaults', vault),
   depositToVault: <T = unknown>(name: string, deposit: unknown) => api.post<T>(`/api/vaults/${encodeURIComponent(name)}/deposit`, deposit),
   withdrawFromVault: <T = unknown>(name: string, withdrawal: unknown) => api.post<T>(`/api/vaults/${encodeURIComponent(name)}/withdraw`, withdrawal),
+  distributeReward: <T = unknown>(name: string, data: { amount: number; destination?: string; at?: string; date?: string; note?: string; mark?: boolean; new_total_usd?: number; create_income?: boolean }) =>
+    api.post<T>(`/api/vaults/${encodeURIComponent(name)}/distribute-reward`, data),
   endVault: <T = unknown>(name: string) => api.post<T>(`/api/vaults/${encodeURIComponent(name)}/end`, {}),
   deleteVault: <T = unknown>(name: string) => api.delete<T>(`/api/vaults/${encodeURIComponent(name)}`),
   refresh: <T = unknown>(name: string, data?: { current_value_usd?: number; current_unit_price_usd?: number; currency?: string; benchmark?: string; persist?: boolean }) =>

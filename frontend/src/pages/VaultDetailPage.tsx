@@ -5,10 +5,11 @@ import { useParams, useNavigate } from 'react-router-dom';
 import ComboBox from '../components/ui/ComboBox';
 import DataTable, { TableColumn } from '../components/ui/DataTable';
 import ManualPricingControl from '../components/tokenized/ManualPricingControl';
+import { HoldingsChart, TimeSeriesLineChart } from '../components/reports/Charts';
 import QuickBorrowLoanModal from '../components/modals/QuickBorrowLoanModal';
 import QuickRepayModal from '../components/modals/QuickRepayModal';
 import { useToast } from '../components/ui/Toast';
-import { vaultApi, transactionApi, tokenizedVaultApi, vaultLedgerApi, portfolioApi, ApiError } from '../services/api';
+import { vaultApi, transactionApi, tokenizedVaultApi, vaultLedgerApi, portfolioApi, reportsApi, ApiError } from '../services/api';
 import { formatCurrency, formatPercentage, formatPnL, getDecimalPlaces } from '../utils/currencyFormatter';
 
 type Vault = {
@@ -124,6 +125,72 @@ const VaultDetailPage: React.FC = () => {
   const [tokenizedVaultDetails, setTokenizedVaultDetails] = useState<TokenizedVaultDetails | null>(null);
   const [ledgerHoldings, setLedgerHoldings] = useState<null | { total_shares?: string | number; total_aum?: string | number; share_price?: string | number; transaction_count?: number; last_transaction_at?: string }>(null);
   const [ledgerTransactions, setLedgerTransactions] = useState<any[]>([]);
+  
+  // Rolling AUM: last valuation AUM + net flows after that valuation
+  const rollingAUM = useMemo(() => {
+    try {
+      if (!Array.isArray(ledgerTransactions) || ledgerTransactions.length === 0) return undefined;
+      const txs = [...ledgerTransactions].filter(t => t && t.timestamp).sort((a, b) => new Date(String(a.timestamp)).getTime() - new Date(String(b.timestamp)).getTime());
+      let lastValIdx = -1;
+      for (let i = txs.length - 1; i >= 0; i--) {
+        const t = txs[i];
+        if (String(t.type || '').toUpperCase() === 'VALUATION') { lastValIdx = i; break; }
+      }
+      if (lastValIdx === -1) return undefined;
+      const base = Number(txs[lastValIdx]?.amount_usd ?? NaN);
+      if (!isFinite(base)) return undefined;
+      let net = 0;
+      for (let i = lastValIdx + 1; i < txs.length; i++) {
+        const t = txs[i];
+        const type = String(t?.type || '').toUpperCase();
+        const amt = Number(t?.amount_usd ?? 0) || 0;
+        if (type === 'DEPOSIT') net += amt;
+        else if (type === 'WITHDRAW' || type === 'WITHDRAWAL') net -= amt;
+      }
+      return base + net;
+    } catch {
+      return undefined;
+    }
+  }, [ledgerTransactions]);
+
+  // Implied share price from valuation + net flows and share issuance since that valuation (flow-neutral)
+  const impliedPriceFromLedger = useMemo(() => {
+    try {
+      if (!Array.isArray(ledgerTransactions) || ledgerTransactions.length === 0) return undefined;
+      const txs = [...ledgerTransactions].filter(t => t && t.timestamp).sort((a, b) => new Date(String(a.timestamp)).getTime() - new Date(String(b.timestamp)).getTime());
+      let lastValIdx = -1;
+      for (let i = txs.length - 1; i >= 0; i--) {
+        if (String(txs[i].type || '').toUpperCase() === 'VALUATION') { lastValIdx = i; break; }
+      }
+      if (lastValIdx === -1) return undefined;
+      const baseUSD = Number(txs[lastValIdx]?.amount_usd ?? NaN);
+      if (!isFinite(baseUSD)) return undefined;
+      let netUSD = 0;
+      let flowShares = 0;
+      for (let i = lastValIdx + 1; i < txs.length; i++) {
+        const t = txs[i];
+        const type = String(t?.type || '').toUpperCase();
+        const usd = Number(t?.amount_usd ?? 0) || 0;
+        const sh = Number(t?.shares ?? 0) || 0;
+        if (type === 'DEPOSIT') { netUSD += usd; flowShares += sh; }
+        else if (type === 'WITHDRAW' || type === 'WITHDRAWAL') { netUSD -= usd; flowShares -= sh; }
+      }
+      const totalSharesNow = (() => {
+        const v = ledgerHoldings?.total_shares as unknown as string | number | undefined;
+        const n = typeof v === 'string' ? parseFloat(v) : (v ?? 0);
+        return isNaN(Number(n)) ? undefined : Number(n);
+      })();
+      if (!isFinite(totalSharesNow as number)) return undefined;
+      const sharesAtVal = (totalSharesNow as number) - flowShares;
+      if (!(sharesAtVal > 0)) return undefined;
+      const aumNow = baseUSD + netUSD;
+      const priceNow = aumNow / (totalSharesNow as number);
+      // If base valuation had a different PPS, that's fine; performance calc will use initial price as reference.
+      return isFinite(priceNow) && priceNow > 0 ? priceNow : undefined;
+    } catch {
+      return undefined;
+    }
+  }, [ledgerTransactions, ledgerHoldings]);
   const [isTokenizedVault, setIsTokenizedVault] = useState<boolean>(false);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
@@ -133,8 +200,53 @@ const VaultDetailPage: React.FC = () => {
   const [accounts, setAccounts] = useState<Option[]>([]);
   const [manualMetrics, setManualMetrics] = useState<ManualMetrics | null>(null);
   const [liveMetrics, setLiveMetrics] = useState<ManualMetrics | null>(null);
+  
+  type VaultHeaderMetrics = { aum_usd: number; pnl_usd: number; roi_percent: number; apr_percent: number; last_valuation_usd: number; net_flow_since_valuation_usd: number; deposits_cum_usd: number; withdrawals_cum_usd: number; as_of: string };
+  const [headerMetrics, setHeaderMetrics] = useState<VaultHeaderMetrics | null>(null);
   const [showLiveMetrics, setShowLiveMetrics] = useState<boolean>(false);
   const [retryCount, setRetryCount] = useState(0);
+
+  // Time-series for tokenized vault (AUM, PnL, ROI, APR)
+  const [vaultSeries, setVaultSeries] = useState<Array<{ date: string; aum_usd: number; pnl_usd: number; roi_percent: number; apr_percent: number }>>([]);
+  const [loadingSeries, setLoadingSeries] = useState<boolean>(false);
+
+  // Load per-vault series when viewing a tokenized vault
+  useEffect(() => {
+    const fetchSeries = async () => {
+      if (!isTokenizedVault || !tokenizedVaultDetails?.id) {
+        setVaultSeries([]);
+        return;
+      }
+      try {
+        setLoadingSeries(true);
+        const res = await reportsApi.vaultSeries<{ vault: string; series: Array<{ date: string; aum_usd: number; pnl_usd: number; roi_percent: number; apr_percent: number }> }>(tokenizedVaultDetails.id);
+        const s = (res as any)?.series ?? [];
+        setVaultSeries(Array.isArray(s) ? s : []);
+      } catch {
+        setVaultSeries([]);
+      } finally {
+        setLoadingSeries(false);
+      }
+    };
+    void fetchSeries();
+  }, [isTokenizedVault, tokenizedVaultDetails?.id]);
+
+  // Load header metrics (backend)
+  useEffect(() => {
+    const fetchHeader = async () => {
+      if (!isTokenizedVault || !tokenizedVaultDetails?.id) {
+        setHeaderMetrics(null);
+        return;
+      }
+      try {
+        const m = await reportsApi.vaultHeader<VaultHeaderMetrics>(tokenizedVaultDetails.id);
+        setHeaderMetrics(m as any);
+      } catch {
+        setHeaderMetrics(null);
+      }
+    };
+    void fetchHeader();
+  }, [isTokenizedVault, tokenizedVaultDetails?.id]);
 
   // Borrowings special UI state
   const [borrowingsSummary, setBorrowingsSummary] = useState<null | {
@@ -152,6 +264,15 @@ const VaultDetailPage: React.FC = () => {
   const [tokenizedNotes, setTokenizedNotes] = useState<string>('');
   const [tokenizedSourceAccount, setTokenizedSourceAccount] = useState<string>('');
   const [tokenizedTargetAccount, setTokenizedTargetAccount] = useState<string>('');
+
+  // Reward payout UI state (mark gain, then distribute to cash)
+  const [showRewardForm, setShowRewardForm] = useState<boolean>(false);
+  const [rewardAmount, setRewardAmount] = useState<string>('');
+  const [rewardDestination, setRewardDestination] = useState<string>('Spend');
+  const [rewardNote, setRewardNote] = useState<string>('');
+  const [rewardMark, setRewardMark] = useState<boolean>(true);
+  const [rewardCreateIncome, setRewardCreateIncome] = useState<boolean>(false);
+  const [rewardDate, setRewardDate] = useState<string>(new Date().toISOString().split('T')[0]);
 
   // Form states (legacy vault)
   const [depositForm, setDepositForm] = useState({
@@ -614,6 +735,42 @@ const VaultDetailPage: React.FC = () => {
     }
   };
 
+  const toISODateTime = (value?: string): string => {
+    if (!value) return new Date().toISOString();
+    const s = String(value);
+    if (s.includes('T')) return s;
+    const timePart = new Date().toISOString().split('T')[1];
+    return `${s}T${timePart}`;
+  };
+
+  const handleDistributeReward = async (): Promise<void> => {
+    const amt = parseFloat(rewardAmount || '');
+    if (!(amt > 0)) {
+      showErrorToast('Enter a valid reward amount');
+      return;
+    }
+    try {
+      const targetName = isTokenizedVault ? (tokenizedVaultDetails?.id || vaultId) : vaultId;
+      await vaultApi.distributeReward(targetName, {
+        amount: amt,
+        destination: rewardDestination || 'Spend',
+        date: toISODateTime(rewardDate),
+        note: rewardNote || undefined,
+        mark: rewardMark,
+        create_income: rewardCreateIncome,
+      });
+      showSuccessToast('Reward distributed');
+      setShowRewardForm(false);
+      setRewardAmount('');
+      setRewardNote('');
+      await loadVault();
+      await loadVaultTransactions();
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to distribute reward';
+      showErrorToast(message);
+    }
+  };
+
   const formatVaultNumber = (value: string | number, decimals: number = 2): string => {
     const num = typeof value === 'string' ? parseFloat(value) : value;
     if (isNaN(num)) return '0';
@@ -939,15 +1096,39 @@ const VaultDetailPage: React.FC = () => {
     const tokenPrice = parseFloat(tokenizedVaultDetails.current_share_price ?? '0');
     const totalSupply = parseFloat(tokenizedVaultDetails.total_supply ?? '0');
     const totalValue = parseFloat(tokenizedVaultDetails.total_assets_under_management ?? '0');
-    const performance = parseFloat(tokenizedVaultDetails.performance_since_inception ?? '0');
+
+    // Derive performance from price; when in manual pricing, prefer implied price from rolling AUM to avoid misleading negatives
+    const initialPrice = parseFloat(tokenizedVaultDetails.initial_share_price ?? '0');
+    const perfFromBackend = parseFloat(tokenizedVaultDetails.performance_since_inception ?? '');
+
+    // Prefer implied price from valuation+flows so we reflect true gains (e.g., +$5) even if manual price is unchanged
+    const priceForPerf = Number.isFinite(impliedPriceFromLedger as number)
+      ? (impliedPriceFromLedger as number)
+      : (Number.isFinite(tokenPrice) ? tokenPrice : initialPrice);
+
+    const referencePrice = (isFinite(initialPrice) && initialPrice > 0) ? initialPrice : 1;
+
+    const perfFromPrice = (isFinite(referencePrice) && referencePrice > 0 && isFinite(priceForPerf) && priceForPerf > 0)
+      ? ((priceForPerf / referencePrice) - 1) * 100
+      : NaN;
+
     const inceptionDate = new Date(tokenizedVaultDetails.inception_date);
     const asOfDate = tokenizedVaultDetails.as_of ? new Date(tokenizedVaultDetails.as_of) : new Date();
     const daysSinceInception = Math.max(1, differenceInDays(asOfDate, inceptionDate));
     const yearsSinceInception = daysSinceInception / 365.25;
+
+    // Performance for header should be price-based to avoid flow artifacts (use implied price when available)
+    const perfRaw = Number.isFinite(perfFromPrice) ? perfFromPrice : (Number.isFinite(perfFromBackend) ? perfFromBackend : 0);
+    const EPS = 0.01; // ignore +/- 1bp noise
+    const performance = Math.abs(perfRaw) < EPS ? 0 : perfRaw;
+
+    // APR derived from price-based performance; avoid over-annualizing short histories (< 30 days)
     const roiDecimal = (performance || 0) / 100;
-    const aprSinceInception = (1 + roiDecimal) > 0 && yearsSinceInception > 0
+    const aprSinceInception = daysSinceInception >= 30 && yearsSinceInception > 0
       ? (Math.pow(1 + roiDecimal, 1 / yearsSinceInception) - 1) * 100
-      : 0;
+      : performance;
+    const perfDisplay = (typeof headerMetrics?.roi_percent === 'number' && isFinite(headerMetrics!.roi_percent)) ? headerMetrics!.roi_percent : performance;
+    const aprDisplay = (typeof headerMetrics?.apr_percent === 'number' && isFinite(headerMetrics!.apr_percent)) ? headerMetrics!.apr_percent : aprSinceInception;
     const status = tokenizedVaultDetails.status?.toLowerCase() ?? 'unknown';
     const statusConfig: Record<string, { label: string; className: string }> = {
       active: { label: 'Active', className: 'bg-green-100 text-green-800' },
@@ -1091,11 +1272,12 @@ const VaultDetailPage: React.FC = () => {
         )}
 
         {!isBorrowings && (
+        <>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
           <div className="bg-white p-4 rounded-lg border border-gray-200">
             <h3 className="text-sm font-medium text-gray-500 mb-2">Token Price</h3>
             <p className="text-2xl font-bold text-gray-900">${isNaN(tokenPrice) ? '0.0000' : tokenPrice.toFixed(4)}</p>
-            <p className="text-sm text-gray-600">Live price</p>
+            <p className="text-sm text-gray-600">{tokenizedVaultDetails.is_user_defined_price ? 'Manual price' : 'Live price'}</p>
           </div>
           <div className="bg-white p-4 rounded-lg border border-gray-200">
             <h3 className="text-sm font-medium text-gray-500 mb-2">Total Supply</h3>
@@ -1106,24 +1288,116 @@ const VaultDetailPage: React.FC = () => {
           </div>
           <div className="bg-white p-4 rounded-lg border border-gray-200">
             <h3 className="text-sm font-medium text-gray-500 mb-2">Assets Under Management</h3>
-            <p className="text-2xl font-bold text-gray-900">{formatCurrency(isNaN(totalValue) ? 0 : totalValue)}</p>
-            <p className="text-sm text-gray-600">{tokenizedVaultDetails.is_user_defined_price ? 'Manual pricing' : 'Total vault value'}</p>
+            <p className="text-2xl font-bold text-gray-900">{(() => {
+              const base = isNaN(totalValue) ? 0 : totalValue;
+              const roll = typeof rollingAUM === 'number' && isFinite(rollingAUM) ? rollingAUM : undefined;
+              const backend = typeof headerMetrics?.aum_usd === 'number' && isFinite(headerMetrics!.aum_usd) ? headerMetrics!.aum_usd : undefined;
+              return formatCurrency(backend ?? roll ?? base);
+            })()}</p>
+            <p className="text-sm text-gray-600">{(() => {
+              if (tokenizedVaultDetails.is_user_defined_price) return 'Manual pricing';
+              return (typeof headerMetrics?.aum_usd === 'number' && isFinite(headerMetrics!.aum_usd))
+                ? 'Backend rolling AUM'
+                : (typeof rollingAUM === 'number' && isFinite(rollingAUM)) ? 'Rolling since last valuation' : 'Total vault value';
+            })()}</p>
           </div>
           <div className="bg-white p-4 rounded-lg border border-gray-200">
             <h3 className="text-sm font-medium text-gray-500 mb-2">Performance Since Inception</h3>
-            <p className={`text-2xl font-bold ${performance >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-              {formatPercentage((performance || 0) / 100, 2)}
+            <p className={`text-2xl font-bold ${perfDisplay >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+              {formatPercentage((perfDisplay || 0) / 100, 2)}
             </p>
             <p className="text-sm text-gray-600">Relative to initial share price</p>
           </div>
           <div className="bg-white p-4 rounded-lg border border-gray-200">
             <h3 className="text-sm font-medium text-gray-500 mb-2">APR Since Inception</h3>
-            <p className={`text-2xl font-bold ${aprSinceInception >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-              {formatPercentage((aprSinceInception || 0) / 100, 2)}
+            <p className={`text-2xl font-bold ${aprDisplay >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+              {formatPercentage((aprDisplay || 0) / 100, 2)}
             </p>
             <p className="text-sm text-gray-600">Annualized from inception</p>
           </div>
         </div>
+
+        {/* Charts: Holdings, APR, PnL */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
+          {/* Holdings Pie */}
+          <div className="bg-white p-4 rounded-lg border border-gray-200">
+            <h3 className="text-sm font-medium text-gray-900 mb-3">Holdings Breakdown</h3>
+            <div style={{ height: 280 }}>
+              <HoldingsChart
+                data={{
+                  by_asset: (tokenizedVaultDetails.asset_breakdown || []).reduce((acc: Record<string, { value_usd: number }>, a) => {
+                    const sym = a.asset
+                    const val = parseFloat(a.current_market_value || '0')
+                    acc[sym] = { value_usd: isNaN(val) ? 0 : val }
+                    return acc
+                  }, {})
+                }}
+                currency="USD"
+              />
+            </div>
+          </div>
+
+          {/* APR vs Benchmark (point-in-time) */}
+          <div className="bg-white p-4 rounded-lg border border-gray-200">
+            <h3 className="text-sm font-medium text-gray-900 mb-3">APR vs Benchmark</h3>
+            <div style={{ height: 280 }}>
+              <TimeSeriesLineChart
+                labels={["Vault APR", "Benchmark APR"]}
+                datasets={[
+                  { label: 'APR (%)', data: [aprSinceInception, Number(tokenizedVaultDetails.benchmark_apr_percent || 0)], color: '#2563EB', fill: true },
+                ]}
+                yFormat="percent"
+              />
+            </div>
+          </div>
+
+          {/* PnL (point-in-time from unrealized) */}
+          <div className="bg-white p-4 rounded-lg border border-gray-200">
+            <h3 className="text-sm font-medium text-gray-900 mb-3">PnL (Unrealized)</h3>
+            <div style={{ height: 280 }}>
+              {(() => {
+                const unrealized = (tokenizedVaultDetails.asset_breakdown || []).reduce((s, a) => s + (parseFloat(a.unrealized_pnl || '0') || 0), 0)
+                const val = isNaN(unrealized) ? 0 : unrealized
+                return (
+                  <TimeSeriesLineChart
+                    labels={["Now"]}
+                    datasets={[{ label: 'PnL (USD)', data: [val], color: '#10B981', fill: true }]}
+                    yFormat="currency"
+                    currency="USD"
+                  />
+                )
+              })()}
+            </div>
+          </div>
+        </div>
+
+        {/* Time Series: APR and PnL over time */}
+        {vaultSeries.length > 0 && (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
+            <div className="bg-white p-4 rounded-lg border border-gray-200">
+              <h3 className="text-sm font-medium text-gray-900 mb-3">PnL Over Time</h3>
+              <div style={{ height: 280 }}>
+                <TimeSeriesLineChart
+                  labels={vaultSeries.map(p => p.date)}
+                  datasets={[{ label: 'PnL (USD)', data: vaultSeries.map(p => p.pnl_usd), color: '#059669', fill: true }]}
+                  yFormat="currency"
+                  currency="USD"
+                />
+              </div>
+            </div>
+            <div className="bg-white p-4 rounded-lg border border-gray-200">
+              <h3 className="text-sm font-medium text-gray-900 mb-3">APR Over Time</h3>
+              <div style={{ height: 280 }}>
+                <TimeSeriesLineChart
+                  labels={vaultSeries.map(p => p.date)}
+                  datasets={[{ label: 'APR (%)', data: vaultSeries.map(p => p.apr_percent), color: '#2563EB', fill: true }]}
+                  yFormat="percent"
+                />
+              </div>
+            </div>
+          </div>
+        )}
+        </>
         )}
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
@@ -1131,7 +1405,7 @@ const VaultDetailPage: React.FC = () => {
             <ManualPricingControl
               vaultId={tokenizedVaultDetails.id}
               currentPrice={isNaN(tokenPrice) ? 0 : tokenPrice}
-              currentTotalValue={isNaN(totalValue) ? 0 : totalValue}
+              currentTotalValue={(typeof rollingAUM === 'number' && isFinite(rollingAUM)) ? rollingAUM : (isNaN(totalValue) ? 0 : totalValue)}
               totalSupply={isNaN(totalSupply) ? 0 : totalSupply}
               isManualPricing={tokenizedVaultDetails.is_user_defined_price}
               onMetricsUpdate={handleTokenizedMetricsUpdate}
@@ -1228,6 +1502,16 @@ const VaultDetailPage: React.FC = () => {
               Withdraw
             </button>
           )}
+          <button
+            onClick={() => {
+              setShowRewardForm((s) => !s);
+              setShowTokenizedDepositForm(false);
+              setShowTokenizedWithdrawForm(false);
+            }}
+            className="px-4 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700"
+          >
+            Distribute Reward
+          </button>
         </div>
 
         {(showTokenizedDepositForm || showTokenizedWithdrawForm) && (
@@ -1318,6 +1602,79 @@ const VaultDetailPage: React.FC = () => {
           </div>
         )}
 
+        {showRewardForm && (
+          <div className="bg-white p-4 rounded-lg border border-gray-200 mb-6">
+            <h3 className="text-lg font-semibold mb-4">Distribute Reward</h3>
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Reward (USD)</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={rewardAmount}
+                  onChange={(e) => setRewardAmount(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                  placeholder="0.00"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Destination Vault</label>
+                <input
+                  type="text"
+                  value={rewardDestination}
+                  onChange={(e) => setRewardDestination(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                  placeholder="Spend"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Date</label>
+                <input
+                  type="date"
+                  value={rewardDate}
+                  onChange={(e) => setRewardDate(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Note (optional)</label>
+                <input
+                  type="text"
+                  value={rewardNote}
+                  onChange={(e) => setRewardNote(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                  placeholder="e.g., Weekly rewards"
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+              <label className="inline-flex items-center gap-2 text-sm text-gray-700">
+                <input type="checkbox" checked={rewardMark} onChange={(e) => setRewardMark(e.target.checked)} />
+                Mark valuation before payout
+              </label>
+              <label className="inline-flex items-center gap-2 text-sm text-gray-700">
+                <input type="checkbox" checked={rewardCreateIncome} onChange={(e) => setRewardCreateIncome(e.target.checked)} />
+                Also create INCOME entry in destination
+              </label>
+            </div>
+            <div className="flex space-x-3">
+              <button
+                onClick={() => { void handleDistributeReward(); }}
+                className="px-4 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700"
+              >
+                Distribute
+              </button>
+              <button
+                onClick={() => { setShowRewardForm(false); setRewardAmount(''); setRewardNote(''); }}
+                className="px-4 py-2 border border-gray-300 rounded-md hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+
         {tokenizedVaultDetails.asset_breakdown && tokenizedVaultDetails.asset_breakdown.length > 0 && (
           <div className="bg-white p-4 rounded-lg border border-gray-200">
             <h2 className="text-xl font-semibold mb-4">Asset Breakdown</h2>
@@ -1353,7 +1710,9 @@ const VaultDetailPage: React.FC = () => {
                   <dd className="text-gray-900">{(() => {
                     const v = ledgerHoldings.total_aum as unknown as string | number | undefined;
                     const n = typeof v === 'string' ? parseFloat(v) : (v ?? 0);
-                    return formatCurrency(isNaN(Number(n)) ? 0 : Number(n));
+                    const base = isNaN(Number(n)) ? 0 : Number(n);
+                    const display = typeof rollingAUM === 'number' && isFinite(rollingAUM) ? rollingAUM : base;
+                    return formatCurrency(display);
                   })()}</dd>
                 </div>
                 <div>
@@ -1544,6 +1903,12 @@ const VaultDetailPage: React.FC = () => {
           className="px-4 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700"
         >
           Manual Update
+        </button>
+        <button
+          onClick={() => setShowRewardForm((s) => !s)}
+          className="px-4 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700"
+        >
+          Distribute Reward
         </button>
       </div>
 
