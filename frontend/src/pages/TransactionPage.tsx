@@ -1,13 +1,27 @@
-import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import React, {
+  useState,
+  useEffect,
+  useMemo,
+  useRef,
+  useCallback,
+} from 'react';
 
 import QuickExpenseModal from '../components/modals/QuickExpenseModal';
 import QuickIncomeModal from '../components/modals/QuickIncomeModal';
 import QuickInitBalanceModal from '../components/modals/QuickInitBalanceModal';
 import QuickInvestmentModal from '../components/modals/QuickInvestmentModal';
 import QuickVaultModal from '../components/modals/QuickVaultModal';
+import QuickTransferModal from '../components/modals/QuickTransferModal';
+import QuickBorrowLoanModal from '../components/modals/QuickBorrowLoanModal';
+import QuickRepayModal from '../components/modals/QuickRepayModal';
+import QuickBuyModal from '../components/modals/QuickBuyModal';
+import QuickSellModal from '../components/modals/QuickSellModal';
 import TransactionForm from '../components/forms/TransactionForm';
 import ComboBox from '../components/ui/ComboBox';
-import DataTable, { TableColumn, TableRowBase } from '../components/ui/DataTable';
+import DataTable, {
+  TableColumn,
+  TableRowBase,
+} from '../components/ui/DataTable';
 import DateInput from '../components/ui/DateInput';
 import { useToast } from '../components/ui/Toast';
 import { useApp } from '../context/AppContext';
@@ -55,22 +69,44 @@ const TransactionPage: React.FC = () => {
   const [masterData, setMasterData] = useState<MasterData>({});
   const [bulkRefreshing, setBulkRefreshing] = useState<boolean>(false);
   const [busyRowIds, setBusyRowIds] = useState<Set<IdType>>(new Set<IdType>());
-  const [selectedIds, setSelectedIds] = useState<Set<IdType>>(new Set<IdType>());
+  const [selectedIds, setSelectedIds] = useState<Set<IdType>>(
+    new Set<IdType>()
+  );
 
   // FX conversion states
-  const [fxConversionCache, setFxConversionCache] = useState<Map<string, number>>(new Map());
-  const [fxLoadingStates, setFxLoadingStates] = useState<Map<string, boolean>>(new Map());
+  const [fxConversionCache, setFxConversionCache] = useState<
+    Map<string, number>
+  >(new Map());
+  const [fxLoadingStates, setFxLoadingStates] = useState<Map<string, boolean>>(
+    new Map()
+  );
   // Online FX rates cache keyed by from-to-date
-  const [fxRateCache, setFxRateCache] = useState<Map<string, number>>(new Map());
+  const [fxRateCache, setFxRateCache] = useState<Map<string, number>>(
+    new Map()
+  );
   const [isQuickExpenseOpen, setIsQuickExpenseOpen] = useState(false);
+  const [expenseDefaultAccount, setExpenseDefaultAccount] = useState<string | undefined>(undefined);
   const [isQuickIncomeOpen, setIsQuickIncomeOpen] = useState(false);
   const [isQuickVaultOpen, setIsQuickVaultOpen] = useState(false);
   const [isQuickInitOpen, setIsQuickInitOpen] = useState(false);
   const [isQuickInvestmentOpen, setIsQuickInvestmentOpen] = useState(false);
+  const [isQuickTransferOpen, setIsQuickTransferOpen] = useState(false);
+  const [isQuickBorrowOpen, setIsQuickBorrowOpen] = useState(false);
+  const [isQuickLoanOpen, setIsQuickLoanOpen] = useState(false);
+  const [isQuickRepayOpen, setIsQuickRepayOpen] = useState(false);
+  const [isQuickBuyOpen, setIsQuickBuyOpen] = useState(false);
+  const [isQuickSellOpen, setIsQuickSellOpen] = useState(false);
   const [isQuickMenuOpen, setIsQuickMenuOpen] = useState(false);
   const quickMenuRef = useRef<HTMLDivElement | null>(null);
 
-  const { createExpense, createIncome, createVault, createInvestment, isLoading: _isQuickLoading, error: quickError } = useQuickCreate();
+  const {
+    createExpense,
+    createIncome,
+    createVault,
+    createInvestment,
+    isLoading: _isQuickLoading,
+    error: quickError,
+  } = useQuickCreate();
 
   const todayStr = useMemo(() => new Date().toISOString().split('T')[0], []);
 
@@ -86,17 +122,19 @@ const TransactionPage: React.FC = () => {
   // Load transactions and master data on mount
   const loadMasterData = useCallback(async (): Promise<void> => {
     try {
-      const [types, accounts, assets, tags] = await Promise.all([
+      const [types, accounts, assets, tags] = (await Promise.all([
         adminApi.listTypes(),
         adminApi.listAccounts(),
         adminApi.listAssets(),
         adminApi.listTags(),
-      ]) as [unknown[], unknown[], unknown[], unknown[]];
+      ])) as [unknown[], unknown[], unknown[], unknown[]];
 
       setMasterData({
         type: (types ?? []).map((t: unknown) => ({
           value: String((t as { name: string }).name),
-          label: (t as { description?: string }).description ?? String((t as { name: string }).name),
+          label:
+            (t as { description?: string }).description ??
+            String((t as { name: string }).name),
         })),
         account: (accounts ?? []).map((a: unknown) => ({
           value: String((a as { name: string }).name),
@@ -113,7 +151,8 @@ const TransactionPage: React.FC = () => {
         counterparty: [],
       });
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Failed to load master data';
+      const message =
+        err instanceof Error ? err.message : 'Failed to load master data';
       console.error(message);
     }
   }, []);
@@ -126,18 +165,59 @@ const TransactionPage: React.FC = () => {
       // Request FX-enhanced data with USD and VND conversion
       const fxFilters = {
         ...filters,
-        currencies: 'USD,VND' // Request FX conversion for both currencies
+        currencies: 'USD,VND', // Request FX conversion for both currencies
       };
 
-      const data = await transactionApi.list(fxFilters) as unknown[];
+      const data = (await transactionApi.list(fxFilters)) as unknown[];
 
       // Handle both TransactionWithFX and basic Transaction responses
       if (data && data.length > 0 && 'fx_rates' in (data[0] as any)) {
         // FX-enhanced response
         setTransactions(data as Transaction[]);
       } else {
-        // Fallback to basic response for backwards compatibility
-        setTransactions(data as Transaction[]);
+        // Fallback to basic response: map backend Transaction -> UI row shape
+        const mapped = (data || []).map((raw: any) => {
+          const assetObj = raw?.asset;
+          const assetSym = typeof assetObj === 'string'
+            ? assetObj
+            : (assetObj?.symbol ?? String(assetObj ?? ''));
+          const type = String(raw?.type ?? '').toLowerCase();
+          const created = String(raw?.createdAt || raw?.date || '') || undefined;
+          // normalize date to a full ISO string to ensure Safari/Chrome parsing
+          let dateISO: string | undefined = undefined;
+          if (created) {
+            const d = new Date(created);
+            dateISO = isNaN(d.getTime()) ? created : d.toISOString();
+          }
+          const qty = Number(raw?.amount ?? raw?.quantity ?? 0) || 0;
+          // cashflow sign
+          let cashflow = 0;
+          if (type === 'income' || type === 'transfer_in') cashflow = qty;
+          else if (type === 'expense' || type === 'transfer_out') cashflow = -qty;
+          else if (type === 'repay') {
+            const dir = String(raw?.direction || '').toLowerCase();
+            cashflow = dir === 'loan' ? qty : dir === 'borrow' ? -qty : 0;
+          } else cashflow = 0; // initial/borrow/loan treated neutral
+
+          const localCurrency = assetSym || 'USD';
+
+          const row: Record<string, unknown> = {
+            id: raw?.id,
+            date: dateISO ?? undefined,
+            type,
+            asset: assetSym,
+            account: raw?.account ?? '',
+            quantity: qty,
+            amount_local: qty,
+            local_currency: localCurrency,
+            cashflow_local: cashflow,
+            counterparty: raw?.counterparty ?? null,
+            tag: raw?.tag ?? null,
+            note: raw?.note ?? null,
+          };
+          return row as Transaction;
+        });
+        setTransactions(mapped as Transaction[]);
       }
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Unknown error';
@@ -158,7 +238,11 @@ const TransactionPage: React.FC = () => {
   // Global keyboard shortcut: 'n' to toggle Quick Add menu
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if ((e.target as HTMLElement)?.tagName === 'INPUT' || (e.target as HTMLElement)?.tagName === 'TEXTAREA' || (e.target as HTMLElement)?.getAttribute('contenteditable') === 'true') {
+      if (
+        (e.target as HTMLElement)?.tagName === 'INPUT' ||
+        (e.target as HTMLElement)?.tagName === 'TEXTAREA' ||
+        (e.target as HTMLElement)?.getAttribute('contenteditable') === 'true'
+      ) {
         return; // don't hijack typing in inputs
       }
       if (e.key.toLowerCase() === 'n') {
@@ -173,7 +257,10 @@ const TransactionPage: React.FC = () => {
   useEffect(() => {
     const onDocClick = (e: MouseEvent) => {
       if (!isQuickMenuOpen) return;
-      if (quickMenuRef.current && !quickMenuRef.current.contains(e.target as Node)) {
+      if (
+        quickMenuRef.current &&
+        !quickMenuRef.current.contains(e.target as Node)
+      ) {
         setIsQuickMenuOpen(false);
       }
     };
@@ -183,8 +270,8 @@ const TransactionPage: React.FC = () => {
 
   // Removed legacy spot_buy auto price hook (Quick Add handles simple flows)
 
-
-  const shouldToast = (e: unknown) => !(e instanceof ApiError && e.status === 0);
+  const shouldToast = (e: unknown) =>
+    !(e instanceof ApiError && e.status === 0);
 
   const handleQuickExpenseSubmit = async (data: unknown): Promise<void> => {
     const transactionData = data as Record<string, unknown>;
@@ -194,7 +281,8 @@ const TransactionPage: React.FC = () => {
       actions.setError(null);
       showSuccessToast('Expense added');
     } catch (e: unknown) {
-      const msg = (e as { message?: string } | null)?.message ?? 'Failed to add expense';
+      const msg =
+        (e as { message?: string } | null)?.message ?? 'Failed to add expense';
       actions.setError(msg);
       if (shouldToast(e)) showErrorToast(msg);
       throw e;
@@ -209,7 +297,8 @@ const TransactionPage: React.FC = () => {
       actions.setError(null);
       showSuccessToast('Income added');
     } catch (e: unknown) {
-      const msg = (e as { message?: string } | null)?.message ?? 'Failed to add income';
+      const msg =
+        (e as { message?: string } | null)?.message ?? 'Failed to add income';
       actions.setError(msg);
       if (shouldToast(e)) showErrorToast(msg);
       throw e;
@@ -219,11 +308,31 @@ const TransactionPage: React.FC = () => {
   const handleQuickVaultSubmit = async (data: unknown): Promise<void> => {
     const vaultData = data as Record<string, unknown>;
     try {
-      await createVault(vaultData);
+      const name = String(vaultData.name || '').trim();
+      if (!name) throw new Error('Name is required');
+
+      // 1) Create/ensure vault
+      await vaultApi.createVault({ name });
+
+      // 2) Optional initial deposit
+      const asset = String(vaultData.asset || 'USD');
+      const depositCostNum = Number(vaultData.depositCost || 0) || 0;
+      const depositQtyNum = Number(vaultData.depositQty || 0) || 0;
+      const dateStr = String(vaultData.date || '') || undefined;
+      if (depositCostNum > 0) {
+        if (asset.toUpperCase() === 'USD') {
+          await vaultApi.depositToVault(name, { amount: depositCostNum, date: dateStr });
+        } else {
+          if (!(depositQtyNum > 0)) throw new Error('Deposit quantity must be > 0 for non-USD asset');
+          await vaultApi.depositToVault(name, { asset, quantity: depositQtyNum, cost: depositCostNum, date: dateStr });
+        }
+      }
+
       showSuccessToast('Vault created');
       actions.setError(null);
     } catch (e: unknown) {
-      const msg = (e as { message?: string } | null)?.message ?? 'Failed to create vault';
+      const msg =
+        (e as { message?: string } | null)?.message ?? 'Failed to create vault';
       actions.setError(msg);
       if (shouldToast(e)) showErrorToast(msg);
       throw e;
@@ -235,15 +344,25 @@ const TransactionPage: React.FC = () => {
     try {
       const vaultId = investmentData.vaultId as string | undefined;
       if (vaultId) {
-        const { quantity, cost, note } = investmentData as { quantity: number; cost: number; note?: string };
+        const { quantity, cost, note } = investmentData as {
+          quantity: number;
+          cost: number;
+          note?: string;
+        };
         if (vaultId.startsWith('vault_')) {
           // Tokenized vault deposit (USD amount)
-          await tokenizedVaultApi.deposit(vaultId, { amount: cost, notes: note });
-          // Also record a neutral cash movement so it shows up in Transactions table
           const account = (investmentData as any).account as string | undefined;
+          await tokenizedVaultApi.deposit(vaultId, {
+            amount: cost,
+            notes: note,
+            source_account: account,
+          });
+          // Also record a neutral cash movement so it shows up in Transactions table
           if (account) {
             await transactionApi.create({
-              date: toISODateTime((investmentData as any).date as string | undefined),
+              date: toISODateTime(
+                (investmentData as any).date as string | undefined
+              ),
               type: 'deposit',
               asset: 'USD',
               account,
@@ -262,7 +381,9 @@ const TransactionPage: React.FC = () => {
           const account = (investmentData as any).account as string | undefined;
           if (account) {
             await transactionApi.create({
-              date: toISODateTime((investmentData as any).date as string | undefined),
+              date: toISODateTime(
+                (investmentData as any).date as string | undefined
+              ),
               type: 'deposit',
               asset: 'USD',
               account,
@@ -280,9 +401,15 @@ const TransactionPage: React.FC = () => {
       }
       await loadTransactions();
       actions.setError(null);
-      showSuccessToast(vaultId ? 'Vault deposit recorded' : 'Investment recorded');
+      showSuccessToast(
+        vaultId ? 'Vault deposit recorded' : 'Investment recorded'
+      );
     } catch (e: unknown) {
-      const msg = (e as { message?: string } | null)?.message ?? ((investmentData.vaultId ? 'Failed to record vault deposit' : 'Failed to record investment') as string);
+      const msg =
+        (e as { message?: string } | null)?.message ??
+        ((investmentData.vaultId
+          ? 'Failed to record vault deposit'
+          : 'Failed to record investment') as string);
       actions.setError(msg);
       showErrorToast(msg);
       throw e;
@@ -297,7 +424,99 @@ const TransactionPage: React.FC = () => {
       actions.setError(null);
       showSuccessToast('Balance initialized');
     } catch (e: unknown) {
-      const msg = (e as { message?: string } | null)?.message ?? 'Failed to initialize balance';
+      const msg =
+        (e as { message?: string } | null)?.message ??
+        'Failed to initialize balance';
+      actions.setError(msg);
+      showErrorToast(msg);
+      throw e;
+    }
+  };
+
+  const handleQuickTransferSubmit = async (data: unknown): Promise<void> => {
+      const params = data as Record<string, unknown>;
+      try {
+        await actionsApi.perform('transfer', params);
+        await loadTransactions();
+        actions.setError(null);
+        showSuccessToast('Transfer successful');
+      } catch (e: unknown) {
+        const msg =
+          (e as { message?: string } | null)?.message ??
+          'Transfer failed';
+        actions.setError(msg);
+        showErrorToast(msg);
+        throw e;
+      }
+  };
+
+  // Borrow/Loan/Repay helpers
+  const toAssetObj = (symbol: string) => ({
+    type: (symbol.toUpperCase() === 'USD' || symbol.length === 3) ? 'FIAT' as const : 'CRYPTO' as const,
+    symbol: symbol.toUpperCase(),
+  });
+
+  const handleQuickBorrowSubmit = async (data: { date: string; amount: number; account?: string; asset: string; counterparty?: string; note?: string; }): Promise<void> => {
+    try {
+      const payload = {
+        asset: toAssetObj(data.asset),
+        amount: Number(data.amount),
+        account: data.account || undefined,
+        counterparty: data.counterparty || 'general',
+        note: data.note || undefined,
+        at: toISODateTime(data.date),
+      };
+      await transactionApi.borrow(payload);
+      await loadTransactions();
+      actions.setError(null);
+      showSuccessToast('Borrow recorded');
+    } catch (e: unknown) {
+      const msg = (e as { message?: string } | null)?.message ?? 'Failed to record borrow';
+      actions.setError(msg);
+      showErrorToast(msg);
+      throw e;
+    }
+  };
+
+  const handleQuickLoanSubmit = async (data: { date: string; amount: number; account?: string; asset: string; counterparty?: string; note?: string; }): Promise<void> => {
+    try {
+      const payload = {
+        asset: toAssetObj(data.asset),
+        amount: Number(data.amount),
+        account: data.account || undefined,
+        counterparty: data.counterparty || 'general',
+        note: data.note || undefined,
+        at: toISODateTime(data.date),
+      };
+      await transactionApi.loan(payload);
+      await loadTransactions();
+      actions.setError(null);
+      showSuccessToast('Loan recorded');
+    } catch (e: unknown) {
+      const msg = (e as { message?: string } | null)?.message ?? 'Failed to record loan';
+      actions.setError(msg);
+      showErrorToast(msg);
+      throw e;
+    }
+  };
+
+  const handleQuickRepaySubmit = async (data: { date: string; amount: number; account?: string; asset: string; counterparty?: string; note?: string; direction: 'BORROW' | 'LOAN'; }): Promise<void> => {
+    try {
+      const payload = {
+        asset: toAssetObj(data.asset),
+        amount: Number(data.amount),
+        account: data.account || undefined,
+        direction: data.direction,
+        counterparty: data.counterparty || 'general',
+        note: data.note || undefined,
+        at: toISODateTime(data.date),
+      } as any;
+      await transactionApi.repay(payload);
+      await loadTransactions();
+      actions.setError(null);
+      showSuccessToast('Repayment recorded');
+    } catch (e: unknown) {
+      const msg = (e as { message?: string } | null)?.message ?? 'Failed to record repayment';
       actions.setError(msg);
       showErrorToast(msg);
       throw e;
@@ -319,7 +538,9 @@ const TransactionPage: React.FC = () => {
     internal_flow?: boolean;
   };
 
-  const QuickAddForm: React.FC<{ onCreated: (tx: Transaction) => void }> = ({ onCreated }) => {
+  const QuickAddForm: React.FC<{ onCreated: (tx: Transaction) => void }> = ({
+    onCreated,
+  }) => {
     const [qa, setQa] = useState<QuickAddData>({
       date: todayStr,
       type: 'expense',
@@ -332,7 +553,9 @@ const TransactionPage: React.FC = () => {
       note: '',
       internal_flow: false,
     });
-    const [invMode, setInvMode] = useState<'none' | 'stake' | 'unstake'>('none');
+    const [invMode, setInvMode] = useState<'none' | 'stake' | 'unstake'>(
+      'none'
+    );
     const [invAccount, setInvAccount] = useState('');
     const [invHorizon, setInvHorizon] = useState('');
     const [invOpenOptions, setInvOpenOptions] = useState<Option[]>([]);
@@ -345,9 +568,20 @@ const TransactionPage: React.FC = () => {
     // Adjust defaults when type changes
     useEffect(() => {
       const t = String(qa.type || '').toLowerCase();
-      if (t === 'expense' || t === 'fee' || t === 'transfer_in' || t === 'transfer_out' || t === 'deposit' || t === 'withdraw') {
+      if (
+        t === 'expense' ||
+        t === 'fee' ||
+        t === 'transfer_in' ||
+        t === 'transfer_out' ||
+        t === 'deposit' ||
+        t === 'withdraw'
+      ) {
         // Treat as 1:1 local unit
-        setQa((prev) => ({ ...prev, asset: prev.asset || 'VND', price_local: '1' }));
+        setQa((prev) => ({
+          ...prev,
+          asset: prev.asset || 'VND',
+          price_local: '1',
+        }));
       }
     }, [qa.type]);
 
@@ -368,10 +602,21 @@ const TransactionPage: React.FC = () => {
       if (!qa.type) return 'Type is required';
       if (!qa.asset) return 'Asset is required';
       if (!qa.account) return 'Account is required';
-      if (!qa.quantity || isNaN(number(qa.quantity)) || number(qa.quantity ?? 0) <= 0) return 'Valid quantity is required';
+      if (
+        !qa.quantity ||
+        isNaN(number(qa.quantity)) ||
+        number(qa.quantity ?? 0) <= 0
+      )
+        return 'Valid quantity is required';
       const t = String(qa.type || '').toLowerCase();
       const needsPrice = t === 'buy' || t === 'sell';
-      if (needsPrice && (!qa.price_local || isNaN(number(qa.price_local || '')) || number(qa.price_local || '') <= 0)) return 'Valid price is required';
+      if (
+        needsPrice &&
+        (!qa.price_local ||
+          isNaN(number(qa.price_local || '')) ||
+          number(qa.price_local || '') <= 0)
+      )
+        return 'Valid price is required';
       if (invMode === 'stake') {
         if (!invAccount) return 'Investment account is required';
       }
@@ -395,7 +640,7 @@ const TransactionPage: React.FC = () => {
           // Stake: create an incoming stake via investment API
           const fxUSD = 1;
           const fxVND = 1;
-          const amtLocal = number(qa.quantity) * (number(qa.price_local ?? '1'));
+          const amtLocal = number(qa.quantity) * number(qa.price_local ?? '1');
           const amountUSD = amtLocal * fxUSD;
           const amountVND = amtLocal * fxVND;
           const stake = {
@@ -423,7 +668,7 @@ const TransactionPage: React.FC = () => {
           const unstakeQty = number(qa.quantity);
           const fxUSD = 1;
           const fxVND = 1;
-          const amtLocal = unstakeQty * (number(qa.price_local ?? '1'));
+          const amtLocal = unstakeQty * number(qa.price_local ?? '1');
           const amountUSD = amtLocal * fxUSD;
           const amountVND = amtLocal * fxVND;
           const unstake = {
@@ -479,19 +724,34 @@ const TransactionPage: React.FC = () => {
     };
 
     // Amount preview
-    const amountLocal = number(qa.quantity) * (number(qa.price_local ?? '1'));
+    const amountLocal = number(qa.quantity) * number(qa.price_local ?? '1');
 
     // Load open investments when entering unstake mode
     useEffect(() => {
       const loadOpen = async () => {
         try {
-          const list = (await investmentsApi.list({ is_open: true })) as Array<{ id: string; deposit_date: string; asset: string; account: string; remaining_qty: number; horizon?: string }>;
+          const list = (await investmentsApi.list({ is_open: true })) as Array<{
+            id: string;
+            deposit_date: string;
+            asset: string;
+            account: string;
+            remaining_qty: number;
+            horizon?: string;
+          }>;
           const idMap: Record<string, any> = {};
           const options: Option[] = list.map((inv) => {
             idMap[String(inv.id)] = inv;
-            const dStr = (() => { const d = new Date(inv.deposit_date); return isNaN(d.getTime()) ? String(inv.deposit_date) : d.toISOString().split('T')[0]; })();
+            const dStr = (() => {
+              const d = new Date(inv.deposit_date);
+              return isNaN(d.getTime())
+                ? String(inv.deposit_date)
+                : d.toISOString().split('T')[0];
+            })();
             const hz = inv.horizon ? ` [${inv.horizon}]` : '';
-            return { value: String(inv.id), label: `${inv.asset} @ ${inv.account}${hz} — ${dStr} — ${inv.remaining_qty} remaining` } as Option;
+            return {
+              value: String(inv.id),
+              label: `${inv.asset} @ ${inv.account}${hz} — ${dStr} — ${inv.remaining_qty} remaining`,
+            } as Option;
           });
           setInvIdToInfo(idMap);
           setInvOpenOptions(options);
@@ -509,16 +769,23 @@ const TransactionPage: React.FC = () => {
             <button
               onClick={() => setShowQuickAdd(false)}
               className="px-2 py-1 text-sm rounded border border-gray-300 hover:bg-gray-50"
-            >Close</button>
+            >
+              Close
+            </button>
           </div>
         </div>
 
         {qaError && (
-          <div className="mb-3 text-sm text-red-700 bg-red-50 border border-red-200 rounded p-2">{qaError}</div>
+          <div className="mb-3 text-sm text-red-700 bg-red-50 border border-red-200 rounded p-2">
+            {qaError}
+          </div>
         )}
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
-          <DateInput value={qa.date} onChange={(v) => setQa((s) => ({ ...s, date: v }))} />
+          <DateInput
+            value={qa.date}
+            onChange={(v) => setQa((s) => ({ ...s, date: v }))}
+          />
 
           <select
             value={qa.type}
@@ -536,41 +803,89 @@ const TransactionPage: React.FC = () => {
           </select>
 
           <ComboBox
-            options={masterData.account as Array<{ value: string; label: string }>}
+            options={
+              masterData.account as Array<{ value: string; label: string }>
+            }
             value={qa.account}
             onChange={(v) => setQa((s) => ({ ...s, account: v }))}
             placeholder="Account"
             allowCreate
             onCreate={async (name) => {
-              await adminApi.createAccount({ name, type: 'bank', is_active: true });
+              await adminApi.createAccount({
+                name,
+                type: 'bank',
+                is_active: true,
+              });
               const accounts = await adminApi.listAccounts();
-              setMasterData((prev) => ({ ...prev, account: ((accounts as Array<{ name: string; type: string }>) || []).map((a) => ({ value: a.name, label: `${a.name} (${a.type})` })) }));
+              setMasterData((prev) => ({
+                ...prev,
+                account: (
+                  (accounts as Array<{ name: string; type: string }>) || []
+                ).map((a) => ({
+                  value: a.name,
+                  label: `${a.name} (${a.type})`,
+                })),
+              }));
             }}
           />
 
           <ComboBox
-            options={masterData.asset as Array<{ value: string; label: string }>}
+            options={
+              masterData.asset as Array<{ value: string; label: string }>
+            }
             value={qa.asset}
             onChange={(v) => setQa((s) => ({ ...s, asset: v }))}
             placeholder="Asset"
             allowCreate
             onCreate={async (symbol) => {
-              await adminApi.createAsset({ symbol, name: symbol, decimals: 0, is_active: true });
+              await adminApi.createAsset({
+                symbol,
+                name: symbol,
+                decimals: 0,
+                is_active: true,
+              });
               const assets = await adminApi.listAssets();
-              setMasterData((prev) => ({ ...prev, asset: ((assets as Array<{ symbol: string; name: string }>) || []).map((a) => ({ value: a.symbol, label: `${a.symbol} - ${a.name}` })) }));
+              setMasterData((prev) => ({
+                ...prev,
+                asset: (
+                  (assets as Array<{ symbol: string; name: string }>) || []
+                ).map((a) => ({
+                  value: a.symbol,
+                  label: `${a.symbol} - ${a.name}`,
+                })),
+              }));
             }}
           />
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mt-3">
-          <input className="px-3 py-2 border rounded" placeholder="Quantity" type="number" step="any" value={qa.quantity}
-            onChange={(e) => setQa((s) => ({ ...s, quantity: e.target.value }))} />
+          <input
+            className="px-3 py-2 border rounded"
+            placeholder="Quantity"
+            type="number"
+            step="any"
+            value={qa.quantity}
+            onChange={(e) => setQa((s) => ({ ...s, quantity: e.target.value }))}
+          />
           {(qa.type === 'buy' || qa.type === 'sell') && (
-            <input className="px-3 py-2 border rounded" placeholder="Price (Local)" type="number" step="any" value={qa.price_local}
-              onChange={(e) => setQa((s) => ({ ...s, price_local: e.target.value }))} />
+            <input
+              className="px-3 py-2 border rounded"
+              placeholder="Price (Local)"
+              type="number"
+              step="any"
+              value={qa.price_local}
+              onChange={(e) =>
+                setQa((s) => ({ ...s, price_local: e.target.value }))
+              }
+            />
           )}
           {!(qa.type === 'buy' || qa.type === 'sell') && (
-            <input className="px-3 py-2 border rounded bg-gray-50" placeholder="Price (Local)" value={qa.price_local} readOnly />
+            <input
+              className="px-3 py-2 border rounded bg-gray-50"
+              placeholder="Price (Local)"
+              value={qa.price_local}
+              readOnly
+            />
           )}
         </div>
 
@@ -578,7 +893,11 @@ const TransactionPage: React.FC = () => {
         <div className="mt-4">
           <div className="flex items-center gap-3 mb-2">
             <label className="text-sm text-gray-700">Investment</label>
-            <select className="px-2 py-1 border rounded text-sm" value={invMode} onChange={(e) => setInvMode(e.target.value as any)}>
+            <select
+              className="px-2 py-1 border rounded text-sm"
+              value={invMode}
+              onChange={(e) => setInvMode(e.target.value as any)}
+            >
               <option value="none">None</option>
               <option value="stake">Stake (open/add)</option>
               <option value="unstake">Unstake (close/partial)</option>
@@ -587,24 +906,49 @@ const TransactionPage: React.FC = () => {
           {invMode === 'stake' && (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               <ComboBox
-                options={masterData.account.filter((a: unknown) => (a as { type: string }).type === 'investment') as Array<{ value: string; label: string }>}
+                options={
+                  masterData.account.filter(
+                    (a: unknown) =>
+                      (a as { type: string }).type === 'investment'
+                  ) as Array<{ value: string; label: string }>
+                }
                 value={invAccount}
                 onChange={(v) => setInvAccount(String(v))}
                 placeholder="Investment Account"
                 allowCreate
                 onCreate={async (name) => {
-                  await adminApi.createAccount({ name, type: 'investment', is_active: true });
+                  await adminApi.createAccount({
+                    name,
+                    type: 'investment',
+                    is_active: true,
+                  });
                   const accounts = await adminApi.listAccounts();
-                  setMasterData((prev) => ({ ...prev, account: ((accounts as Array<{ name: string; type: string }>) || []).map((a) => ({ value: a.name, label: `${a.name} (${a.type})` })) }));
+                  setMasterData((prev) => ({
+                    ...prev,
+                    account: (
+                      (accounts as Array<{ name: string; type: string }>) || []
+                    ).map((a) => ({
+                      value: a.name,
+                      label: `${a.name} (${a.type})`,
+                    })),
+                  }));
                 }}
               />
-              <select className="px-3 py-2 border rounded" value={invHorizon} onChange={(e) => setInvHorizon(e.target.value)}>
+              <select
+                className="px-3 py-2 border rounded"
+                value={invHorizon}
+                onChange={(e) => setInvHorizon(e.target.value)}
+              >
                 <option value="">Horizon (optional)</option>
                 <option value="short-term">Short-term</option>
                 <option value="long-term">Long-term</option>
               </select>
-              <input className="px-3 py-2 border rounded" placeholder="Existing Investment ID (optional)" value={invId}
-                onChange={(e) => setInvId(e.target.value)} />
+              <input
+                className="px-3 py-2 border rounded"
+                placeholder="Existing Investment ID (optional)"
+                value={invId}
+                onChange={(e) => setInvId(e.target.value)}
+              />
             </div>
           )}
           {invMode === 'unstake' && (
@@ -615,10 +959,18 @@ const TransactionPage: React.FC = () => {
                 onChange={(v) => setInvId(String(v))}
                 placeholder="Active Investment (required)"
               />
-              <input className="px-3 py-2 border rounded" placeholder="Investment Account (optional override)" value={invAccount}
-                onChange={(e) => setInvAccount(e.target.value)} />
-              <input className="px-3 py-2 border rounded" placeholder="Horizon (optional override)" value={invHorizon}
-                onChange={(e) => setInvHorizon(e.target.value)} />
+              <input
+                className="px-3 py-2 border rounded"
+                placeholder="Investment Account (optional override)"
+                value={invAccount}
+                onChange={(e) => setInvAccount(e.target.value)}
+              />
+              <input
+                className="px-3 py-2 border rounded"
+                placeholder="Horizon (optional override)"
+                value={invHorizon}
+                onChange={(e) => setInvHorizon(e.target.value)}
+              />
             </div>
           )}
         </div>
@@ -631,34 +983,74 @@ const TransactionPage: React.FC = () => {
             placeholder="Tag (optional)"
             allowCreate
             onCreate={async (name) => {
-              await adminApi.createTag({ name, category: 'General', is_active: true });
+              await adminApi.createTag({
+                name,
+                category: 'General',
+                is_active: true,
+              });
               const tags = await adminApi.listTags();
-              setMasterData((prev) => ({ ...prev, tag: ((tags as Array<{ name: string; category: string }>) || []).map((t) => ({ value: t.name, label: `${t.name} (${t.category})` })) }));
+              setMasterData((prev) => ({
+                ...prev,
+                tag: (
+                  (tags as Array<{ name: string; category: string }>) || []
+                ).map((t) => ({
+                  value: t.name,
+                  label: `${t.name} (${t.category})`,
+                })),
+              }));
             }}
           />
-          <input className="px-3 py-2 border rounded" placeholder="Counterparty (optional)" value={qa.counterparty}
-            onChange={(e) => setQa((s) => ({ ...s, counterparty: e.target.value }))} />
-          <input className="px-3 py-2 border rounded" placeholder="Note (optional)" value={qa.note}
-            onChange={(e) => setQa((s) => ({ ...s, note: e.target.value }))} />
+          <input
+            className="px-3 py-2 border rounded"
+            placeholder="Counterparty (optional)"
+            value={qa.counterparty}
+            onChange={(e) =>
+              setQa((s) => ({ ...s, counterparty: e.target.value }))
+            }
+          />
+          <input
+            className="px-3 py-2 border rounded"
+            placeholder="Note (optional)"
+            value={qa.note}
+            onChange={(e) => setQa((s) => ({ ...s, note: e.target.value }))}
+          />
         </div>
 
         <div className="flex items-center justify-between mt-4">
-          <div className="text-sm text-gray-600">Amount (Local): <span className="font-semibold">{amountLocal ? amountLocal.toLocaleString() : '0'}</span></div>
+          <div className="text-sm text-gray-600">
+            Amount (Local):{' '}
+            <span className="font-semibold">
+              {amountLocal ? amountLocal.toLocaleString() : '0'}
+            </span>
+          </div>
           <div className="flex items-center gap-2">
             <button
               className={`px-4 py-2 text-sm rounded-md text-white ${submitting ? 'bg-gray-400' : 'bg-blue-600 hover:bg-blue-700'}`}
-            onClick={() => { void submit(false); }}
+              onClick={() => {
+                void submit(false);
+              }}
               disabled={submitting}
-            >Add</button>
+            >
+              Add
+            </button>
             <button
               className={`px-4 py-2 text-sm rounded-md border ${submitting ? 'bg-gray-100' : 'bg-white hover:bg-gray-50'}`}
-            onClick={() => { void submit(true); }}
+              onClick={() => {
+                void submit(true);
+              }}
               disabled={submitting}
-            >Add & New</button>
+            >
+              Add & New
+            </button>
             <button
               className="px-4 py-2 text-sm rounded-md border bg-white hover:bg-gray-50"
-            onClick={() => { setShowForm(true); setShowQuickAdd(false); }}
-            >Advanced…</button>
+              onClick={() => {
+                setShowForm(true);
+                setShowQuickAdd(false);
+              }}
+            >
+              Advanced…
+            </button>
           </div>
         </div>
       </div>
@@ -679,7 +1071,9 @@ const TransactionPage: React.FC = () => {
       actions.setError(null);
       showSuccessToast('Transaction created successfully');
     } catch (err: unknown) {
-      const msg = (err as { message?: string } | null)?.message ?? 'Failed to create transaction.';
+      const msg =
+        (err as { message?: string } | null)?.message ??
+        'Failed to create transaction.';
       actions.setError(msg);
       if (!(err instanceof ApiError && err.status === 0)) showErrorToast(msg);
     }
@@ -706,7 +1100,9 @@ const TransactionPage: React.FC = () => {
       actions.setError(null);
       showSuccessToast('Transaction updated successfully');
     } catch (err: unknown) {
-      const msg = (err as { message?: string } | null)?.message ?? 'Failed to update transaction.';
+      const msg =
+        (err as { message?: string } | null)?.message ??
+        'Failed to update transaction.';
       actions.setError(msg);
       showErrorToast(msg);
     }
@@ -721,7 +1117,8 @@ const TransactionPage: React.FC = () => {
       actions.setError(null);
       showSuccessToast('Transaction deleted successfully');
     } catch (err: unknown) {
-      const msg = (err as { message?: string } | null)?.message ?? 'Unknown error';
+      const msg =
+        (err as { message?: string } | null)?.message ?? 'Unknown error';
       actions.setError(msg);
       showErrorToast('Failed to delete transaction. Please try again.');
     }
@@ -734,7 +1131,11 @@ const TransactionPage: React.FC = () => {
     try {
       const res = await transactionApi.deleteMany(ids);
       const deleted = (res as any)?.deleted ?? ids.length;
-      setTransactions((prev) => prev.filter((tx) => !(tx.id !== undefined && selectedIds.has(tx.id as IdType))));
+      setTransactions((prev) =>
+        prev.filter(
+          (tx) => !(tx.id !== undefined && selectedIds.has(tx.id as IdType))
+        )
+      );
       setSelectedIds(new Set());
       actions.setError(null);
       showSuccessToast(`Deleted ${deleted} transaction(s)`);
@@ -787,7 +1188,8 @@ const TransactionPage: React.FC = () => {
       showSuccessToast(`${field} updated successfully`);
     } catch (err: unknown) {
       console.error('Inline edit error:', err);
-      const msg = (err as { message?: string } | null)?.message ?? 'Unknown error';
+      const msg =
+        (err as { message?: string } | null)?.message ?? 'Unknown error';
       actions.setError(`Failed to update ${field}: ${msg}`);
       showErrorToast(`Failed to update ${field}. Please try again.`);
       // Reload transactions to revert any optimistic updates
@@ -801,88 +1203,120 @@ const TransactionPage: React.FC = () => {
   };
 
   // Helper function to convert amount using FX data from API response
-  const convertAmountSync = useCallback((
-    row: any, // Transaction or TransactionWithFX
-    targetCurrency: 'USD' | 'VND'
-  ): { amount: number; cashflow: number; isLoading: boolean } => {
-    const rowId = String(row?.id ?? 'unknown');
-    const cacheKey = getFXCacheKey(rowId, targetCurrency);
+  const convertAmountSync = useCallback(
+    (
+      row: any, // Transaction or TransactionWithFX
+      targetCurrency: 'USD' | 'VND'
+    ): { amount: number; cashflow: number; isLoading: boolean } => {
+      const rowId = String(row?.id ?? 'unknown');
+      const cacheKey = getFXCacheKey(rowId, targetCurrency);
 
-    const amountLocal = Number(row?.amount_local ?? 0);
-    const localCurrency = (row?.local_currency as string) || 'USD';
-    const cashflowLocal = Number(row?.cashflow_local ?? 0);
+      const amountLocal = Number(row?.amount_local ?? 0);
+      const localCurrency = (row?.local_currency as string) || 'USD';
+      const cashflowLocal = Number(row?.cashflow_local ?? 0);
 
-    // Check cached converted value first
-    if (fxConversionCache.has(cacheKey)) {
-      const cachedAmount = fxConversionCache.get(cacheKey)!;
-      return { amount: cachedAmount, cashflow: cachedAmount, isLoading: false };
-    }
+      // Check cached converted value first
+      if (fxConversionCache.has(cacheKey)) {
+        const cachedAmount = fxConversionCache.get(cacheKey)!;
+        return {
+          amount: cachedAmount,
+          cashflow: cachedAmount,
+          isLoading: false,
+        };
+      }
 
-    // If same currency, no conversion needed
-    if (localCurrency === targetCurrency) {
-      return { amount: amountLocal, cashflow: cashflowLocal, isLoading: false };
-    }
+      // If same currency, no conversion needed
+      if (localCurrency === targetCurrency) {
+        return {
+          amount: amountLocal,
+          cashflow: cashflowLocal,
+          isLoading: false,
+        };
+      }
 
-    // 1) Use FX rates from backend response if available
-    if (row?.fx_rates) {
-      const fxRates = row.fx_rates as Record<string, number>;
-      const directKey = `${localCurrency}-${targetCurrency}`;
-      const rate = fxRates[directKey];
-      if (rate && rate > 0) {
+      // 1) Use FX rates from backend response if available
+      if (row?.fx_rates) {
+        const fxRates = row.fx_rates as Record<string, number>;
+        const directKey = `${localCurrency}-${targetCurrency}`;
+        const rate = fxRates[directKey];
+        if (rate && rate > 0) {
+          const convertedAmount = amountLocal * rate;
+          const convertedCashflow = cashflowLocal * rate;
+          setFxConversionCache((prev) =>
+            new Map(prev).set(cacheKey, convertedAmount)
+          );
+          return {
+            amount: convertedAmount,
+            cashflow: convertedCashflow,
+            isLoading: false,
+          };
+        }
+      }
+
+      // 2) Try a cached online rate (per date)
+      const dateStr = (() => {
+        const raw = row?.date as string | undefined;
+        if (!raw) return 'today';
+        const d = new Date(raw);
+        return isNaN(d.getTime()) ? 'today' : d.toISOString().split('T')[0];
+      })();
+      const rateKey = `${localCurrency}-${targetCurrency}-${dateStr}`;
+      if (fxRateCache.has(rateKey)) {
+        const rate = fxRateCache.get(rateKey)!;
         const convertedAmount = amountLocal * rate;
         const convertedCashflow = cashflowLocal * rate;
-        setFxConversionCache(prev => new Map(prev).set(cacheKey, convertedAmount));
-        return { amount: convertedAmount, cashflow: convertedCashflow, isLoading: false };
+        setFxConversionCache((prev) =>
+          new Map(prev).set(cacheKey, convertedAmount)
+        );
+        return {
+          amount: convertedAmount,
+          cashflow: convertedCashflow,
+          isLoading: false,
+        };
       }
-    }
 
-    // 2) Try a cached online rate (per date)
-    const dateStr = (() => {
-      const raw = row?.date as string | undefined;
-      if (!raw) return 'today';
-      const d = new Date(raw);
-      return isNaN(d.getTime()) ? 'today' : d.toISOString().split('T')[0];
-    })();
-    const rateKey = `${localCurrency}-${targetCurrency}-${dateStr}`;
-    if (fxRateCache.has(rateKey)) {
-      const rate = fxRateCache.get(rateKey)!;
-      const convertedAmount = amountLocal * rate;
-      const convertedCashflow = cashflowLocal * rate;
-      setFxConversionCache(prev => new Map(prev).set(cacheKey, convertedAmount));
-      return { amount: convertedAmount, cashflow: convertedCashflow, isLoading: false };
-    }
+      // 3) Kick off an async online fetch if not already loading
+      if (!fxLoadingStates.get(rateKey)) {
+        setFxLoadingStates((prev) => new Map(prev).set(rateKey, true));
+        const rawDate = row?.date as string | undefined;
+        const dt = rawDate ? new Date(rawDate) : undefined;
+        void fxService
+          .getFXRate(localCurrency, targetCurrency, dt)
+          .then((rate) => {
+            setFxRateCache((prev) => new Map(prev).set(rateKey, rate));
+            const amt = amountLocal * rate;
+            setFxConversionCache((prev) => new Map(prev).set(cacheKey, amt));
+          })
+          .catch(() => {
+            // ignore, we'll fall back below
+          })
+          .finally(() => {
+            setFxLoadingStates((prev) => new Map(prev).set(rateKey, false));
+          });
+      }
 
-    // 3) Kick off an async online fetch if not already loading
-    if (!fxLoadingStates.get(rateKey)) {
-      setFxLoadingStates(prev => new Map(prev).set(rateKey, true));
-      const rawDate = row?.date as string | undefined;
-      const dt = rawDate ? new Date(rawDate) : undefined;
-      void fxService.getFXRate(localCurrency, targetCurrency, dt).then((rate) => {
-        setFxRateCache(prev => new Map(prev).set(rateKey, rate));
-        const amt = amountLocal * rate;
-        setFxConversionCache(prev => new Map(prev).set(cacheKey, amt));
-      }).catch(() => {
-        // ignore, we'll fall back below
-      }).finally(() => {
-        setFxLoadingStates(prev => new Map(prev).set(rateKey, false));
-      });
-    }
+      // 4) Fallback while online fetch is in-flight: compute deterministic USD/VND pair fallback
+      let fallbackRate = 1;
+      const lc = localCurrency.toUpperCase();
+      const tc = targetCurrency.toUpperCase();
+      if (lc === 'USD' && tc === 'VND') fallbackRate = 24000;
+      else if (lc === 'VND' && tc === 'USD') fallbackRate = 1 / 24000;
+      else if (tc === 'VND')
+        fallbackRate = 24000; // best-effort when converting to VND
+      else fallbackRate = 1;
 
-    // 4) Fallback while online fetch is in-flight: compute deterministic USD/VND pair fallback
-    let fallbackRate = 1;
-    const lc = localCurrency.toUpperCase();
-    const tc = targetCurrency.toUpperCase();
-    if (lc === 'USD' && tc === 'VND') fallbackRate = 24000;
-    else if (lc === 'VND' && tc === 'USD') fallbackRate = 1 / 24000;
-    else if (tc === 'VND') fallbackRate = 24000; // best-effort when converting to VND
-    else fallbackRate = 1;
+      const convertedAmount = amountLocal * fallbackRate;
+      const convertedCashflow = cashflowLocal * fallbackRate;
 
-    const convertedAmount = amountLocal * fallbackRate;
-    const convertedCashflow = cashflowLocal * fallbackRate;
-
-    // IMPORTANT: do NOT cache the fallback so the UI can update once the online rate arrives
-    return { amount: convertedAmount, cashflow: convertedCashflow, isLoading: true };
-  }, [fxConversionCache, fxRateCache, fxLoadingStates]);
+      // IMPORTANT: do NOT cache the fallback so the UI can update once the online rate arrives
+      return {
+        amount: convertedAmount,
+        cashflow: convertedCashflow,
+        isLoading: true,
+      };
+    },
+    [fxConversionCache, fxRateCache, fxLoadingStates]
+  );
 
   const columns: TableColumn<Transaction>[] = [
     {
@@ -891,6 +1325,13 @@ const TransactionPage: React.FC = () => {
       type: 'date',
       editable: true,
       editType: 'date',
+      render: (_value, _column, row) => {
+        const raw = (row as any)?.date || (row as any)?.createdAt || (row as any)?.at;
+        if (!raw) return '-';
+        const d = new Date(String(raw));
+        if (isNaN(d.getTime())) return '-';
+        return d.toLocaleDateString();
+      },
     },
     {
       key: 'type',
@@ -899,7 +1340,7 @@ const TransactionPage: React.FC = () => {
       editType: 'select',
       render: (value, _column, row) => {
         // Normalize value
-        const type = String(value as string ?? '').toLowerCase();
+        const type = String((value as string) ?? '').toLowerCase();
         const isInternal =
           Boolean((row as Record<string, unknown>)?.internal_flow) &&
           (type === 'transfer_in' || type === 'transfer_out');
@@ -965,6 +1406,16 @@ const TransactionPage: React.FC = () => {
       title: 'Asset',
       editable: true,
       editType: 'select',
+      render: (value) => {
+        if (!value) return '-';
+        if (typeof value === 'string') return value;
+        try {
+          const v = value as any;
+          if (v?.symbol) return String(v.symbol);
+        } catch {}
+        // Fallback
+        return typeof value === 'object' ? JSON.stringify(value) : String(value);
+      },
     },
     {
       key: 'account',
@@ -991,12 +1442,17 @@ const TransactionPage: React.FC = () => {
           currency: currency,
         });
 
-        const type = String((row as Record<string, unknown>)?.type ?? '').toLowerCase();
+        const type = String(
+          (row as Record<string, unknown>)?.type ?? ''
+        ).toLowerCase();
         const isNeutral = ['deposit', 'withdraw', 'borrow'].includes(type);
 
         // Use synchronous conversion with stored FX rates
-        const { amount: convertedAmount, cashflow: convertedCashflow, isLoading } =
-          convertAmountSync(row, currency as 'USD' | 'VND');
+        const {
+          amount: convertedAmount,
+          cashflow: convertedCashflow,
+          isLoading,
+        } = convertAmountSync(row, currency as 'USD' | 'VND');
 
         // For zero amounts, return dash
         if (convertedAmount === 0 && convertedCashflow === 0) {
@@ -1104,21 +1560,149 @@ const TransactionPage: React.FC = () => {
                   stroke="currentColor"
                   viewBox="0 0 24 24"
                 >
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M12 4v16m8-8H4"
+                  />
                 </svg>
                 Quick Add
-                <svg className="w-4 h-4 ml-2" viewBox="0 0 20 20" fill="currentColor">
-                  <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.173l3.71-3.942a.75.75 0 111.08 1.04l-4.243 4.5a.75.75 0 01-1.08 0l-4.243-4.5a.75.75 0 01.02-1.06z" clipRule="evenodd" />
+                <svg
+                  className="w-4 h-4 ml-2"
+                  viewBox="0 0 20 20"
+                  fill="currentColor"
+                >
+                  <path
+                    fillRule="evenodd"
+                    d="M5.23 7.21a.75.75 0 011.06.02L10 11.173l3.71-3.942a.75.75 0 111.08 1.04l-4.243 4.5a.75.75 0 01-1.08 0l-4.243-4.5a.75.75 0 01.02-1.06z"
+                    clipRule="evenodd"
+                  />
                 </svg>
               </button>
               {isQuickMenuOpen && (
                 <div className="absolute right-0 mt-2 w-44 rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5 z-10">
                   <div className="py-1">
-                    <button className="w-full text-left px-4 py-2 text-sm hover:bg-gray-50" onClick={() => { setIsQuickMenuOpen(false); setIsQuickExpenseOpen(true); }}>Expense</button>
-                    <button className="w-full text-left px-4 py-2 text-sm hover:bg-gray-50" onClick={() => { setIsQuickMenuOpen(false); setIsQuickIncomeOpen(true); }}>Income</button>
-                    <button className="w-full text-left px-4 py-2 text-sm hover:bg-gray-50" onClick={() => { setIsQuickMenuOpen(false); setIsQuickVaultOpen(true); }}>New Vault</button>
-                    <button className="w-full text-left px-4 py-2 text-sm hover:bg-gray-50" onClick={() => { setIsQuickMenuOpen(false); setIsQuickInitOpen(true); }}>Init Balance</button>
-                    <button className="w-full text-left px-4 py-2 text-sm hover:bg-gray-50" onClick={() => { setIsQuickMenuOpen(false); setIsQuickInvestmentOpen(true); }}>New Investment</button>
+                    <button
+                      className="w-full text-left px-4 py-2 text-sm hover:bg-gray-50"
+                      onClick={() => {
+                        setIsQuickMenuOpen(false);
+                        setExpenseDefaultAccount(undefined);
+                        setIsQuickExpenseOpen(true);
+                      }}
+                    >
+                      Expense
+                    </button>
+                    <button
+                      className="w-full text-left px-4 py-2 text-sm hover:bg-gray-50"
+                      onClick={() => {
+                        setIsQuickMenuOpen(false);
+                        setExpenseDefaultAccount('Spend');
+                        setIsQuickExpenseOpen(true);
+                      }}
+                    >
+                      Cash Expense
+                    </button>
+                    <button
+                      className="w-full text-left px-4 py-2 text-sm hover:bg-gray-50"
+                      onClick={() => {
+                        setIsQuickMenuOpen(false);
+                        setExpenseDefaultAccount('Borrowings');
+                        setIsQuickExpenseOpen(true);
+                      }}
+                    >
+                      Credit Expense
+                    </button>
+                    <button
+                      className="w-full text-left px-4 py-2 text-sm hover:bg-gray-50"
+                      onClick={() => {
+                        setIsQuickMenuOpen(false);
+                        setIsQuickIncomeOpen(true);
+                      }}
+                    >
+                      Income
+                    </button>
+                    <button
+                      className="w-full text-left px-4 py-2 text-sm hover:bg-gray-50"
+                      onClick={() => {
+                        setIsQuickMenuOpen(false);
+                        setIsQuickBorrowOpen(true);
+                      }}
+                    >
+                      Borrow
+                    </button>
+                    <button
+                      className="w-full text-left px-4 py-2 text-sm hover:bg-gray-50"
+                      onClick={() => {
+                        setIsQuickMenuOpen(false);
+                        setIsQuickLoanOpen(true);
+                      }}
+                    >
+                      Loan
+                    </button>
+                    <button
+                      className="w-full text-left px-4 py-2 text-sm hover:bg-gray-50"
+                      onClick={() => {
+                        setIsQuickMenuOpen(false);
+                        setIsQuickRepayOpen(true);
+                      }}
+                    >
+                      Repay
+                    </button>
+                    <button
+                      className="w-full text-left px-4 py-2 text-sm hover:bg-gray-50"
+                      onClick={() => {
+                        setIsQuickMenuOpen(false);
+                        setIsQuickBuyOpen(true);
+                      }}
+                    >
+                      Quick Buy
+                    </button>
+                    <button
+                      className="w-full text-left px-4 py-2 text-sm hover:bg-gray-50"
+                      onClick={() => {
+                        setIsQuickMenuOpen(false);
+                        setIsQuickSellOpen(true);
+                      }}
+                    >
+                      Quick Sell
+                    </button>
+                    <button
+                      className="w-full text-left px-4 py-2 text-sm hover:bg-gray-50"
+                      onClick={() => {
+                        setIsQuickMenuOpen(false);
+                        setIsQuickVaultOpen(true);
+                      }}
+                    >
+                      New Vault
+                    </button>
+                    <button
+                      className="w-full text-left px-4 py-2 text-sm hover:bg-gray-50"
+                      onClick={() => {
+                        setIsQuickMenuOpen(false);
+                        setIsQuickInitOpen(true);
+                      }}
+                    >
+                      Init Balance
+                    </button>
+                    <button
+                      className="w-full text-left px-4 py-2 text-sm hover:bg-gray-50"
+                      onClick={() => {
+                        setIsQuickMenuOpen(false);
+                        setIsQuickInvestmentOpen(true);
+                      }}
+                    >
+                      New Investment
+                    </button>
+                    <button
+                      className="w-full text-left px-4 py-2 text-sm hover:bg-gray-50"
+                      onClick={() => {
+                        setIsQuickMenuOpen(false);
+                        setIsQuickTransferOpen(true);
+                      }}
+                    >
+                      Transfer
+                    </button>
                   </div>
                 </div>
               )}
@@ -1146,10 +1730,24 @@ const TransactionPage: React.FC = () => {
               onClick={handleDeleteSelected}
               className={`inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white ${selectedIds.size > 0 ? 'bg-red-600 hover:bg-red-700' : 'bg-gray-400 cursor-not-allowed'}`}
               disabled={selectedIds.size === 0}
-              title={selectedIds.size === 0 ? 'Select rows to delete' : 'Delete selected'}
+              title={
+                selectedIds.size === 0
+                  ? 'Select rows to delete'
+                  : 'Delete selected'
+              }
             >
-              <svg className="w-4 h-4 mr-2" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M9 7V5a2 2 0 012-2h2a2 2 0 012 2v2m-9 0h10" />
+              <svg
+                className="w-4 h-4 mr-2"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M9 7V5a2 2 0 012-2h2a2 2 0 012 2v2m-9 0h10"
+                />
               </svg>
               Delete Selected
             </button>
@@ -1218,7 +1816,9 @@ const TransactionPage: React.FC = () => {
       {/* Replace inline Quick Add panel with modals: leaving toggle available for power users */}
       {false && showQuickAdd && (
         <div className="mb-6">
-          <QuickAddForm onCreated={(tx) => setTransactions((prev) => [tx, ...prev])} />
+          <QuickAddForm
+            onCreated={(tx) => setTransactions((prev) => [tx, ...prev])}
+          />
         </div>
       )}
 
@@ -1226,20 +1826,22 @@ const TransactionPage: React.FC = () => {
       <div className="mb-6">
         <div className="inline-flex rounded-md shadow-sm">
           <button
-          onClick={() => actions.setCurrency('USD')}
-            className={`px-4 py-2 text-sm font-medium border rounded-l-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${currency === 'USD'
-              ? 'bg-blue-600 text-white border-blue-600'
-              : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
-              }`}
+            onClick={() => actions.setCurrency('USD')}
+            className={`px-4 py-2 text-sm font-medium border rounded-l-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
+              currency === 'USD'
+                ? 'bg-blue-600 text-white border-blue-600'
+                : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+            }`}
           >
             USD View
           </button>
           <button
-          onClick={() => actions.setCurrency('VND')}
-            className={`px-4 py-2 text-sm font-medium border-t border-b border-r rounded-r-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${currency === 'VND'
-              ? 'bg-blue-600 text-white border-blue-600'
-              : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
-              }`}
+            onClick={() => actions.setCurrency('VND')}
+            className={`px-4 py-2 text-sm font-medium border-t border-b border-r rounded-r-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
+              currency === 'VND'
+                ? 'bg-blue-600 text-white border-blue-600'
+                : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+            }`}
           >
             VND View
           </button>
@@ -1268,7 +1870,8 @@ const TransactionPage: React.FC = () => {
         onToggleRow={(id, checked) => {
           setSelectedIds((s) => {
             const next = new Set(s);
-            if (checked) next.add(id as IdType); else next.delete(id as IdType);
+            if (checked) next.add(id as IdType);
+            else next.delete(id as IdType);
             return next;
           });
         }}
@@ -1276,7 +1879,8 @@ const TransactionPage: React.FC = () => {
           setSelectedIds((s) => {
             const next = new Set(s);
             for (const id of visibleIds) {
-              if (checked) next.add(id as IdType); else next.delete(id as IdType);
+              if (checked) next.add(id as IdType);
+              else next.delete(id as IdType);
             }
             return next;
           });
@@ -1285,14 +1889,14 @@ const TransactionPage: React.FC = () => {
           try {
             setBusyRowIds((s) => {
               const next = new Set(s);
-              next.add((row).id as IdType);
+              next.add(row.id as IdType);
               return next;
             });
-            const updated = await transactionApi.recalc(String((row).id), false);
+            const updated = await transactionApi.recalc(String(row.id), false);
             if (updated) {
               setTransactions((prev) =>
                 prev.map((t) =>
-                  t.id === (row).id ? (updated as Transaction) : t
+                  t.id === row.id ? (updated as Transaction) : t
                 )
               );
               showSuccessToast('Row refreshed');
@@ -1304,7 +1908,7 @@ const TransactionPage: React.FC = () => {
           } finally {
             setBusyRowIds((s) => {
               const next = new Set(s);
-              next.delete((row).id as IdType);
+              next.delete(row.id as IdType);
               return next;
             });
           }
@@ -1315,6 +1919,7 @@ const TransactionPage: React.FC = () => {
         isOpen={isQuickExpenseOpen}
         onClose={() => setIsQuickExpenseOpen(false)}
         onSubmit={handleQuickExpenseSubmit}
+        defaultAccount={expenseDefaultAccount}
       />
       <QuickIncomeModal
         isOpen={isQuickIncomeOpen}
@@ -1335,6 +1940,50 @@ const TransactionPage: React.FC = () => {
         isOpen={isQuickInitOpen}
         onClose={() => setIsQuickInitOpen(false)}
         onSubmit={handleQuickInitSubmit}
+      />
+      <QuickTransferModal
+        isOpen={isQuickTransferOpen}
+        onClose={() => setIsQuickTransferOpen(false)}
+        onSubmit={handleQuickTransferSubmit}
+      />
+      <QuickBuyModal
+        isOpen={isQuickBuyOpen}
+        onClose={() => setIsQuickBuyOpen(false)}
+        onSubmitted={async () => {
+          await loadTransactions();
+          showSuccessToast('Buy recorded');
+        }}
+      />
+      <QuickSellModal
+        isOpen={isQuickSellOpen}
+        onClose={() => setIsQuickSellOpen(false)}
+        onSubmitted={async () => {
+          await loadTransactions();
+          showSuccessToast('Sell recorded');
+        }}
+      />
+      <QuickBorrowLoanModal
+        isOpen={isQuickBorrowOpen}
+        mode="borrow"
+        onClose={() => setIsQuickBorrowOpen(false)}
+        onSubmit={async (d) => {
+          await handleQuickBorrowSubmit(d);
+        }}
+      />
+      <QuickBorrowLoanModal
+        isOpen={isQuickLoanOpen}
+        mode="loan"
+        onClose={() => setIsQuickLoanOpen(false)}
+        onSubmit={async (d) => {
+          await handleQuickLoanSubmit(d);
+        }}
+      />
+      <QuickRepayModal
+        isOpen={isQuickRepayOpen}
+        onClose={() => setIsQuickRepayOpen(false)}
+        onSubmit={async (d) => {
+          await handleQuickRepaySubmit(d);
+        }}
       />
       {quickError && (
         <div className="mt-3 text-sm text-red-700">{quickError}</div>

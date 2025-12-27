@@ -19,9 +19,17 @@ interface FXCache {
 // FX Service with caching
 class FXRateService {
   private cache: FXCache = {};
+  private pending: Map<string, Promise<number>> = new Map();
   private readonly CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
   private readonly FALLBACK_USD_RATE = 1.0; // USD to USD is always 1
   private readonly FALLBACK_VND_RATE = 24000; // Conservative fallback rate
+
+  // Treat common USD-pegged stablecoins as USD to avoid noisy requests
+  private normalizeCurrency(sym: string): string {
+    const s = sym.toUpperCase();
+    const STABLE_TO_USD = new Set(['USDT', 'USDC', 'BUSD', 'TUSD', 'FDUSD', 'USDP', 'DAI']);
+    return STABLE_TO_USD.has(s) ? 'USD' : s;
+  }
 
   // Generate cache key for FX rates
   private getCacheKey(from: string, to: string, date?: string): string {
@@ -35,11 +43,12 @@ class FXRateService {
   }
 
   // Store rate in cache
-  private setCache(key: string, rate: number): void {
+  private setCache(key: string, rate: number, ttlMs?: number): void {
+    const ttl = typeof ttlMs === 'number' && ttlMs > 0 ? ttlMs : this.CACHE_DURATION;
     this.cache[key] = {
       rate,
       timestamp: Date.now(),
-      expiry: Date.now() + this.CACHE_DURATION,
+      expiry: Date.now() + ttl,
     };
   }
 
@@ -73,73 +82,70 @@ class FXRateService {
     return amount * fxRate;
   }
 
-  // Get FX rate with caching and fallback
+  // Get FX rate with caching and fallback. Deduplicates in-flight requests and caches fallbacks
   async getFXRate(
     from: string,
     to: string,
     date?: Date
   ): Promise<number> {
-    // Normalize currencies
-    const fromUpper = from.toUpperCase();
-    const toUpper = to.toUpperCase();
+    // Normalize currencies (stablecoins -> USD)
+    const fromUpper = this.normalizeCurrency(from);
+    const toUpper = this.normalizeCurrency(to);
 
-    // USD to USD is always 1
+    // Same currency is always 1
     if (fromUpper === toUpper) {
       return 1.0;
     }
 
+    const dateStr = date ? this.formatDateForAPI(date) : undefined;
+
     // Check cache first
-    const cacheKey = this.getCacheKey(fromUpper, toUpper, date ? this.formatDateForAPI(date) : undefined);
+    const cacheKey = this.getCacheKey(fromUpper, toUpper, dateStr);
     const cachedRate = this.getCache(cacheKey);
     if (cachedRate !== null) {
       return cachedRate;
     }
 
-    try {
-      let rate: number;
-
-      if (date) {
-        // Get historical rate for specific date
-        const dateStr = this.formatDateForAPI(date);
-        const response = await fxApi.getHistoricalRate(fromUpper, toUpper, dateStr) as any;
-
-        // Parse the API response based on backend structure
-        if (response && Array.isArray(response) && response.length > 0) {
-          rate = Number(response[0].rate || response[0].Rate);
-        } else {
-          throw new Error('Invalid historical rate response');
-        }
-      } else {
-        // Get today's rate
-        const response = await fxApi.getTodayRate(fromUpper, toUpper) as any;
-        rate = Number(response.rate || response.Rate);
-      }
-
-      // Validate rate
-      if (!rate || rate <= 0) {
-        throw new Error('Invalid rate received');
-      }
-
-      // Cache the valid rate
-      this.setCache(cacheKey, rate);
-      return rate;
-
-    } catch (error) {
-      console.warn(`Failed to fetch FX rate ${fromUpper}-${toUpper}:`, error);
-
-      // Return fallback rate
-      if (fromUpper === 'USD' && toUpper === 'VND') {
-        return this.FALLBACK_VND_RATE;
-      }
-      if (fromUpper === 'VND' && toUpper === 'USD') {
-        return 1 / this.FALLBACK_VND_RATE;
-      }
-      if (fromUpper === 'USD') {
-        return this.FALLBACK_USD_RATE;
-      }
-
-      throw new Error(`No FX rate available for ${fromUpper} to ${toUpper}`);
+    // De-duplicate in-flight requests
+    if (this.pending.has(cacheKey)) {
+      return this.pending.get(cacheKey)!;
     }
+
+    const fetchPromise = (async (): Promise<number> => {
+      try {
+        let rate: number;
+        if (dateStr) {
+          const response = await fxApi.getHistoricalRate(fromUpper, toUpper, dateStr) as any;
+          if (response && Array.isArray(response) && response.length > 0) {
+            rate = Number(response[0].rate || response[0].Rate);
+          } else {
+            throw new Error('Invalid historical rate response');
+          }
+        } else {
+          const response = await fxApi.getTodayRate(fromUpper, toUpper) as any;
+          rate = Number(response.rate || response.Rate);
+        }
+
+        if (!rate || rate <= 0) throw new Error('Invalid rate received');
+        this.setCache(cacheKey, rate);
+        return rate;
+      } catch (error) {
+        // Compute deterministic fallback and cache it to prevent spamming
+        let fallback = 1.0;
+        if (fromUpper === 'USD' && toUpper === 'VND') fallback = this.FALLBACK_VND_RATE;
+        else if (fromUpper === 'VND' && toUpper === 'USD') fallback = 1 / this.FALLBACK_VND_RATE;
+        else if (toUpper === 'VND') fallback = this.FALLBACK_VND_RATE; // generic best-effort
+        else fallback = 1.0;
+        // Cache fallback briefly to avoid burst retries
+        this.setCache(cacheKey, fallback, 30 * 1000); // 30s TTL for fallbacks so we re-try quickly for real price
+        return fallback;
+      } finally {
+        this.pending.delete(cacheKey);
+      }
+    })();
+
+    this.pending.set(cacheKey, fetchPromise);
+    return fetchPromise;
   }
 
   // Convert amount from one currency to another

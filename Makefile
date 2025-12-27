@@ -1,7 +1,7 @@
 # Nami Transaction Tracking System - Makefile
 # This Makefile provides convenient targets for development, testing, and deployment
 
-.PHONY: help test test-integration test-unit test-isolated build run clean setup deps fmt lint docker-up docker-down docker-logs migrate db-reset demo backend frontend stop stop-backend stop-frontend install swagger swagger-install test-setup test-teardown clean-test-results
+.PHONY: help test test-integration test-unit test-isolated build run clean setup deps fmt lint docker-up docker-down docker-logs migrate db-reset demo backend frontend stop stop-backend stop-frontend install swagger swagger-install test-setup test-teardown clean-test-results backend-cover ci ci-backend ci-frontend
 
 # Default target
 help: ## Show this help message
@@ -96,11 +96,11 @@ run-dev: ## Run both backend and frontend simultaneously (requires database)
 	@echo ""
 	@echo "Press Ctrl+C to stop all services"
 	@echo ""
-	@(cd backend && go run cmd/server/main.go) & (cd frontend && npm run dev) & wait
+	@(cd backend && npm run dev) & (cd frontend && npm run dev) & wait
 
 run-backend: ## Run only the backend server (requires database)
 	@echo "🚀 Starting backend..."
-	@cd backend && go run cmd/server/main.go
+	@cd backend && npm run dev
 
 run-frontend: ## Run only the frontend (requires backend)
 	@echo "🚀 Starting frontend..."
@@ -171,6 +171,14 @@ swagger: ## Generate Swagger docs (OpenAPI) under backend/docs
 	@echo "📝 Generating Swagger docs..."
 	@cd backend && "$(shell go env GOPATH)/bin/swag" init -g cmd/server/main.go -o docs --parseDependency --parseInternal
 	@echo "✅ Swagger docs generated at backend/docs"
+
+# Coverage helper for backend
+backend-cover: COVER_THRESH?=60
+backend-cover: ## Run backend unit tests with coverage and enforce threshold (override COVER_THRESH=N)
+	@echo "📊 Running backend unit tests with coverage (threshold: $${COVER_THRESH}%)..."
+	@cd backend && go test ./... -short -coverprofile=coverage.out -covermode=atomic | cat
+	@cd backend && go tool cover -func=coverage.out | tail -n1 | awk -v thresh=$${COVER_THRESH} '/total:/ {gsub("%","",$$3); cov=$$3; printf("Total coverage: %.1f%% (threshold %d%%)\n", cov, thresh); if (cov+0 < thresh) { printf("❌ Coverage below threshold\n"); exit 1 } else { printf("✅ Coverage meets threshold\n") }}'
+
 # CI/CD targets
 ci: deps fmt lint test ## Run full CI pipeline (deps, format, lint, test)
 

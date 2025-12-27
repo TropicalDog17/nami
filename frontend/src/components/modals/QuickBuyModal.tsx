@@ -1,8 +1,9 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 
 import ComboBox from '../ui/ComboBox';
 import DateInput from '../ui/DateInput';
 import { actionsApi } from '../../services/api';
+import { useApp } from '../../context/AppContext';
 
 interface QuickBuyModalProps {
   isOpen: boolean;
@@ -12,8 +13,9 @@ interface QuickBuyModalProps {
 
 const QuickBuyModal: React.FC<QuickBuyModalProps> = ({ isOpen, onClose, onSubmitted }) => {
   const today = new Date().toISOString().split('T')[0];
+  const { assets } = useApp();
   const [date, setDate] = useState<string>(today);
-  const [exchangeAccount, setExchangeAccount] = useState<string>('');
+  const [exchangeAccount, setExchangeAccount] = useState<string>('Binance');
   const [baseAsset, setBaseAsset] = useState<string>('BTC');
   const [quoteAsset, setQuoteAsset] = useState<string>('USD');
   const [quantity, setQuantity] = useState<string>('');
@@ -25,6 +27,25 @@ const QuickBuyModal: React.FC<QuickBuyModalProps> = ({ isOpen, onClose, onSubmit
     { value: 'Binance', label: 'Binance' },
     { value: 'Coinbase', label: 'Coinbase' },
   ];
+
+  const assetOptions = useMemo(() => {
+    const opts = (assets ?? [])
+      .filter((a: unknown) => (a as { is_active: boolean }).is_active)
+      .map((a: unknown) => {
+        const typedA = a as { symbol: string; name?: string };
+        return { value: typedA.symbol, label: `${typedA.symbol} - ${typedA.name ?? ''}` };
+      });
+    // Fallbacks in case master data hasn't loaded yet
+    if (opts.length === 0) {
+      return [
+        { value: 'BTC', label: 'BTC - Bitcoin' },
+        { value: 'ETH', label: 'ETH - Ethereum' },
+        { value: 'USD', label: 'USD - US Dollar' },
+        { value: 'VND', label: 'VND - Vietnamese Dong' },
+      ];
+    }
+    return opts;
+  }, [assets]);
 
   useEffect(() => {
     if (!isOpen) {
@@ -52,8 +73,7 @@ const QuickBuyModal: React.FC<QuickBuyModalProps> = ({ isOpen, onClose, onSubmit
       };
       if (priceQuote) params.price_quote = parseFloat(priceQuote);
       if (feePercent) params.fee_percent = parseFloat(feePercent);
-      const resp = await actionsApi.perform('/api/actions', { action: 'spot_buy', params })
-        .catch(async () => actionsApi.perform('spot_buy', params));
+      const resp = await actionsApi.perform('spot_buy', params);
       if (onSubmitted) onSubmitted(resp);
       onClose();
     } finally {
@@ -82,11 +102,21 @@ const QuickBuyModal: React.FC<QuickBuyModalProps> = ({ isOpen, onClose, onSubmit
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Base Asset</label>
-              <input className="w-full px-3 py-2 border rounded-md" value={baseAsset} onChange={(e) => setBaseAsset(e.target.value.toUpperCase())} />
+              <ComboBox
+                options={assetOptions}
+                value={baseAsset}
+                onChange={(v) => setBaseAsset(v.toUpperCase())}
+                placeholder="Select asset"
+              />
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Quote Asset</label>
-              <input className="w-full px-3 py-2 border rounded-md" value={quoteAsset} onChange={(e) => setQuoteAsset(e.target.value.toUpperCase())} />
+              <ComboBox
+                options={assetOptions}
+                value={quoteAsset}
+                onChange={(v) => setQuoteAsset(v.toUpperCase())}
+                placeholder="Select asset"
+              />
             </div>
           </div>
           <div className="grid grid-cols-2 gap-3">

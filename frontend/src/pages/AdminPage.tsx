@@ -134,21 +134,23 @@ const AdminPage = () => {
     try {
       switch (activeTab) {
         case 'types':
-          await adminApi.deleteType(id);
+          await actions.deleteTransactionType(id);
           break;
         case 'accounts':
-          await adminApi.deleteAccount(id);
+          await actions.deleteAccount(id);
           break;
         case 'assets':
-          await adminApi.deleteAsset(id);
+          await actions.deleteAsset(id);
           break;
         case 'tags':
-          await adminApi.deleteTag(id);
+          await actions.deleteTag(id);
           break;
       }
 
       actions.setSuccess(`${activeTab.slice(0, -1)} deleted successfully`);
-      await loadData(); // Reload data to reflect the changes
+      await loadData(); // Reload local data (optional if we used context state for table, but AdminPage uses local state)
+      // Actually AdminPage uses local state for table. We should probably switch AdminPage to use Context State too?
+      // For now, keep local loadData to be safe, but actions.* will also update global state.
     } catch (err: unknown) {
       const msg = (err as { message?: string } | null)?.message ?? 'Unknown error';
       actions.setError(`Failed to delete: ${msg}`);
@@ -156,14 +158,8 @@ const AdminPage = () => {
   };
 
   const handleSubmit = async (formData: Record<string, unknown>) => {
-    console.log('Form submission started', {
-      formData,
-      activeTab,
-      editingItem,
-    });
     try {
       if (editingItem) {
-        console.log('Updating item...');
         const editingId = editingItem.id;
         if (editingId === undefined || editingId === null) {
           actions.setError('Selected item is missing an id.');
@@ -172,61 +168,48 @@ const AdminPage = () => {
         // Update
         switch (activeTab) {
           case 'types':
-            await adminApi.updateType(editingId, formData);
+            await actions.updateTransactionType(editingId, formData as any);
             break;
           case 'accounts':
-            await adminApi.updateAccount(editingId, formData);
+            await actions.updateAccount(editingId, formData as any);
             break;
           case 'assets':
-            await adminApi.updateAsset(editingId, formData);
+            await actions.updateAsset(editingId, formData as any);
             break;
           case 'tags':
-            await adminApi.updateTag(editingId, formData);
+            await actions.updateTag(editingId, formData as any);
             break;
         }
-        console.log('Item updated, setting success message');
         actions.setSuccess(`${activeTab.slice(0, -1)} updated successfully`);
       } else {
-        console.log('Creating new item...');
         // Create
         switch (activeTab) {
           case 'types':
-            console.log('Creating type with data:', formData);
-            await adminApi.createType(formData);
-            console.log('Type created successfully');
+            await actions.createTransactionType(formData as any);
             break;
           case 'accounts':
-            await adminApi.createAccount(formData);
+            await actions.createAccount(formData as any);
             break;
           case 'assets':
-            await adminApi.createAsset(formData);
+            await actions.createAsset(formData as any);
             break;
           case 'tags':
-            await adminApi.createTag(formData);
+            await actions.createTag(formData as any);
             break;
         }
-        console.log('Item created, setting success message');
         actions.setSuccess(`${activeTab.slice(0, -1)} created successfully`);
       }
 
-      console.log('Closing form...');
       // Close form immediately after successful operation
       setShowForm(false);
       setEditingItem(null);
 
-      console.log('Reloading data...');
-      // Try to reload data, but don't fail if it doesn't work
+      // Reload local data
       try {
         await loadData();
-        console.log('Data reloaded successfully');
       } catch (reloadError: unknown) {
-        console.warn(
-          'Failed to reload data after form submission:',
-          reloadError
-        );
-        // Don't show error to user since the main operation succeeded
+        console.warn('Failed to reload data', reloadError);
       }
-      console.log('Form submission completed successfully');
     } catch (err: unknown) {
       console.error('Form submission error:', err);
       const msg = (err as { message?: string } | null)?.message ?? 'Unknown error';

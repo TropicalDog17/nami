@@ -1,9 +1,10 @@
 # API Services
 
-Centralized API client and external service integration for backend communication.
+Centralized API client and external service integration.
 
 ## Components
 
 - **`api.ts`** - HTTP client with all backend API endpoint functions
+- **`fxService.ts`** - Foreign exchange rate service
 
-Handles HTTP client configuration, request/response transformation, error handling, authentication, retry logic, and data caching for all backend API communication.
+Handles HTTP client configuration, request/response transformation, error handling, authentication, and caching.

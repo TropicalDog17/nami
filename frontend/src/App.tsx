@@ -28,7 +28,7 @@ function App() {
                   <Route path="/credit" element={<CreditDashboardPage />} />
                   <Route path="/reports" element={<ReportsPage />} />
                   <Route path="/vaults" element={<VaultsPage />} />
-                  <Route path="/vault/:vaultName" element={<VaultDetailPage />} />
+                  <Route path="/vault/:vaultId" element={<VaultDetailPage />} />
                 </Routes>
               </Layout>
             </Router>

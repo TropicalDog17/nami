@@ -3,3 +3,5 @@
 test_results/
 *.png
 specs/
+openapi.ts
+backend/data/

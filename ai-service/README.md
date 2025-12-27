@@ -1,18 +1,15 @@
-# Nami AI Service
+# AI Service
 
-Intelligent Telegram bot service for processing financial transactions using AI vision and language models.
+Telegram bot service for AI-powered transaction processing using vision and language models.
 
-## Key Components
+## Structure
 
-- **`src/index.ts`** - Main application entry point and server initialization
 - **`src/api/`** - HTTP API layer with health checks and backend integration
-- **`src/core/`** - Transaction processing, parsing, and grounding logic
+- **`src/core/`** - Transaction parsing, context management, and validation
 - **`src/integrations/`** - Telegram, OpenAI, and Anthropic API connections
-- **`src/utils/`** - Configuration, logging, error handling, and retry utilities
-- **`tests/`** - Unit and integration tests with mocking utilities
+- **`src/utils/`** - Configuration, logging, error handling, and retry logic
+- **`tests/`** - Unit and integration tests
 
-## Configuration
+## Key Features
 
-Environment variables defined in `.env.example` for Telegram bot tokens, AI provider API keys, backend integration, and service settings.
-
-Integrates with the main Nami backend API via HMAC-signed requests for secure transaction submission.
+Receipt image analysis, natural language transaction extraction, context-aware processing, secure backend communication via HMAC-signed requests.

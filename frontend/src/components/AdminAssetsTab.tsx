@@ -88,10 +88,19 @@ export const AdminAssetsTab: React.FC = () => {
 
   const handleCreate = async (data: unknown) => {
     try {
-      await adminApi.createAsset(data as Asset);
+      // Accept either top-level fields or nested { asset, mapping }
+      const payload =
+        data && typeof data === 'object' && 'asset' in (data as Record<string, unknown>)
+          ? {
+              ...(data as any).asset,
+              ...(((data as any).mapping) ? { mapping: (data as any).mapping } : {}),
+            }
+          : data;
+
+      await adminApi.createAsset(payload as Asset);
       actions.setSuccess('Asset created successfully');
       setShowForm(false);
-      void loadAssets();  // added void
+      void loadAssets();
     } catch (error: unknown) {
       actions.setError(`Failed to create asset: ${(error as Error).message}`);
     }
@@ -128,6 +137,13 @@ export const AdminAssetsTab: React.FC = () => {
 
   const formatPrice = (price?: number) => {
     if (price === undefined) return '-';
+    // Show more precision for very small USD prices (e.g., VND ~ $0.00004)
+    if (price > 0 && price < 0.01) {
+      return '$' + new Intl.NumberFormat('en-US', {
+        minimumFractionDigits: 4,
+        maximumFractionDigits: 8,
+      }).format(price);
+    }
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
       currency: 'USD',
@@ -276,4 +292,3 @@ export const AdminAssetsTab: React.FC = () => {
     </div>
   );
 };
-

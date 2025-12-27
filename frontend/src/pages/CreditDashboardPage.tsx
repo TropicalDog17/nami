@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import CreditCardSummary from '../components/CreditCardSummary';
 import DataTable, { TableColumn } from '../components/ui/DataTable';
 import { useBackendStatus } from '../context/BackendStatusContext';
-import { adminApi, transactionApi } from '../services/api';
+import { adminApi, transactionApi, reportsApi } from '../services/api';
 
 interface CreditCard {
   id: string;
@@ -39,7 +39,7 @@ const CreditDashboardPage: React.FC = () => {
 
     try {
       // Fetch credit transactions (expenses and repay_borrow) scoped to credit card accounts
-      const accountsParam = (accountsFilter?.length > 0)
+      const accountsParam = (accountsFilter && accountsFilter.length > 0)
         ? { accounts: accountsFilter }
         : {} as Record<string, unknown>;
 
@@ -101,13 +101,44 @@ const CreditDashboardPage: React.FC = () => {
         });
       setCreditAccounts(cardNames);
 
-      // If there are no credit card accounts configured, show empty state
       if (!cardNames || cardNames.length === 0) {
         setCreditCards([]);
         setCreditTransactions([]);
         setLoading(false);
         return;
       }
+
+      // Fetch Holdings to get current balances
+      const holdingsRes = await reportsApi.holdings() as { items: Array<{ account: string; valueUSD: number }> };
+      const holdingsMap = new Map<string, number>();
+      if (holdingsRes && holdingsRes.items) {
+          holdingsRes.items.forEach(h => {
+              if (h.account) holdingsMap.set(h.account, h.valueUSD);
+          });
+      }
+
+      // Create CreditCard objects
+      const cards: CreditCard[] = cardNames.map(name => {
+          const netValue = holdingsMap.get(name) || 0;
+          const outstandingBalance = netValue < 0 ? Math.abs(netValue) : 0; // Negative value means liability
+          // Mock data for metadata not yet in backend
+          const creditLimit = 5000;
+          const availableCredit = creditLimit - outstandingBalance;
+          const apr = 0.20;
+          const dueDate = "25th";
+          
+          return {
+              id: name,
+              name,
+              outstandingBalance,
+              availableCredit,
+              creditLimit,
+              minimumPayment: outstandingBalance * 0.03, // approx 3%
+              dueDate,
+              apr
+          };
+      });
+      setCreditCards(cards);
 
       await fetchCreditData(cardNames);
     } catch (err: unknown) {
