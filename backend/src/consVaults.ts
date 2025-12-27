@@ -19,8 +19,11 @@ function toTokenizedShape(v: { name: string; status: 'ACTIVE' | 'CLOSED'; create
     // ROI = (Current Value + Withdrawn - Invested) / Invested
     // If Invested (depositUSD) is 0, ROI is 0.
     const perfPct = depositUSD > 0 ? ((aum + withdrawnUSD - depositUSD) / depositUSD) * 100 : 0;
-    const price = 1; // simple: 1 USD per share model logic for tokenization metadata (can be improved later)
-    const supply = aum > 0 ? aum / price : 0;
+    // Shares issued = net contributed (deposits - withdrawals at $1/share initial price)
+    const netContributed = depositUSD - withdrawnUSD;
+    const supply = netContributed > 0 ? netContributed : 0;
+    // Price = AUM / supply (how much each share is worth now)
+    const price = supply > 0 ? aum / supply : 1;
     return {
       id: v.name,
       name: v.name,
@@ -139,8 +142,9 @@ consVaultsRouter.post('/cons-vaults/:id/update-total-value', async (req, res) =>
     note: notes ? `Valuation: ${notes}` : 'Valuation',
   });
 
-  const price = 1;
-  res.json({ current_share_price: String(price.toFixed(4)), total_assets_under_management: String(totalValue) });
+  // Return updated price based on new AUM
+  const shaped = await toTokenizedShape(v);
+  res.json({ current_share_price: shaped.current_share_price, total_assets_under_management: String(totalValue) });
 });
 
 // Deposits and withdrawals

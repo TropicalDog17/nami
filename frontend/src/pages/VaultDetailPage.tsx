@@ -337,7 +337,11 @@ const VaultDetailPage: React.FC = () => {
               asset_quantity: isNaN(qty) ? 0 : qty,
             };
           });
-          setLedgerTransactions(mapped);
+          setLedgerTransactions(mapped.sort((a, b) => {
+            const ta = a?.timestamp ? new Date(String(a.timestamp)).getTime() : 0;
+            const tb = b?.timestamp ? new Date(String(b.timestamp)).getTime() : 0;
+            return tb - ta; // latest first
+          }));
         } catch (e) {
           console.warn('Failed to load ledger data', e);
           setLedgerHoldings(null);
@@ -1314,60 +1318,6 @@ const VaultDetailPage: React.FC = () => {
               {formatPercentage((aprDisplay || 0) / 100, 2)}
             </p>
             <p className="text-sm text-gray-600">Annualized from inception</p>
-          </div>
-        </div>
-
-        {/* Charts: Holdings, APR, PnL */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
-          {/* Holdings Pie */}
-          <div className="bg-white p-4 rounded-lg border border-gray-200">
-            <h3 className="text-sm font-medium text-gray-900 mb-3">Holdings Breakdown</h3>
-            <div style={{ height: 280 }}>
-              <HoldingsChart
-                data={{
-                  by_asset: (tokenizedVaultDetails.asset_breakdown || []).reduce((acc: Record<string, { value_usd: number }>, a) => {
-                    const sym = a.asset
-                    const val = parseFloat(a.current_market_value || '0')
-                    acc[sym] = { value_usd: isNaN(val) ? 0 : val }
-                    return acc
-                  }, {})
-                }}
-                currency="USD"
-              />
-            </div>
-          </div>
-
-          {/* APR vs Benchmark (point-in-time) */}
-          <div className="bg-white p-4 rounded-lg border border-gray-200">
-            <h3 className="text-sm font-medium text-gray-900 mb-3">APR vs Benchmark</h3>
-            <div style={{ height: 280 }}>
-              <TimeSeriesLineChart
-                labels={["Vault APR", "Benchmark APR"]}
-                datasets={[
-                  { label: 'APR (%)', data: [aprSinceInception, Number(tokenizedVaultDetails.benchmark_apr_percent || 0)], color: '#2563EB', fill: true },
-                ]}
-                yFormat="percent"
-              />
-            </div>
-          </div>
-
-          {/* PnL (point-in-time from unrealized) */}
-          <div className="bg-white p-4 rounded-lg border border-gray-200">
-            <h3 className="text-sm font-medium text-gray-900 mb-3">PnL (Unrealized)</h3>
-            <div style={{ height: 280 }}>
-              {(() => {
-                const unrealized = (tokenizedVaultDetails.asset_breakdown || []).reduce((s, a) => s + (parseFloat(a.unrealized_pnl || '0') || 0), 0)
-                const val = isNaN(unrealized) ? 0 : unrealized
-                return (
-                  <TimeSeriesLineChart
-                    labels={["Now"]}
-                    datasets={[{ label: 'PnL (USD)', data: [val], color: '#10B981', fill: true }]}
-                    yFormat="currency"
-                    currency="USD"
-                  />
-                )
-              })()}
-            </div>
           </div>
         </div>
 
