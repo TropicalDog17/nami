@@ -45,7 +45,8 @@ async function getVault(request, id) {
 }
 
 test.describe('Tokenized Vault - Withdraw (DB-backed)', () => {
-  test('deposit then withdraw and verify Reports investments reflect AUM', async ({ page, request }) => {
+  test.skip('deposit then withdraw and verify Reports investments reflect AUM', async ({ page, request }) => {
+    // Skipped: Investments tab has been removed from Reports page
     await waitForBackendHealth(request, { baseUrl: BACKEND });
 
     const vault = await createConsVault(request);

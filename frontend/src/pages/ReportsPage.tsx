@@ -52,10 +52,8 @@ const ReportsPage = () => {
   const tabs = [
     { id: 'holdings', name: 'Holdings', icon: '📊' },
     { id: 'allocation', name: 'Asset Allocation', icon: '🥧' },
-    { id: 'investments', name: 'Investments', icon: '💼' },
     { id: 'cashflow', name: 'Cash Flow', icon: '💸' },
     { id: 'spending', name: 'Spending', icon: '🛒' },
-    { id: 'pnl', name: 'P&L', icon: '📈' },
   ];
 
   const fetchData = useCallback(async (): Promise<void> => {
@@ -70,9 +68,8 @@ const ReportsPage = () => {
           result = await reportsApi.holdings({ as_of: filters.asOf });
           break;
         case 'allocation':
-          result = await reportsApi.holdingsSummary({ as_of: filters.asOf });
+          // Vault-based allocation: only show tokenized vaults, exclude individual assets and USDT
           try {
-            // Augment with tokenized vaults' live AUM so total assets reflect vault fluctuations
             const tokenized: Array<any> | null = await tokenizedVaultApi.list();
             const usdToVnd = await (async () => {
               try {
@@ -83,77 +80,46 @@ const ReportsPage = () => {
                 return 24000;
               }
             })();
-            const summary = (result as any) ?? { by_asset: {}, total_value_usd: 0, total_value_vnd: 0 };
-            const byAsset = summary.by_asset ?? {};
-            let addUSD = 0;
-            let addVND = 0;
+
+            const byAsset: Record<string, { quantity: number; value_usd: number; value_vnd: number; percentage: number }> = {};
+            let totalUSD = 0;
+            let totalVND = 0;
+
+            // Only include active tokenized vaults
             for (const v of (tokenized ?? [])) {
               if ((v.status ?? '').toLowerCase() !== 'active') continue;
               const aumUSD = Number(v.total_assets_under_management ?? 0) || 0;
               if (aumUSD <= 0) continue;
-              const label = `${v.name ?? v.token_symbol ?? 'Vault'} (vault)`;
-              const rec = byAsset[label] ?? { quantity: 0, value_usd: 0, value_vnd: 0, percentage: 0 };
-              rec.quantity = aumUSD; // display as fiat for vaults in chart
-              rec.value_usd = (Number(rec.value_usd || 0) + aumUSD);
-              rec.value_vnd = (Number(rec.value_vnd || 0) + aumUSD * usdToVnd);
-              byAsset[label] = rec;
-              addUSD += aumUSD;
-              addVND += aumUSD * usdToVnd;
+
+              const label = v.name ?? v.token_symbol ?? 'Vault';
+              const aumVND = aumUSD * usdToVnd;
+
+              byAsset[label] = {
+                quantity: aumUSD,
+                value_usd: aumUSD,
+                value_vnd: aumVND,
+                percentage: 0, // calculated below
+              };
+
+              totalUSD += aumUSD;
+              totalVND += aumVND;
             }
-            summary.by_asset = byAsset;
-            summary.total_value_usd = Number(summary.total_value_usd || 0) + addUSD;
-            summary.total_value_vnd = Number(summary.total_value_vnd || 0) + addVND;
-            const totalUSD = Number(summary.total_value_usd || 0) || 0;
+
+            // Calculate percentages
             if (totalUSD > 0) {
               for (const key of Object.keys(byAsset)) {
-                const v = byAsset[key];
-                const usd = Number(v.value_usd || 0);
-                v.percentage = totalUSD > 0 ? (usd / totalUSD) * 100 : 0;
+                byAsset[key].percentage = (byAsset[key].value_usd / totalUSD) * 100;
               }
             }
-            result = summary;
+
+            result = {
+              by_asset: byAsset,
+              total_value_usd: totalUSD,
+              total_value_vnd: totalVND,
+            };
           } catch (e) {
-            // ignore vault augmentation errors and keep base summary
-          }
-          break;
-        case 'investments':
-          // Try legacy vaults (investments) enriched
-          try {
-            const legacy = await vaultApi.getActiveVaults({ is_open: true, enrich: true });
-            result = legacy ?? [];
-          } catch (e) {
-            result = [];
-          }
-          // If empty, fallback to tokenized vaults and map to investment-like rows
-          if (Array.isArray(result) && result.length === 0) {
-            try {
-              const tokenized: Array<any> | null = await tokenizedVaultApi.list();
-              const mapped = (tokenized ?? []).map((v: any) => {
-                const contributed = Number(v.total_contributed_usd ?? 0);
-                const withdrawn = Number(v.total_withdrawn_usd ?? 0);
-                const currentValue = Number(v.total_assets_under_management ?? 0);
-                const roi = contributed > 0 ? ((currentValue + withdrawn - contributed) / contributed) * 100 : 0;
-                return ({
-                  id: v.id,
-                  asset: v.name ?? v.token_symbol ?? 'Vault',
-                  account: v.token_symbol ?? 'Tokenized',
-                  horizon: '',
-                  deposit_date: v.inception_date,
-                  deposit_qty: v.total_supply,
-                  remaining_qty: v.total_supply,
-                  deposit_cost: contributed,
-                  withdrawal_value: withdrawn,
-                  current_price_usd: Number(v.current_share_price ?? 0),
-                  current_value_usd: currentValue,
-                  roi_realtime_percent: roi,
-                  realized_pnl: 0,
-                  is_open: (v.status ?? '').toLowerCase() === 'active',
-                });
-              });
-              result = mapped;
-            } catch (e) {
-              // ignore
-            }
+            console.error('Error loading vault allocation:', e);
+            result = { by_asset: {}, total_value_usd: 0, total_value_vnd: 0 };
           }
           break;
         case 'cashflow':
@@ -164,12 +130,6 @@ const ReportsPage = () => {
           break;
         case 'spending':
           result = await reportsApi.spending({
-            start_date: filters.startDate,
-            end_date: filters.endDate,
-          });
-          break;
-        case 'pnl':
-          result = await reportsApi.pnl({
             start_date: filters.startDate,
             end_date: filters.endDate,
           });
@@ -276,8 +236,7 @@ const ReportsPage = () => {
 
           {/* Date Filters */}
           {(activeTab === 'cashflow' ||
-            activeTab === 'spending' ||
-            activeTab === 'pnl') && (
+            activeTab === 'spending') && (
               <>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -315,8 +274,7 @@ const ReportsPage = () => {
 
           {/* Quick Date Presets */}
           {(activeTab === 'cashflow' ||
-            activeTab === 'spending' ||
-            activeTab === 'pnl') && (
+            activeTab === 'spending') && (
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Quick Presets
@@ -450,207 +408,15 @@ const ReportsPage = () => {
   };
 
   const renderInvestmentsTable = () => {
-    type InvestmentRow = TableRowBase & {
-      asset?: string;
-      account?: string;
-      horizon?: string;
-      deposit_date?: string;
-      deposit_qty?: number | string;
-      remaining_qty?: number | string;
-      deposit_cost?: number | string;
-      // legacy fields
-      current_price?: number | string;
-      deposit_unit_cost?: number | string;
-      realized_pnl?: number | string;
-      withdrawal_value?: number | string;
-      is_open?: boolean;
-      // enriched vault-only fields
-      current_price_usd?: number | string;
-      current_value_usd?: number | string;
-      roi_realtime_percent?: number | string;
-    };
-    const rawInvestments = data.investments as InvestmentRow[] ?? [];
-    const displayInvestments: InvestmentRow[] = Array.isArray(rawInvestments) ? rawInvestments : [];
-
-    const columns: TableColumn<InvestmentRow>[] = [
-      { key: 'asset', title: 'Asset' },
-      { key: 'account', title: 'Account' },
-      { key: 'horizon', title: 'Horizon', render: (value) => String(value as string ?? 'N/A') },
-      {
-        key: 'deposit_date',
-        title: 'Deposit Date',
-        type: 'date',
-        render: (value) => new Date(String(value as string ?? '')).toLocaleDateString(),
-      },
-      {
-        key: 'deposit_qty',
-        title: 'Deposit Qty',
-        type: 'number',
-        render: (value) => {
-          const val = value as number | string | undefined;
-          return parseFloat(String(val ?? 0)).toLocaleString();
-        },
-      },
-      {
-        key: 'remaining_qty',
-        title: 'Remaining Qty',
-        type: 'number',
-        render: (value) => {
-          const val = value as number | string | undefined;
-          return parseFloat(String(val ?? 0)).toLocaleString();
-        },
-      },
-      {
-        key: 'deposit_cost',
-        title: `Deposit Cost (${currency})`,
-        type: 'currency',
-        render: (value) => {
-          const val = value as number | string | undefined;
-          const num = parseFloat(String(val ?? 0));
-          return currency === 'USD'
-            ? `$${num.toLocaleString()}`
-            : `₫${num.toLocaleString()}`;
-        },
-      },
-      {
-        key: 'current_value',
-        title: `Current Value (${currency})`,
-        type: 'currency',
-        render: (_value, _col, row) => {
-          const remainingQty = Number(row.remaining_qty as string ?? '0');
-          const enrichedCV = row.current_value_usd !== undefined && row.current_value_usd !== null
-            ? Number(row.current_value_usd as string)
-            : NaN;
-          let currentValue = enrichedCV;
-          if (isNaN(currentValue)) {
-            const unit = Number((row.current_price_usd as string) ?? (row.current_price as string) ?? (row.deposit_unit_cost as string) ?? '1');
-            currentValue = remainingQty * unit;
-          }
-          return currency === 'USD'
-            ? `${Number(currentValue || 0).toLocaleString()}`
-            : `₫${Number(currentValue || 0).toLocaleString()}`;
-        },
-      },
-      {
-        key: 'realized_pnl',
-        title: `Realized P&L (${currency})`,
-        type: 'currency',
-        render: (value) => {
-          const val = value as number | string | undefined;
-          const num = parseFloat(String(val ?? 0));
-          const formatted = currency === 'USD'
-            ? `${Math.abs(num).toLocaleString()}`
-            : `₫${Math.abs(num).toLocaleString()}`;
-          return num >= 0 ? `+${formatted}` : `-${formatted}`;
-        },
-      },
-      // Performance now based on updated value and withdrawals
-      {
-        key: 'pnl_percent',
-        title: 'P&L %',
-        type: 'percentage',
-        render: (_value, _col, row) => {
-          // Prefer enriched ROI if available
-          const enriched = row.roi_realtime_percent as number | string | undefined;
-          let roi = enriched !== undefined ? Number(enriched) : NaN;
-          if (isNaN(roi)) {
-            const depositCost = Number(row.deposit_cost as string ?? '0');
-            const withdrawals = Number(row.withdrawal_value as string ?? '0');
-            const remainingQty = Number(row.remaining_qty as string ?? '0');
-            const unit = Number((row.current_price_usd as string) ?? (row.current_price as string) ?? (row.deposit_unit_cost as string) ?? '1');
-            const currentValue = remainingQty * unit;
-            if (depositCost > 0) {
-              roi = ((currentValue + withdrawals) - depositCost) / depositCost * 100;
-            } else {
-              roi = 0;
-            }
-          }
-          const sign = roi >= 0 ? '+' : '';
-          return `${sign}${(roi || 0).toFixed(2)}%`;
-        },
-      },
-      {
-        key: 'is_open',
-        title: 'Status',
-        render: (value) => (
-          <span className={`px-2 py-1 text-xs rounded-full ${value ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
-            }`}>
-            {value ? 'Open' : 'Closed'}
-          </span>
-        ),
-      },
-    ];
-
-    // Calculate summary stats
-    // Net invested capital = deposits - withdrawals
-    const totalDepositCost = displayInvestments.reduce(
-      (sum: number, inv: unknown) => {
-        const dep = parseFloat(String(((inv as { deposit_cost?: number | string }).deposit_cost ?? 0)));
-        const w = parseFloat(String(((inv as { withdrawal_value?: number | string }).withdrawal_value ?? 0)));
-        return sum + (dep - w);
-      }, 0
-    );
-    const totalRemainingValue = displayInvestments.reduce((sum: number, inv: unknown) => {
-      const enrichedCV = (inv as { current_value_usd?: unknown }).current_value_usd as number | string | undefined;
-      let currentValue = enrichedCV !== undefined && enrichedCV !== null ? Number(enrichedCV) : NaN;
-      if (isNaN(currentValue)) {
-        const currentPrice = Number((inv as { current_price_usd?: unknown }).current_price_usd ?? (inv as { current_price?: unknown }).current_price ?? (inv as { deposit_unit_cost?: unknown }).deposit_unit_cost ?? '1');
-        const remainingQty = Number((inv as { remaining_qty?: unknown }).remaining_qty ?? '0');
-        currentValue = remainingQty * currentPrice;
-      }
-      return sum + Number(currentValue || 0);
-    }, 0);
-    const totalRealizedPnl = displayInvestments.reduce(
-      (sum: number, inv: unknown) => sum + parseFloat(String(((inv as { realized_pnl?: number | string }).realized_pnl ?? 0))), 0
-    );
-    // Unrealized P&L removed
-
+    // Investments tab removed
     return (
-      <div>
-        {/* Summary Stats */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-          <div className="bg-blue-50 p-4 rounded-lg">
-            <h4 className="text-sm font-medium text-blue-800">Total Invested</h4>
-            <p className="text-2xl font-bold text-blue-900">
-              {currency === 'USD'
-                ? `$${totalDepositCost.toLocaleString()}`
-                : `₫${totalDepositCost.toLocaleString()}`}
-            </p>
-          </div>
-          <div className={`p-4 rounded-lg ${totalRealizedPnl >= 0 ? 'bg-green-50' : 'bg-red-50'}`}>
-            <h4 className={`text-sm font-medium ${totalRealizedPnl >= 0 ? 'text-green-800' : 'text-red-800'}`}>Realized P&L</h4>
-            <p className={`text-2xl font-bold ${totalRealizedPnl >= 0 ? 'text-green-900' : 'text-red-900'}`}>
-              {currency === 'USD'
-                ? `$${Math.abs(totalRealizedPnl).toLocaleString()}`
-                : `₫${Math.abs(totalRealizedPnl).toLocaleString()}`}
-            </p>
-          </div>
-          {/* Unrealized P&L card removed */}
-          <div className="bg-purple-50 p-4 rounded-lg">
-            <h4 className="text-sm font-medium text-purple-800">Current Value</h4>
-            <p className="text-2xl font-bold text-purple-900">
-              {currency === 'USD'
-                ? `$${totalRemainingValue.toLocaleString()}`
-                : `₫${totalRemainingValue.toLocaleString()}`}
-            </p>
-          </div>
-        </div>
-
-        {/* Investments Table */}
-        <DataTable
-          data={displayInvestments}
-          columns={columns}
-          loading={loading}
-          emptyMessage="No investments found"
-          filterable={true}
-          sortable={true}
-          pagination={true}
-        />
+      <div className="text-center py-8 text-gray-500">
+        Investments tab has been removed
       </div>
     );
   };
 
-  
+
   const renderCashFlowTable = () => {
     type CashFlowData = {
       combined_in_usd?: number;
@@ -1253,8 +1019,6 @@ const ReportsPage = () => {
         return renderCashFlowTable();
       case 'spending':
         return renderSpendingTable();
-      case 'pnl':
-        return renderPnLTable();
       default:
         return <div>Select a report type</div>;
     }
@@ -1274,7 +1038,7 @@ const ReportsPage = () => {
         </h1>
         <p className="mt-1 text-sm text-gray-500">
           View comprehensive financial reports including holdings, cash flow
-          analysis, and profit & loss statements.
+          analysis, and spending insights.
         </p>
       </div>
 
