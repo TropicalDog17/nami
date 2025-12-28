@@ -1,5 +1,5 @@
 import axios from "axios";
-import { Asset, Rate, assetKey } from "./types";
+import { Asset, Rate, assetKey } from "../types";
 
 function toMinuteISO(date: Date): string {
     date.setSeconds(0, 0);

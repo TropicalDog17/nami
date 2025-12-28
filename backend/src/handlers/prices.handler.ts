@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { priceService } from './priceService';
+import { priceService } from '../services/price.service';
 
 export const pricesRouter = Router();
 
@@ -118,4 +118,3 @@ pricesRouter.get('/fx/history', async (req, res) => {
     res.status(500).json({ error: e?.message || 'Failed to fetch FX history' });
   }
 });
-

@@ -10,7 +10,7 @@
 
 import fs from 'fs';
 import path from 'path';
-import { store } from '../store';
+import { settingsRepository } from '../repositories/settings.repository';
 
 const DATA_DIR = path.resolve(__dirname, '..', '..', 'data');
 const STORE_FILE = path.join(DATA_DIR, 'store.json');
@@ -29,7 +29,7 @@ function run() {
   }
 
   // Ensure spending vault exists and get its name
-  const spendingVault = store.getDefaultSpendingVaultName();
+  const spendingVault = settingsRepository.getDefaultSpendingVaultName();
   console.log('Default spending vault:', spendingVault);
 
   const raw = fs.readFileSync(STORE_FILE, 'utf8');

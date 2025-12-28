@@ -2,16 +2,17 @@ import express from "express";
 import cors from "cors";
 import swaggerUi from "swagger-ui-express";
 
-import { router as apiRouter } from "./routes";
-import { reportsRouter } from "./reports";
-import { actionsRouter } from "./actions";
-import { pricesRouter } from "./prices";
+import { transactionsRouter } from "./handlers/transaction.handler";
+import { reportsRouter } from "./handlers/reports.handler";
+import { actionsRouter } from "./handlers/actions.handler";
+import { pricesRouter } from "./handlers/prices.handler";
 import { openapiSpec } from "./openapi";
-import { vaultsRouter } from "./vaults";
-import { consVaultsRouter } from "./consVaults";
-import { adminRouter } from "./admin";
-import { loansRouter } from "./loans";
-import { store } from "./store";
+import { vaultsRouter } from "./handlers/vault.handler";
+import { consVaultsRouter } from "./handlers/cons-vaults.handler";
+import { adminRouter } from "./handlers/admin.handler";
+import { loansRouter } from "./handlers/loan.handler";
+import { settingsRepository } from "./repositories/settings.repository";
+import { vaultService } from "./services/vault.service";
 
 const app = express();
 app.use(cors());
@@ -19,7 +20,7 @@ app.use(express.json());
 
 app.get("/health", (_req, res) => res.json({ ok: true }));
 
-app.use("/api", apiRouter);
+app.use("/api", transactionsRouter);
 app.use("/api", reportsRouter);
 app.use("/api", actionsRouter);
 app.use("/api", pricesRouter);
@@ -39,10 +40,13 @@ app.use(
 async function bootstrap() {
   try {
     // Ensure default spending vault exists at startup
-    store.getDefaultSpendingVaultName();
-    // await store.migrateToVaultOnly();
-    await store.accrueBorrowingInterestIfDue();
-    console.log('Migration/accrual complete.');
+    const defaultVaultName = settingsRepository.getDefaultSpendingVaultName();
+    vaultService.ensureVault(defaultVaultName);
+
+    // Initialize borrowing settings
+    settingsRepository.getBorrowingSettings();
+
+    console.log('Initialization complete.');
   } catch (e) {
     const msg = (e as { message?: string } | null)?.message ?? String(e);
     console.error('Bootstrap failed:', msg);

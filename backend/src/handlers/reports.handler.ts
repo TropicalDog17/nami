@@ -1,7 +1,10 @@
 import { Router } from 'express';
-import { store } from './store';
-import { priceService } from './priceService';
-import { Asset, VaultEntry } from './types';
+import { vaultRepository } from '../repositories/vault.repository';
+import { transactionRepository } from '../repositories/transaction.repository';
+import { settingsRepository } from '../repositories/settings.repository';
+import { transactionService } from '../services/transaction.service';
+import { priceService } from '../services/price.service';
+import { Asset, VaultEntry, PortfolioReportItem } from '../types';
 
 export const reportsRouter = Router();
 
@@ -158,7 +161,7 @@ async function computeMarkToMarketUSD(positions: Map<string, { asset: Asset; uni
 }
 
 async function buildVaultDailySeries(vaultName: string, start?: string, end?: string) {
-  const entries = store.getVaultEntries(vaultName).sort((a, b) => String(a.at).localeCompare(String(b.at)));
+  const entries = vaultRepository.findAllEntries(vaultName).sort((a, b) => String(a.at).localeCompare(String(b.at)));
   if (entries.length === 0) return [] as any[];
   const startDate = start ? new Date(start) : new Date(entries[0].at);
   const endDate = end ? new Date(end) : new Date();
@@ -265,10 +268,10 @@ async function buildVaultDailySeries(vaultName: string, start?: string, end?: st
 
 reportsRouter.get('/reports/holdings', async (_req, res) => {
   try {
-    const r = await store.report();
+    const r = await transactionService.generateReport();
     const vndRate = await usdToVnd();
     const totalUSD = r.totals.holdingsUSD;
-    const rows = r.holdings.map(h => ({
+    const rows = r.holdings.map((h: PortfolioReportItem) => ({
       asset: h.asset.symbol,
       account: h.account ?? 'Portfolio',
       quantity: h.balance,
@@ -285,7 +288,7 @@ reportsRouter.get('/reports/holdings', async (_req, res) => {
 
 reportsRouter.get('/reports/holdings/summary', async (_req, res) => {
   try {
-    const r = await store.report();
+    const r = await transactionService.generateReport();
     const vndRate = await usdToVnd();
     const by_asset: Record<string, { quantity: number; value_usd: number; value_vnd: number; percentage: number }> = {};
     const totalUSD = r.totals.holdingsUSD;
@@ -321,8 +324,8 @@ reportsRouter.get('/reports/cashflow', async (req, res) => {
     const account = req.query.account ? String(req.query.account) : undefined; // optional per-vault filter
 
     // Collect vault entries across all vaults (or a single vault if filtered)
-    const vaultNames = account ? [account] : store.listVaults().map(v => v.name);
-    const entries = vaultNames.flatMap(name => store.getVaultEntries(name));
+    const vaultNames = account ? [account] : vaultRepository.findAll().map(v => v.name);
+    const entries = vaultNames.flatMap(name => vaultRepository.findAllEntries(name));
 
     const inRange = (d: string) => {
       const dt = new Date(d);
@@ -356,7 +359,7 @@ reportsRouter.get('/reports/cashflow', async (req, res) => {
       }
     } else {
       // Legacy fallback: derive from transaction ledger if no vault entries found in range
-      const txs = store.all().filter(t => inRange(t.createdAt));
+      const txs = transactionRepository.findAll().filter(t => inRange(t.createdAt));
       for (const tx of txs) {
         const t = tx.type.toLowerCase();
         if (!by_type[t]) by_type[t] = { inflow_usd: 0, outflow_usd: 0, net_usd: 0, inflow_vnd: 0, outflow_vnd: 0, net_vnd: 0, count: 0 };
@@ -433,8 +436,8 @@ reportsRouter.get('/reports/spending', async (req, res) => {
   try {
     const start = req.query.start ? new Date(String(req.query.start)) : undefined;
     const end = req.query.end ? new Date(String(req.query.end)) : undefined;
-    const account = (req.query.account ? String(req.query.account) : store.getDefaultSpendingVaultName());
-    const txs = store.all().filter(t => t.type === 'EXPENSE' && (t.account || account) === account);
+    const account = (req.query.account ? String(req.query.account) : settingsRepository.getDefaultSpendingVaultName());
+    const txs = transactionRepository.findAll().filter(t => t.type === 'EXPENSE' && (t.account || account) === account);
 
     const inRange = (d: string) => {
       const dt = new Date(d);
@@ -486,7 +489,7 @@ reportsRouter.get('/reports/pnl', async (_req, res) => {
 
 // --- New: Per-vault header metrics (rolling AUM, ROI, APR) ---
 async function buildVaultHeaderMetrics(vaultName: string) {
-  const entries = store.getVaultEntries(vaultName).sort((a, b) => String(a.at).localeCompare(String(b.at)));
+  const entries = vaultRepository.findAllEntries(vaultName).sort((a, b) => String(a.at).localeCompare(String(b.at)));
   if (entries.length === 0) {
     return {
       vault: vaultName,
@@ -593,7 +596,7 @@ async function buildVaultHeaderMetrics(vaultName: string) {
 reportsRouter.get('/reports/vaults/:name/header', async (req, res) => {
   try {
     const name = String(req.params.name);
-    const v = store.getVault(name);
+    const v = vaultRepository.findByName(name);
     if (!v) return res.status(404).json({ error: 'vault not found' });
     const metrics = await buildVaultHeaderMetrics(name);
     res.json(metrics);
@@ -605,7 +608,7 @@ reportsRouter.get('/reports/vaults/:name/header', async (req, res) => {
 reportsRouter.get('/reports/vaults/:name/series', async (req, res) => {
   try {
     const name = String(req.params.name);
-    const v = store.getVault(name);
+    const v = vaultRepository.findByName(name);
     if (!v) return res.status(404).json({ error: 'vault not found' });
     const start = req.query.start ? String(req.query.start) : undefined;
     const end = req.query.end ? String(req.query.end) : undefined;
@@ -628,7 +631,7 @@ reportsRouter.get('/reports/vaults/summary', async (req, res) => {
   try {
     const start = req.query.start ? String(req.query.start) : undefined;
     const end = req.query.end ? String(req.query.end) : undefined;
-    const names = store.listVaults().map(v => v.name);
+    const names = vaultRepository.findAll().map(v => v.name);
     const vndRate = await usdToVnd();
 
     const rows: Array<{ vault: string; aum_usd: number; aum_vnd: number; pnl_usd: number; pnl_vnd: number; roi_percent: number; apr_percent: number }>
@@ -666,7 +669,7 @@ reportsRouter.get('/reports/series', async (req, res) => {
     const start = req.query.start ? String(req.query.start) : undefined;
     const end = req.query.end ? String(req.query.end) : undefined;
 
-    const targetVaults = account ? [account] : store.listVaults().map(v => v.name);
+    const targetVaults = account ? [account] : vaultRepository.findAll().map(v => v.name);
     const perVault = await Promise.all(targetVaults.map(n => buildVaultDailySeries(n, start, end).then(s => ({ name: n, s }))));
 
     // union of dates

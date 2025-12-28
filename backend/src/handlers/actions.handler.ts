@@ -1,8 +1,8 @@
 import { Router } from "express";
 import { v4 as uuidv4 } from "uuid";
-import { priceService } from "./priceService";
-import { Asset, Transaction } from "./types";
-import { store } from "./store";
+import { priceService } from "../services/price.service";
+import { Asset, Transaction } from "../types";
+import { transactionRepository } from "../repositories/transaction.repository";
 
 export const actionsRouter = Router();
 
@@ -134,8 +134,8 @@ actionsRouter.post("/actions", async (req, res) => {
                     usdAmount: totalQuoteSpent * quoteRate.rateUSD,
                 } as Transaction;
 
-                store.addTransaction(incomeTx);
-                store.addTransaction(expenseTx);
+                transactionRepository.create(incomeTx);
+                transactionRepository.create(expenseTx);
 
                 return res
                     .status(201)
@@ -181,7 +181,7 @@ actionsRouter.post("/actions", async (req, res) => {
                     usdAmount: quantity * rate.rateUSD,
                 } as Transaction;
 
-                store.addTransaction(tx);
+                transactionRepository.create(tx);
                 return res.status(201).json({ ok: true, created: 1, transactions: [tx] });
             }
             case "transfer": {
@@ -250,7 +250,7 @@ actionsRouter.post("/actions", async (req, res) => {
                     // Assuming fee is in source asset unless specified
                     // For simplicity, let's assume fee is in source asset for now or verify 'fee_asset'
                     // If fee is separate from transfer amount? "Fees treated as operating expenses."
-                    // Usually fee is deducted from source. 
+                    // Usually fee is deducted from source.
                     // Let's create an EXPENSE transaction for the fee.
                     const feeTx: Transaction = {
                         id: uuidv4(),
@@ -265,11 +265,11 @@ actionsRouter.post("/actions", async (req, res) => {
                         usdAmount: fee * rateFrom.rateUSD,
                     } as Transaction;
                     txs.push(feeTx);
-                    store.addTransaction(feeTx);
+                    transactionRepository.create(feeTx);
                 }
 
-                store.addTransaction(txOut);
-                store.addTransaction(txIn);
+                transactionRepository.create(txOut);
+                transactionRepository.create(txIn);
 
                 return res.status(201).json({ ok: true, created: txs.length, transactions: txs });
             }

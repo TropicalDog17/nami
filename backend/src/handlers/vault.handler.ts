@@ -1,22 +1,28 @@
-import { Router } from 'express';
-import { v4 as uuidv4 } from 'uuid';
-import { priceService } from './priceService';
-import { Asset, Vault, VaultEntry } from './types';
-import { store } from './store';
+import { Router, Request, Response } from 'express';
+import { Asset, VaultEntry } from '../types';
+import { vaultService } from '../services/vault.service';
+import { priceService } from '../services/price.service';
 
 export const vaultsRouter = Router();
 
-// helpers
+// Helpers
 async function computeUSD(asset: Asset, amount: number, at?: string): Promise<number> {
   const rate = await priceService.getRateUSD(asset, at);
   return amount * rate.rateUSD;
 }
 
-function parseDepositPayload(body: any): { asset: Asset; amount: number; usdValue: number; at?: string; account?: string; note?: string } {
+function parseDepositPayload(body: any): {
+  asset: Asset;
+  amount: number;
+  usdValue: number;
+  at?: string;
+  account?: string;
+  note?: string;
+} {
   const at: string | undefined = body.at || (typeof body.date === 'string' ? body.date : undefined);
   const account: string | undefined = body.account || body.sourceAccount || undefined;
   const note: string | undefined = body.note || undefined;
-  // Accept either { asset, amount } or { asset, quantity, cost } or USD-only { cost }
+
   const assetSym = (body.asset?.symbol || body.asset || 'USD').toString().toUpperCase();
   const assetType = assetSym.length === 3 ? 'FIAT' : 'CRYPTO';
   const asset: Asset = { type: assetType as any, symbol: assetSym };
@@ -24,18 +30,29 @@ function parseDepositPayload(body: any): { asset: Asset; amount: number; usdValu
   const cost = Number(body.cost ?? body.value ?? body.usdValue ?? 0) || 0;
 
   if (asset.symbol === 'USD') {
-    const usdValue = cost > 0 ? cost : quantity; // allow amount as direct USD
+    const usdValue = cost > 0 ? cost : quantity;
     return { asset, amount: usdValue, usdValue, at, account, note };
   }
-  // non-USD: require both quantity and cost
-  if (!(quantity > 0) || !(cost > 0)) throw new Error('quantity and cost required for non-USD deposit');
+
+  if (!(quantity > 0) || !(cost > 0)) {
+    throw new Error('quantity and cost required for non-USD deposit');
+  }
+
   return { asset, amount: quantity, usdValue: cost, at, account, note };
 }
 
-function parseWithdrawPayload(body: any): { asset: Asset; amount: number; usdValue: number; at?: string; account?: string; note?: string } {
+function parseWithdrawPayload(body: any): {
+  asset: Asset;
+  amount: number;
+  usdValue: number;
+  at?: string;
+  account?: string;
+  note?: string;
+} {
   const at: string | undefined = body.at || (typeof body.date === 'string' ? body.date : undefined);
   const account: string | undefined = body.account || body.targetAccount || undefined;
   const note: string | undefined = body.note || undefined;
+
   const assetSym = (body.asset?.symbol || body.asset || 'USD').toString().toUpperCase();
   const assetType = assetSym.length === 3 ? 'FIAT' : 'CRYPTO';
   const asset: Asset = { type: assetType as any, symbol: assetSym };
@@ -46,31 +63,39 @@ function parseWithdrawPayload(body: any): { asset: Asset; amount: number; usdVal
     const usdValue = value > 0 ? value : quantity;
     return { asset, amount: usdValue, usdValue, at, account, note };
   }
-  if (!(quantity > 0) || !(value > 0)) throw new Error('quantity and value required for non-USD withdraw');
+
+  if (!(quantity > 0) || !(value > 0)) {
+    throw new Error('quantity and value required for non-USD withdraw');
+  }
+
   return { asset, amount: quantity, usdValue: value, at, account, note };
 }
 
 // Create or ensure a vault exists
-vaultsRouter.post('/vaults', (req, res) => {
+vaultsRouter.post('/vaults', (req: Request, res: Response) => {
   const name = String(req.body?.name || '').trim();
   if (!name) return res.status(400).json({ error: 'name is required' });
-  const created = store.ensureVault(name);
-  res.status(created ? 201 : 200).json(store.getVault(name));
+
+  const created = vaultService.ensureVault(name);
+  res.status(created ? 201 : 200).json(vaultService.getVault(name));
 });
 
-// List vaults (optionally only open and enrich data)
-vaultsRouter.get('/vaults', async (req, res) => {
+// List vaults
+vaultsRouter.get('/vaults', async (req: Request, res: Response) => {
   const isOpen = String(req.query.is_open || '').toLowerCase() === 'true';
   const enrich = String(req.query.enrich || '').toLowerCase() === 'true';
-  const list = store.listVaults().filter(v => (isOpen ? v.status === 'ACTIVE' : true));
+
+  const list = vaultService.listVaults().filter(v => (isOpen ? v.status === 'ACTIVE' : true));
+
   if (!enrich) return res.json(list);
 
   const enriched = await Promise.all(list.map(async (v) => {
-    const stats = await store.vaultStats(v.name);
+    const stats = await vaultService.vaultStats(v.name);
     const depositUSD = stats.totalDepositedUSD;
     const withdrawnUSD = stats.totalWithdrawnUSD;
     const aumUSD = stats.aumUSD;
     const roi = depositUSD > 0 ? ((aumUSD + withdrawnUSD - depositUSD) / depositUSD) * 100 : 0;
+
     return {
       id: v.name,
       name: v.name,
@@ -84,29 +109,32 @@ vaultsRouter.get('/vaults', async (req, res) => {
       roi_realtime_percent: roi,
     };
   }));
+
   res.json(enriched);
 });
 
-// Get single vault with legacy-friendly shape
-vaultsRouter.get('/vaults/:name', async (req, res) => {
+// Get single vault
+vaultsRouter.get('/vaults/:name', async (req: Request, res: Response) => {
   const name = String(req.params.name);
-  const v = store.getVault(name);
-  if (!v) return res.status(404).json({ error: 'not found' });
-  const stats = await store.vaultStats(name);
+  const vault = vaultService.getVault(name);
+  if (!vault) return res.status(404).json({ error: 'not found' });
+
+  const stats = await vaultService.vaultStats(name);
   const depositUSD = stats.totalDepositedUSD;
   const withdrawnUSD = stats.totalWithdrawnUSD;
   const aumUSD = stats.aumUSD;
   const roi = depositUSD > 0 ? ((aumUSD + withdrawnUSD - depositUSD) / depositUSD) * 100 : 0;
-  const firstEntry = store.getVaultEntries(name)[0];
+  const firstEntry = vaultService.getVaultEntries(name)[0];
+
   res.json({
-    id: v.name,
+    id: vault.name,
     is_vault: true,
-    vault_name: v.name,
-    vault_status: v.status === 'ACTIVE' ? 'active' : 'closed',
-    vault_ended_at: v.status === 'CLOSED' ? v.createdAt : undefined,
+    vault_name: vault.name,
+    vault_status: vault.status === 'ACTIVE' ? 'active' : 'closed',
+    vault_ended_at: vault.status === 'CLOSED' ? vault.createdAt : undefined,
     asset: 'USD',
-    account: v.name,
-    deposit_date: firstEntry?.at ?? v.createdAt,
+    account: vault.name,
+    deposit_date: firstEntry?.at ?? vault.createdAt,
     deposit_qty: String(depositUSD),
     deposit_cost: String(depositUSD),
     deposit_unit_cost: '1',
@@ -115,42 +143,52 @@ vaultsRouter.get('/vaults/:name', async (req, res) => {
     withdrawal_unit_price: '1',
     pnl: String(aumUSD + withdrawnUSD - depositUSD),
     pnl_percent: String(roi),
-    is_open: v.status === 'ACTIVE',
+    is_open: vault.status === 'ACTIVE',
     realized_pnl: String(withdrawnUSD - depositUSD),
     remaining_qty: String(aumUSD),
-    created_at: v.createdAt,
+    created_at: vault.createdAt,
     updated_at: new Date().toISOString(),
   });
 });
 
-// List vault transactions (ledger entries)
-vaultsRouter.get('/vaults/:name/transactions', (req, res) => {
+// List vault transactions
+vaultsRouter.get('/vaults/:name/transactions', (req: Request, res: Response) => {
   const name = String(req.params.name);
-  const v = store.getVault(name);
-  if (!v) return res.status(404).json({ error: 'not found' });
-  res.json(store.getVaultEntries(name));
+  const vault = vaultService.getVault(name);
+  if (!vault) return res.status(404).json({ error: 'not found' });
+
+  res.json(vaultService.getVaultEntries(name));
 });
 
-// Ledger holdings summary for a vault
-vaultsRouter.get('/vaults/:name/holdings', async (req, res) => {
+// Vault holdings summary
+vaultsRouter.get('/vaults/:name/holdings', async (req: Request, res: Response) => {
   const name = String(req.params.name);
-  const v = store.getVault(name);
-  if (!v) return res.status(404).json({ error: 'not found' });
-  const entries = store.getVaultEntries(name);
-  const stats = await store.vaultStats(name);
+  const vault = vaultService.getVault(name);
+  if (!vault) return res.status(404).json({ error: 'not found' });
+
+  const entries = vaultService.getVaultEntries(name);
+  const stats = await vaultService.vaultStats(name);
   const total_aum = stats.aumUSD;
-  const price_per_share = 1; // simple fixed PPS
+  const price_per_share = 1;
   const total_shares = total_aum / price_per_share;
   const transaction_count = entries.length;
-  const last_transaction_at = entries.reduce((m, e) => (m > e.at ? m : e.at), v.createdAt);
-  res.json({ total_shares, total_aum, share_price: price_per_share, transaction_count, last_transaction_at });
+  const last_transaction_at = entries.reduce((m, e) => (m > e.at ? m : e.at), vault.createdAt);
+
+  res.json({
+    total_shares,
+    total_aum,
+    share_price: price_per_share,
+    transaction_count,
+    last_transaction_at
+  });
 });
 
-// Deposit into a vault
-vaultsRouter.post('/vaults/:name/deposit', async (req, res) => {
+// Deposit into vault
+vaultsRouter.post('/vaults/:name/deposit', async (req: Request, res: Response) => {
   try {
     const name = String(req.params.name);
-    if (!store.getVault(name)) store.ensureVault(name);
+    if (!vaultService.getVault(name)) vaultService.ensureVault(name);
+
     const payload = parseDepositPayload(req.body || {});
     const at = payload.at ?? new Date().toISOString();
 
@@ -164,20 +202,20 @@ vaultsRouter.post('/vaults/:name/deposit', async (req, res) => {
       account: payload.account,
       note: payload.note,
     };
-    store.addVaultEntry(entry);
 
-    // No mirroring into Transactions - vault-only model
+    vaultService.addVaultEntry(entry);
     res.status(201).json({ ok: true, entry });
   } catch (e: any) {
     res.status(400).json({ error: e?.message || 'invalid deposit' });
   }
 });
 
-// Withdraw from a vault
-vaultsRouter.post('/vaults/:name/withdraw', async (req, res) => {
+// Withdraw from vault
+vaultsRouter.post('/vaults/:name/withdraw', async (req: Request, res: Response) => {
   try {
     const name = String(req.params.name);
-    if (!store.getVault(name)) store.ensureVault(name);
+    if (!vaultService.getVault(name)) vaultService.ensureVault(name);
+
     const payload = parseWithdrawPayload(req.body || {});
     const entry: VaultEntry = {
       vault: name,
@@ -189,43 +227,44 @@ vaultsRouter.post('/vaults/:name/withdraw', async (req, res) => {
       account: payload.account,
       note: payload.note,
     };
-    store.addVaultEntry(entry);
+
+    vaultService.addVaultEntry(entry);
     res.status(201).json({ ok: true, entry });
   } catch (e: any) {
     res.status(400).json({ error: e?.message || 'invalid withdraw' });
   }
 });
 
-// End vault (close)
-vaultsRouter.post('/vaults/:name/end', (req, res) => {
+// End vault
+vaultsRouter.post('/vaults/:name/end', (req: Request, res: Response) => {
   const name = String(req.params.name);
-  const ok = store.endVault(name);
+  const ok = vaultService.endVault(name);
   if (!ok) return res.status(404).json({ error: 'not found' });
   res.json({ ok: true });
 });
 
 // Delete vault
-vaultsRouter.delete('/vaults/:name', (req, res) => {
+vaultsRouter.delete('/vaults/:name', (req: Request, res: Response) => {
   const name = String(req.params.name);
-  const ok = store.deleteVault(name);
+  const ok = vaultService.deleteVault(name);
   if (!ok) return res.status(404).json({ error: 'not found' });
   res.json({ ok: true });
 });
 
-// Manual refresh (compute ROI with provided current value)
-vaultsRouter.post('/vaults/:name/refresh', async (req, res) => {
+// Manual refresh
+vaultsRouter.post('/vaults/:name/refresh', async (req: Request, res: Response) => {
   const name = String(req.params.name);
-  const v = store.getVault(name);
-  if (!v) return res.status(404).json({ error: 'not found' });
-  const stats = await store.vaultStats(name);
+  const vault = vaultService.getVault(name);
+  if (!vault) return res.status(404).json({ error: 'not found' });
+
+  const stats = await vaultService.vaultStats(name);
   const current_value_usd = Number(req.body?.current_value_usd ?? stats.aumUSD) || 0;
   const persist = String(req.body?.persist || '').toLowerCase() === 'true' || req.body?.persist === true;
 
-  // If persist requested, record a VALUATION entry
   if (persist) {
     const at = new Date().toISOString();
     const asset = { type: 'FIAT', symbol: 'USD' } as const;
-    store.addVaultEntry({
+    vaultService.addVaultEntry({
       vault: name,
       type: 'VALUATION',
       asset: asset as any,
@@ -239,48 +278,39 @@ vaultsRouter.post('/vaults/:name/refresh', async (req, res) => {
   const roi_realtime_percent = stats.totalDepositedUSD > 0
     ? ((current_value_usd + stats.totalWithdrawnUSD - stats.totalDepositedUSD) / stats.totalDepositedUSD) * 100
     : 0;
+
   const resp = {
     as_of: new Date().toISOString(),
     current_value_usd,
     roi_realtime_percent,
-    apr_percent: roi_realtime_percent, // simplistic
+    apr_percent: roi_realtime_percent,
   };
+
   res.json(resp);
 });
 
-// Distribute a reward: mark valuation to include the gain, then move only the reward to a destination vault.
-// Body:
-//   {
-//     amount: number,                  // reward USD
-//     destination?: string,            // destination vault name (default 'Spend')
-//     at?: string, date?: string,      // ISO datetime for entries
-//     note?: string,                   // optional note
-//     mark?: boolean,                  // default true; if true, persist valuation before distribution
-//     new_total_usd?: number,          // optional explicit valuation total; defaults to current AUM + amount
-//     create_income?: boolean          // if true, also record an INCOME transaction in destination for analytics
-//   }
-vaultsRouter.post('/vaults/:name/distribute-reward', async (req, res) => {
+// Distribute reward
+vaultsRouter.post('/vaults/:name/distribute-reward', async (req: Request, res: Response) => {
   try {
     const name = String(req.params.name);
-    if (!store.getVault(name)) store.ensureVault(name);
+    if (!vaultService.getVault(name)) vaultService.ensureVault(name);
 
     const amount = Number(req.body?.amount ?? req.body?.reward_usd ?? req.body?.reward ?? 0) || 0;
     if (!(amount > 0)) return res.status(400).json({ error: 'amount>0 required' });
 
     const destination = String(req.body?.destination ?? req.body?.dest ?? req.body?.target_account ?? 'Spend').trim() || 'Spend';
-    if (!store.getVault(destination)) store.ensureVault(destination);
+    if (!vaultService.getVault(destination)) vaultService.ensureVault(destination);
 
     const at: string = String(req.body?.at ?? req.body?.date ?? '') || new Date().toISOString();
     const note: string | undefined = req.body?.note ? String(req.body.note) : undefined;
     const shouldMark: boolean = req.body?.mark === false ? false : true;
 
-    // Step 1: persist valuation so AUM includes the reward before distribution
     let marked_to: number | undefined = undefined;
     if (shouldMark) {
-      const stats = await store.vaultStats(name);
+      const stats = await vaultService.vaultStats(name);
       const intended = Number(req.body?.new_total_usd ?? 0) || (stats.aumUSD + amount);
       const asset = { type: 'FIAT', symbol: 'USD' } as const;
-      store.addVaultEntry({
+      vaultService.addVaultEntry({
         vault: name,
         type: 'VALUATION',
         asset: asset as any,
@@ -294,8 +324,7 @@ vaultsRouter.post('/vaults/:name/distribute-reward', async (req, res) => {
 
     const usd = { type: 'FIAT', symbol: 'USD' } as const;
 
-    // Step 2: withdraw only the reward from the source vault
-    store.addVaultEntry({
+    vaultService.addVaultEntry({
       vault: name,
       type: 'WITHDRAW',
       asset: usd as any,
@@ -305,8 +334,7 @@ vaultsRouter.post('/vaults/:name/distribute-reward', async (req, res) => {
       note: note ?? 'Reward distribution',
     });
 
-    // Step 3: deposit reward into destination vault
-    store.addVaultEntry({
+    vaultService.addVaultEntry({
       vault: destination,
       type: 'DEPOSIT',
       asset: usd as any,
@@ -316,10 +344,9 @@ vaultsRouter.post('/vaults/:name/distribute-reward', async (req, res) => {
       note: `Reward from ${name}${note ? `: ${note}` : ''}`,
     });
 
-    // Optional: create an INCOME transaction for analytics
     const createIncome = String(req.body?.create_income || '').toLowerCase() === 'true' || req.body?.create_income === true;
     if (createIncome) {
-      await store.recordIncomeTx({
+      await vaultService.recordIncomeTx({
         asset: usd as any,
         amount,
         at,
