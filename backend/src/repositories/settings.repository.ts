@@ -46,6 +46,18 @@ export class SettingsRepository {
     writeStore(store);
   }
 
+  getDefaultIncomeVaultName(): string {
+    const store = readStore();
+    return store.settings?.defaultIncomeVaultName?.trim() || 'Income';
+  }
+
+  setDefaultIncomeVaultName(name: string): void {
+    const store = readStore();
+    if (!store.settings) store.settings = {};
+    store.settings.defaultIncomeVaultName = name.trim() || 'Income';
+    writeStore(store);
+  }
+
   isMigratedToVaultOnly(): boolean {
     const store = readStore();
     return store.settings?.migratedVaultOnly === true;

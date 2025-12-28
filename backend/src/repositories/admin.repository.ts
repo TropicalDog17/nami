@@ -1,4 +1,5 @@
-import { AdminType, AdminAccount, AdminAsset, AdminTag, readStore, writeStore, nextId } from "./base.repository";
+import crypto from 'crypto';
+import { AdminType, AdminAccount, AdminAsset, AdminTag, PendingAction, PendingSource, readStore, writeStore, nextId } from "./base.repository";
 
 const DEFAULT_TRANSACTION_TYPES: Array<Pick<AdminType, 'name' | 'description'>> = [
   { name: 'INITIAL', description: 'Starting balance entries for assets/accounts' },
@@ -222,6 +223,120 @@ export class AdminRepository {
       created_at: now,
     }));
     writeStore(store);
+  }
+
+  // Pending Actions
+  findAllPendingActions(status?: string): PendingAction[] {
+    const all = readStore().pendingActions;
+    if (status) {
+      return all.filter(p => p.status === status);
+    }
+    return all;
+  }
+
+  findPendingActionById(id: string): PendingAction | undefined {
+    return readStore().pendingActions.find(p => p.id === id);
+  }
+
+  createPendingAction(data: {
+    source: PendingSource;
+    raw_input: string;
+    toon_text?: string;
+    action_json?: unknown;
+    confidence?: number;
+    batch_id?: string;
+    meta?: Record<string, unknown>;
+  }): PendingAction {
+    const store = readStore();
+    const now = new Date().toISOString();
+    const item: PendingAction = {
+      id: crypto.randomUUID(),
+      source: data.source,
+      raw_input: data.raw_input,
+      toon_text: data.toon_text,
+      action_json: data.action_json,
+      confidence: data.confidence,
+      batch_id: data.batch_id,
+      meta: data.meta,
+      status: 'pending',
+      created_at: now,
+      updated_at: now,
+    };
+    store.pendingActions.push(item);
+    writeStore(store);
+    return item;
+  }
+
+  updatePendingAction(id: string, data: Partial<PendingAction>): PendingAction | undefined {
+    const store = readStore();
+    const index = store.pendingActions.findIndex(p => p.id === id);
+    if (index === -1) return undefined;
+
+    const prev = store.pendingActions[index];
+    store.pendingActions[index] = {
+      ...prev,
+      ...data,
+      id: prev.id,
+      created_at: prev.created_at,
+      updated_at: new Date().toISOString(),
+    };
+    writeStore(store);
+    return store.pendingActions[index];
+  }
+
+  deletePendingAction(id: string): boolean {
+    const store = readStore();
+    const initialLength = store.pendingActions.length;
+    store.pendingActions = store.pendingActions.filter(p => p.id !== id);
+    writeStore(store);
+    return store.pendingActions.length < initialLength;
+  }
+
+  // Bulk operations
+  rejectAllPending(batchId?: string): number {
+    const store = readStore();
+    const now = new Date().toISOString();
+    let count = 0;
+
+    store.pendingActions = store.pendingActions.map(p => {
+      if (p.status !== 'pending') return p;
+      if (batchId && p.batch_id !== batchId) return p;
+      count++;
+      return { ...p, status: 'rejected' as const, updated_at: now };
+    });
+
+    writeStore(store);
+    return count;
+  }
+
+  acceptAllPending(batchId?: string): number {
+    const store = readStore();
+    const now = new Date().toISOString();
+    let count = 0;
+
+    store.pendingActions = store.pendingActions.map(p => {
+      if (p.status !== 'pending') return p;
+      if (batchId && p.batch_id !== batchId) return p;
+      count++;
+      return { ...p, status: 'accepted' as const, updated_at: now };
+    });
+
+    writeStore(store);
+    return count;
+  }
+
+  deleteAllByStatus(status: string, batchId?: string): number {
+    const store = readStore();
+    const initialLength = store.pendingActions.length;
+
+    store.pendingActions = store.pendingActions.filter(p => {
+      if (p.status !== status) return true;
+      if (batchId && p.batch_id !== batchId) return true;
+      return false;
+    });
+
+    writeStore(store);
+    return initialLength - store.pendingActions.length;
   }
 }
 

@@ -44,6 +44,25 @@ export interface AdminTag {
   created_at: string;
 }
 
+export type PendingSource = 'telegram_text' | 'telegram_image' | 'bank_statement_excel';
+export type PendingStatus = 'pending' | 'accepted' | 'rejected';
+
+export interface PendingAction {
+  id: string;
+  source: PendingSource;
+  raw_input: string;
+  toon_text?: string;
+  action_json?: unknown;
+  confidence?: number;
+  batch_id?: string;
+  meta?: Record<string, unknown>;
+  status: PendingStatus;
+  created_tx_ids?: string[];
+  error?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface StoreShape {
   transactions: Transaction[];
   loans: LoanAgreement[];
@@ -53,6 +72,7 @@ export interface StoreShape {
   adminAccounts: AdminAccount[];
   adminAssets: AdminAsset[];
   adminTags: AdminTag[];
+  pendingActions: PendingAction[];
   settings?: {
     borrowingVaultName?: string;
     borrowingMonthlyRate?: number;
@@ -60,6 +80,7 @@ export interface StoreShape {
     migratedVaultOnly?: boolean;
     migratedBorrowingPrincipal?: boolean;
     defaultSpendingVaultName?: string;
+    defaultIncomeVaultName?: string;
   };
 }
 
@@ -75,6 +96,7 @@ function ensureDataFile(): void {
       adminAccounts: [],
       adminAssets: [],
       adminTags: [],
+      pendingActions: [],
       settings: {},
     };
     fs.writeFileSync(STORE_FILE, JSON.stringify(initial, null, 2));
@@ -95,6 +117,7 @@ export function readStore(): StoreShape {
       adminAccounts: Array.isArray(data.adminAccounts) ? data.adminAccounts : [],
       adminAssets: Array.isArray(data.adminAssets) ? data.adminAssets : [],
       adminTags: Array.isArray(data.adminTags) ? data.adminTags : [],
+      pendingActions: Array.isArray(data.pendingActions) ? data.pendingActions : [],
       settings: typeof data.settings === 'object' && data.settings ? data.settings : {},
     } as StoreShape;
   } catch {
@@ -107,6 +130,7 @@ export function readStore(): StoreShape {
       adminAccounts: [],
       adminAssets: [],
       adminTags: [],
+      pendingActions: [],
       settings: {}
     } as StoreShape;
   }

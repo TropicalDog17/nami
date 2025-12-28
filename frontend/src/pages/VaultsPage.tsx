@@ -47,7 +47,7 @@ const VaultsPage: React.FC = () => {
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [showCreateForm, setShowCreateForm] = useState<boolean>(false);
-  const [filter, setFilter] = useState<'all' | 'active' | 'closed'>('all');
+  const [filter, setFilter] = useState<'all' | 'active' | 'closed'>('active');
 
   const loadVaults = useCallback(async (): Promise<void> => {
     try {

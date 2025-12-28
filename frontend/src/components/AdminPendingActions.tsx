@@ -3,6 +3,43 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { adminApi } from '../services/api';
 
+// Custom tooltip component for action details
+const ActionTooltip = ({ children, content }: { children: React.ReactNode; content: string }) => {
+  const [isVisible, setIsVisible] = useState(false);
+  const [position, setPosition] = useState({ top: 0, left: 0 });
+
+  const handleMouseEnter = (e: React.MouseEvent<HTMLDivElement>) => {
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    setPosition({
+      top: rect.bottom + 8,
+      left: rect.left,
+    });
+    setIsVisible(true);
+  };
+
+  const handleMouseLeave = () => {
+    setIsVisible(false);
+  };
+
+  return (
+    <div
+      className="relative"
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
+    >
+      {children}
+      {isVisible && (
+        <div
+          className="fixed z-50 bg-gray-900 text-white text-xs rounded-lg shadow-xl p-3 max-w-sm pointer-events-none"
+          style={{ top: `${position.top}px`, left: `${position.left}px` }}
+        >
+          <pre className="whitespace-pre-wrap font-sans leading-relaxed">{content}</pre>
+        </div>
+      )}
+    </div>
+  );
+};
+
 type PendingStatus = 'pending' | 'accepted' | 'rejected';
 
 type PendingAction = {
@@ -72,30 +109,99 @@ const getActionSummary = (value: unknown, fallbackToon?: string | null): string 
   if (parsed && typeof parsed === 'object') {
     const action = parsed.action ?? 'unknown_action';
     const params = parsed.params ?? {};
-    const account = params.account ?? '—';
     const amount = params.vnd_amount ?? null;
-    const date = params.date ?? '—';
+    const date = params.date ?? null;
     const tag = params.tag ?? null;
+    const counterparty = params.counterparty ?? null;
 
-    const amountLabel =
-      typeof amount === 'number' ? `${amount.toLocaleString('en-US')} VND` : '—';
+    // Convert action to readable format
+    const actionLabels: Record<string, string> = {
+      spend_vnd: '💸 Expense',
+      income_vnd: '💰 Income',
+      credit_spend_vnd: '💳 Credit',
+      card_payment_vnd: '💳 Payment',
+    };
+    const actionLabel = actionLabels[action] || action;
 
+    // Format amount compactly
+    const amountLabel = typeof amount === 'number'
+      ? amount >= 1_000_000
+        ? `${(amount / 1_000_000).toFixed(1)}M`
+        : amount >= 1_000
+        ? `${(amount / 1_000).toFixed(0)}K`
+        : `${amount}`
+      : '—';
+
+    // Build pieces with counterparty first
     const pieces = [
-      action,
-      account !== '—' ? `@ ${account}` : null,
-      amountLabel !== '—' ? `for ${amountLabel}` : null,
-      date !== '—' ? `on ${date}` : null,
-      tag ? `[${tag}]` : null,
+      counterparty,
+      amountLabel,
+      date,
+      tag,
     ].filter(Boolean);
 
-    if (pieces.length > 0) {
-      return pieces.join(' ');
-    }
+    return `${actionLabel}: ${pieces.join(' • ')}`;
   }
 
   if (fallbackToon) {
     const trimmed = fallbackToon.trim();
     return trimmed.length > 120 ? `${trimmed.slice(0, 117)}…` : trimmed;
+  }
+
+  return '—';
+};
+
+const getActionTooltip = (value: unknown, fallbackToon?: string | null): string => {
+  let parsed: ActionJson | null = null;
+
+  if (typeof value === 'string') {
+    try {
+      parsed = JSON.parse(value) as ActionJson;
+    } catch {
+      // ignore parse error, we'll fall back below
+    }
+  } else if (value && typeof value === 'object') {
+    parsed = value as ActionJson;
+  }
+
+  if (parsed && typeof parsed === 'object') {
+    const action = parsed.action ?? 'unknown_action';
+    const params = parsed.params ?? {};
+    const amount = params.vnd_amount ?? null;
+    const date = params.date ?? null;
+    const tag = params.tag ?? null;
+    const counterparty = params.counterparty ?? null;
+    const account = params.account ?? null;
+    const note = params.note ?? null;
+
+    const actionLabels: Record<string, string> = {
+      spend_vnd: 'Expense',
+      income_vnd: 'Income',
+      credit_spend_vnd: 'Credit Expense',
+      card_payment_vnd: 'Card Payment',
+    };
+    const actionLabel = actionLabels[action] || action;
+
+    // Format full amount
+    const amountLabel = typeof amount === 'number'
+      ? `${amount.toLocaleString('en-US')} VND`
+      : '—';
+
+    const lines = [
+      `Type: ${actionLabel}`,
+      amount !== null ? `Amount: ${amountLabel}` : null,
+      counterparty ? `Merchant: ${counterparty}` : null,
+      date ? `Date: ${date}` : null,
+      tag ? `Category: ${tag}` : null,
+      account ? `Account: ${account}` : null,
+      note ? `Note: ${note}` : null,
+    ].filter(Boolean);
+
+    return lines.join('\n');
+  }
+
+  if (fallbackToon) {
+    return fallbackToon.trim();
   }
 
   return '—';
@@ -110,6 +216,7 @@ export const AdminPendingActions = () => {
   const [selectedDetails, setSelectedDetails] = useState<PendingAction | null>(null);
   const [detailsLoading, setDetailsLoading] = useState(false);
   const [busyActionId, setBusyActionId] = useState<string | null>(null);
+  const [bulkBusy, setBulkBusy] = useState(false);
 
   const loadPending = useCallback(async () => {
     setLoading(true);
@@ -190,13 +297,10 @@ export const AdminPendingActions = () => {
       actions.setError('Only pending items can be rejected.');
       return;
     }
-    const reasonInput = prompt('Provide a rejection reason (optional):');
-    if (reasonInput === null) return;
-    const reason = reasonInput.trim();
     if (!confirm(`Reject pending action ${item.id}?`)) return;
     setBusyActionId(item.id);
     try {
-      await adminApi.rejectPendingAction(item.id, reason ? reason : undefined);
+      await adminApi.rejectPendingAction(item.id);
       actions.setSuccess(`Pending action ${item.id} rejected.`);
       await loadPending();
       if (selectedId === item.id) {
@@ -207,6 +311,38 @@ export const AdminPendingActions = () => {
       actions.setError(`Failed to reject action: ${message}`);
     } finally {
       setBusyActionId((current) => (current === item.id ? null : current));
+    }
+  };
+
+  const handleAcceptAll = async () => {
+    if (!confirm('Accept all pending actions?')) return;
+    setBulkBusy(true);
+    try {
+      const result = await adminApi.acceptAllPendingActions();
+      const count = (result as { accepted?: number })?.accepted ?? 0;
+      actions.setSuccess(`${count} pending action(s) accepted.`);
+      await loadPending();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      actions.setError(`Failed to accept all: ${message}`);
+    } finally {
+      setBulkBusy(false);
+    }
+  };
+
+  const handleRejectAll = async () => {
+    if (!confirm('Reject all pending actions?')) return;
+    setBulkBusy(true);
+    try {
+      const result = await adminApi.rejectAllPendingActions();
+      const count = (result as { rejected?: number })?.rejected ?? 0;
+      actions.setSuccess(`${count} pending action(s) rejected.`);
+      await loadPending();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      actions.setError(`Failed to reject all: ${message}`);
+    } finally {
+      setBulkBusy(false);
     }
   };
 
@@ -256,10 +392,30 @@ export const AdminPendingActions = () => {
             type="button"
             onClick={() => void loadPending()}
             className="inline-flex items-center rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50"
-            disabled={loading}
+            disabled={loading || bulkBusy}
           >
             {loading ? 'Refreshing…' : 'Refresh'}
           </button>
+          {statusFilter === 'pending' && (
+            <>
+              <button
+                type="button"
+                onClick={() => void handleAcceptAll()}
+                className="inline-flex items-center rounded-md border border-green-600 bg-green-50 px-3 py-2 text-sm font-medium text-green-700 shadow-sm hover:bg-green-100 disabled:cursor-not-allowed disabled:opacity-50"
+                disabled={loading || bulkBusy}
+              >
+                {bulkBusy ? 'Processing…' : 'Accept All'}
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleRejectAll()}
+                className="inline-flex items-center rounded-md border border-red-600 bg-red-50 px-3 py-2 text-sm font-medium text-red-700 shadow-sm hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50"
+                disabled={loading || bulkBusy}
+              >
+                {bulkBusy ? 'Processing…' : 'Reject All'}
+              </button>
+            </>
+          )}
         </div>
       </div>
 
@@ -321,8 +477,12 @@ export const AdminPendingActions = () => {
                       ? `${(Number(item.confidence) * 100).toFixed(1)}%`
                       : '—'}
                   </td>
-                  <td className="px-4 py-3 text-sm text-gray-700">
-                    {getActionSummary(item.action_json, item.toon_text)}
+                  <td className="max-w-xs px-4 py-3 text-sm text-gray-700">
+                    <ActionTooltip content={getActionTooltip(item.action_json, item.toon_text)}>
+                      <span className="block truncate cursor-help">
+                        {getActionSummary(item.action_json, item.toon_text)}
+                      </span>
+                    </ActionTooltip>
                   </td>
                   <td className="px-4 py-3 text-sm text-gray-700">
                     {item.raw_input.slice(0, 80)}

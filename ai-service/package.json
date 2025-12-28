@@ -14,18 +14,25 @@
     "test:llm:watch": "jest tests/llm.integration.test.ts --watch",
     "test:llm:coverage": "jest tests/llm.integration.test.ts --coverage",
     "test:llm:simple": "node test-llm-simple.mjs",
-    "test:llm:real": "node test-real-llm.mjs"
+    "test:llm:real": "node test-real-llm.mjs",
+    "process-statement": "tsx src/cli/processBankStatement.ts",
+    "process-statement:dry": "tsx src/cli/processBankStatement.ts --dry-run",
+    "process-statement:fast": "tsx src/cli/processBankStatement.ts --skip-ai"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.68.0",
     "@toon-format/toon": "^0.7.0",
+    "@types/multer": "^2.0.0",
     "@types/uuid": "^10.0.0",
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
+    "multer": "^2.0.2",
     "openai": "^4.57.0",
+    "p-limit": "^7.2.0",
     "pino": "^9.3.2",
     "telegraf": "^4.16.3",
     "uuid": "^13.0.0",
+    "xlsx": "^0.18.5",
     "zod": "^3.23.8"
   },
   "devDependencies": {

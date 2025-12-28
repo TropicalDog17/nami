@@ -252,7 +252,7 @@ export class LLMClient {
       case 'anthropic':
         return 'claude-3-5-haiku-20241022'
       case 'zai':
-        return 'glm-4.5-flash'
+        return 'glm-4.7'
       default:
         throw new Error(`No default model for provider: ${this.config.provider}`)
     }

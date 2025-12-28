@@ -11,6 +11,7 @@ import { vaultsRouter } from "./handlers/vault.handler";
 import { consVaultsRouter } from "./handlers/cons-vaults.handler";
 import { adminRouter } from "./handlers/admin.handler";
 import { loansRouter } from "./handlers/loan.handler";
+import { aiRouter } from "./handlers/ai.handler";
 import { settingsRepository } from "./repositories/settings.repository";
 import { vaultService } from "./services/vault.service";
 
@@ -28,6 +29,7 @@ app.use("/api", vaultsRouter);
 app.use("/api", consVaultsRouter);
 app.use("/api", adminRouter);
 app.use("/api", loansRouter);
+app.use("/api", aiRouter);
 
 // OpenAPI/Swagger
 app.get("/api/openapi.json", (_req, res) => res.json(openapiSpec));
@@ -39,14 +41,18 @@ app.use(
 
 async function bootstrap() {
   try {
-    // Ensure default spending vault exists at startup
-    const defaultVaultName = settingsRepository.getDefaultSpendingVaultName();
-    vaultService.ensureVault(defaultVaultName);
+    // Ensure default vaults exist at startup
+    const defaultSpendingVault = settingsRepository.getDefaultSpendingVaultName();
+    const defaultIncomeVault = settingsRepository.getDefaultIncomeVaultName();
+    vaultService.ensureVault(defaultSpendingVault);
+    vaultService.ensureVault(defaultIncomeVault);
 
     // Initialize borrowing settings
     settingsRepository.getBorrowingSettings();
 
     console.log('Initialization complete.');
+    console.log(`Default spending vault: ${defaultSpendingVault}`);
+    console.log(`Default income vault: ${defaultIncomeVault}`);
   } catch (e) {
     const msg = (e as { message?: string } | null)?.message ?? String(e);
     console.error('Bootstrap failed:', msg);

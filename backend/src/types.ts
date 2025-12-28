@@ -40,6 +40,7 @@ export interface TransactionBase {
     dueDate?: string; // ISO date for due/billing date if applicable
     transferId?: string; // Links TRANSFER_OUT and TRANSFER_IN pairs
     loanId?: string; // optional link to a specific loan agreement (for LOAN, REPAY principal, interest income)
+    sourceRef?: string; // external reference ID for deduplication (e.g., bank transaction number)
     rate: Rate; // rate used at the time of transaction
     usdAmount: number; // amount * rateUSD (may be negative based on delta sign)
 }

@@ -208,8 +208,12 @@ export const adminApi = {
     api.get<T>(`/api/admin/pending-actions/${id}`),
   acceptPendingAction: <T = unknown>(id: string) =>
     api.post<T>(`/api/admin/pending-actions/${id}/accept`, {}),
-  rejectPendingAction: <T = unknown>(id: string, reason?: string) =>
-    api.post<T>(`/api/admin/pending-actions/${id}/reject`, { reason }),
+  rejectPendingAction: <T = unknown>(id: string) =>
+    api.post<T>(`/api/admin/pending-actions/${id}/reject`, {}),
+  acceptAllPendingActions: <T = unknown>(batchId?: string) =>
+    api.post<T>('/api/admin/pending-actions/accept-all', {}, batchId ? { batch_id: batchId } : {}),
+  rejectAllPendingActions: <T = unknown>(batchId?: string) =>
+    api.post<T>('/api/admin/pending-actions/reject-all', {}, batchId ? { batch_id: batchId } : {}),
 
   // Maintenance
   recalcFX: (onlyMissing: boolean = true) =>

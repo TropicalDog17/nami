@@ -77,6 +77,7 @@ export class TransactionService {
     tags?: string[];
     counterparty?: string;
     dueDate?: string;
+    sourceRef?: string;
   }): Promise<Transaction> {
     const base = await this.buildTransactionBase(
       params.asset,
@@ -93,6 +94,7 @@ export class TransactionService {
       tags: params.tags,
       counterparty: params.counterparty,
       dueDate: params.dueDate,
+      sourceRef: params.sourceRef,
       ...base,
     } as Transaction;
 
@@ -110,6 +112,7 @@ export class TransactionService {
     tags?: string[];
     counterparty?: string;
     dueDate?: string;
+    sourceRef?: string;
   }): Promise<Transaction> {
     const base = await this.buildTransactionBase(
       params.asset,
@@ -126,6 +129,7 @@ export class TransactionService {
       tags: params.tags,
       counterparty: params.counterparty,
       dueDate: params.dueDate,
+      sourceRef: params.sourceRef,
       ...(params.category ? { tag: params.category } : {} as any),
       ...base,
     } as Transaction;
