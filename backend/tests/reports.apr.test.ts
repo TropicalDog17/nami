@@ -28,16 +28,19 @@ describe('APR calculations using IRR (Money-Weighted Return)', () => {
     mockEntries = [];
     vi.resetModules();
 
-    vi.doMock('../src/store', () => {
-      const store = {
-        getVault: (name: string) => (name === vaultName ? { name: vaultName, status: 'ACTIVE', createdAt: '2025-01-01T00:00:00Z' } : undefined),
-        listVaults: () => [{ name: vaultName, status: 'ACTIVE', createdAt: '2025-01-01T00:00:00Z' }],
-        getVaultEntries: (name: string) => (name === vaultName ? mockEntries : []),
-      } as any;
-      return { store };
+    // Mock the vault repository (used by reports.handler.ts)
+    vi.doMock('../src/repositories/vault.repository', () => {
+      return {
+        vaultRepository: {
+          findByName: (name: string) => (name === vaultName ? { name: vaultName, status: 'ACTIVE', createdAt: '2025-01-01T00:00:00Z' } : undefined),
+          findAll: () => [{ name: vaultName, status: 'ACTIVE', createdAt: '2025-01-01T00:00:00Z' }],
+          findAllEntries: (name: string) => (name === vaultName ? mockEntries : []),
+        },
+      };
     });
 
-    vi.doMock('../src/priceService', () => {
+    // Mock the price service
+    vi.doMock('../src/services/price.service', () => {
       return {
         priceService: {
           getRateUSD: async (asset: Asset) => {
@@ -77,7 +80,7 @@ describe('APR calculations using IRR (Money-Weighted Return)', () => {
         { vault: vaultName, type: 'VALUATION', asset: USD, amount: 0, usdValue: 110, at: '2026-01-01T00:00:00Z' },
       ];
 
-      const { reportsRouter } = await import('../src/reports');
+      const { reportsRouter } = await import('../src/handlers/reports.handler');
       const app = appFactory(reportsRouter);
 
       const res = await request(app).get(`/api/reports/vaults/${vaultName}/header`).expect(200);
@@ -94,7 +97,7 @@ describe('APR calculations using IRR (Money-Weighted Return)', () => {
         { vault: vaultName, type: 'VALUATION', asset: USD, amount: 0, usdValue: 90, at: '2026-01-01T00:00:00Z' },
       ];
 
-      const { reportsRouter } = await import('../src/reports');
+      const { reportsRouter } = await import('../src/handlers/reports.handler');
       const app = appFactory(reportsRouter);
 
       const res = await request(app).get(`/api/reports/vaults/${vaultName}/header`).expect(200);
@@ -112,7 +115,7 @@ describe('APR calculations using IRR (Money-Weighted Return)', () => {
         { vault: vaultName, type: 'VALUATION', asset: USD, amount: 0, usdValue: 105, at: '2025-07-02T00:00:00Z' },
       ];
 
-      const { reportsRouter } = await import('../src/reports');
+      const { reportsRouter } = await import('../src/handlers/reports.handler');
       const app = appFactory(reportsRouter);
 
       const res = await request(app).get(`/api/reports/vaults/${vaultName}/header`).expect(200);
@@ -133,7 +136,7 @@ describe('APR calculations using IRR (Money-Weighted Return)', () => {
         { vault: vaultName, type: 'VALUATION', asset: USD, amount: 0, usdValue: 102, at: '2025-01-16T00:00:00Z' },
       ];
 
-      const { reportsRouter } = await import('../src/reports');
+      const { reportsRouter } = await import('../src/handlers/reports.handler');
       const app = appFactory(reportsRouter);
 
       const res = await request(app).get(`/api/reports/vaults/${vaultName}/header`).expect(200);
@@ -163,7 +166,7 @@ describe('APR calculations using IRR (Money-Weighted Return)', () => {
         { vault: vaultName, type: 'VALUATION', asset: USD, amount: 0, usdValue: 1210, at: '2025-12-31T00:00:00Z' },
       ];
 
-      const { reportsRouter } = await import('../src/reports');
+      const { reportsRouter } = await import('../src/handlers/reports.handler');
       const app = appFactory(reportsRouter);
 
       const res = await request(app).get(`/api/reports/vaults/${vaultName}/header`).expect(200);
@@ -188,7 +191,7 @@ describe('APR calculations using IRR (Money-Weighted Return)', () => {
         { vault: vaultName, type: 'VALUATION', asset: USD, amount: 0, usdValue: 1210, at: '2025-12-31T00:00:00Z' },
       ];
 
-      const { reportsRouter } = await import('../src/reports');
+      const { reportsRouter } = await import('../src/handlers/reports.handler');
       const app = appFactory(reportsRouter);
 
       const res = await request(app).get(`/api/reports/vaults/${vaultName}/header`).expect(200);
@@ -219,7 +222,7 @@ describe('APR calculations using IRR (Money-Weighted Return)', () => {
         { vault: vaultName, type: 'VALUATION', asset: USD, amount: 0, usdValue: 1320, at: '2025-12-31T00:00:00Z' },
       ];
 
-      const { reportsRouter } = await import('../src/reports');
+      const { reportsRouter } = await import('../src/handlers/reports.handler');
       const app = appFactory(reportsRouter);
 
       const res = await request(app).get(`/api/reports/vaults/${vaultName}/header`).expect(200);
@@ -249,7 +252,7 @@ describe('APR calculations using IRR (Money-Weighted Return)', () => {
         { vault: vaultName, type: 'VALUATION', asset: USD, amount: 0, usdValue: 900, at: '2025-12-31T00:00:00Z' },
       ];
 
-      const { reportsRouter } = await import('../src/reports');
+      const { reportsRouter } = await import('../src/handlers/reports.handler');
       const app = appFactory(reportsRouter);
 
       const res = await request(app).get(`/api/reports/vaults/${vaultName}/header`).expect(200);
@@ -273,7 +276,7 @@ describe('APR calculations using IRR (Money-Weighted Return)', () => {
         { vault: vaultName, type: 'VALUATION', asset: USD, amount: 0, usdValue: 1000, at: '2025-12-31T00:00:00Z' },
       ];
 
-      const { reportsRouter } = await import('../src/reports');
+      const { reportsRouter } = await import('../src/handlers/reports.handler');
       const app = appFactory(reportsRouter);
 
       const res = await request(app).get(`/api/reports/vaults/${vaultName}/header`).expect(200);
@@ -298,7 +301,7 @@ describe('APR calculations using IRR (Money-Weighted Return)', () => {
         { vault: vaultName, type: 'VALUATION', asset: USD, amount: 0, usdValue: 1100, at: '2025-12-31T00:00:00Z' },
       ];
 
-      const { reportsRouter } = await import('../src/reports');
+      const { reportsRouter } = await import('../src/handlers/reports.handler');
       const app = appFactory(reportsRouter);
 
       const res = await request(app).get(`/api/reports/vaults/${vaultName}/header`).expect(200);
@@ -321,7 +324,7 @@ describe('APR calculations using IRR (Money-Weighted Return)', () => {
         { vault: vaultName, type: 'VALUATION', asset: USD, amount: 0, usdValue: 1102.5, at: '2025-12-31T00:00:00Z' }, // Another 5% gain
       ];
 
-      const { reportsRouter } = await import('../src/reports');
+      const { reportsRouter } = await import('../src/handlers/reports.handler');
       const app = appFactory(reportsRouter);
 
       const res = await request(app).get(`/api/reports/vaults/${vaultName}/header`).expect(200);
@@ -341,7 +344,7 @@ describe('APR calculations using IRR (Money-Weighted Return)', () => {
       vi.setSystemTime(new Date('2025-06-01T12:00:00Z'));
       mockEntries = [];
 
-      const { reportsRouter } = await import('../src/reports');
+      const { reportsRouter } = await import('../src/handlers/reports.handler');
       const app = appFactory(reportsRouter);
 
       const res = await request(app).get(`/api/reports/vaults/${vaultName}/header`).expect(200);
@@ -358,7 +361,7 @@ describe('APR calculations using IRR (Money-Weighted Return)', () => {
         { vault: vaultName, type: 'VALUATION', asset: USD, amount: 0, usdValue: 1000, at: '2025-12-31T00:00:00Z' },
       ];
 
-      const { reportsRouter } = await import('../src/reports');
+      const { reportsRouter } = await import('../src/handlers/reports.handler');
       const app = appFactory(reportsRouter);
 
       const res = await request(app).get(`/api/reports/vaults/${vaultName}/header`).expect(200);
@@ -375,7 +378,7 @@ describe('APR calculations using IRR (Money-Weighted Return)', () => {
         { vault: vaultName, type: 'VALUATION', asset: USD, amount: 0, usdValue: 0, at: '2025-12-31T00:00:00Z' },
       ];
 
-      const { reportsRouter } = await import('../src/reports');
+      const { reportsRouter } = await import('../src/handlers/reports.handler');
       const app = appFactory(reportsRouter);
 
       const res = await request(app).get(`/api/reports/vaults/${vaultName}/header`).expect(200);
@@ -392,7 +395,7 @@ describe('APR calculations using IRR (Money-Weighted Return)', () => {
         { vault: vaultName, type: 'VALUATION', asset: USD, amount: 0, usdValue: 0.011, at: '2025-12-31T00:00:00Z' },
       ];
 
-      const { reportsRouter } = await import('../src/reports');
+      const { reportsRouter } = await import('../src/handlers/reports.handler');
       const app = appFactory(reportsRouter);
 
       const res = await request(app).get(`/api/reports/vaults/${vaultName}/header`).expect(200);
@@ -410,7 +413,7 @@ describe('APR calculations using IRR (Money-Weighted Return)', () => {
         { vault: vaultName, type: 'VALUATION', asset: USD, amount: 0, usdValue: 100, at: '2025-01-01T12:00:00Z' },
       ];
 
-      const { reportsRouter } = await import('../src/reports');
+      const { reportsRouter } = await import('../src/handlers/reports.handler');
       const app = appFactory(reportsRouter);
 
       const res = await request(app).get(`/api/reports/vaults/${vaultName}/header`).expect(200);
@@ -436,7 +439,7 @@ describe('APR calculations using IRR (Money-Weighted Return)', () => {
         { vault: vaultName, type: 'VALUATION', asset: USD, amount: 0, usdValue: 106, at: '2025-03-01T00:00:00Z' },
       ];
 
-      const { reportsRouter } = await import('../src/reports');
+      const { reportsRouter } = await import('../src/handlers/reports.handler');
       const app = appFactory(reportsRouter);
 
       const res = await request(app)
@@ -481,7 +484,7 @@ describe('APR calculations using IRR (Money-Weighted Return)', () => {
         { vault: vaultName, type: 'VALUATION', asset: USD, amount: 0, usdValue: 312, at: '2025-04-01T00:00:00Z' },
       ];
 
-      const { reportsRouter } = await import('../src/reports');
+      const { reportsRouter } = await import('../src/handlers/reports.handler');
       const app = appFactory(reportsRouter);
 
       const res = await request(app)
