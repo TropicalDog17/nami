@@ -49,6 +49,10 @@ const QuickExpenseModal: React.FC<QuickExpenseModalProps> = ({
 
   useEffect(() => {
     if (!isOpen) return;
+
+    // Always set account to Spend for expenses
+    setFormData(prev => ({ ...prev, account: 'Spend' }));
+
     const loadVaults = async () => {
       try {
         setIsLoadingVaults(true);
@@ -64,8 +68,6 @@ const QuickExpenseModal: React.FC<QuickExpenseModalProps> = ({
         }
 
         setVaults(arr);
-        // Default paying vault if none selected
-        setFormData(prev => ({ ...prev, account: prev.account || defaultAccount || (arr[0]?.name ?? '') }));
       } catch (e) {
         const msg = (e as { message?: string } | null)?.message ?? 'Failed to load vaults';
         setVaultsError(msg);
@@ -212,18 +214,24 @@ const QuickExpenseModal: React.FC<QuickExpenseModalProps> = ({
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Paying Vault</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Paying Vault
+                <span className="ml-2 text-xs font-normal text-blue-600">
+                  (All expenses use Spend vault)
+                </span>
+              </label>
               <select
                 value={formData.account}
                 onChange={(e) => handleInputChange('account', e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-100 cursor-not-allowed"
                 required
+                disabled={true}
               >
-                <option value="">{isLoadingVaults ? 'Loading vaults…' : 'Select vault'}</option>
-                {vaults.map((v) => (
-                  <option key={v.name} value={v.name}>{v.name}</option>
-                ))}
+                <option value="Spend">💰 Spend</option>
               </select>
+              <p className="text-xs text-gray-500 mt-1">
+                Expenses are automatically withdrawn from your Spend vault
+              </p>
               {vaultsError ? (
                 <p className="text-sm text-red-600 mt-1">{vaultsError}</p>
               ) : null}

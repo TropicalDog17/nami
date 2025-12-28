@@ -79,6 +79,7 @@ export interface StoreShape {
     borrowingLastAccrualAt?: string;
     migratedVaultOnly?: boolean;
     migratedBorrowingPrincipal?: boolean;
+    migratedIncomeToSpend?: boolean;
     defaultSpendingVaultName?: string;
     defaultIncomeVaultName?: string;
   };

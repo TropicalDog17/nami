@@ -974,6 +974,14 @@ const VaultDetailPage: React.FC = () => {
     return String(vault?.account || vaultId || '').toLowerCase() === 'borrowings';
   }, [isTokenizedVault, tokenizedVaultDetails, vault, vaultId]);
 
+  // Whether the current vault represents the special Spend view
+  const isSpend = useMemo(() => {
+    if (isTokenizedVault) {
+      return String(tokenizedVaultDetails?.name || '').toLowerCase() === 'spend';
+    }
+    return String(vault?.account || vaultId || '').toLowerCase() === 'spend';
+  }, [isTokenizedVault, tokenizedVaultDetails, vault, vaultId]);
+
   useEffect(() => {
     // When opening deposit form for USD vault, default qty to 1
     if (isUsdOnlyVault && showDepositForm) {
@@ -1275,7 +1283,48 @@ const VaultDetailPage: React.FC = () => {
           </div>
         )}
 
-        {!isBorrowings && (
+        {/* Spend Vault Summary */}
+        {isSpend && !isBorrowings && (
+          <div className="bg-white p-4 rounded-lg border border-gray-200 mb-6">
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-lg font-semibold">💰 Spend Account Overview</h2>
+              <span className="text-xs text-gray-500">Cash Tracking</span>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div>
+                <div className="text-gray-500 text-sm">Current Balance</div>
+                <div className="text-2xl font-bold text-green-700">
+                  {formatCurrency(headerMetrics?.aum_usd ?? 0)}
+                </div>
+                <div className="text-xs text-gray-500 mt-1">Available to spend</div>
+              </div>
+              <div>
+                <div className="text-gray-500 text-sm">Total Income</div>
+                <div className="text-xl font-semibold">
+                  {formatCurrency(headerMetrics?.deposits_cum_usd ?? 0)}
+                </div>
+                <div className="text-xs text-gray-500 mt-1">All deposits</div>
+              </div>
+              <div>
+                <div className="text-gray-500 text-sm">Total Spent</div>
+                <div className="text-xl font-semibold text-red-600">
+                  {formatCurrency(headerMetrics?.withdrawals_cum_usd ?? 0)}
+                </div>
+                <div className="text-xs text-gray-500 mt-1">All withdrawals</div>
+              </div>
+            </div>
+            <div className="mt-4 p-3 bg-blue-50 rounded-md">
+              <p className="text-sm text-blue-800">
+                <strong>Simple Balance Tracking:</strong> Income - Expenses = Current Balance
+              </p>
+              <p className="text-xs text-blue-600 mt-1">
+                No P&L or ROI calculations for this account (it's cash, not an investment)
+              </p>
+            </div>
+          </div>
+        )}
+
+        {!isBorrowings && !isSpend && (
         <>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
           <div className="bg-white p-4 rounded-lg border border-gray-200">

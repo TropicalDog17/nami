@@ -140,7 +140,15 @@ const VaultsPage: React.FC = () => {
       key: 'type',
       title: 'Type',
       render: (value, _c, row) => {
+        const isSpend = String(row.name || '').toLowerCase() === 'spend';
         const isBorrowings = String(row.name || '').toLowerCase() === 'borrowings';
+        if (isSpend) {
+          return (
+            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800`}>
+              Cash
+            </span>
+          );
+        }
         if (isBorrowings) {
           return (
             <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800`}>
@@ -168,8 +176,9 @@ const VaultsPage: React.FC = () => {
       type: 'currency',
       currency: 'USD',
       render: (value, _column, row) => {
+        const isSpend = String(row.name || '').toLowerCase() === 'spend';
         const isBorrowings = String(row.name || '').toLowerCase() === 'borrowings';
-        if (isBorrowings) {
+        if (isSpend || isBorrowings) {
           return <span className="text-gray-500">—</span>;
         }
         const price = typeof value === 'string' && value !== '' ? parseFloat(value) : 0;
@@ -202,8 +211,9 @@ const VaultsPage: React.FC = () => {
       type: 'number',
       decimals: 6,
       render: (value, _c, row) => {
+        const isSpend = String(row.name || '').toLowerCase() === 'spend';
         const isBorrowings = String(row.name || '').toLowerCase() === 'borrowings';
-        if (isBorrowings) return <span className="text-gray-500">—</span>;
+        if (isSpend || isBorrowings) return <span className="text-gray-500">—</span>;
         const supply = typeof value === 'string' && value !== '' ? parseFloat(value) : 0;
         return supply.toLocaleString(undefined, { maximumFractionDigits: 6 });
       },
@@ -214,8 +224,9 @@ const VaultsPage: React.FC = () => {
       type: 'number',
       decimals: 2,
       render: (_value, _c, row) => {
+        const isSpend = String(row.name || '').toLowerCase() === 'spend';
         const isBorrowings = String(row.name || '').toLowerCase() === 'borrowings';
-        if (isBorrowings) return <span className="text-gray-500">—</span>;
+        if (isSpend || isBorrowings) return <span className="text-gray-500">—</span>;
         const raw = typeof row.apr_percent === 'string' ? parseFloat(row.apr_percent) : (row.apr_percent as number | undefined);
         if (!(typeof raw === 'number' && isFinite(raw))) {
           return <span className="text-gray-500">—</span>;

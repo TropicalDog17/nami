@@ -19,12 +19,20 @@ export class TransactionService {
     asset: Asset,
     amount: number,
     at?: string,
-    account?: string
+    account?: string,
+    transactionType?: string
   ): Promise<TransactionBase> {
     const rate = await priceService.getRateUSD(asset, at);
     const acc = account && String(account).trim().length
       ? String(account).trim()
       : settingsRepository.getDefaultSpendingVaultName();
+
+    // WARNING: Expenses should come from Spend vault
+    if (transactionType === 'EXPENSE' && acc.toLowerCase() !== 'spend') {
+      console.error(`[MIGRATION] Creating expense with non-Spend account (${acc}). After migration, this will be enforced.`);
+      // TODO: After migration complete, throw error instead of warning
+      throw new Error('All expenses must be from Spend vault');
+    }
 
     return {
       asset,
@@ -83,7 +91,8 @@ export class TransactionService {
       params.asset,
       params.amount,
       params.at,
-      params.account
+      params.account,
+      'INCOME'
     );
 
     const tx: Transaction = {
@@ -118,7 +127,8 @@ export class TransactionService {
       params.asset,
       params.amount,
       params.at,
-      params.account
+      params.account,
+      'EXPENSE'
     );
 
     const tx: Transaction = {
@@ -135,6 +145,30 @@ export class TransactionService {
     } as Transaction;
 
     transactionRepository.create(tx);
+
+    // Auto-create vault WITHDRAW entry for Spend vault
+    const isSpendVault = base.account.toLowerCase() === 'spend';
+    if (isSpendVault) {
+      const { vaultService } = require('./vault.service');
+
+      // Ensure Spend vault exists
+      vaultService.ensureVault('Spend');
+
+      // Create WITHDRAW entry
+      const vaultEntry = {
+        vault: 'Spend',
+        type: 'WITHDRAW' as const,
+        asset: params.asset,
+        amount: params.amount,
+        usdValue: tx.usdAmount,
+        at: base.createdAt,
+        account: base.account,
+        note: params.note ? `Expense: ${params.note}` : 'Expense'
+      };
+
+      vaultService.addVaultEntry(vaultEntry);
+    }
+
     return tx;
   }
 

@@ -48,6 +48,10 @@ export class SettingsRepository {
 
   getDefaultIncomeVaultName(): string {
     const store = readStore();
+    // After migration, all income goes to Spend
+    if (this.isMigratedIncomeToSpend()) {
+      return 'Spend';
+    }
     return store.settings?.defaultIncomeVaultName?.trim() || 'Income';
   }
 
@@ -79,6 +83,18 @@ export class SettingsRepository {
     const store = readStore();
     if (!store.settings) store.settings = {};
     store.settings.migratedBorrowingPrincipal = value;
+    writeStore(store);
+  }
+
+  isMigratedIncomeToSpend(): boolean {
+    const store = readStore();
+    return store.settings?.migratedIncomeToSpend === true;
+  }
+
+  setMigratedIncomeToSpend(value: boolean): void {
+    const store = readStore();
+    if (!store.settings) store.settings = {};
+    store.settings.migratedIncomeToSpend = value;
     writeStore(store);
   }
 }

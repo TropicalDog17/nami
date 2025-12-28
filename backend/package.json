@@ -9,7 +9,8 @@
         "test": "vitest run",
         "test:watch": "vitest",
         "purge:transactions": "ts-node-dev --transpile-only --exit-child src/scripts/purgeTransactions.ts",
-        "migrate:backfill-spending-vault": "ts-node-dev --transpile-only --exit-child src/scripts/backfillSpendingVault.ts"
+        "migrate:backfill-spending-vault": "ts-node-dev --transpile-only --exit-child src/scripts/backfillSpendingVault.ts",
+        "migrate:income-to-spend": "ts-node-dev --transpile-only --exit-child src/scripts/migrateIncomeToSpend.ts"
     },
     "dependencies": {
         "@types/swagger-ui-express": "^4.1.8",
