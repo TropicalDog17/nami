@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import AssetAllocationChart from '../components/reports/AssetAllocationChart';
 import CashFlowChart from '../components/reports/CashFlowChart';
 import { PnLChart, SpendingChart, DailySpendingChart, MonthlySpendingTrendChart } from '../components/reports/Charts';
+import AggregatedPnLChart from '../components/reports/AggregatedPnLChart';
 import DataTable, { TableColumn, TableRowBase } from '../components/ui/DataTable';
 import DateInput from '../components/ui/DateInput';
 import { useBackendStatus } from '../context/BackendStatusContext';
@@ -52,6 +53,7 @@ const ReportsPage = () => {
   const tabs = [
     { id: 'holdings', name: 'Holdings', icon: '📊' },
     { id: 'allocation', name: 'Asset Allocation', icon: '🥧' },
+    { id: 'aggregated-pnl', name: 'Aggregated P&L', icon: '📈' },
     { id: 'cashflow', name: 'Cash Flow', icon: '💸' },
     { id: 'spending', name: 'Spending', icon: '🛒' },
   ];
@@ -1121,6 +1123,15 @@ const ReportsPage = () => {
     );
   };
 
+  const renderAggregatedPnL = () => {
+    return (
+      <AggregatedPnLChart
+        currency={currency}
+        onCurrencyChange={setCurrency}
+      />
+    );
+  };
+
   const renderContent = () => {
     if (!isOnline) {
       return (
@@ -1151,6 +1162,8 @@ const ReportsPage = () => {
         return renderHoldingsTable();
       case 'allocation':
         return renderAssetAllocation();
+      case 'aggregated-pnl':
+        return renderAggregatedPnL();
       case 'investments':
         return renderInvestmentsTable();
       case 'cashflow':
