@@ -9,7 +9,7 @@
  */
 
 import { readStore, writeStore } from '../repositories/base.repository';
-import { settingsRepository } from '../repositories/settings.repository';
+import { settingsRepository } from '../repositories';
 import * as fs from 'fs';
 import * as path from 'path';
 

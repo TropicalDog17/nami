@@ -28,8 +28,8 @@ describe('APR calculations using IRR (Money-Weighted Return)', () => {
     mockEntries = [];
     vi.resetModules();
 
-    // Mock the vault repository (used by reports.handler.ts)
-    vi.doMock('../src/repositories/vault.repository', () => {
+    // Mock the repositories index
+    vi.doMock('../src/repositories', () => {
       return {
         vaultRepository: {
           findByName: (name: string) => (name === vaultName ? { name: vaultName, status: 'ACTIVE', createdAt: '2025-01-01T00:00:00Z' } : undefined),

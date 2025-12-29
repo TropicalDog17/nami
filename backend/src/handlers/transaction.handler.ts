@@ -14,8 +14,8 @@ import {
 } from "../types";
 import { transactionService } from "../services/transaction.service";
 import { vaultService } from "../services/vault.service";
-import { vaultRepository } from "../repositories/vault.repository";
-import { transactionRepository } from "../repositories/transaction.repository";
+import { vaultRepository } from "../repositories";
+import { transactionRepository } from "../repositories";
 import { priceService } from "../services/price.service";
 
 export const transactionsRouter = Router();

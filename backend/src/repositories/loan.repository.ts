@@ -1,7 +1,10 @@
 import { LoanAgreement } from "../types";
 import { readStore, writeStore } from "./base.repository";
+import { ILoanRepository } from "./repository.interface";
+import { BaseDbRepository, rowToLoan, loanToRow } from "./base-db.repository";
 
-export class LoanRepository {
+// JSON-based implementation
+export class LoanRepositoryJson implements ILoanRepository {
   findAll(): LoanAgreement[] {
     return readStore().loans;
   }
@@ -44,4 +47,87 @@ export class LoanRepository {
   }
 }
 
-export const loanRepository = new LoanRepository();
+// Database-based implementation
+export class LoanRepositoryDb extends BaseDbRepository implements ILoanRepository {
+  findAll(): LoanAgreement[] {
+    return this.findMany(
+      'SELECT * FROM loans ORDER BY created_at DESC',
+      [],
+      rowToLoan
+    );
+  }
+
+  findById(id: string): LoanAgreement | undefined {
+    return this.findOne(
+      'SELECT * FROM loans WHERE id = ?',
+      [id],
+      rowToLoan
+    );
+  }
+
+  findByCounterparty(counterparty: string): LoanAgreement[] {
+    return this.findMany(
+      'SELECT * FROM loans WHERE counterparty = ? ORDER BY created_at DESC',
+      [counterparty],
+      rowToLoan
+    );
+  }
+
+  findByStatus(status: string): LoanAgreement[] {
+    return this.findMany(
+      'SELECT * FROM loans WHERE status = ? ORDER BY created_at DESC',
+      [status],
+      rowToLoan
+    );
+  }
+
+  create(loan: LoanAgreement): LoanAgreement {
+    const row = loanToRow(loan);
+    this.execute(
+      `INSERT INTO loans (
+        id, counterparty, asset_type, asset_symbol, principal, interest_rate,
+        period, start_at, maturity_at, note, account, status, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        row.id, row.counterparty, row.asset_type, row.asset_symbol, row.principal,
+        row.interest_rate, row.period, row.start_at, row.maturity_at,
+        row.note, row.account, row.status, row.created_at
+      ]
+    );
+    return loan;
+  }
+
+  update(id: string, updates: Partial<LoanAgreement>): LoanAgreement | undefined {
+    const fields: string[] = [];
+    const values: any[] = [];
+
+    const updateFields: (keyof LoanAgreement)[] = [
+      'counterparty', 'principal', 'interestRate', 'period',
+      'startAt', 'maturityAt', 'note', 'account', 'status'
+    ];
+
+    for (const field of updateFields) {
+      if (field in updates) {
+        const dbField = field === 'interestRate' ? 'interest_rate' :
+                        field === 'startAt' ? 'start_at' :
+                        field === 'maturityAt' ? 'maturity_at' : field;
+        fields.push(`${dbField} = ?`);
+        values.push(updates[field]);
+      }
+    }
+
+    if (fields.length === 0) return this.findById(id);
+
+    values.push(id);
+    this.execute(
+      `UPDATE loans SET ${fields.join(', ')} WHERE id = ?`,
+      values
+    );
+    return this.findById(id);
+  }
+
+  delete(id: string): boolean {
+    const result = this.execute('DELETE FROM loans WHERE id = ?', [id]);
+    return result.changes > 0;
+  }
+}

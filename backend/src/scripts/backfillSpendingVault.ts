@@ -10,7 +10,7 @@
 
 import fs from 'fs';
 import path from 'path';
-import { settingsRepository } from '../repositories/settings.repository';
+import { settingsRepository } from '../repositories';
 
 const DATA_DIR = path.resolve(__dirname, '..', '..', 'data');
 const STORE_FILE = path.join(DATA_DIR, 'store.json');

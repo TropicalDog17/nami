@@ -2,9 +2,9 @@ import { Router, Request, Response } from 'express';
 import crypto from 'crypto';
 import { v4 as uuidv4 } from 'uuid';
 import { transactionService } from '../services/transaction.service';
-import { settingsRepository } from '../repositories/settings.repository';
+import { settingsRepository } from '../repositories';
 import { vaultService } from '../services/vault.service';
-import { transactionRepository } from '../repositories/transaction.repository';
+import { transactionRepository } from '../repositories';
 import { Asset } from '../types';
 
 export const aiRouter = Router();

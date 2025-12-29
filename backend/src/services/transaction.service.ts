@@ -1,8 +1,8 @@
 import { v4 as uuidv4 } from "uuid";
 import { Asset, Transaction, PortfolioReport, PortfolioReportItem, assetKey } from "../types";
-import { transactionRepository } from "../repositories/transaction.repository";
-import { vaultRepository } from "../repositories/vault.repository";
-import { settingsRepository } from "../repositories/settings.repository";
+import { transactionRepository } from "../repositories";
+import { vaultRepository } from "../repositories";
+import { settingsRepository } from "../repositories";
 import { priceService } from "./price.service";
 
 export interface TransactionBase {

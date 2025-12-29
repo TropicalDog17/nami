@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
-import { adminRepository } from '../repositories/admin.repository';
-import { settingsRepository } from '../repositories/settings.repository';
+import { adminRepository } from '../repositories';
+import { settingsRepository } from '../repositories';
 import { vaultService } from '../services/vault.service';
 import { transactionService } from '../services/transaction.service';
 import { Asset } from '../types';

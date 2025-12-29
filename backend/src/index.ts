@@ -12,8 +12,9 @@ import { consVaultsRouter } from "./handlers/cons-vaults.handler";
 import { adminRouter } from "./handlers/admin.handler";
 import { loansRouter } from "./handlers/loan.handler";
 import { aiRouter } from "./handlers/ai.handler";
-import { settingsRepository } from "./repositories/settings.repository";
+import { settingsRepository } from "./repositories";
 import { vaultService } from "./services/vault.service";
+import { initializeDatabase, closeConnection } from "./database/connection";
 
 const app = express();
 app.use(cors());
@@ -41,6 +42,12 @@ app.use(
 
 async function bootstrap() {
   try {
+    // Initialize database if using database backend
+    if (process.env.STORAGE_BACKEND === 'database') {
+      initializeDatabase();
+      console.log('Database initialized');
+    }
+
     // Ensure default vaults exist at startup
     const defaultSpendingVault = settingsRepository.getDefaultSpendingVaultName();
     const defaultIncomeVault = settingsRepository.getDefaultIncomeVaultName();
@@ -65,4 +72,11 @@ bootstrap().finally(() => {
     console.log(`Portfolio backend listening on http://localhost:${PORT}`);
     console.log(`Swagger UI at http://localhost:${PORT}/api/docs`);
   });
+});
+
+// Graceful shutdown
+process.on('SIGINT', () => {
+  console.log('\nShutting down gracefully...');
+  closeConnection();
+  process.exit(0);
 });

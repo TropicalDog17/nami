@@ -1,7 +1,7 @@
 import { v4 as uuidv4 } from "uuid";
 import { LoanAgreement, LoanCreateRequest, Transaction } from "../types";
-import { loanRepository } from "../repositories/loan.repository";
-import { transactionRepository } from "../repositories/transaction.repository";
+import { loanRepository } from "../repositories";
+import { transactionRepository } from "../repositories";
 import { priceService } from "./price.service";
 
 export interface LoanView {

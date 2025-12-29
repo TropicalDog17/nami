@@ -29,8 +29,8 @@ describe('Transaction Handler', () => {
     mockVaults = [];
     mockEntries = [];
 
-    // Mock transaction repository
-    vi.doMock('../src/repositories/transaction.repository', () => ({
+    // Mock all repositories from index
+    vi.doMock('../src/repositories', () => ({
       transactionRepository: {
         findAll: () => mockTransactions,
         findById: (id: string) => mockTransactions.find(t => t.id === id),
@@ -45,10 +45,6 @@ describe('Transaction Handler', () => {
           return true;
         },
       },
-    }));
-
-    // Mock vault repository
-    vi.doMock('../src/repositories/vault.repository', () => ({
       vaultRepository: {
         findByName: (name: string) => mockVaults.find(v => v.name === name),
         findAll: () => mockVaults,
@@ -63,6 +59,17 @@ describe('Transaction Handler', () => {
           return entry;
         },
       },
+      settingsRepository: {
+        getDefaultSpendingVaultName: () => 'Spend',
+        getDefaultIncomeVaultName: () => 'Income',
+        getBorrowingSettings: () => ({ borrowingVaultName: 'Borrowing' }),
+        get: (key: string) => {
+          if (key === 'defaultSpendingVaultName') return 'Spend';
+          if (key === 'defaultIncomeVaultName') return 'Income';
+          return undefined;
+        },
+        set: vi.fn(),
+      },
     }));
 
     // Mock price service
@@ -76,15 +83,6 @@ describe('Transaction Handler', () => {
           else if (symbol === 'VND') rateUSD = 1 / 24000;
           return { asset, rateUSD, timestamp: new Date().toISOString(), source: 'MOCK' };
         },
-      },
-    }));
-
-    // Mock settings repository
-    vi.doMock('../src/repositories/settings.repository', () => ({
-      settingsRepository: {
-        getDefaultSpendingVaultName: () => 'Spend',
-        getDefaultIncomeVaultName: () => 'Income',
-        getBorrowingSettings: () => ({ borrowingVaultName: 'Borrowing' }),
       },
     }));
   });

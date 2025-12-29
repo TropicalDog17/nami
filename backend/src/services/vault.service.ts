@@ -1,7 +1,7 @@
 import { Asset, Vault, VaultEntry, assetKey } from "../types";
-import { vaultRepository } from "../repositories/vault.repository";
-import { settingsRepository } from "../repositories/settings.repository";
-import { transactionRepository } from "../repositories/transaction.repository";
+import { vaultRepository } from "../repositories";
+import { settingsRepository } from "../repositories";
+import { transactionRepository } from "../repositories";
 import { priceService } from "./price.service";
 
 export interface VaultStats {

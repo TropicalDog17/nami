@@ -27,8 +27,8 @@ describe('Vault Handler', () => {
     mockVaults = [];
     mockEntries = [];
 
-    // Mock the vault repository
-    vi.doMock('../src/repositories/vault.repository', () => ({
+    // Mock the repositories index
+    vi.doMock('../src/repositories', () => ({
       vaultRepository: {
         findByName: (name: string) => mockVaults.find(v => v.name === name),
         findAll: () => mockVaults,
@@ -56,6 +56,12 @@ describe('Vault Handler', () => {
           mockEntries.push(entry);
           return entry;
         },
+      },
+      transactionRepository: {
+        create: vi.fn(),
+      },
+      settingsRepository: {
+        getDefaultSpendingVaultName: () => 'Spend',
       },
     }));
 

@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import { vaultService } from '../services/vault.service';
-import { transactionRepository } from '../repositories/transaction.repository';
+import { transactionRepository } from '../repositories';
 import { Transaction, Asset } from '../types';
 import { priceService } from '../services/price.service';
 

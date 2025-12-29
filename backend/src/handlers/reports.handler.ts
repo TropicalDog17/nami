@@ -1,7 +1,7 @@
 import { Router } from 'express';
-import { vaultRepository } from '../repositories/vault.repository';
-import { transactionRepository } from '../repositories/transaction.repository';
-import { settingsRepository } from '../repositories/settings.repository';
+import { vaultRepository } from '../repositories';
+import { transactionRepository } from '../repositories';
+import { settingsRepository } from '../repositories';
 import { transactionService } from '../services/transaction.service';
 import { priceService } from '../services/price.service';
 import { Asset, VaultEntry, PortfolioReportItem } from '../types';
@@ -720,23 +720,25 @@ reportsRouter.get('/reports/vaults/summary', async (req, res) => {
     const names = vaultRepository.findAll().map(v => v.name);
     const vndRate = await usdToVnd();
 
-    const rows: Array<{ vault: string; aum_usd: number; aum_vnd: number; pnl_usd: number; pnl_vnd: number; roi_percent: number; apr_percent: number }>
-      = [];
+    // Process vaults in parallel for better performance
+    const vaultMetrics = await Promise.all(
+      names.map(async (name) => {
+        const s = await buildVaultDailySeries(name, start, end);
+        const last = s[s.length - 1];
+        if (!last) return null;
+        return {
+          vault: name,
+          aum_usd: last.aum_usd,
+          aum_vnd: last.aum_usd * vndRate,
+          pnl_usd: last.pnl_usd,
+          pnl_vnd: last.pnl_usd * vndRate,
+          roi_percent: last.roi_percent,
+          apr_percent: last.apr_percent,
+        };
+      })
+    );
 
-    for (const name of names) {
-      const s = await buildVaultDailySeries(name, start, end);
-      const last = s[s.length - 1];
-      if (!last) continue;
-      rows.push({
-        vault: name,
-        aum_usd: last.aum_usd,
-        aum_vnd: last.aum_usd * vndRate,
-        pnl_usd: last.pnl_usd,
-        pnl_vnd: last.pnl_usd * vndRate,
-        roi_percent: last.roi_percent,
-        apr_percent: last.apr_percent,
-      });
-    }
+    const rows = vaultMetrics.filter((r): r is NonNullable<typeof r> => r !== null);
 
     const totals = rows.reduce((acc, r) => {
       acc.aum_usd += r.aum_usd; acc.aum_vnd += r.aum_vnd; acc.pnl_usd += r.pnl_usd; acc.pnl_vnd += r.pnl_vnd; return acc;
