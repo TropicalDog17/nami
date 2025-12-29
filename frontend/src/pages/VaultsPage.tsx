@@ -2,11 +2,14 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 import { TimeSeriesLineChart } from '../components/reports/Charts';
+import AggregatedPnLChart from '../components/reports/AggregatedPnLChart';
 import CreateTokenizedVaultForm from '../components/tokenized/CreateTokenizedVaultForm';
 import DataTable, { TableColumn } from '../components/ui/DataTable';
 import { useToast } from '../components/ui/Toast';
 import { tokenizedVaultApi, ApiError, reportsApi } from '../services/api';
 import { formatCurrency, formatPercentage } from '../utils/currencyFormatter';
+
+type Currency = 'USD' | 'VND';
 
 type TokenizedVault = {
   id: string;
@@ -44,6 +47,7 @@ const VaultsPage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [showCreateForm, setShowCreateForm] = useState<boolean>(false);
   const [filter, setFilter] = useState<'all' | 'active' | 'closed'>('active');
+  const [currency, setCurrency] = useState<Currency>('USD');
 
   // Aggregate time series data for all vaults (PNL and APR over time)
   const [aggregateSeries, setAggregateSeries] = useState<Array<{ date: string; total_pnl_usd: number; weighted_apr_percent: number }>>([]);
@@ -462,6 +466,14 @@ const VaultsPage: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Aggregated P&L Chart with 7d/30d filters */}
+      <div className="mb-6">
+        <AggregatedPnLChart
+          currency={currency}
+          onCurrencyChange={setCurrency}
+        />
+      </div>
 
       {/* Controls */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 space-y-3 sm:space-y-0">
