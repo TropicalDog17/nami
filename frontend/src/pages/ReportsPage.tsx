@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 
 import AssetAllocationChart from '../components/reports/AssetAllocationChart';
 import CashFlowChart from '../components/reports/CashFlowChart';
-import { PnLChart, SpendingChart, DailySpendingChart } from '../components/reports/Charts';
+import { PnLChart, SpendingChart, DailySpendingChart, MonthlySpendingTrendChart } from '../components/reports/Charts';
 import DataTable, { TableColumn, TableRowBase } from '../components/ui/DataTable';
 import DateInput from '../components/ui/DateInput';
 import { useBackendStatus } from '../context/BackendStatusContext';
@@ -760,7 +760,7 @@ const ReportsPage = () => {
 
     type SpendingRow = TableRowBase & { tag: string; amount_usd?: number | string; amount_vnd?: number | string; percentage?: number | string; count?: number };
     const columns: TableColumn<SpendingRow>[] = [
-      { key: 'tag', title: 'Tag' },
+      { key: 'tag', title: 'Category' },
       {
         key: currency === 'USD' ? 'amount_usd' : 'amount_vnd',
         title: `Amount (${currency})`,
@@ -775,10 +775,21 @@ const ReportsPage = () => {
       },
       {
         key: 'percentage',
-        title: 'Percentage',
+        title: '% of Total',
         render: (value) => {
           const val = value as number | string | undefined;
-          return `${parseFloat(String(val ?? 0)).toFixed(1)}%`;
+          const pct = parseFloat(String(val ?? 0));
+          return (
+            <div className="flex items-center gap-2">
+              <div className="w-16 bg-gray-200 rounded-full h-2">
+                <div
+                  className="bg-orange-500 h-2 rounded-full"
+                  style={{ width: `${Math.min(pct, 100)}%` }}
+                />
+              </div>
+              <span>{pct.toFixed(1)}%</span>
+            </div>
+          );
         },
       },
       {
@@ -788,19 +799,143 @@ const ReportsPage = () => {
       },
     ];
 
+    // Extract spending metrics
+    const currentMonthUsd = parseFloat(String(spending.current_month_usd ?? 0));
+    const currentMonthVnd = parseFloat(String(spending.current_month_vnd ?? 0));
+    const lastMonthUsd = parseFloat(String(spending.last_month_usd ?? 0));
+    const lastMonthVnd = parseFloat(String(spending.last_month_vnd ?? 0));
+    const momChangePercent = parseFloat(String(spending.mom_change_percent ?? 0));
+    const avgDailyUsd = parseFloat(String(spending.avg_daily_usd ?? 0));
+    const avgDailyVnd = parseFloat(String(spending.avg_daily_vnd ?? 0));
+    const availableBalanceUsd = parseFloat(String(spending.available_balance_usd ?? 0));
+    const availableBalanceVnd = parseFloat(String(spending.available_balance_vnd ?? 0));
+    const totalUsd = parseFloat(String(spending.total_usd ?? 0));
+    const totalVnd = parseFloat(String(spending.total_vnd ?? 0));
+
+    const currentMonth = currency === 'USD' ? currentMonthUsd : currentMonthVnd;
+    const lastMonth = currency === 'USD' ? lastMonthUsd : lastMonthVnd;
+    const avgDaily = currency === 'USD' ? avgDailyUsd : avgDailyVnd;
+    const availableBalance = currency === 'USD' ? availableBalanceUsd : availableBalanceVnd;
+    const total = currency === 'USD' ? totalUsd : totalVnd;
+    const currencySymbol = currency === 'USD' ? '$' : '₫';
+
+    // Get current month name
+    const currentMonthName = new Date().toLocaleString('default', { month: 'long' });
+
     return (
       <div className="space-y-6">
-        {/* Summary & Charts */}
-        {spending.total_usd !== undefined && (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <div className="bg-white p-6 rounded-lg border border-gray-200">
-              <h4 className="text-lg font-medium text-gray-900 mb-4">Daily Spending Trend</h4>
-              <div style={{ height: '300px' }}>
-                <DailySpendingChart data={spending} currency={currency} />
+        {/* Key Metrics Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          {/* Available Balance */}
+          <div className={`p-4 rounded-lg border-2 ${availableBalance >= 0 ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
+            <div className="flex items-center justify-between mb-1">
+              <h4 className={`text-sm font-medium ${availableBalance >= 0 ? 'text-green-800' : 'text-red-800'}`}>
+                Available Balance
+              </h4>
+              <span className="text-lg">{availableBalance >= 0 ? '💰' : '⚠️'}</span>
+            </div>
+            <p className={`text-2xl font-bold ${availableBalance >= 0 ? 'text-green-900' : 'text-red-900'}`}>
+              {currencySymbol}{Math.abs(availableBalance).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+            </p>
+            <p className="text-xs text-gray-600 mt-1">Income - Expenses</p>
+          </div>
+
+          {/* Current Month Spending */}
+          <div className="bg-orange-50 p-4 rounded-lg border-2 border-orange-200">
+            <div className="flex items-center justify-between mb-1">
+              <h4 className="text-sm font-medium text-orange-800">{currentMonthName} Spending</h4>
+              <span className="text-lg">📊</span>
+            </div>
+            <p className="text-2xl font-bold text-orange-900">
+              {currencySymbol}{currentMonth.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+            </p>
+            {lastMonth > 0 && (
+              <div className="flex items-center mt-1">
+                <span className={`text-xs font-medium ${momChangePercent <= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                  {momChangePercent <= 0 ? '↓' : '↑'} {Math.abs(momChangePercent).toFixed(1)}% vs last month
+                </span>
+              </div>
+            )}
+          </div>
+
+          {/* Daily Average */}
+          <div className="bg-blue-50 p-4 rounded-lg border-2 border-blue-200">
+            <div className="flex items-center justify-between mb-1">
+              <h4 className="text-sm font-medium text-blue-800">Daily Average</h4>
+              <span className="text-lg">📅</span>
+            </div>
+            <p className="text-2xl font-bold text-blue-900">
+              {currencySymbol}{avgDaily.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+            </p>
+            <p className="text-xs text-gray-600 mt-1">This month so far</p>
+          </div>
+
+          {/* Period Total */}
+          <div className="bg-purple-50 p-4 rounded-lg border-2 border-purple-200">
+            <div className="flex items-center justify-between mb-1">
+              <h4 className="text-sm font-medium text-purple-800">Period Total</h4>
+              <span className="text-lg">🛒</span>
+            </div>
+            <p className="text-2xl font-bold text-purple-900">
+              {currencySymbol}{total.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+            </p>
+            <p className="text-xs text-gray-600 mt-1">Selected date range</p>
+          </div>
+        </div>
+
+        {/* Month Comparison Card */}
+        {(currentMonth > 0 || lastMonth > 0) && (
+          <div className="bg-white p-4 rounded-lg border border-gray-200">
+            <h4 className="text-sm font-medium text-gray-700 mb-3">Month-over-Month Comparison</h4>
+            <div className="flex items-center gap-8">
+              <div className="flex-1">
+                <div className="flex justify-between text-sm mb-1">
+                  <span className="text-gray-600">Current Month</span>
+                  <span className="font-medium text-orange-600">{currencySymbol}{currentMonth.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
+                </div>
+                <div className="w-full bg-gray-200 rounded-full h-3">
+                  <div
+                    className="bg-orange-500 h-3 rounded-full transition-all duration-500"
+                    style={{ width: `${Math.min((currentMonth / Math.max(currentMonth, lastMonth)) * 100, 100)}%` }}
+                  />
+                </div>
+              </div>
+              <div className="flex-1">
+                <div className="flex justify-between text-sm mb-1">
+                  <span className="text-gray-600">Last Month</span>
+                  <span className="font-medium text-gray-600">{currencySymbol}{lastMonth.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
+                </div>
+                <div className="w-full bg-gray-200 rounded-full h-3">
+                  <div
+                    className="bg-gray-400 h-3 rounded-full transition-all duration-500"
+                    style={{ width: `${Math.min((lastMonth / Math.max(currentMonth, lastMonth)) * 100, 100)}%` }}
+                  />
+                </div>
+              </div>
+              <div className="text-center px-4 py-2 rounded-lg bg-gray-50">
+                <div className={`text-lg font-bold ${momChangePercent <= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                  {momChangePercent <= 0 ? '↓' : '↑'} {Math.abs(momChangePercent).toFixed(1)}%
+                </div>
+                <div className="text-xs text-gray-500">Change</div>
               </div>
             </div>
+          </div>
+        )}
+
+        {/* Charts Section */}
+        {spending.total_usd !== undefined && (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Monthly Spending Trend */}
             <div className="bg-white p-6 rounded-lg border border-gray-200">
-              <h4 className="text-lg font-medium text-gray-900 mb-4">Spending by Tag</h4>
+              <h4 className="text-lg font-medium text-gray-900 mb-4">Monthly Spending Trend (12 months)</h4>
+              <div style={{ height: '300px' }}>
+                <MonthlySpendingTrendChart data={spending as { monthly_trend?: Array<{ month: string; amount_usd: number; amount_vnd: number }> }} currency={currency} />
+              </div>
+            </div>
+
+            {/* Spending by Category */}
+            <div className="bg-white p-6 rounded-lg border border-gray-200">
+              <h4 className="text-lg font-medium text-gray-900 mb-4">Spending by Category</h4>
               <div style={{ height: '300px' }}>
                 <SpendingChart data={spending} currency={currency} />
               </div>
@@ -808,28 +943,31 @@ const ReportsPage = () => {
           </div>
         )}
 
-        {/* Total Spending */}
+        {/* Daily Spending Chart - Full Width */}
         {spending.total_usd !== undefined && (
-          <div className="bg-orange-50 p-4 rounded-lg">
-            <h4 className="text-sm font-medium text-orange-800">Total Spending</h4>
-            <p className="text-3xl font-bold text-orange-900">
-              {currency === 'USD'
-                ? `$${parseFloat(String(spending.total_usd as string ?? '0')).toLocaleString()}`
-                : `₫${parseFloat(String(spending.total_vnd as string ?? '0')).toLocaleString()}`}
-            </p>
+          <div className="bg-white p-6 rounded-lg border border-gray-200">
+            <h4 className="text-lg font-medium text-gray-900 mb-4">Daily Spending (Selected Period)</h4>
+            <div style={{ height: '250px' }}>
+              <DailySpendingChart data={spending} currency={currency} />
+            </div>
           </div>
         )}
 
-        {/* Table */}
-        <DataTable
-          data={byTag}
-          columns={columns}
-          loading={loading}
-          emptyMessage="No spending data found"
-          filterable={true}
-          sortable={true}
-          pagination={true}
-        />
+        {/* Category Breakdown Table */}
+        <div className="bg-white rounded-lg border border-gray-200">
+          <div className="px-4 py-3 border-b border-gray-200">
+            <h4 className="text-lg font-medium text-gray-900">Spending by Category</h4>
+          </div>
+          <DataTable
+            data={byTag}
+            columns={columns}
+            loading={loading}
+            emptyMessage="No spending data found"
+            filterable={true}
+            sortable={true}
+            pagination={true}
+          />
+        </div>
       </div>
     );
   };
