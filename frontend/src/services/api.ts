@@ -1,5 +1,5 @@
 const API_BASE_URL: string =
-  (import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8080');
+  import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8080';
 
 class ApiError extends Error {
   status: number;
@@ -128,7 +128,10 @@ class ApiClient {
     });
   }
 
-  async delete<T = unknown, B = unknown>(endpoint: string, data?: B): Promise<T | null> {
+  async delete<T = unknown, B = unknown>(
+    endpoint: string,
+    data?: B
+  ): Promise<T | null> {
     return this.request<T>(endpoint, {
       method: 'DELETE',
       body: data,
@@ -143,21 +146,31 @@ const api = new ApiClient();
 export const transactionApi = {
   list: <T = unknown>(filters: Record<string, unknown> = {}) =>
     api.get<T>('/api/transactions', filters),
-  get: <T = unknown>(id: string | number) => api.get<T>(`/api/transactions/${id}`),
-  create: <T = unknown>(transaction: unknown) => api.post<T>('/api/transactions', transaction),
+  get: <T = unknown>(id: string | number) =>
+    api.get<T>(`/api/transactions/${id}`),
+  create: <T = unknown>(transaction: unknown) =>
+    api.post<T>('/api/transactions', transaction),
   update: <T = unknown>(id: string | number, transaction: unknown) =>
     api.put<T>(`/api/transactions/${id}`, transaction),
-  delete: <T = unknown>(id: string | number) => api.delete<T>(`/api/transactions/${id}`),
-  deleteMany: (ids: Array<string>) => api.delete<{ deleted: number }, { ids: Array<string> }>(`/api/transactions`, { ids }),
+  delete: <T = unknown>(id: string | number) =>
+    api.delete<T>(`/api/transactions/${id}`),
+  deleteMany: (ids: Array<string>) =>
+    api.delete<{ deleted: number }, { ids: Array<string> }>(
+      `/api/transactions`,
+      { ids }
+    ),
   recalc: (id: string, onlyMissing: boolean = true) =>
     api.post(
       `/api/transactions/${id}/recalc?only_missing=${onlyMissing ? 'true' : 'false'}`,
       {}
     ),
   // Domain-specific helpers
-  borrow: <T = unknown>(payload: unknown) => api.post<T>('/api/transactions/borrow', payload),
-  loan: <T = unknown>(payload: unknown) => api.post<T>('/api/transactions/loan', payload),
-  repay: <T = unknown>(payload: unknown) => api.post<T>('/api/transactions/repay', payload),
+  borrow: <T = unknown>(payload: unknown) =>
+    api.post<T>('/api/transactions/borrow', payload),
+  loan: <T = unknown>(payload: unknown) =>
+    api.post<T>('/api/transactions/loan', payload),
+  repay: <T = unknown>(payload: unknown) =>
+    api.post<T>('/api/transactions/repay', payload),
 };
 
 // Actions API
@@ -170,16 +183,21 @@ export const actionsApi = {
 export const adminApi = {
   // Transaction Types
   listTypes: <T = unknown>() => api.get<T>('/api/admin/types'),
-  getType: <T = unknown>(id: string | number) => api.get<T>(`/api/admin/types/${id}`),
-  createType: <T = unknown>(type: unknown) => api.post<T>('/api/admin/types', type),
+  getType: <T = unknown>(id: string | number) =>
+    api.get<T>(`/api/admin/types/${id}`),
+  createType: <T = unknown>(type: unknown) =>
+    api.post<T>('/api/admin/types', type),
   updateType: <T = unknown>(id: string | number, type: unknown) =>
     api.put<T>(`/api/admin/types/${id}`, type),
-  deleteType: <T = unknown>(id: string | number) => api.delete<T>(`/api/admin/types/${id}`),
+  deleteType: <T = unknown>(id: string | number) =>
+    api.delete<T>(`/api/admin/types/${id}`),
 
   // Accounts
   listAccounts: <T = unknown>() => api.get<T>('/api/admin/accounts'),
-  getAccount: <T = unknown>(id: string | number) => api.get<T>(`/api/admin/accounts/${id}`),
-  createAccount: <T = unknown>(account: unknown) => api.post<T>('/api/admin/accounts', account),
+  getAccount: <T = unknown>(id: string | number) =>
+    api.get<T>(`/api/admin/accounts/${id}`),
+  createAccount: <T = unknown>(account: unknown) =>
+    api.post<T>('/api/admin/accounts', account),
   updateAccount: <T = unknown>(id: string | number, account: unknown) =>
     api.put<T>(`/api/admin/accounts/${id}`, account),
   deleteAccount: <T = unknown>(id: string | number) =>
@@ -187,33 +205,39 @@ export const adminApi = {
 
   // Assets
   listAssets: <T = unknown>() => api.get<T>('/api/admin/assets'),
-  getAsset: <T = unknown>(id: string | number) => api.get<T>(`/api/admin/assets/${id}`),
-  createAsset: <T = unknown>(asset: unknown) => api.post<T>('/api/admin/assets', asset),
+  getAsset: <T = unknown>(id: string | number) =>
+    api.get<T>(`/api/admin/assets/${id}`),
+  createAsset: <T = unknown>(asset: unknown) =>
+    api.post<T>('/api/admin/assets', asset),
   updateAsset: <T = unknown>(id: string | number, asset: unknown) =>
     api.put<T>(`/api/admin/assets/${id}`, asset),
-  deleteAsset: <T = unknown>(id: string | number) => api.delete<T>(`/api/admin/assets/${id}`),
+  deleteAsset: <T = unknown>(id: string | number) =>
+    api.delete<T>(`/api/admin/assets/${id}`),
 
   // Tags
   listTags: <T = unknown>() => api.get<T>('/api/admin/tags'),
-  getTag: <T = unknown>(id: string | number) => api.get<T>(`/api/admin/tags/${id}`),
+  getTag: <T = unknown>(id: string | number) =>
+    api.get<T>(`/api/admin/tags/${id}`),
   createTag: <T = unknown>(tag: unknown) => api.post<T>('/api/admin/tags', tag),
   updateTag: <T = unknown>(id: string | number, tag: unknown) =>
     api.put<T>(`/api/admin/tags/${id}`, tag),
-  deleteTag: <T = unknown>(id: string | number) => api.delete<T>(`/api/admin/tags/${id}`),
+  deleteTag: <T = unknown>(id: string | number) =>
+    api.delete<T>(`/api/admin/tags/${id}`),
 
   // AI Pending Actions
-  listPendingActions: <T = unknown>(params: { status?: string; limit?: number; offset?: number } = {}) =>
-    api.get<T>('/api/admin/pending-actions', params),
+  listPendingActions: <T = unknown>(
+    params: { status?: string; limit?: number; offset?: number } = {}
+  ) => api.get<T>('/api/admin/pending-actions', params),
   getPendingAction: <T = unknown>(id: string) =>
     api.get<T>(`/api/admin/pending-actions/${id}`),
   acceptPendingAction: <T = unknown>(id: string) =>
     api.post<T>(`/api/admin/pending-actions/${id}/accept`, {}),
   rejectPendingAction: <T = unknown>(id: string) =>
     api.post<T>(`/api/admin/pending-actions/${id}/reject`, {}),
-  acceptAllPendingActions: <T = unknown>(batchId?: string) =>
-    api.post<T>('/api/admin/pending-actions/accept-all', {}, batchId ? { batch_id: batchId } : {}),
-  rejectAllPendingActions: <T = unknown>(batchId?: string) =>
-    api.post<T>('/api/admin/pending-actions/reject-all', {}, batchId ? { batch_id: batchId } : {}),
+  acceptAllPendingActions: <T = unknown>(_batchId?: string) =>
+    api.post<T>('/api/admin/pending-actions/accept-all', {}),
+  rejectAllPendingActions: <T = unknown>(_batchId?: string) =>
+    api.post<T>('/api/admin/pending-actions/reject-all', {}),
 
   // Maintenance
   recalcFX: (onlyMissing: boolean = true) =>
@@ -239,7 +263,9 @@ export const fxApi = {
 
   // Get FX rate for a specific date
   getHistoricalRate: <T = unknown>(from: string, to: string, date: string) =>
-    api.get<T>(`/api/fx/history?from=${from}&to=${to}&start=${date}&end=${date}`),
+    api.get<T>(
+      `/api/fx/history?from=${from}&to=${to}&start=${date}&end=${date}`
+    ),
 };
 
 // Price Population API
@@ -267,8 +293,14 @@ export const reportsApi = {
   // New: per-vault header metrics and daily time series of AUM, PnL, ROI, APR
   vaultHeader: <T = unknown>(name: string) =>
     api.get<T>(`/api/reports/vaults/${encodeURIComponent(name)}/header`),
-  vaultSeries: <T = unknown>(name: string, params: Record<string, unknown> = {}) =>
-    api.get<T>(`/api/reports/vaults/${encodeURIComponent(name)}/series`, params),
+  vaultSeries: <T = unknown>(
+    name: string,
+    params: Record<string, unknown> = {}
+  ) =>
+    api.get<T>(
+      `/api/reports/vaults/${encodeURIComponent(name)}/series`,
+      params
+    ),
   // New: aggregate series (optionally filter by account=vaultName)
   series: <T = unknown>(params: Record<string, unknown> = {}) =>
     api.get<T>('/api/reports/series', params),
@@ -284,16 +316,49 @@ export const healthApi = {
 
 // Vault API
 export const vaultApi = {
-  getActiveVaults: <T = unknown>(params: Record<string, unknown> = {}) => api.get<T>('/api/vaults', params),
-  getVaultByName: <T = unknown>(name: string, params: Record<string, unknown> = {}) => api.get<T>(`/api/vaults/${encodeURIComponent(name)}`, params),
-  createVault: <T = unknown>(vault: unknown) => api.post<T>('/api/vaults', vault),
-  depositToVault: <T = unknown>(name: string, deposit: unknown) => api.post<T>(`/api/vaults/${encodeURIComponent(name)}/deposit`, deposit),
-  withdrawFromVault: <T = unknown>(name: string, withdrawal: unknown) => api.post<T>(`/api/vaults/${encodeURIComponent(name)}/withdraw`, withdrawal),
-  distributeReward: <T = unknown>(name: string, data: { amount: number; destination?: string; at?: string; date?: string; note?: string; mark?: boolean; new_total_usd?: number; create_income?: boolean }) =>
-    api.post<T>(`/api/vaults/${encodeURIComponent(name)}/distribute-reward`, data),
-  endVault: <T = unknown>(name: string) => api.post<T>(`/api/vaults/${encodeURIComponent(name)}/end`, {}),
-  deleteVault: <T = unknown>(name: string) => api.delete<T>(`/api/vaults/${encodeURIComponent(name)}`),
-  refresh: <T = unknown>(name: string, data?: { current_value_usd?: number; current_unit_price_usd?: number; currency?: string; benchmark?: string; persist?: boolean }) =>
+  getActiveVaults: <T = unknown>(params: Record<string, unknown> = {}) =>
+    api.get<T>('/api/vaults', params),
+  getVaultByName: <T = unknown>(
+    name: string,
+    params: Record<string, unknown> = {}
+  ) => api.get<T>(`/api/vaults/${encodeURIComponent(name)}`, params),
+  createVault: <T = unknown>(vault: unknown) =>
+    api.post<T>('/api/vaults', vault),
+  depositToVault: <T = unknown>(name: string, deposit: unknown) =>
+    api.post<T>(`/api/vaults/${encodeURIComponent(name)}/deposit`, deposit),
+  withdrawFromVault: <T = unknown>(name: string, withdrawal: unknown) =>
+    api.post<T>(`/api/vaults/${encodeURIComponent(name)}/withdraw`, withdrawal),
+  distributeReward: <T = unknown>(
+    name: string,
+    data: {
+      amount: number;
+      destination?: string;
+      at?: string;
+      date?: string;
+      note?: string;
+      mark?: boolean;
+      new_total_usd?: number;
+      create_income?: boolean;
+    }
+  ) =>
+    api.post<T>(
+      `/api/vaults/${encodeURIComponent(name)}/distribute-reward`,
+      data
+    ),
+  endVault: <T = unknown>(name: string) =>
+    api.post<T>(`/api/vaults/${encodeURIComponent(name)}/end`, {}),
+  deleteVault: <T = unknown>(name: string) =>
+    api.delete<T>(`/api/vaults/${encodeURIComponent(name)}`),
+  refresh: <T = unknown>(
+    name: string,
+    data?: {
+      current_value_usd?: number;
+      current_unit_price_usd?: number;
+      currency?: string;
+      benchmark?: string;
+      persist?: boolean;
+    }
+  ) =>
     api.post<T>(`/api/vaults/${encodeURIComponent(name)}/refresh`, data ?? {}),
 };
 
@@ -307,23 +372,54 @@ export const portfolioApi = {
 
 // Vault Ledger API (transaction-based derived state)
 export const vaultLedgerApi = {
-  holdings: <T = unknown>(vaultId: string) => api.get<T>(`/api/vaults/${encodeURIComponent(vaultId)}/holdings`),
-  userHoldings: <T = unknown>(vaultId: string, userId: string) => api.get<T>(`/api/vaults/${encodeURIComponent(vaultId)}/user/${encodeURIComponent(userId)}/holdings`),
-  assetHoldings: <T = unknown>(vaultId: string, asset: string, account: string) =>
-    api.get<T>(`/api/vaults/${encodeURIComponent(vaultId)}/assets/${encodeURIComponent(asset)}/holdings`, { account }),
-  transactions: <T = unknown>(vaultId: string, params: Record<string, unknown> = {}) =>
-    api.get<T>(`/api/vaults/${encodeURIComponent(vaultId)}/transactions`, params),
-  userTransactions: <T = unknown>(vaultId: string, userId: string, params: Record<string, unknown> = {}) =>
-    api.get<T>(`/api/vaults/${encodeURIComponent(vaultId)}/user/${encodeURIComponent(userId)}/transactions`, params),
+  holdings: <T = unknown>(vaultId: string) =>
+    api.get<T>(`/api/vaults/${encodeURIComponent(vaultId)}/holdings`),
+  userHoldings: <T = unknown>(vaultId: string, userId: string) =>
+    api.get<T>(
+      `/api/vaults/${encodeURIComponent(vaultId)}/user/${encodeURIComponent(userId)}/holdings`
+    ),
+  assetHoldings: <T = unknown>(
+    vaultId: string,
+    asset: string,
+    account: string
+  ) =>
+    api.get<T>(
+      `/api/vaults/${encodeURIComponent(vaultId)}/assets/${encodeURIComponent(asset)}/holdings`,
+      { account }
+    ),
+  transactions: <T = unknown>(
+    vaultId: string,
+    params: Record<string, unknown> = {}
+  ) =>
+    api.get<T>(
+      `/api/vaults/${encodeURIComponent(vaultId)}/transactions`,
+      params
+    ),
+  userTransactions: <T = unknown>(
+    vaultId: string,
+    userId: string,
+    params: Record<string, unknown> = {}
+  ) =>
+    api.get<T>(
+      `/api/vaults/${encodeURIComponent(vaultId)}/user/${encodeURIComponent(userId)}/transactions`,
+      params
+    ),
   createTransaction: <T = unknown>(vaultId: string, payload: unknown) =>
-    api.post<T>(`/api/vaults/${encodeURIComponent(vaultId)}/transactions`, payload),
+    api.post<T>(
+      `/api/vaults/${encodeURIComponent(vaultId)}/transactions`,
+      payload
+    ),
 };
 
 // Prices API (simple helper for daily spot price)
 export const pricesApi = {
   // Returns array; we read last element's price
-  daily: <T = unknown>(symbol: string, currency: string, start: string, end: string) =>
-    api.get<T>('/api/prices/daily', { symbol, currency, start, end }),
+  daily: <T = unknown>(
+    symbol: string,
+    currency: string,
+    start: string,
+    end: string
+  ) => api.get<T>('/api/prices/daily', { symbol, currency, start, end }),
 };
 
 // Tokenized Vault API
@@ -334,31 +430,46 @@ export const tokenizedVaultApi = {
     api.get<T>('/api/cons-vaults', filters),
   get: <T = unknown>(id: string, params: Record<string, unknown> = {}) =>
     api.get<T>(`/api/cons-vaults/${id}`, params),
-  create: <T = unknown>(vault: unknown) => api.post<T>('/api/cons-vaults', vault),
-  update: <T = unknown>(id: string, vault: unknown) => api.put<T>(`/api/cons-vaults/${id}`, vault),
+  create: <T = unknown>(vault: unknown) =>
+    api.post<T>('/api/cons-vaults', vault),
+  update: <T = unknown>(id: string, vault: unknown) =>
+    api.put<T>(`/api/cons-vaults/${id}`, vault),
   delete: <T = unknown>(id: string) => api.delete<T>(`/api/cons-vaults/${id}`),
 
   // Manual pricing - consolidated endpoints
-  updatePrice: <T = unknown>(id: string, data: { new_price: number; notes?: string }) =>
-    api.post<T>(`/api/cons-vaults/${id}/update-price`, data),
+  updatePrice: <T = unknown>(
+    id: string,
+    data: { new_price: number; notes?: string }
+  ) => api.post<T>(`/api/cons-vaults/${id}/update-price`, data),
   updateTotalValue: <T = unknown>(
     id: string,
-    data: { total_value: number; net_contribution_delta?: number; notes?: string }
-  ) =>
-    api.post<T>(`/api/cons-vaults/${id}/update-total-value`, data),
-  enableManualPricing: <T = unknown>(id: string, data: { initial_price: number }) =>
-    api.post<T>(`/api/cons-vaults/${id}/enable-manual-pricing`, data),
+    data: {
+      total_value: number;
+      net_contribution_delta?: number;
+      notes?: string;
+    }
+  ) => api.post<T>(`/api/cons-vaults/${id}/update-total-value`, data),
+  enableManualPricing: <T = unknown>(
+    id: string,
+    data: { initial_price: number }
+  ) => api.post<T>(`/api/cons-vaults/${id}/enable-manual-pricing`, data),
   disableManualPricing: <T = unknown>(id: string) =>
     api.post<T>(`/api/cons-vaults/${id}/disable-manual-pricing`, {}),
 
   // Deposits and withdrawals (consolidated endpoints)
-  deposit: <T = unknown>(id: string, data: { amount: number; notes?: string; source_account?: string }) =>
+  deposit: <T = unknown>(
+    id: string,
+    data: { amount: number; notes?: string; source_account?: string }
+  ) =>
     api.post<T>(`/api/cons-vaults/${id}/deposit`, {
       amount: data.amount,
       ...(data.notes ? { notes: data.notes } : {}),
       ...(data.source_account ? { source_account: data.source_account } : {}),
     }),
-  withdraw: <T = unknown>(id: string, data: { amount: number; notes?: string; target_account?: string }) =>
+  withdraw: <T = unknown>(
+    id: string,
+    data: { amount: number; notes?: string; target_account?: string }
+  ) =>
     api.post<T>(`/api/cons-vaults/${id}/withdraw`, {
       amount: data.amount,
       ...(data.notes ? { notes: data.notes } : {}),
@@ -366,7 +477,8 @@ export const tokenizedVaultApi = {
     }),
 
   // Vault management (deprecated)
-  close: <T = unknown>(id: string) => api.post<T>(`/api/cons-vaults/${id}/close`, {}),
+  close: <T = unknown>(id: string) =>
+    api.post<T>(`/api/cons-vaults/${id}/close`, {}),
 };
 
 // Investments API
@@ -374,7 +486,8 @@ export const investmentsApi = {
   list: <T = unknown>(filters: Record<string, unknown> = {}) =>
     api.get<T>('/api/investments', filters),
   get: <T = unknown>(id: string) => api.get<T>(`/api/investments/${id}`),
-  create: <T = unknown>(investment: unknown) => api.post<T>('/api/investments', investment),
+  create: <T = unknown>(investment: unknown) =>
+    api.post<T>('/api/investments', investment),
   update: <T = unknown>(id: string, investment: unknown) =>
     api.put<T>(`/api/investments/${id}`, investment),
   delete: <T = unknown>(id: string) => api.delete<T>(`/api/investments/${id}`),
@@ -382,8 +495,10 @@ export const investmentsApi = {
     api.get<T>('/api/investments/summary', filters),
 
   // Stake-specific endpoints
-  stake: <T = unknown>(stakeData: unknown) => api.post<T>('/api/investments/stake', stakeData),
-  unstake: <T = unknown>(unstakeData: unknown) => api.post<T>('/api/investments/unstake', unstakeData),
+  stake: <T = unknown>(stakeData: unknown) =>
+    api.post<T>('/api/investments/stake', stakeData),
+  unstake: <T = unknown>(unstakeData: unknown) =>
+    api.post<T>('/api/investments/unstake', unstakeData),
   available: <T = unknown>(asset: string, account: string, horizon?: string) =>
     api.get<T>('/api/investments/available', { asset, account, horizon }),
 };

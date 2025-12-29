@@ -1,13 +1,12 @@
-import { format } from 'date-fns';
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 
+import { TimeSeriesLineChart } from '../components/reports/Charts';
+import CreateTokenizedVaultForm from '../components/tokenized/CreateTokenizedVaultForm';
 import DataTable, { TableColumn } from '../components/ui/DataTable';
 import { useToast } from '../components/ui/Toast';
 import { tokenizedVaultApi, ApiError, reportsApi } from '../services/api';
 import { formatCurrency, formatPercentage } from '../utils/currencyFormatter';
-import CreateTokenizedVaultForm from '../components/tokenized/CreateTokenizedVaultForm';
-import { useBackendStatus } from '../context/BackendStatusContext';
 
 type TokenizedVault = {
   id: string;
@@ -35,11 +34,8 @@ type TokenizedVault = {
   updated_at: string;
 };
 
-type Option = { value: string; label: string };
-
 const VaultsPage: React.FC = () => {
   const navigate = useNavigate();
-  const { isOnline } = useBackendStatus();
   const { error: showErrorToast, success: showSuccessToast } = useToast();
   const shouldToast = (e: unknown) => !(e instanceof ApiError && e.status === 0);
 
@@ -48,6 +44,9 @@ const VaultsPage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [showCreateForm, setShowCreateForm] = useState<boolean>(false);
   const [filter, setFilter] = useState<'all' | 'active' | 'closed'>('active');
+
+  // Aggregate time series data for all vaults (PNL and APR over time)
+  const [aggregateSeries, setAggregateSeries] = useState<Array<{ date: string; total_pnl_usd: number; weighted_apr_percent: number }>>([]);
 
   const loadVaults = useCallback(async (): Promise<void> => {
     try {
@@ -58,7 +57,8 @@ const VaultsPage: React.FC = () => {
         reportsApi.vaultsSummary<{ rows: Array<{ vault: string; apr_percent: number; aum_usd: number }> }>(),
       ]);
       const mapAPR = new Map<string, number>();
-      const rows = (summary as any)?.rows as Array<{ vault: string; apr_percent: number }>; // tolerate null
+      type SummaryRow = { vault: string; apr_percent: number };
+      const rows = (summary as { rows?: SummaryRow[] } | null)?.rows;
       if (Array.isArray(rows)) {
         for (const r of rows) mapAPR.set(r.vault, Number(r.apr_percent) || 0);
       }
@@ -76,6 +76,63 @@ const VaultsPage: React.FC = () => {
   useEffect(() => {
     void loadVaults();
   }, [filter, loadVaults]);
+
+  // Load aggregate time series for all active vaults
+  useEffect(() => {
+    const loadAggregateSeries = async () => {
+      try {
+        // Fetch individual vault series and aggregate them
+        const activeVaults = vaults.filter(v => v.status === 'active' && !['spend', 'borrowings'].includes(v.name.toLowerCase()));
+        if (activeVaults.length === 0) {
+          setAggregateSeries([]);
+          return;
+        }
+
+        // Fetch all vault series in parallel
+        const seriesPromises = activeVaults.map(v =>
+          reportsApi.vaultSeries<{ vault: string; series: Array<{ date: string; aum_usd: number; pnl_usd: number; roi_percent: number; apr_percent: number }> }>(v.id)
+        );
+
+        const allSeries = await Promise.all(seriesPromises);
+
+        // Aggregate by date
+        const dateMap = new Map<string, { total_pnl_usd: number; total_aum_usd: number; weighted_apr: number }>();
+
+        allSeries.forEach((result) => {
+          type SeriesPoint = { date: string; pnl_usd: number; aum_usd: number; apr_percent: number };
+          type VaultSeriesResult = { series?: SeriesPoint[] };
+          const series = (result as VaultSeriesResult | null)?.series ?? [];
+          if (Array.isArray(series)) {
+            series.forEach((point: { date: string; pnl_usd: number; aum_usd: number; apr_percent: number }) => {
+              const existing = dateMap.get(point.date) ?? { total_pnl_usd: 0, total_aum_usd: 0, weighted_apr: 0 };
+              dateMap.set(point.date, {
+                total_pnl_usd: existing.total_pnl_usd + (point.pnl_usd || 0),
+                total_aum_usd: existing.total_aum_usd + (point.aum_usd || 0),
+                weighted_apr: existing.weighted_apr + ((point.apr_percent || 0) * (point.aum_usd || 0)),
+              });
+            });
+          }
+        });
+
+        // Convert to array and calculate weighted APR
+        const aggregated = Array.from(dateMap.entries())
+          .map(([date, data]) => ({
+            date,
+            total_pnl_usd: data.total_pnl_usd,
+            weighted_apr_percent: data.total_aum_usd > 0 ? data.weighted_apr / data.total_aum_usd : 0,
+          }))
+          .sort((a, b) => a.date.localeCompare(b.date));
+
+        setAggregateSeries(aggregated);
+      } catch {
+        setAggregateSeries([]);
+      }
+    };
+
+    if (vaults.length > 0) {
+      void loadAggregateSeries();
+    }
+  }, [vaults]);
 
   const handleCreateVault = () => {
     setShowCreateForm(true);
@@ -227,7 +284,7 @@ const VaultsPage: React.FC = () => {
         const isSpend = String(row.name || '').toLowerCase() === 'spend';
         const isBorrowings = String(row.name || '').toLowerCase() === 'borrowings';
         if (isSpend || isBorrowings) return <span className="text-gray-500">—</span>;
-        const raw = typeof row.apr_percent === 'string' ? parseFloat(row.apr_percent) : (row.apr_percent as number | undefined);
+        const raw = typeof row.apr_percent === 'string' ? parseFloat(row.apr_percent) : row.apr_percent;
         if (!(typeof raw === 'number' && isFinite(raw))) {
           return <span className="text-gray-500">—</span>;
         }
@@ -311,10 +368,10 @@ const VaultsPage: React.FC = () => {
     filteredVaults.forEach(vault => {
       const aum = parseFloat(vault.total_assets_under_management || '0');
       const supply = parseFloat(vault.total_supply || '0');
-      const apr = typeof vault.apr_percent === 'string' ? parseFloat(vault.apr_percent) : (vault.apr_percent ?? NaN as number);
+      const apr = typeof vault.apr_percent === 'string' ? parseFloat(vault.apr_percent) : vault.apr_percent;
       stats.totalAUM += aum;
       stats.totalSupply += supply;
-      if (isFinite(apr)) {
+      if (typeof apr === 'number' && isFinite(apr)) {
         stats.totalAPRWeighted += apr * aum / 100; // Weighted APR
       }
     });
@@ -368,6 +425,43 @@ const VaultsPage: React.FC = () => {
           <p className="text-sm text-gray-600">Since inception (weighted by AUM)</p>
         </div>
       </div>
+
+      {/* Time Series Charts: PNL and APR over time */}
+      {aggregateSeries.length > 0 && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
+          <div className="bg-white p-4 rounded-lg border border-gray-200">
+            <h3 className="text-sm font-medium text-gray-900 mb-3">Total PnL Over Time</h3>
+            <div style={{ height: 280 }}>
+              <TimeSeriesLineChart
+                labels={aggregateSeries.map(p => p.date)}
+                datasets={[{
+                  label: 'Total PnL (USD)',
+                  data: aggregateSeries.map(p => p.total_pnl_usd),
+                  color: '#059669',
+                  fill: true
+                }]}
+                yFormat="currency"
+                currency="USD"
+              />
+            </div>
+          </div>
+          <div className="bg-white p-4 rounded-lg border border-gray-200">
+            <h3 className="text-sm font-medium text-gray-900 mb-3">Weighted APR Over Time</h3>
+            <div style={{ height: 280 }}>
+              <TimeSeriesLineChart
+                labels={aggregateSeries.map(p => p.date)}
+                datasets={[{
+                  label: 'Weighted APR (%)',
+                  data: aggregateSeries.map(p => p.weighted_apr_percent),
+                  color: '#2563EB',
+                  fill: true
+                }]}
+                yFormat="percent"
+              />
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Controls */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 space-y-3 sm:space-y-0">
