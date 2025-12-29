@@ -545,9 +545,10 @@ export const DailySpendingChart: React.FC<{ data: DailySpendingData; currency?: 
       legend: { position: 'top' as const },
       tooltip: {
         callbacks: {
-          label: function (context: { parsed: { y: number }; dataset: { label: string } }) {
+          // @ts-ignore - chartjs types
+          label: function (context: { parsed: { y: number }; dataset: { label?: string } }) {
             const value = Math.abs(context.parsed.y)
-            return `${context.dataset.label}: ${value.toLocaleString()} ${currency}`
+            return `${context.dataset.label ?? ''}: ${value.toLocaleString()} ${currency}`
           }
         }
       }
@@ -567,6 +568,180 @@ export const DailySpendingChart: React.FC<{ data: DailySpendingData; currency?: 
   }
 
   return <Line data={chartData} options={options} />
+}
+
+// Monthly Spending Trend Chart (Bar chart showing 12 months)
+type MonthlyTrendData = { monthly_trend?: Array<{ month: string; amount_usd: number; amount_vnd: number }> }
+export const MonthlySpendingTrendChart: React.FC<{ data: MonthlyTrendData; currency?: Currency }> = ({ data, currency = 'USD' }) => {
+  if (!data?.monthly_trend || data.monthly_trend.length === 0) return null
+
+  const labels = data.monthly_trend.map((m) => {
+    const [year, month] = m.month.split('-')
+    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+    return `${monthNames[parseInt(month, 10) - 1]} ${year.slice(2)}`
+  })
+  const values = data.monthly_trend.map((m) =>
+    currency === 'USD' ? m.amount_usd : m.amount_vnd
+  )
+
+  // Calculate average for reference line
+  const avg = values.reduce((a, b) => a + b, 0) / values.length
+
+  const chartData = {
+    labels,
+    datasets: [
+      {
+        label: `Monthly Spending (${currency})`,
+        data: values,
+        backgroundColor: values.map((v, i) =>
+          i === values.length - 1 ? '#F97316' : 'rgba(249, 115, 22, 0.6)'
+        ),
+        borderColor: '#F97316',
+        borderWidth: 1,
+        borderRadius: 4,
+      },
+    ],
+  }
+
+  const options = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: { display: false },
+      tooltip: {
+        callbacks: {
+          label: function (context: { parsed: { y: number } }) {
+            const value = context.parsed.y
+            const symbol = currency === 'USD' ? '$' : '₫'
+            return `${symbol}${value.toLocaleString()}`
+          },
+          afterLabel: function (context: { dataIndex: number }) {
+            if (context.dataIndex > 0) {
+              const current = values[context.dataIndex]
+              const previous = values[context.dataIndex - 1]
+              if (previous > 0) {
+                const change = ((current - previous) / previous) * 100
+                return `${change >= 0 ? '+' : ''}${change.toFixed(1)}% vs prev month`
+              }
+            }
+            return ''
+          }
+        }
+      },
+      annotation: {
+        annotations: {
+          averageLine: {
+            type: 'line' as const,
+            yMin: avg,
+            yMax: avg,
+            borderColor: '#9CA3AF',
+            borderWidth: 2,
+            borderDash: [5, 5],
+          }
+        }
+      }
+    },
+    scales: {
+      y: {
+        beginAtZero: true,
+        ticks: {
+          // @ts-ignore - chartjs types
+          callback: function (value: number | string) {
+            const n = typeof value === 'number' ? value : parseFloat(String(value))
+            const symbol = currency === 'USD' ? '$' : '₫'
+            return `${symbol}${n.toLocaleString()}`
+          }
+        }
+      },
+      x: {
+        ticks: {
+          maxRotation: 45,
+          minRotation: 45,
+        }
+      }
+    }
+  }
+
+  return <Bar data={chartData} options={options} />
+}
+
+// Spending Comparison Chart (Current vs Last Month by category)
+type SpendingComparisonData = {
+  by_tag?: Record<string, { amount_usd: number; amount_vnd: number; count: number }>
+  current_month_by_tag?: Record<string, { amount_usd: number; amount_vnd: number }>
+  last_month_by_tag?: Record<string, { amount_usd: number; amount_vnd: number }>
+}
+export const SpendingComparisonChart: React.FC<{
+  currentMonthData: Record<string, number>;
+  lastMonthData: Record<string, number>;
+  currency?: Currency;
+}> = ({ currentMonthData, lastMonthData, currency = 'USD' }) => {
+  // Get all unique categories
+  const allCategories = [...new Set([...Object.keys(currentMonthData), ...Object.keys(lastMonthData)])]
+    .sort((a, b) => (currentMonthData[b] || 0) - (currentMonthData[a] || 0))
+    .slice(0, 8) // Top 8 categories
+
+  if (allCategories.length === 0) return null
+
+  const chartData = {
+    labels: allCategories,
+    datasets: [
+      {
+        label: 'Current Month',
+        data: allCategories.map(cat => currentMonthData[cat] || 0),
+        backgroundColor: '#F97316',
+        borderColor: '#F97316',
+        borderWidth: 1,
+        borderRadius: 4,
+      },
+      {
+        label: 'Last Month',
+        data: allCategories.map(cat => lastMonthData[cat] || 0),
+        backgroundColor: '#9CA3AF',
+        borderColor: '#9CA3AF',
+        borderWidth: 1,
+        borderRadius: 4,
+      },
+    ],
+  }
+
+  const options = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: { position: 'top' as const },
+      tooltip: {
+        callbacks: {
+          // @ts-ignore - chartjs types
+          label: function (context: { dataset: { label?: string }; parsed: { y: number } }) {
+            const symbol = currency === 'USD' ? '$' : '₫'
+            return `${context.dataset.label ?? ''}: ${symbol}${context.parsed.y.toLocaleString()}`
+          }
+        }
+      }
+    },
+    scales: {
+      y: {
+        beginAtZero: true,
+        ticks: {
+          // @ts-ignore - chartjs types
+          callback: function (value: number | string) {
+            const n = typeof value === 'number' ? value : parseFloat(String(value))
+            const symbol = currency === 'USD' ? '$' : '₫'
+            return `${symbol}${n.toLocaleString()}`
+          }
+        }
+      },
+      x: {
+        ticks: {
+          maxRotation: 45,
+          minRotation: 45,
+        }
+      }
+    }
+  }
+
+  return <Bar data={chartData} options={options} />
 }
 
 // Summary Stats Component

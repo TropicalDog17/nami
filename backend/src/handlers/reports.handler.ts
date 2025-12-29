@@ -437,7 +437,8 @@ reportsRouter.get('/reports/spending', async (req, res) => {
     const start = req.query.start ? new Date(String(req.query.start)) : undefined;
     const end = req.query.end ? new Date(String(req.query.end)) : undefined;
     const account = (req.query.account ? String(req.query.account) : settingsRepository.getDefaultSpendingVaultName());
-    const txs = transactionRepository.findAll().filter(t => t.type === 'EXPENSE' && (t.account || account) === account);
+    const allTxs = transactionRepository.findAll();
+    const txs = allTxs.filter(t => t.type === 'EXPENSE' && (t.account || account) === account);
 
     const inRange = (d: string) => {
       const dt = new Date(d);
@@ -452,13 +453,19 @@ reportsRouter.get('/reports/spending', async (req, res) => {
     const rateVND = await usdToVnd();
     const total_vnd = total_usd * rateVND;
 
-    const by_tag: Record<string, { total_usd: number; total_vnd: number; count: number }> = {};
+    const by_tag: Record<string, { total_usd: number; total_vnd: number; count: number; amount_usd: number; amount_vnd: number; percentage: number }> = {};
     for (const t of selected) {
       const tag = (t.category || (t as any).tag || 'uncategorized');
-      if (!by_tag[tag]) by_tag[tag] = { total_usd: 0, total_vnd: 0, count: 0 };
+      if (!by_tag[tag]) by_tag[tag] = { total_usd: 0, total_vnd: 0, count: 0, amount_usd: 0, amount_vnd: 0, percentage: 0 };
       by_tag[tag].total_usd += t.usdAmount || 0;
       by_tag[tag].total_vnd += (t.usdAmount || 0) * rateVND;
+      by_tag[tag].amount_usd += t.usdAmount || 0;
+      by_tag[tag].amount_vnd += (t.usdAmount || 0) * rateVND;
       by_tag[tag].count += 1;
+    }
+    // Calculate percentages
+    for (const tag of Object.keys(by_tag)) {
+      by_tag[tag].percentage = total_usd > 0 ? (by_tag[tag].total_usd / total_usd) * 100 : 0;
     }
 
     const byDate = new Map<string, number>();
@@ -470,7 +477,86 @@ reportsRouter.get('/reports/spending', async (req, res) => {
       .sort((a, b) => a[0].localeCompare(b[0]))
       .map(([date, usd]) => ({ date, total_usd: usd, total_vnd: usd * rateVND }));
 
-    res.json({ total_usd, total_vnd, by_tag, daily, account });
+    // Calculate by_day for chart (same as daily but keyed by date)
+    const by_day: Record<string, { amount_usd: number; amount_vnd: number }> = {};
+    for (const d of daily) {
+      by_day[d.date] = { amount_usd: d.total_usd, amount_vnd: d.total_vnd };
+    }
+
+    // Calculate current month spending
+    const now = new Date();
+    const currentMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const currentMonthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
+    const currentMonthTxs = txs.filter(t => {
+      const dt = new Date(t.createdAt);
+      return dt >= currentMonthStart && dt <= currentMonthEnd;
+    });
+    const current_month_usd = currentMonthTxs.reduce((s, t) => s + (t.usdAmount || 0), 0);
+    const current_month_vnd = current_month_usd * rateVND;
+
+    // Calculate last month spending for comparison
+    const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const lastMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59);
+    const lastMonthTxs = txs.filter(t => {
+      const dt = new Date(t.createdAt);
+      return dt >= lastMonthStart && dt <= lastMonthEnd;
+    });
+    const last_month_usd = lastMonthTxs.reduce((s, t) => s + (t.usdAmount || 0), 0);
+    const last_month_vnd = last_month_usd * rateVND;
+
+    // Calculate month-over-month change
+    const mom_change_usd = current_month_usd - last_month_usd;
+    const mom_change_percent = last_month_usd > 0 ? ((current_month_usd - last_month_usd) / last_month_usd) * 100 : 0;
+
+    // Calculate monthly spending for trend (last 12 months)
+    const monthly_trend: Array<{ month: string; amount_usd: number; amount_vnd: number }> = [];
+    for (let i = 11; i >= 0; i--) {
+      const monthDate = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const monthEnd = new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 0, 23, 59, 59);
+      const monthTxs = txs.filter(t => {
+        const dt = new Date(t.createdAt);
+        return dt >= monthDate && dt <= monthEnd;
+      });
+      const monthTotal = monthTxs.reduce((s, t) => s + (t.usdAmount || 0), 0);
+      const monthLabel = monthDate.toISOString().slice(0, 7); // YYYY-MM
+      monthly_trend.push({
+        month: monthLabel,
+        amount_usd: monthTotal,
+        amount_vnd: monthTotal * rateVND,
+      });
+    }
+
+    // Calculate average daily spending for current month
+    const daysInCurrentMonth = Math.min(now.getDate(), new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate());
+    const avg_daily_usd = daysInCurrentMonth > 0 ? current_month_usd / daysInCurrentMonth : 0;
+    const avg_daily_vnd = avg_daily_usd * rateVND;
+
+    // Calculate available balance (income - expenses for the account)
+    const incomeTxs = allTxs.filter(t => t.type === 'INCOME' && (t.account || account) === account);
+    const totalIncome = incomeTxs.reduce((s, t) => s + (t.usdAmount || 0), 0);
+    const totalExpenses = txs.reduce((s, t) => s + (t.usdAmount || 0), 0);
+    const available_balance_usd = totalIncome - totalExpenses;
+    const available_balance_vnd = available_balance_usd * rateVND;
+
+    res.json({
+      total_usd,
+      total_vnd,
+      by_tag,
+      daily,
+      by_day,
+      account,
+      current_month_usd,
+      current_month_vnd,
+      last_month_usd,
+      last_month_vnd,
+      mom_change_usd,
+      mom_change_percent,
+      monthly_trend,
+      avg_daily_usd,
+      avg_daily_vnd,
+      available_balance_usd,
+      available_balance_vnd,
+    });
   } catch (e: any) {
     res.status(500).json({ error: e?.message || 'Failed to compute spending' });
   }
