@@ -436,9 +436,6 @@ export const AdminPendingActions = () => {
                 Action
               </th>
               <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
-                Raw Input
-              </th>
-              <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
                 Status
               </th>
               <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
@@ -452,13 +449,13 @@ export const AdminPendingActions = () => {
           <tbody className="divide-y divide-gray-200 bg-white">
             {loading ? (
               <tr>
-                <td colSpan={8} className="px-4 py-8 text-center text-sm text-gray-500">
+                <td colSpan={7} className="px-4 py-8 text-center text-sm text-gray-500">
                   Loading pending actions…
                 </td>
               </tr>
             ) : items.length === 0 ? (
               <tr>
-                <td colSpan={8} className="px-4 py-8 text-center text-sm text-gray-500">
+                <td colSpan={7} className="px-4 py-8 text-center text-sm text-gray-500">
                   No pending actions found for this filter.
                 </td>
               </tr>
@@ -483,10 +480,6 @@ export const AdminPendingActions = () => {
                         {getActionSummary(item.action_json, item.toon_text)}
                       </span>
                     </ActionTooltip>
-                  </td>
-                  <td className="px-4 py-3 text-sm text-gray-700">
-                    {item.raw_input.slice(0, 80)}
-                    {item.raw_input.length > 80 ? '…' : ''}
                   </td>
                   <td className="px-4 py-3 text-sm">{renderStatusBadge(item.status)}</td>
                   <td className="px-4 py-3 text-sm text-gray-700">
