@@ -1,6 +1,5 @@
 import { AppConfig } from '../utils/config.js'
 import { createCorrelationLogger } from '../utils/logger.js'
-import { getGrounding } from './backendClient.js'
 import OpenAI from 'openai'
 
 export interface HealthCheckResult {
@@ -19,13 +18,6 @@ export interface HealthCheckResult {
       latency?: number
       error?: string
     }
-    grounding: {
-      status: 'healthy' | 'stale' | 'unhealthy'
-      age?: number
-      accounts?: number
-      tags?: number
-      error?: string
-    }
     config: {
       status: 'healthy' | 'unhealthy'
       issues?: string[]
@@ -41,18 +33,9 @@ export interface HealthCheckResult {
 
 export class HealthChecker {
   private startTime: number
-  private groundingData: { accounts: any[]; tags: any[]; lastFetch: number } | null = null
 
   constructor(private cfg: AppConfig) {
     this.startTime = Date.now()
-  }
-
-  updateGroundingData(accounts: any[], tags: any[]): void {
-    this.groundingData = {
-      accounts: [...accounts],
-      tags: [...tags],
-      lastFetch: Date.now()
-    }
   }
 
   async checkHealth(): Promise<HealthCheckResult> {
@@ -64,7 +47,6 @@ export class HealthChecker {
     const checks = {
       backend: await this.checkBackend(correlationLogger),
       openai: await this.checkOpenAI(correlationLogger),
-      grounding: this.checkGrounding(correlationLogger),
       config: this.checkConfig(correlationLogger)
     }
 
@@ -94,8 +76,8 @@ export class HealthChecker {
   private async checkBackend(correlationLogger: any): Promise<HealthCheckResult['checks']['backend']> {
     const startTime = Date.now()
     try {
-      // Test backend connectivity by checking accounts endpoint
-      const response = await fetch(`${this.cfg.BACKEND_BASE_URL}/admin/accounts`, {
+      // Test backend connectivity by checking pending actions endpoint
+      const response = await fetch(`${this.cfg.BACKEND_BASE_URL}/admin/pending-actions`, {
         method: 'GET',
         signal: AbortSignal.timeout(5000)
       })
@@ -148,57 +130,6 @@ export class HealthChecker {
     }
   }
 
-  private checkGrounding(correlationLogger: any): HealthCheckResult['checks']['grounding'] {
-    if (!this.groundingData) {
-      correlationLogger.warn({}, 'Grounding data not available')
-      return {
-        status: 'unhealthy',
-        error: 'Grounding data not initialized'
-      }
-    }
-
-    const age = Date.now() - this.groundingData.lastFetch
-    const maxAge = 10 * 60 * 1000 // 10 minutes
-
-    if (age > maxAge) {
-      correlationLogger.warn({ age, maxAge }, 'Grounding data is stale')
-      return {
-        status: 'stale',
-        age,
-        accounts: this.groundingData.accounts.length,
-        tags: this.groundingData.tags.length,
-        error: 'Grounding data is stale'
-      }
-    }
-
-    if (this.groundingData.accounts.length === 0 || this.groundingData.tags.length === 0) {
-      correlationLogger.warn({
-        accounts: this.groundingData.accounts.length,
-        tags: this.groundingData.tags.length
-      }, 'Grounding data is empty')
-      return {
-        status: 'unhealthy',
-        age,
-        accounts: this.groundingData.accounts.length,
-        tags: this.groundingData.tags.length,
-        error: 'Grounding data is empty'
-      }
-    }
-
-    correlationLogger.debug({
-      age,
-      accounts: this.groundingData.accounts.length,
-      tags: this.groundingData.tags.length
-    }, 'Grounding health check passed')
-
-    return {
-      status: 'healthy',
-      age,
-      accounts: this.groundingData.accounts.length,
-      tags: this.groundingData.tags.length
-    }
-  }
-
   private checkConfig(correlationLogger: any): HealthCheckResult['checks']['config'] {
     const issues: string[] = []
 
@@ -238,13 +169,12 @@ export class HealthChecker {
   private calculateSummary(checks: HealthCheckResult['checks']): HealthCheckResult['summary'] {
     const values = Object.values(checks)
     const healthy = values.filter(c => c.status === 'healthy').length
-    const degraded = values.filter(c => c.status === 'stale').length
     const unhealthy = values.filter(c => c.status === 'unhealthy').length
 
     return {
       total: values.length,
       healthy,
-      degraded,
+      degraded: 0,
       unhealthy
     }
   }
@@ -253,7 +183,7 @@ export class HealthChecker {
     if (summary.unhealthy > 0) {
       return 'unhealthy'
     }
-    if (summary.degraded > 0 || summary.healthy < summary.total) {
+    if (summary.healthy < summary.total) {
       return 'degraded'
     }
     return 'healthy'

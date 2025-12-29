@@ -8,7 +8,7 @@ import {
   getTransactionAmount,
   TransactionCategory
 } from './excelParser.js'
-import { AccountRef, TagRef } from './schemas.js'
+import { TagRef } from './schemas.js'
 import { createCorrelationLogger } from '../utils/logger.js'
 
 export interface ClassifiedTransaction {
@@ -148,7 +148,6 @@ export async function classifyBatch(
   llmClient: LLMClient,
   transactions: BankTransaction[],
   config: BankStatementConfig,
-  accounts: AccountRef[],
   tags: TagRef[],
   options: {
     batchSize?: number

@@ -3,7 +3,6 @@ import OpenAI from 'openai'
 import { loadConfig } from './utils/config.js'
 import { logger, createCorrelationLogger } from './utils/logger.js'
 import { buildBot } from './integrations/telegram.js'
-import { startGroundingCache } from './core/grounding.js'
 import { HealthChecker } from './api/health.js'
 import { apiTestRouter } from './api/api-test.js'
 import { handleAndLogError, ErrorCategory, ErrorSeverity } from './utils/errors.js'
@@ -92,21 +91,8 @@ async function main() {
       maxRetries: 3
     })
 
-    // Initialize grounding cache
-    const grounding = startGroundingCache(cfg)
-
-    // Update health checker with initial grounding data when available
-    setTimeout(async () => {
-      try {
-        const data = await grounding.get()
-        healthChecker.updateGroundingData(data.accounts, data.tags)
-      } catch (e: any) {
-        startupLogger.warn({ err: e.message }, 'Failed to load initial grounding data for health checker')
-      }
-    }, 5000)
-
     // Build and initialize bot
-    const bot = buildBot(cfg, openai, grounding)
+    const bot = buildBot(cfg, openai)
     await bot.launch()
     startupLogger.info({}, '📱 Telegram bot started')
 

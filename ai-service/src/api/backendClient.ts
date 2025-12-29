@@ -1,5 +1,5 @@
 import crypto from 'crypto'
-import { ActionRequest, PendingActionCreate, AccountRef, TagRef } from '../core/schemas.js'
+import { ActionRequest, PendingActionCreate, TagRef } from '../core/schemas.js'
 import { AppConfig } from '../utils/config.js'
 import { logger, createCorrelationLogger } from '../utils/logger.js'
 import { withRetry } from '../utils/retry.js'
@@ -63,46 +63,38 @@ export async function createPendingAction(
   )
 }
 
-export async function getGrounding(
+export async function getTags(
   cfg: AppConfig,
   correlationId?: string
-): Promise<{ accounts: AccountRef[]; tags: TagRef[] }> {
+): Promise<TagRef[]> {
   const correlationLogger = createCorrelationLogger(correlationId)
 
   return withRetry(
     async () => {
-      correlationLogger.debug({}, 'Fetching grounding data from backend')
+      correlationLogger.debug({}, 'Fetching tags from backend')
 
-      const [accountsRes, tagsRes] = await Promise.all([
-        fetch(`${cfg.BACKEND_BASE_URL}/admin/accounts`, {
-          signal: AbortSignal.timeout(10000)
-        }),
-        fetch(`${cfg.BACKEND_BASE_URL}/admin/tags`, {
-          signal: AbortSignal.timeout(10000)
-        })
-      ])
+      const tagsRes = await fetch(`${cfg.BACKEND_BASE_URL}/admin/tags`, {
+        signal: AbortSignal.timeout(10000)
+      })
 
-      if (!accountsRes.ok || !tagsRes.ok) {
-        const error = new Error(`Failed to fetch grounding data: accounts=${accountsRes.status}, tags=${tagsRes.status}`)
+      if (!tagsRes.ok) {
+        const error = new Error(`Failed to fetch tags: ${tagsRes.status}`)
         throw handleAndLogError(
           error,
           {
-            accountsStatus: accountsRes.status,
             tagsStatus: tagsRes.status,
-            accountsOk: accountsRes.ok,
             tagsOk: tagsRes.ok
           },
-          'getGrounding'
+          'getTags'
         )
       }
 
-      const accounts = (await accountsRes.json()) as Array<{ name: string }>
       const tags = (await tagsRes.json()) as Array<{ name: string }>
 
-      correlationLogger.info({ accountsCount: accounts.length, tagsCount: tags.length }, 'Successfully fetched grounding data')
-      return { accounts, tags }
+      correlationLogger.info({ tagsCount: tags.length }, 'Successfully fetched tags')
+      return tags
     },
-    'getGrounding',
+    'getTags',
     {
       maxAttempts: 2,
       baseDelayMs: 500,

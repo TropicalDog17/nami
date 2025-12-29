@@ -29,9 +29,9 @@ describe('AI Service integration - photo to pending', () => {
     const openai = new OpenAIMock([
       { content: '```toon\nrows[2]{date,description,amount,sign,reference}:\n  2025-01-01,COFFEE,45000,debit,abc\n  2025-01-02,REFUND,-45000,credit,xyz\n```' }
     ]) as any
-    const grounding = { get: async () => ({ accounts: [{ name: 'Bank' }], tags: [] }) }
 
-    const bot = buildBot(cfg, openai, grounding as any)
+    // No grounding parameter - bot uses vault-based account assignment
+    const bot = buildBot(cfg, openai)
     ;(bot as any).botInfo = { id: 999, is_bot: true, first_name: 'Test', username: 'testbot' }
     ;(bot.telegram as any).callApi = async (method: string, _payload: any) => {
       if (method === 'sendMessage') return { message_id: 1 }

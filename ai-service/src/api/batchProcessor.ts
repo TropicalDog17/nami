@@ -12,7 +12,7 @@ import {
 } from '../core/bankStatementClassifier.js'
 import {
   createPendingAction,
-  getGrounding,
+  getTags,
   recordExpenseVND,
   recordIncomeVND,
   recordCreditExpenseVND,
@@ -103,20 +103,16 @@ export async function processBankStatementFile(
     }
   }
 
-  // Step 2: Get grounding data (accounts and tags)
-  let accounts: { name: string }[] = []
+  // Step 2: Get tags for categorization (no longer fetching accounts - backend uses vault defaults)
   let tags: { name: string }[] = []
 
   try {
-    const grounding = await getGrounding(config, correlationId)
-    accounts = grounding.accounts
-    tags = grounding.tags
+    tags = await getTags(config, correlationId)
     logger.info({
-      accounts: accounts.length,
       tags: tags.length
-    }, 'Fetched grounding data')
+    }, 'Fetched tags for categorization')
   } catch (error: any) {
-    logger.warn({ error: error.message }, 'Failed to fetch grounding data, continuing without')
+    logger.warn({ error: error.message }, 'Failed to fetch tags, continuing without categorization')
   }
 
   // Step 3: Classify transactions with AI
@@ -125,7 +121,6 @@ export async function processBankStatementFile(
     llmClient,
     transactions,
     bankConfig,
-    accounts,
     tags,
     {
       batchSize: options.batchSize ?? 5,

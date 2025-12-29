@@ -1,5 +1,5 @@
 import { LLMClient } from '../integrations/llm.js'
-import { ActionRequest, ActionRequestSchema, AccountRef, TagRef } from '../core/schemas.js'
+import { ActionRequest, ActionRequestSchema } from '../core/schemas.js'
 import { createCorrelationLogger } from '../utils/logger.js'
 import { handleAndLogError, ErrorCategory } from '../utils/errors.js'
 
@@ -12,44 +12,26 @@ export interface ParseTextResult {
 export async function parseExpenseText(
   llmClient: LLMClient,
   message: string,
-  accounts: AccountRef[],
-  tags: TagRef[],
   correlationId?: string
 ): Promise<ParseTextResult> {
   const correlationLogger = createCorrelationLogger(correlationId)
 
   correlationLogger.debug({
     messageLength: message.length,
-    accountsCount: accounts.length,
-    tagsCount: tags.length,
     messagePreview: message.substring(0, 100),
     provider: llmClient.getProvider()
   }, 'Starting text parsing')
-
-  const grounding = {
-    accounts: accounts.map((a) => a.name),
-    tags: tags.map((t) => t.name)
-  }
-
-  const groundingJson = [
-    `accounts[${grounding.accounts.length}]: ${grounding.accounts.join(',')}`,
-    `tags[${grounding.tags.length}]: ${grounding.tags.join(',')}`
-  ].join('\n')
 
   const system = `You are a precise financial parser. Output ONLY a fenced code block labelled json with a single JSON object having keys action and params.`
   const user = [
     'Extract a spend action from the message into JSON with 2-space indent.',
     'Rules:',
     '- action must be one of: spend_vnd, credit_spend_vnd',
-    '- params: account, vnd_amount (number), date (YYYY-MM-DD), counterparty?, tag?, note?',
-    '- account must be from accounts list; tag must be from tags list if present',
+    '- params: account (can be empty string ""), vnd_amount (number), date (YYYY-MM-DD), counterparty?, tag?, note?',
+    '- account should be left as empty string "" - backend will assign via vault defaults',
+    '- tag can be any relevant category (e.g., food, transport, shopping)',
     '- If date missing, assume today in configured timezone',
     '- Use unformatted numbers (no commas); Vietnamese k = thousand may appear',
-    '',
-    'Grounding:',
-    '```json',
-    groundingJson,
-    '```',
     '',
     'Message:',
     message,
@@ -89,29 +71,9 @@ export async function parseExpenseText(
     const decoded = JSON.parse(toon) as any
     action = ActionRequestSchema.parse(decoded)
 
-    // Additional validation
-    if (!action.params.account || !action.params.vnd_amount || !action.params.date) {
+    // Additional validation - account can be empty string for vault-based assignment
+    if (!action.params.vnd_amount || !action.params.date) {
       throw new Error('Missing required parameters in parsed action')
-    }
-
-    // Validate account is in grounding list
-    const accountExists = grounding.accounts.includes(action.params.account)
-    if (!accountExists) {
-      correlationLogger.warn({
-        providedAccount: action.params.account,
-        availableAccounts: grounding.accounts
-      }, 'Parsed account not found in grounding list')
-    }
-
-    // Validate tag if provided
-    if (action.params.tag) {
-      const tagExists = grounding.tags.includes(action.params.tag)
-      if (!tagExists) {
-        correlationLogger.warn({
-          providedTag: action.params.tag,
-          availableTags: grounding.tags
-        }, 'Parsed tag not found in grounding list')
-      }
     }
 
     correlationLogger.info({

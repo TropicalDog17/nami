@@ -53,61 +53,10 @@ describe('HealthChecker', () => {
     )
   })
 
-  it('should update grounding data correctly', () => {
-    const accounts = [{ name: 'Bank' }, { name: 'Cash' }]
-    const tags = [{ name: 'food' }, { name: 'transport' }]
-
-    healthChecker.updateGroundingData(accounts, tags)
-
-    // Mock the logger to avoid issues in test
-    const mockLogger = {
-      debug: vi.fn(),
-      warn: vi.fn(),
-      info: vi.fn(),
-      error: vi.fn()
-    }
-
-    const health = healthChecker.checkGrounding(mockLogger as any)
-    expect(health.status).toBe('healthy')
-    expect(health.accounts).toBe(2)
-    expect(health.tags).toBe(2)
-  })
-
-  it('should detect stale grounding data', () => {
-    const accounts = [{ name: 'Bank' }]
-    const tags = [{ name: 'food' }]
-
-    healthChecker.updateGroundingData(accounts, tags)
-
-    // Mock time to make data appear stale
-    vi.spyOn(Date, 'now').mockReturnValue(Date.now() + 15 * 60 * 1000) // 15 minutes later
-
-    // Mock the logger to avoid issues in test
-    const mockLogger = {
-      debug: vi.fn(),
-      warn: vi.fn(),
-      info: vi.fn(),
-      error: vi.fn()
-    }
-
-    const health = healthChecker.checkGrounding(mockLogger as any)
-    expect(health.status).toBe('stale')
-    expect(health.error).toContain('stale')
-  })
-
-  it('should detect empty grounding data', () => {
-    healthChecker.updateGroundingData([], [])
-
-    // Mock the logger to avoid issues in test
-    const mockLogger = {
-      debug: vi.fn(),
-      warn: vi.fn(),
-      info: vi.fn(),
-      error: vi.fn()
-    }
-
-    const health = healthChecker.checkGrounding(mockLogger as any)
-    expect(health.status).toBe('unhealthy')
-    expect(health.error).toContain('empty')
+  it('should have correct number of health checks', async () => {
+    // Note: this test will likely fail with actual network calls, but shows structure
+    const health = await healthChecker.checkHealth()
+    // Should have 3 checks: backend, openai, config (grounding removed)
+    expect(Object.keys(health.checks).length).toBe(3)
   })
 })

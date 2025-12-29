@@ -10,7 +10,6 @@ import { createPendingAction, redact } from '../api/backendClient.js'
 import { parseExpenseText } from '../core/parser.js'
 import { parseBankScreenshot } from './vision.js'
 import { PendingActionCreate } from '../core/schemas.js'
-import { GroundingProvider } from '../core/grounding.js'
 import { handleAndLogError, ErrorCategory } from '../utils/errors.js'
 import {
   processBankStatementFile,
@@ -28,7 +27,7 @@ interface SessionState {
 
 const sessionStore = new Map<number, SessionState>()
 
-export function buildBot(cfg: AppConfig, openai: OpenAI, grounding: GroundingProvider) {
+export function buildBot(cfg: AppConfig, openai: OpenAI) {
   const bot = new Telegraf<Ctx>(cfg.TELEGRAM_BOT_TOKEN)
 
    bot.telegram.setMyCommands([
@@ -39,10 +38,6 @@ export function buildBot(cfg: AppConfig, openai: OpenAI, grounding: GroundingPro
     {
       command: 'statement',
       description: 'How to upload bank statement Excel files'
-    },
-    {
-      command: 'grounding',
-      description: 'Display cached accounts/tags counts'
     }
   ]).catch((err) => {
     logger.warn({ err }, 'Failed to register Telegram bot commands')
@@ -56,24 +51,6 @@ export function buildBot(cfg: AppConfig, openai: OpenAI, grounding: GroundingPro
     }
     ctx.state = ctx.state || {}
     await next()
-  })
-
-  bot.command('grounding', async (ctx) => {
-    const chatId = ctx.chat?.id
-    if (!chatId) return
-    const correlationId = `cmd-grounding-${chatId}-${Date.now()}`
-    const correlationLogger = createCorrelationLogger(correlationId)
-
-    correlationLogger.info({ chatId }, 'Handling /grounding command')
-
-    try {
-      const { accounts, tags } = await grounding.get()
-      await ctx.reply(
-        `📚 Grounding cache\nAccounts: ${accounts.length}\nTags: ${tags.length}`
-      )
-    } catch (e: any) {
-      correlationLogger.error({ err: e.message }, 'Failed to load grounding data')
-    }
   })
 
   // /statement command - show how to upload bank statements
@@ -128,12 +105,6 @@ export function buildBot(cfg: AppConfig, openai: OpenAI, grounding: GroundingPro
     }
 
     try {
-      const { accounts, tags } = await grounding.get()
-      correlationLogger.debug({
-        accountsCount: accounts.length,
-        tagsCount: tags.length
-      }, 'Retrieved grounding data')
-
       // LLM provider and credentials are resolved from env/config via LLMClient
       const llmClient = new LLMClient(
         {
@@ -143,7 +114,8 @@ export function buildBot(cfg: AppConfig, openai: OpenAI, grounding: GroundingPro
         correlationId
       )
 
-      const parsed = await parseExpenseText(llmClient, text, accounts, tags, correlationId)
+      // Parse expense text without grounding - backend handles account assignment via vault defaults
+      const parsed = await parseExpenseText(llmClient, text, correlationId)
 
       const payload: PendingActionCreate = {
         source: 'telegram_text',

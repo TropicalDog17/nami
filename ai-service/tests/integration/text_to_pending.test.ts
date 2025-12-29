@@ -13,7 +13,7 @@ vi.mock('../../src/integrations/llm.js', async () => {
     ...actual,
     LLMClient: vi.fn().mockImplementation(() => ({
       chat: vi.fn().mockResolvedValue({
-        content: '```toon\naction: spend_vnd\nparams:\n  account: Bank\n  vnd_amount: 120000\n  date: 2025-01-01\n  counterparty: McDo\n```',
+        content: '```toon\naction: spend_vnd\nparams:\n  account: ""\n  vnd_amount: 120000\n  date: 2025-01-01\n  counterparty: McDo\n```',
         model: 'gpt-4o-mini'
       }),
       getProvider: () => 'openai',
@@ -43,15 +43,11 @@ describe('AI Service integration - text to pending', () => {
     }
 
     const openai = new OpenAIMock([
-      { content: '```toon\naction: spend_vnd\nparams:\n  account: Bank\n  vnd_amount: 120000\n  date: 2025-01-01\n  counterparty: McDo\n```' }
+      { content: '```toon\naction: spend_vnd\nparams:\n  account: ""\n  vnd_amount: 120000\n  date: 2025-01-01\n  counterparty: McDo\n```' }
     ]) as any
 
-    // Grounding cache with fixed data
-    const grounding = {
-      get: async () => ({ accounts: [{ name: 'Bank' }], tags: [{ name: 'food' }] })
-    }
-
-    const bot = buildBot(cfg, openai, grounding as any)
+    // No grounding parameter - bot uses vault-based account assignment
+    const bot = buildBot(cfg, openai)
     ;(bot as any).botInfo = { id: 999, is_bot: true, first_name: 'Test', username: 'testbot' }
     ;(bot.telegram as any).callApi = async (method: string, _payload: any) => {
       if (method === 'sendMessage') return { message_id: 1 }
@@ -85,7 +81,7 @@ describe('AI Service integration - text to pending', () => {
     expect(body.source).toBe('telegram_text')
     expect(body.action_json).toBeDefined()
     expect(body.action_json.action).toBe('spend_vnd')
-    expect(body.action_json.params.account).toBe('Bank')
+    expect(body.action_json.params.account).toBe('')
     expect(body.action_json.params.vnd_amount).toBe(120000)
   })
 })
