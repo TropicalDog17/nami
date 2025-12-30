@@ -1,0 +1,48 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    cluster: 'nami'
+    environment: 'development'
+
+# Alerting configuration (optional, for future)
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: []
+
+# Rule files
+rule_files: []
+
+# Scrape configurations
+scrape_configs:
+  # Prometheus self-monitoring
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+        labels:
+          service: 'prometheus'
+
+  # Backend Service
+  - job_name: 'nami-backend'
+    static_configs:
+      - targets: ['host.docker.internal:8080']
+        labels:
+          service: 'nami-backend'
+          component: 'api'
+    scrape_interval: 15s
+    metrics_path: '/metrics'
+    honor_labels: true
+    honor_timestamps: true
+
+  # AI Service
+  - job_name: 'nami-ai-service'
+    static_configs:
+      - targets: ['host.docker.internal:8081']
+        labels:
+          service: 'nami-ai-service'
+          component: 'ai'
+    scrape_interval: 15s
+    metrics_path: '/metrics'
+    honor_labels: true
+    honor_timestamps: true

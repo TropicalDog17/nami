@@ -6,6 +6,7 @@ import { buildBot } from './integrations/telegram.js'
 import { HealthChecker } from './api/health.js'
 import { apiTestRouter } from './api/api-test.js'
 import { handleAndLogError, ErrorCategory, ErrorSeverity } from './utils/errors.js'
+import { setupMonitoring, setMetrics } from './monitoring/index.js'
 
 function validateConfig(cfg: any): void {
   const correlationLogger = createCorrelationLogger('startup')
@@ -79,6 +80,12 @@ async function main() {
     validateConfig(cfg)
 
     const app = express()
+
+    // Setup monitoring FIRST (before routes)
+    const { metricsMiddleware, registerMetricsEndpoint, metrics } = setupMonitoring(app)
+    app.use(metricsMiddleware)
+    setMetrics(metrics)
+
     app.use(express.json({ limit: '2mb' }))
 
     // Initialize health checker
@@ -117,15 +124,8 @@ async function main() {
       res.json({ ready: true, timestamp: new Date().toISOString() })
     })
 
-    // Metrics endpoint (basic)
-    app.get('/metrics', (req, res) => {
-      const metrics = {
-        uptime: process.uptime(),
-        memory: process.memoryUsage(),
-        timestamp: new Date().toISOString()
-      }
-      res.json(metrics)
-    })
+    // Prometheus metrics endpoint
+    registerMetricsEndpoint()
 
     // API testing endpoints
     app.use('/api/test', apiTestRouter)

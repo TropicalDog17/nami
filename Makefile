@@ -1,7 +1,7 @@
 # Nami Transaction Tracking System - Makefile
 # This Makefile provides convenient targets for development, testing, and deployment
 
-.PHONY: help test test-integration test-unit test-isolated build run clean setup deps fmt fmt-backend fmt-frontend lint lint-backend lint-frontend docker-up docker-down docker-logs migrate db-reset demo backend frontend stop stop-backend stop-frontend install swagger swagger-install test-setup test-teardown clean-test-results backend-cover ci ci-backend ci-frontend
+.PHONY: help test test-integration test-unit test-isolated build run clean setup deps fmt fmt-backend fmt-frontend lint lint-backend lint-frontend docker-up docker-down docker-logs migrate db-reset demo backend frontend stop stop-backend stop-frontend install swagger swagger-install test-setup test-teardown clean-test-results backend-cover ci ci-backend ci-frontend monitoring monitoring-down
 
 # Default target
 help: ## Show this help message
@@ -209,3 +209,19 @@ ci: deps fmt lint test ## Run full CI pipeline (deps, format, lint, test)
 ci-backend: deps fmt-backend lint-backend test-integration test-unit ## Run CI for backend only
 
 ci-frontend: fmt-frontend lint-frontend test-isolated ## Run CI for frontend only
+
+# Monitoring targets
+monitoring: ## Start monitoring stack (Prometheus + Grafana)
+	@echo "📊 Starting monitoring stack..."
+	@cd ai-service && docker-compose --profile monitoring up -d
+	@echo "✅ Monitoring stack started"
+	@echo "🔗 Grafana: http://localhost:3000 (admin/admin)"
+	@echo "🔗 Prometheus: http://localhost:9090"
+
+monitoring-down: ## Stop monitoring stack
+	@echo "📊 Stopping monitoring stack..."
+	@cd ai-service && docker-compose --profile monitoring down
+	@echo "✅ Monitoring stack stopped"
+
+monitoring-logs: ## Show monitoring stack logs
+	@cd ai-service && docker-compose --profile monitoring logs -f

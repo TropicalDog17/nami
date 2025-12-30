@@ -15,12 +15,26 @@ import { aiRouter } from "./handlers/ai.handler";
 import { settingsRepository } from "./repositories";
 import { vaultService } from "./services/vault.service";
 import { initializeDatabase, closeConnection } from "./database/connection";
+import { setupMonitoring, setMetrics } from "./monitoring/index.js";
+import { logger } from "./utils/logger.js";
 
 const app = express();
+
+// Setup monitoring FIRST (before routes)
+const { metricsMiddleware, registerMetricsEndpoint, metrics } = setupMonitoring(app);
+app.use(metricsMiddleware);
+setMetrics(metrics);
+
 app.use(cors());
 app.use(express.json());
 
-app.get("/health", (_req, res) => res.json({ ok: true }));
+app.get("/health", (_req, res) =>
+  res.json({
+    ok: true,
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime(),
+  })
+);
 
 app.use("/api", transactionsRouter);
 app.use("/api", reportsRouter);
@@ -31,6 +45,9 @@ app.use("/api", consVaultsRouter);
 app.use("/api", adminRouter);
 app.use("/api", loansRouter);
 app.use("/api", aiRouter);
+
+// Metrics endpoint for Prometheus scraping
+registerMetricsEndpoint();
 
 // OpenAPI/Swagger
 app.get("/api/openapi.json", (_req, res) => res.json(openapiSpec));
@@ -45,7 +62,7 @@ async function bootstrap() {
     // Initialize database if using database backend
     if (process.env.STORAGE_BACKEND === "database") {
       initializeDatabase();
-      console.log("Database initialized");
+      logger.info("Database initialized");
     }
 
     // Ensure default vaults exist at startup
@@ -58,26 +75,27 @@ async function bootstrap() {
     // Initialize borrowing settings
     settingsRepository.getBorrowingSettings();
 
-    console.log("Initialization complete.");
-    console.log(`Default spending vault: ${defaultSpendingVault}`);
-    console.log(`Default income vault: ${defaultIncomeVault}`);
+    logger.info("Initialization complete.");
+    logger.info({ defaultSpendingVault }, "Default spending vault");
+    logger.info({ defaultIncomeVault }, "Default income vault");
   } catch (e) {
     const msg = (e as { message?: string } | null)?.message ?? String(e);
-    console.error("Bootstrap failed:", msg);
+    logger.error({ error: msg }, "Bootstrap failed");
   }
 }
 
 const PORT = process.env.PORT || 8080;
 bootstrap().finally(() => {
   app.listen(PORT, () => {
-    console.log(`Portfolio backend listening on http://localhost:${PORT}`);
-    console.log(`Swagger UI at http://localhost:${PORT}/api/docs`);
+    logger.info(`Portfolio backend listening on http://localhost:${PORT}`);
+    logger.info(`Swagger UI at http://localhost:${PORT}/api/docs`);
+    logger.info(`Metrics at http://localhost:${PORT}/metrics`);
   });
 });
 
 // Graceful shutdown
 process.on("SIGINT", () => {
-  console.log("\nShutting down gracefully...");
+  logger.info("Shutting down gracefully...");
   closeConnection();
   process.exit(0);
 });
