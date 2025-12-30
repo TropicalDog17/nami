@@ -1,5 +1,6 @@
 import axios from "axios";
 import { Asset, Rate, assetKey } from "../types";
+import { config } from "../core/config";
 
 function toMinuteISO(date: Date): string {
   date.setSeconds(0, 0);
@@ -72,7 +73,7 @@ export class PriceService {
   }
 
   async getRateUSD(asset: Asset, atISO?: string): Promise<Rate> {
-    const useFixed = process.env.NO_EXTERNAL_RATES === "1";
+    const useFixed = config.noExternalRates;
     const at = atISO ? new Date(atISO) : new Date();
     const key = `${assetKey(asset)}:${toMinuteISO(new Date(at))}`;
     const cached = cache.get(key);

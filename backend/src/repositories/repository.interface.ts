@@ -100,6 +100,15 @@ export interface ISettingsRepository {
   getSetting(key: string): string | undefined;
   setSetting(key: string, value: string): void;
   deleteSetting(key: string): void;
+
+  // Vault settings
+  getDefaultSpendingVaultName(): string;
+  setDefaultSpendingVaultName(name: string): void;
+  getDefaultIncomeVaultName(): string;
+  setDefaultIncomeVaultName(name: string): void;
+
+  // Borrowing settings
+  getBorrowingSettings(): { name: string; rate: number; lastAccrualStart?: string };
 }
 
 // Pending actions repository interface

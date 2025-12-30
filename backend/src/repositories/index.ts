@@ -1,65 +1,50 @@
-// Factory for creating repository instances based on STORAGE_BACKEND environment variable
-const backend = process.env.STORAGE_BACKEND || "json";
+/**
+ * Repository exports
+ * Re-exports from DI container for backward compatibility
+ *
+ * @deprecated Import from '../core/di' or '../core' directly for new code
+ */
 
-console.log(`Using storage backend: ${backend}`);
+import {
+  transactionRepository,
+  vaultRepository,
+  loanRepository,
+  adminRepository,
+  pendingActionsRepository,
+  settingsRepository,
+  TransactionRepositoryDb,
+  TransactionRepositoryJson,
+  VaultRepositoryDb,
+  VaultRepositoryJson,
+  LoanRepositoryDb,
+  LoanRepositoryJson,
+  AdminRepositoryDb,
+  AdminRepositoryJson,
+  PendingActionsRepositoryDb,
+  PendingActionsRepositoryJson,
+  SettingsRepositoryDb,
+  SettingsRepositoryJson,
+} from '../core/di';
 
-// Transaction repository
-export const transactionRepository =
-  backend === "database"
-    ? new (require("./transaction.repository").TransactionRepositoryDb)()
-    : new (require("./transaction.repository").TransactionRepositoryJson)();
-
-// Vault repository
-export const vaultRepository =
-  backend === "database"
-    ? new (require("./vault.repository").VaultRepositoryDb)()
-    : new (require("./vault.repository").VaultRepositoryJson)();
-
-// Loan repository
-export const loanRepository =
-  backend === "database"
-    ? new (require("./loan.repository").LoanRepositoryDb)()
-    : new (require("./loan.repository").LoanRepositoryJson)();
-
-// Admin repository
-export const adminRepository =
-  backend === "database"
-    ? new (require("./admin.repository").AdminRepositoryDb)()
-    : new (require("./admin.repository").AdminRepositoryJson)();
-
-// Pending actions repository
-export const pendingActionsRepository =
-  backend === "database"
-    ? new (require("./admin.repository").PendingActionsRepositoryDb)()
-    : new (require("./admin.repository").PendingActionsRepositoryJson)();
-
-// Settings repository
-export const settingsRepository =
-  backend === "database"
-    ? new (require("./settings.repository").SettingsRepositoryDb)()
-    : new (require("./settings.repository").SettingsRepositoryJson)();
+// Re-export repository instances (backward compatibility)
+export { transactionRepository, vaultRepository, loanRepository, adminRepository, pendingActionsRepository, settingsRepository };
 
 // Export classes for type imports and testing
 export {
   TransactionRepositoryJson,
   TransactionRepositoryDb,
-} from "./transaction.repository";
-
-export { VaultRepositoryJson, VaultRepositoryDb } from "./vault.repository";
-
-export { LoanRepositoryJson, LoanRepositoryDb } from "./loan.repository";
-
-export {
+  VaultRepositoryJson,
+  VaultRepositoryDb,
+  LoanRepositoryJson,
+  LoanRepositoryDb,
   AdminRepositoryJson,
   AdminRepositoryDb,
   PendingActionsRepositoryJson,
   PendingActionsRepositoryDb,
-} from "./admin.repository";
-
-export {
   SettingsRepositoryJson,
   SettingsRepositoryDb,
-} from "./settings.repository";
+};
 
-export * from "./base.repository";
-export * from "./repository.interface";
+// Export other repository types
+export * from './base.repository';
+export * from './repository.interface';
