@@ -136,18 +136,18 @@ migrate: ## Run database migrations (not applicable for this project)
 
 db-reset: docker-down docker-up ## Reset database (stop, start)
 
-docker-up: ## Start Docker services (PostgreSQL)
+docker-up: ## Start Docker services (PostgreSQL + AI Service + Monitoring)
 	@echo "Starting Docker services..."
-	@docker-compose up -d
-	@echo "Docker services started"
+	@docker-compose --profile monitoring up -d
+	@echo "Docker services started (PostgreSQL, AI Service, Prometheus, Grafana)"
 
 docker-down: ## Stop Docker services
 	@echo "Stopping Docker services..."
-	@docker-compose down
+	@docker-compose --profile monitoring down
 	@echo "Docker services stopped"
 
 docker-logs: ## Show Docker service logs
-	@docker-compose logs -f
+	@docker-compose --profile monitoring logs -f
 
 # Code quality targets
 fmt: fmt-backend fmt-frontend ## Format all code
