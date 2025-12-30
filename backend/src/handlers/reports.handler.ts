@@ -778,33 +778,80 @@ reportsRouter.get('/reports/series', async (req, res) => {
     const start = req.query.start ? String(req.query.start) : undefined;
     const end = req.query.end ? String(req.query.end) : undefined;
 
-    const targetVaults = account ? [account] : vaultRepository.findAll().map(v => v.name);
-    const perVault = await Promise.all(targetVaults.map(n => buildVaultDailySeries(n, start, end).then(s => ({ name: n, s }))));
+    const targetVaults = account ? [account] : vaultRepository.findAll().map((v: any) => v.name);
+    const perVault = await Promise.all(targetVaults.map((n: any) => buildVaultDailySeries(n, start, end).then(s => ({ name: n, s }))));
 
     // union of dates
     const allDates = new Set<string>();
-    for (const { s } of perVault) s.forEach(p => allDates.add(p.date));
-    const dates = Array.from(allDates).sort((a, b) => a.localeCompare(b));
+    for (const { s } of perVault) s.forEach((p: any) => allDates.add(p.date));
+    const dates = Array.from(allDates).sort((a: any, b: any) => a.localeCompare(b));
 
     type Row = { date: string; aum_usd: number; deposits_cum_usd: number; withdrawals_cum_usd: number; pnl_usd: number; roi_percent: number; apr_percent: number };
     const rows: Row[] = [];
 
+    // Aggregate cash flows from all vaults for proper IRR calculation
+    const aggregatedCashFlows: Array<{ amount: number; daysFromStart: number; date: string }> = [];
     let firstDepositDate: string | undefined = undefined;
+    let firstDepositDateObj: Date | undefined = undefined;
+
     for (const date of dates) {
       let aum = 0, dep = 0, wdr = 0, pnl = 0;
+      let dailyDeposit = 0;
+      let dailyWithdrawal = 0;
+
       for (const { s } of perVault) {
-        const pt = s.find(p => p.date === date);
+        const pt = s.find((p: any) => p.date === date);
         if (pt) {
-          aum += pt.aum_usd; dep += pt.deposits_cum_usd; wdr += pt.withdrawals_cum_usd; pnl += pt.pnl_usd;
-          if (pt.deposits_cum_usd > 0 && !firstDepositDate) firstDepositDate = date;
+          aum += pt.aum_usd;
+
+          // Track cumulative deposits/withdrawals for this day
+          const prevPt = s.find((p: any) => p.date < date);
+          const prevDep = prevPt?.deposits_cum_usd || 0;
+          const prevWdr = prevPt?.withdrawals_cum_usd || 0;
+          dailyDeposit += pt.deposits_cum_usd - prevDep;
+          dailyWithdrawal += pt.withdrawals_cum_usd - prevWdr;
+
+          dep += pt.deposits_cum_usd;
+          wdr += pt.withdrawals_cum_usd;
+          pnl += pt.pnl_usd;
         }
       }
-      const roi = dep > 0 ? (pnl / dep) * 100 : 0;
-      let apr = 0;
-      if (dep > 0 && firstDepositDate) {
-        const daysElapsed = Math.max(1, (new Date(date).getTime() - new Date(firstDepositDate).getTime()) / (24*3600*1000) + 1);
-        apr = roi * (365 / daysElapsed);
+
+      // Record first deposit date
+      if (dailyDeposit > 0 && !firstDepositDate) {
+        firstDepositDate = date;
+        firstDepositDateObj = new Date(firstDepositDate);
       }
+
+      // Add cash flows for IRR (deposits = negative, withdrawals = positive)
+      if (firstDepositDateObj && dailyDeposit > 0) {
+        const daysFromStart = dateDiffInDays(firstDepositDateObj, new Date(date));
+        aggregatedCashFlows.push({ amount: -dailyDeposit, daysFromStart, date });
+      }
+      if (firstDepositDateObj && dailyWithdrawal > 0) {
+        const daysFromStart = dateDiffInDays(firstDepositDateObj, new Date(date));
+        aggregatedCashFlows.push({ amount: dailyWithdrawal, daysFromStart, date });
+      }
+
+      // Calculate ROI
+      const roi = dep > 0 ? (pnl / dep) * 100 : 0;
+
+      // Calculate APR using proper IRR with all aggregated cash flows
+      let apr = 0;
+      if (firstDepositDateObj && dep > 0) {
+        const daysElapsed = Math.max(1, dateDiffInDays(firstDepositDateObj, new Date(date)) + 1);
+
+        // Build cash flows for IRR: all deposits/withdrawals up to this day + terminal value
+        const cashFlowsForIRR = aggregatedCashFlows
+          .filter(cf => cf.date <= date)
+          .map(cf => ({ amount: cf.amount, daysFromStart: cf.daysFromStart }));
+
+        // Add terminal value (current AUM) as positive cash flow
+        cashFlowsForIRR.push({ amount: aum, daysFromStart: daysElapsed - 1 });
+
+        apr = calculateIRRBasedAPR(cashFlowsForIRR, daysElapsed, roi / 100);
+      }
+
       rows.push({ date, aum_usd: aum, deposits_cum_usd: dep, withdrawals_cum_usd: wdr, pnl_usd: pnl, roi_percent: roi, apr_percent: apr });
     }
 

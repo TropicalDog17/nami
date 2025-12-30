@@ -63,6 +63,9 @@ const VaultsPage: React.FC = () => {
     Array<{ date: string; weighted_apr_percent: number }>
   >([]);
 
+  // Aggregate APR from backend (for stats card)
+  const [aggregateAPR, setAggregateAPR] = useState<number | null>(null);
+
   const loadVaults = useCallback(async (): Promise<void> => {
     try {
       setLoading(true);
@@ -230,7 +233,7 @@ const VaultsPage: React.FC = () => {
     }
   }, [vaults]);
 
-  // Load APR time series for all active vaults (fetch all data, filter on frontend)
+  // Load APR time series for all active vaults using backend aggregate endpoint
   useEffect(() => {
     const loadAprSeries = async () => {
       try {
@@ -241,80 +244,58 @@ const VaultsPage: React.FC = () => {
         );
         if (activeVaults.length === 0) {
           setAprSeriesFull([]);
+          setAggregateAPR(null);
           return;
         }
 
-        // Always fetch all data (no start date)
+        // Use backend aggregate series endpoint with proper IRR calculation
         const params: Record<string, string> = {
           end: new Date().toISOString().split('T')[0],
         };
 
-        const seriesPromises = activeVaults.map((v) =>
-          reportsApi.vaultSeries<{
-            vault: string;
-            series: Array<{
-              date: string;
-              aum_usd: number;
-              pnl_usd: number;
-              roi_percent: number;
-              apr_percent: number;
-            }>;
-          }>(v.id, params)
-        );
-
-        const allSeries = await Promise.all(seriesPromises);
-
-        // Aggregate by date
-        const dateMap = new Map<
-          string,
-          { total_aum_usd: number; weighted_apr: number }
-        >();
-
-        allSeries.forEach((result) => {
-          type SeriesPoint = {
+        const result = await reportsApi.series<{
+          account: string;
+          series: Array<{
             date: string;
-            pnl_usd: number;
             aum_usd: number;
+            pnl_usd: number;
+            roi_percent: number;
             apr_percent: number;
-          };
-          type VaultSeriesResult = { series?: SeriesPoint[] };
-          const series = (result as VaultSeriesResult | null)?.series ?? [];
-          if (Array.isArray(series)) {
-            series.forEach(
-              (point: {
-                date: string;
-                aum_usd: number;
-                apr_percent: number;
-              }) => {
-                const existing = dateMap.get(point.date) ?? {
-                  total_aum_usd: 0,
-                  weighted_apr: 0,
-                };
-                dateMap.set(point.date, {
-                  total_aum_usd: existing.total_aum_usd + (point.aum_usd || 0),
-                  weighted_apr:
-                    existing.weighted_apr +
-                    (point.apr_percent || 0) * (point.aum_usd || 0),
-                });
-              }
-            );
-          }
-        });
+          }>;
+        }>(params);
 
-        // Convert to array and calculate weighted APR
-        const aggregated = Array.from(dateMap.entries())
-          .map(([date, data]) => ({
-            date,
-            weighted_apr_percent:
-              data.total_aum_usd > 0
-                ? data.weighted_apr / data.total_aum_usd
-                : 0,
-          }))
-          .sort((a, b) => a.date.localeCompare(b.date));
+        const series = result?.series ?? [];
+        if (Array.isArray(series) && series.length > 0) {
+          // Set the latest APR value for the stats card
+          const latestAPR = series[series.length - 1].apr_percent;
+          setAggregateAPR(latestAPR);
 
-        setAprSeriesFull(aggregated);
+          // Find the earliest inception date among active vaults
+          const earliestInception = activeVaults.reduce((earliest, vault) => {
+            const inceptionDate = new Date(vault.inception_date);
+            return !earliest || inceptionDate < earliest ? inceptionDate : earliest;
+          }, null as Date | null);
+
+          // Filter series to start from the earliest vault inception
+          const filteredSeries = earliestInception
+            ? series.filter(point => new Date(point.date) >= earliestInception!)
+            : series;
+
+          const aggregated = filteredSeries
+            .map((point) => ({
+              date: point.date,
+              weighted_apr_percent: point.apr_percent || 0,
+            }))
+            .sort((a, b) => a.date.localeCompare(b.date));
+
+          setAprSeriesFull(aggregated);
+        } else {
+          setAprSeriesFull([]);
+          setAggregateAPR(null);
+        }
       } catch {
         setAprSeriesFull([]);
+        setAggregateAPR(null);
       }
     };
 
@@ -609,27 +590,18 @@ const VaultsPage: React.FC = () => {
       activeVaults: filteredVaults.filter((v) => v.status === 'active').length,
       totalAUM: 0,
       totalSupply: 0,
-      totalAPRWeighted: 0,
     } as {
       totalVaults: number;
       activeVaults: number;
       totalAUM: number;
       totalSupply: number;
-      totalAPRWeighted: number;
     };
 
     filteredVaults.forEach((vault) => {
       const aum = parseFloat(vault.total_assets_under_management || '0');
       const supply = parseFloat(vault.total_supply || '0');
-      const apr =
-        typeof vault.apr_percent === 'string'
-          ? parseFloat(vault.apr_percent)
-          : vault.apr_percent;
       stats.totalAUM += aum;
       stats.totalSupply += supply;
-      if (typeof apr === 'number' && isFinite(apr)) {
-        stats.totalAPRWeighted += (apr * aum) / 100; // Weighted APR
-      }
     });
 
     return stats;
@@ -694,17 +666,14 @@ const VaultsPage: React.FC = () => {
         <div className="bg-white p-4 rounded-lg border border-gray-200">
           <h3 className="text-sm font-medium text-gray-500 mb-2">Avg APR</h3>
           <p
-            className={`text-2xl font-bold ${totalStats.totalAUM > 0 ? ((totalStats.totalAPRWeighted / totalStats.totalAUM) * 100 >= 0 ? 'text-green-600' : 'text-red-600') : 'text-gray-600'}`}
+            className={`text-2xl font-bold ${aggregateAPR !== null ? (aggregateAPR >= 0 ? 'text-green-600' : 'text-red-600') : 'text-gray-600'}`}
           >
-            {totalStats.totalAUM > 0
-              ? formatPercentage(
-                  totalStats.totalAPRWeighted / totalStats.totalAUM,
-                  2
-                )
+            {aggregateAPR !== null
+              ? formatPercentage(aggregateAPR / 100, 2)
               : '—'}
           </p>
           <p className="text-sm text-gray-600">
-            Since inception (weighted by AUM)
+            Since inception (IRR-based, all vaults)
           </p>
         </div>
       </div>

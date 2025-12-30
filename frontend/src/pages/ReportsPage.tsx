@@ -1,8 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 
-import QuickBuyModal from '../components/modals/QuickBuyModal';
-import QuickSellModal from '../components/modals/QuickSellModal';
 import AssetAllocationChart from '../components/reports/AssetAllocationChart';
 import CashFlowChart from '../components/reports/CashFlowChart';
 import { PnLChart, SpendingChart, DailySpendingChart, MonthlySpendingTrendChart } from '../components/reports/Charts';
@@ -18,8 +16,6 @@ const ReportsPage = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<Record<string, unknown>>({});
-  const [showQuickBuy, setShowQuickBuy] = useState(false);
-  const [showQuickSell, setShowQuickSell] = useState(false);
 
   const navigate = useNavigate();
 
@@ -163,47 +159,6 @@ const ReportsPage = () => {
         className="bg-white p-4 rounded-lg shadow mb-6"
         data-testid="reports-filters"
       >
-        {/* Quick Actions */}
-        <div className="flex items-center justify-between mb-4">
-          <h3
-            className="text-lg font-medium text-gray-900"
-            data-testid="reports-filters-title"
-          >
-            Filters
-          </h3>
-          <div className="flex gap-2">
-            <button
-              onClick={() => { void fetchData(); }}
-              className="px-3 py-2 border border-gray-300 text-gray-700 rounded hover:bg-gray-50"
-              title="Refresh data"
-            >
-              Refresh
-            </button>
-
-            <button
-              onClick={() => setShowQuickBuy(true)}
-              className="px-3 py-2 bg-green-600 text-white rounded hover:bg-green-700"
-              title="Record a crypto spot buy"
-            >
-              Quick Buy
-            </button>
-
-            <button
-              onClick={() => setShowQuickSell(true)}
-              className="px-3 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700"
-              title="Record a crypto spot sell"
-            >
-              Quick Sell
-            </button>
-          </div>
-        </div>
-        <h3
-          className="text-lg font-medium text-gray-900 mb-4"
-          data-testid="reports-filters-title"
-        >
-          Filters
-        </h3>
-
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           {/* Currency Toggle */}
           <div>
@@ -1164,9 +1119,6 @@ const ReportsPage = () => {
 
   return (
     <div className="px-4 py-6 sm:px-0">
-      {/* Modals */}
-      <QuickBuyModal isOpen={showQuickBuy} onClose={() => setShowQuickBuy(false)} onSubmitted={() => { void fetchData(); }} />
-      <QuickSellModal isOpen={showQuickSell} onClose={() => setShowQuickSell(false)} onSubmitted={() => { void fetchData(); }} />
       <div className="mb-6">
         <h1
           className="text-2xl font-bold text-gray-900"
