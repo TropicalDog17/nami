@@ -20,7 +20,7 @@
     "process-statement:fast": "tsx src/cli/processBankStatement.ts --skip-ai"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.68.0",
+    "@anthropic-ai/sdk": "^0.71.0",
     "@toon-format/toon": "^0.7.0",
     "@types/multer": "^2.0.0",
     "@types/uuid": "^10.0.0",
