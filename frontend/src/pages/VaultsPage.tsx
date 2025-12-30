@@ -2,14 +2,14 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 import { TimeSeriesLineChart } from '../components/reports/Charts';
-import AggregatedPnLChart from '../components/reports/AggregatedPnLChart';
+import AUMChart from '../components/reports/AUMChart';
 import CreateTokenizedVaultForm from '../components/tokenized/CreateTokenizedVaultForm';
 import DataTable, { TableColumn } from '../components/ui/DataTable';
 import { useToast } from '../components/ui/Toast';
 import { tokenizedVaultApi, ApiError, reportsApi } from '../services/api';
 import { formatCurrency, formatPercentage } from '../utils/currencyFormatter';
 
-type Currency = 'USD' | 'VND';
+type TimeRange = '7d' | '30d' | 'all';
 
 type TokenizedVault = {
   id: string;
@@ -40,17 +40,27 @@ type TokenizedVault = {
 const VaultsPage: React.FC = () => {
   const navigate = useNavigate();
   const { error: showErrorToast, success: showSuccessToast } = useToast();
-  const shouldToast = (e: unknown) => !(e instanceof ApiError && e.status === 0);
+  const shouldToast = (e: unknown) =>
+    !(e instanceof ApiError && e.status === 0);
 
   const [vaults, setVaults] = useState<TokenizedVault[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [showCreateForm, setShowCreateForm] = useState<boolean>(false);
   const [filter, setFilter] = useState<'all' | 'active' | 'closed'>('active');
-  const [currency, setCurrency] = useState<Currency>('USD');
 
-  // Aggregate time series data for all vaults (PNL and APR over time)
-  const [aggregateSeries, setAggregateSeries] = useState<Array<{ date: string; total_pnl_usd: number; weighted_apr_percent: number }>>([]);
+  // Unified time range for all three charts
+  const [timeRange, setTimeRange] = useState<TimeRange>('30d');
+
+  // Aggregate time series data for PNL chart
+  const [pnlSeriesFull, setPnlSeriesFull] = useState<
+    Array<{ date: string; total_pnl_usd: number }>
+  >([]);
+
+  // Aggregate time series data for APR chart
+  const [aprSeriesFull, setAprSeriesFull] = useState<
+    Array<{ date: string; weighted_apr_percent: number }>
+  >([]);
 
   const loadVaults = useCallback(async (): Promise<void> => {
     try {
@@ -58,7 +68,9 @@ const VaultsPage: React.FC = () => {
       // Fetch tokenized vaults and backend APR summary in parallel
       const [vaultsData, summary] = await Promise.all([
         tokenizedVaultApi.list<TokenizedVault[]>(),
-        reportsApi.vaultsSummary<{ rows: Array<{ vault: string; apr_percent: number; aum_usd: number }> }>(),
+        reportsApi.vaultsSummary<{
+          rows: Array<{ vault: string; apr_percent: number; aum_usd: number }>;
+        }>(),
       ]);
       const mapAPR = new Map<string, number>();
       type SummaryRow = { vault: string; apr_percent: number };
@@ -66,10 +78,14 @@ const VaultsPage: React.FC = () => {
       if (Array.isArray(rows)) {
         for (const r of rows) mapAPR.set(r.vault, Number(r.apr_percent) || 0);
       }
-      const vts = (vaultsData ?? []).map((v) => ({ ...v, apr_percent: mapAPR.get(v.id) }));
+      const vts = (vaultsData ?? []).map((v) => ({
+        ...v,
+        apr_percent: mapAPR.get(v.id),
+      }));
       setVaults(vts);
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Failed to load vaults';
+      const message =
+        err instanceof Error ? err.message : 'Failed to load vaults';
       setError(message);
       if (shouldToast(err)) showErrorToast('Failed to load vaults');
     } finally {
@@ -81,40 +97,206 @@ const VaultsPage: React.FC = () => {
     void loadVaults();
   }, [filter, loadVaults]);
 
-  // Load aggregate time series for all active vaults
+  // Helper function to calculate date range based on time range
+  const getDateRange = (timeRange: TimeRange) => {
+    const now = new Date();
+    const endDate = now.toISOString().split('T')[0];
+    let startDate: string;
+
+    switch (timeRange) {
+      case '7d':
+        startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
+          .toISOString()
+          .split('T')[0];
+        break;
+      case '30d':
+        startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
+          .toISOString()
+          .split('T')[0];
+        break;
+      case 'all':
+        startDate = '';
+        break;
+      default:
+        startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
+          .toISOString()
+          .split('T')[0];
+    }
+
+    return { start: startDate, end: endDate };
+  };
+
+  // Filter data to show only from max(first data date, T-7d/T-30d)
+  const filterDataByTimeRange = <T extends { date: string }>(
+    data: T[],
+    timeRange: TimeRange
+  ): T[] => {
+    if (data.length === 0) return data;
+
+    const { start } = getDateRange(timeRange);
+
+    // Find the first date in the dataset
+    const firstDataDate = data[0].date;
+
+    // If 'all', show all data
+    if (timeRange === 'all' || !start) {
+      return data;
+    }
+
+    // Use whichever is later: first data date OR T-7d/T-30d
+    const effectiveStartDate = firstDataDate > start ? firstDataDate : start;
+
+    return data.filter((d) => d.date >= effectiveStartDate);
+  };
+
+  // Computed filtered data based on time range
+  const pnlSeries = useMemo(
+    () => filterDataByTimeRange(pnlSeriesFull, timeRange),
+    [pnlSeriesFull, timeRange]
+  );
+  const aprSeries = useMemo(
+    () => filterDataByTimeRange(aprSeriesFull, timeRange),
+    [aprSeriesFull, timeRange]
+  );
+
+  // Load PNL time series for all active vaults (fetch all data, filter on frontend)
   useEffect(() => {
-    const loadAggregateSeries = async () => {
+    const loadPnlSeries = async () => {
       try {
-        // Fetch individual vault series and aggregate them
-        const activeVaults = vaults.filter(v => v.status === 'active' && !['spend', 'borrowings'].includes(v.name.toLowerCase()));
+        const activeVaults = vaults.filter(
+          (v) =>
+            v.status === 'active' &&
+            !['spend', 'borrowings'].includes(v.name.toLowerCase())
+        );
         if (activeVaults.length === 0) {
-          setAggregateSeries([]);
+          setPnlSeriesFull([]);
           return;
         }
 
-        // Fetch all vault series in parallel
-        const seriesPromises = activeVaults.map(v =>
-          reportsApi.vaultSeries<{ vault: string; series: Array<{ date: string; aum_usd: number; pnl_usd: number; roi_percent: number; apr_percent: number }> }>(v.id)
+        // Always fetch all data (no start date)
+        const params: Record<string, string> = {
+          end: new Date().toISOString().split('T')[0],
+        };
+
+        const seriesPromises = activeVaults.map((v) =>
+          reportsApi.vaultSeries<{
+            vault: string;
+            series: Array<{
+              date: string;
+              aum_usd: number;
+              pnl_usd: number;
+              roi_percent: number;
+              apr_percent: number;
+            }>;
+          }>(v.id, params)
         );
 
         const allSeries = await Promise.all(seriesPromises);
 
         // Aggregate by date
-        const dateMap = new Map<string, { total_pnl_usd: number; total_aum_usd: number; weighted_apr: number }>();
+        const dateMap = new Map<string, number>();
 
         allSeries.forEach((result) => {
-          type SeriesPoint = { date: string; pnl_usd: number; aum_usd: number; apr_percent: number };
+          type SeriesPoint = {
+            date: string;
+            pnl_usd: number;
+            aum_usd: number;
+            apr_percent: number;
+          };
           type VaultSeriesResult = { series?: SeriesPoint[] };
           const series = (result as VaultSeriesResult | null)?.series ?? [];
           if (Array.isArray(series)) {
-            series.forEach((point: { date: string; pnl_usd: number; aum_usd: number; apr_percent: number }) => {
-              const existing = dateMap.get(point.date) ?? { total_pnl_usd: 0, total_aum_usd: 0, weighted_apr: 0 };
-              dateMap.set(point.date, {
-                total_pnl_usd: existing.total_pnl_usd + (point.pnl_usd || 0),
-                total_aum_usd: existing.total_aum_usd + (point.aum_usd || 0),
-                weighted_apr: existing.weighted_apr + ((point.apr_percent || 0) * (point.aum_usd || 0)),
-              });
+            series.forEach((point: { date: string; pnl_usd: number }) => {
+              const existing = dateMap.get(point.date) ?? 0;
+              dateMap.set(point.date, existing + (point.pnl_usd || 0));
             });
+          }
+        });
+
+        // Convert to array and sort
+        const aggregated = Array.from(dateMap.entries())
+          .map(([date, total_pnl_usd]) => ({ date, total_pnl_usd }))
+          .sort((a, b) => a.date.localeCompare(b.date));
+
+        setPnlSeriesFull(aggregated);
+      } catch {
+        setPnlSeriesFull([]);
+      }
+    };
+
+    if (vaults.length > 0) {
+      void loadPnlSeries();
+    }
+  }, [vaults]);
+
+  // Load APR time series for all active vaults (fetch all data, filter on frontend)
+  useEffect(() => {
+    const loadAprSeries = async () => {
+      try {
+        const activeVaults = vaults.filter(
+          (v) =>
+            v.status === 'active' &&
+            !['spend', 'borrowings'].includes(v.name.toLowerCase())
+        );
+        if (activeVaults.length === 0) {
+          setAprSeriesFull([]);
+          return;
+        }
+
+        // Always fetch all data (no start date)
+        const params: Record<string, string> = {
+          end: new Date().toISOString().split('T')[0],
+        };
+
+        const seriesPromises = activeVaults.map((v) =>
+          reportsApi.vaultSeries<{
+            vault: string;
+            series: Array<{
+              date: string;
+              aum_usd: number;
+              pnl_usd: number;
+              roi_percent: number;
+              apr_percent: number;
+            }>;
+          }>(v.id, params)
+        );
+
+        const allSeries = await Promise.all(seriesPromises);
+
+        // Aggregate by date
+        const dateMap = new Map<
+          string,
+          { total_aum_usd: number; weighted_apr: number }
+        >();
+
+        allSeries.forEach((result) => {
+          type SeriesPoint = {
+            date: string;
+            pnl_usd: number;
+            aum_usd: number;
+            apr_percent: number;
+          };
+          type VaultSeriesResult = { series?: SeriesPoint[] };
+          const series = (result as VaultSeriesResult | null)?.series ?? [];
+          if (Array.isArray(series)) {
+            series.forEach(
+              (point: {
+                date: string;
+                aum_usd: number;
+                apr_percent: number;
+              }) => {
+                const existing = dateMap.get(point.date) ?? {
+                  total_aum_usd: 0,
+                  weighted_apr: 0,
+                };
+                dateMap.set(point.date, {
+                  total_aum_usd: existing.total_aum_usd + (point.aum_usd || 0),
+                  weighted_apr:
+                    existing.weighted_apr +
+                    (point.apr_percent || 0) * (point.aum_usd || 0),
+                });
+              }
+            );
           }
         });
 
@@ -122,19 +304,21 @@ const VaultsPage: React.FC = () => {
         const aggregated = Array.from(dateMap.entries())
           .map(([date, data]) => ({
             date,
-            total_pnl_usd: data.total_pnl_usd,
-            weighted_apr_percent: data.total_aum_usd > 0 ? data.weighted_apr / data.total_aum_usd : 0,
+            weighted_apr_percent:
+              data.total_aum_usd > 0
+                ? data.weighted_apr / data.total_aum_usd
+                : 0,
           }))
           .sort((a, b) => a.date.localeCompare(b.date));
 
-        setAggregateSeries(aggregated);
+        setAprSeriesFull(aggregated);
       } catch {
-        setAggregateSeries([]);
+        setAprSeriesFull([]);
       }
     };
 
     if (vaults.length > 0) {
-      void loadAggregateSeries();
+      void loadAprSeries();
     }
   }, [vaults]);
 
@@ -143,7 +327,11 @@ const VaultsPage: React.FC = () => {
   };
 
   const handleCloseVault = async (vault: TokenizedVault): Promise<void> => {
-    if (!confirm(`Are you sure you want to close vault "${vault.name}"? This will mark it as closed but keep all data.`)) {
+    if (
+      !confirm(
+        `Are you sure you want to close vault "${vault.name}"? This will mark it as closed but keep all data.`
+      )
+    ) {
       return;
     }
 
@@ -152,13 +340,18 @@ const VaultsPage: React.FC = () => {
       showSuccessToast('Vault closed successfully!');
       void loadVaults();
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Failed to close vault';
+      const message =
+        err instanceof Error ? err.message : 'Failed to close vault';
       showErrorToast(message);
     }
   };
 
   const handleDeleteVault = async (vault: TokenizedVault): Promise<void> => {
-    if (!confirm(`Are you sure you want to delete vault "${vault.name}"? This action cannot be undone and will permanently remove all vault data.`)) {
+    if (
+      !confirm(
+        `Are you sure you want to delete vault "${vault.name}"? This action cannot be undone and will permanently remove all vault data.`
+      )
+    ) {
       return;
     }
 
@@ -167,7 +360,8 @@ const VaultsPage: React.FC = () => {
       showSuccessToast('Vault deleted successfully!');
       void loadVaults();
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Failed to delete vault';
+      const message =
+        err instanceof Error ? err.message : 'Failed to delete vault';
       showErrorToast(message);
     }
   };
@@ -190,7 +384,10 @@ const VaultsPage: React.FC = () => {
           </button>
           <div className="text-sm text-gray-500">{row.token_symbol}</div>
           {row.description && (
-            <div className="text-xs text-gray-400 truncate max-w-xs" title={row.description}>
+            <div
+              className="text-xs text-gray-400 truncate max-w-xs"
+              title={row.description}
+            >
               {row.description}
             </div>
           )}
@@ -202,30 +399,49 @@ const VaultsPage: React.FC = () => {
       title: 'Type',
       render: (value, _c, row) => {
         const isSpend = String(row.name || '').toLowerCase() === 'spend';
-        const isBorrowings = String(row.name || '').toLowerCase() === 'borrowings';
+        const isBorrowings =
+          String(row.name || '').toLowerCase() === 'borrowings';
         if (isSpend) {
           return (
-            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800`}>
+            <span
+              className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800`}
+            >
               Cash
             </span>
           );
         }
         if (isBorrowings) {
           return (
-            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800`}>
+            <span
+              className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800`}
+            >
               Liability
             </span>
           );
         }
         const typeConfig = {
-          user_defined: { label: 'User-Defined', class: 'bg-purple-100 text-purple-800' },
-          single_asset: { label: 'Single Asset', class: 'bg-blue-100 text-blue-800' },
-          multi_asset: { label: 'Multi-Asset', class: 'bg-green-100 text-green-800' },
+          user_defined: {
+            label: 'User-Defined',
+            class: 'bg-purple-100 text-purple-800',
+          },
+          single_asset: {
+            label: 'Single Asset',
+            class: 'bg-blue-100 text-blue-800',
+          },
+          multi_asset: {
+            label: 'Multi-Asset',
+            class: 'bg-green-100 text-green-800',
+          },
         };
         const key = typeof value === 'string' ? value : '';
-        const config = typeConfig[key as keyof typeof typeConfig] || { label: key, class: 'bg-gray-100 text-gray-800' };
+        const config = typeConfig[key as keyof typeof typeConfig] || {
+          label: key,
+          class: 'bg-gray-100 text-gray-800',
+        };
         return (
-          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${config.class}`}>
+          <span
+            className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${config.class}`}
+          >
             {config.label}
           </span>
         );
@@ -238,18 +454,18 @@ const VaultsPage: React.FC = () => {
       currency: 'USD',
       render: (value, _column, row) => {
         const isSpend = String(row.name || '').toLowerCase() === 'spend';
-        const isBorrowings = String(row.name || '').toLowerCase() === 'borrowings';
+        const isBorrowings =
+          String(row.name || '').toLowerCase() === 'borrowings';
         if (isSpend || isBorrowings) {
           return <span className="text-gray-500">—</span>;
         }
-        const price = typeof value === 'string' && value !== '' ? parseFloat(value) : 0;
+        const price =
+          typeof value === 'string' && value !== '' ? parseFloat(value) : 0;
         const isManual = row.is_user_defined_price;
         return (
           <div>
             <div className="font-medium">${price.toFixed(4)}</div>
-            {isManual && (
-              <div className="text-xs text-orange-600">Manual</div>
-            )}
+            {isManual && <div className="text-xs text-orange-600">Manual</div>}
           </div>
         );
       },
@@ -260,8 +476,10 @@ const VaultsPage: React.FC = () => {
       type: 'currency',
       currency: 'USD',
       render: (value, _c, row) => {
-        const num = typeof value === 'string' && value !== '' ? parseFloat(value) : 0;
-        const isBorrowings = String(row.name || '').toLowerCase() === 'borrowings';
+        const num =
+          typeof value === 'string' && value !== '' ? parseFloat(value) : 0;
+        const isBorrowings =
+          String(row.name || '').toLowerCase() === 'borrowings';
         const cls = isBorrowings && num < 0 ? 'text-red-700 font-medium' : '';
         return <span className={cls}>{formatCurrency(num)}</span>;
       },
@@ -273,9 +491,12 @@ const VaultsPage: React.FC = () => {
       decimals: 6,
       render: (value, _c, row) => {
         const isSpend = String(row.name || '').toLowerCase() === 'spend';
-        const isBorrowings = String(row.name || '').toLowerCase() === 'borrowings';
-        if (isSpend || isBorrowings) return <span className="text-gray-500">—</span>;
-        const supply = typeof value === 'string' && value !== '' ? parseFloat(value) : 0;
+        const isBorrowings =
+          String(row.name || '').toLowerCase() === 'borrowings';
+        if (isSpend || isBorrowings)
+          return <span className="text-gray-500">—</span>;
+        const supply =
+          typeof value === 'string' && value !== '' ? parseFloat(value) : 0;
         return supply.toLocaleString(undefined, { maximumFractionDigits: 6 });
       },
     },
@@ -286,15 +507,26 @@ const VaultsPage: React.FC = () => {
       decimals: 2,
       render: (_value, _c, row) => {
         const isSpend = String(row.name || '').toLowerCase() === 'spend';
-        const isBorrowings = String(row.name || '').toLowerCase() === 'borrowings';
-        if (isSpend || isBorrowings) return <span className="text-gray-500">—</span>;
-        const raw = typeof row.apr_percent === 'string' ? parseFloat(row.apr_percent) : row.apr_percent;
+        const isBorrowings =
+          String(row.name || '').toLowerCase() === 'borrowings';
+        if (isSpend || isBorrowings)
+          return <span className="text-gray-500">—</span>;
+        const raw =
+          typeof row.apr_percent === 'string'
+            ? parseFloat(row.apr_percent)
+            : row.apr_percent;
         if (!(typeof raw === 'number' && isFinite(raw))) {
           return <span className="text-gray-500">—</span>;
         }
         const isPositive = raw > 0;
-        const className = isPositive ? 'text-green-700' : raw < 0 ? 'text-red-700' : 'text-gray-700';
-        return <span className={className}>{formatPercentage(raw / 100, 2)}</span>;
+        const className = isPositive
+          ? 'text-green-700'
+          : raw < 0
+            ? 'text-red-700'
+            : 'text-gray-700';
+        return (
+          <span className={className}>{formatPercentage(raw / 100, 2)}</span>
+        );
       },
     },
     {
@@ -306,11 +538,19 @@ const VaultsPage: React.FC = () => {
           active: { label: 'Active', class: 'bg-green-100 text-green-800' },
           paused: { label: 'Paused', class: 'bg-yellow-100 text-yellow-800' },
           closed: { label: 'Closed', class: 'bg-gray-100 text-gray-800' },
-          liquidating: { label: 'Liquidating', class: 'bg-red-100 text-red-800' },
+          liquidating: {
+            label: 'Liquidating',
+            class: 'bg-red-100 text-red-800',
+          },
         };
-        const config = statusConfig[status as keyof typeof statusConfig] || { label: status, class: 'bg-gray-100 text-gray-800' };
+        const config = statusConfig[status as keyof typeof statusConfig] || {
+          label: status,
+          class: 'bg-gray-100 text-gray-800',
+        };
         return (
-          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${config.class}`}>
+          <span
+            className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${config.class}`}
+          >
             {config.label}
           </span>
         );
@@ -351,32 +591,43 @@ const VaultsPage: React.FC = () => {
         </div>
       ),
     },
-];
+  ];
 
   const filteredVaults = useMemo(() => {
     if (filter === 'all') return vaults;
-    return vaults.filter(vault =>
-      filter === 'active' ? vault.status === 'active' : vault.status !== 'active'
+    return vaults.filter((vault) =>
+      filter === 'active'
+        ? vault.status === 'active'
+        : vault.status !== 'active'
     );
   }, [vaults, filter]);
 
   const totalStats = useMemo(() => {
     const stats = {
       totalVaults: filteredVaults.length,
-      activeVaults: filteredVaults.filter(v => v.status === 'active').length,
+      activeVaults: filteredVaults.filter((v) => v.status === 'active').length,
       totalAUM: 0,
       totalSupply: 0,
       totalAPRWeighted: 0,
-    } as { totalVaults: number; activeVaults: number; totalAUM: number; totalSupply: number; totalAPRWeighted: number };
+    } as {
+      totalVaults: number;
+      activeVaults: number;
+      totalAUM: number;
+      totalSupply: number;
+      totalAPRWeighted: number;
+    };
 
-    filteredVaults.forEach(vault => {
+    filteredVaults.forEach((vault) => {
       const aum = parseFloat(vault.total_assets_under_management || '0');
       const supply = parseFloat(vault.total_supply || '0');
-      const apr = typeof vault.apr_percent === 'string' ? parseFloat(vault.apr_percent) : vault.apr_percent;
+      const apr =
+        typeof vault.apr_percent === 'string'
+          ? parseFloat(vault.apr_percent)
+          : vault.apr_percent;
       stats.totalAUM += aum;
       stats.totalSupply += supply;
       if (typeof apr === 'number' && isFinite(apr)) {
-        stats.totalAPRWeighted += apr * aum / 100; // Weighted APR
+        stats.totalAPRWeighted += (apr * aum) / 100; // Weighted APR
       }
     });
 
@@ -397,82 +648,166 @@ const VaultsPage: React.FC = () => {
     <div className="px-4 py-6 sm:px-0" data-testid="vaults-page">
       {/* Header */}
       <div className="mb-6">
-        <h1 className="text-3xl font-bold text-gray-900 mb-2">Tokenized Vaults</h1>
-        <p className="text-gray-600">Create custom tokens and track your investment vaults</p>
+        <h1 className="text-3xl font-bold text-gray-900 mb-2">
+          Tokenized Vaults
+        </h1>
+        <p className="text-gray-600">
+          Create custom tokens and track your investment vaults
+        </p>
       </div>
 
       {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         <div className="bg-white p-4 rounded-lg border border-gray-200">
-          <h3 className="text-sm font-medium text-gray-500 mb-2">Total Vaults</h3>
-          <p className="text-2xl font-bold text-gray-900">{filteredVaults.length}</p>
-          <p className="text-sm text-gray-600">{filteredVaults.filter(v => v.status === 'active').length} active</p>
+          <h3 className="text-sm font-medium text-gray-500 mb-2">
+            Total Vaults
+          </h3>
+          <p className="text-2xl font-bold text-gray-900">
+            {filteredVaults.length}
+          </p>
+          <p className="text-sm text-gray-600">
+            {filteredVaults.filter((v) => v.status === 'active').length} active
+          </p>
         </div>
 
         <div className="bg-white p-4 rounded-lg border border-gray-200">
           <h3 className="text-sm font-medium text-gray-500 mb-2">Total AUM</h3>
-          <p className="text-2xl font-bold text-gray-900">{formatCurrency(totalStats.totalAUM)}</p>
+          <p className="text-2xl font-bold text-gray-900">
+            {formatCurrency(totalStats.totalAUM)}
+          </p>
           <p className="text-sm text-gray-600">Assets under management</p>
         </div>
 
         <div className="bg-white p-4 rounded-lg border border-gray-200">
-          <h3 className="text-sm font-medium text-gray-500 mb-2">Total Supply</h3>
-          <p className="text-2xl font-bold text-gray-900">{totalStats.totalSupply.toLocaleString(undefined, { maximumFractionDigits: 0 })}</p>
+          <h3 className="text-sm font-medium text-gray-500 mb-2">
+            Total Supply
+          </h3>
+          <p className="text-2xl font-bold text-gray-900">
+            {totalStats.totalSupply.toLocaleString(undefined, {
+              maximumFractionDigits: 0,
+            })}
+          </p>
           <p className="text-sm text-gray-600">Total tokens issued</p>
         </div>
 
         <div className="bg-white p-4 rounded-lg border border-gray-200">
           <h3 className="text-sm font-medium text-gray-500 mb-2">Avg APR</h3>
-          <p className={`text-2xl font-bold ${totalStats.totalAUM > 0 ? (totalStats.totalAPRWeighted / totalStats.totalAUM * 100) >= 0 ? 'text-green-600' : 'text-red-600' : 'text-gray-600'}`}>
-            {totalStats.totalAUM > 0 ? formatPercentage(totalStats.totalAPRWeighted / totalStats.totalAUM, 2) : '—'}
+          <p
+            className={`text-2xl font-bold ${totalStats.totalAUM > 0 ? ((totalStats.totalAPRWeighted / totalStats.totalAUM) * 100 >= 0 ? 'text-green-600' : 'text-red-600') : 'text-gray-600'}`}
+          >
+            {totalStats.totalAUM > 0
+              ? formatPercentage(
+                  totalStats.totalAPRWeighted / totalStats.totalAUM,
+                  2
+                )
+              : '—'}
           </p>
-          <p className="text-sm text-gray-600">Since inception (weighted by AUM)</p>
+          <p className="text-sm text-gray-600">
+            Since inception (weighted by AUM)
+          </p>
         </div>
       </div>
 
-      {/* Time Series Charts: PNL and APR over time */}
-      {aggregateSeries.length > 0 && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
-          <div className="bg-white p-4 rounded-lg border border-gray-200">
-            <h3 className="text-sm font-medium text-gray-900 mb-3">Total PnL Over Time</h3>
-            <div style={{ height: 280 }}>
-              <TimeSeriesLineChart
-                labels={aggregateSeries.map(p => p.date)}
-                datasets={[{
-                  label: 'Total PnL (USD)',
-                  data: aggregateSeries.map(p => p.total_pnl_usd),
-                  color: '#059669',
-                  fill: true
-                }]}
-                yFormat="currency"
-                currency="USD"
-              />
-            </div>
-          </div>
-          <div className="bg-white p-4 rounded-lg border border-gray-200">
-            <h3 className="text-sm font-medium text-gray-900 mb-3">Weighted APR Over Time</h3>
-            <div style={{ height: 280 }}>
-              <TimeSeriesLineChart
-                labels={aggregateSeries.map(p => p.date)}
-                datasets={[{
-                  label: 'Weighted APR (%)',
-                  data: aggregateSeries.map(p => p.weighted_apr_percent),
-                  color: '#2563EB',
-                  fill: true
-                }]}
-                yFormat="percent"
-              />
-            </div>
+      {/* Time Series Charts with unified filter */}
+      <div className="mb-6">
+        {/* Unified Time Range Filter */}
+        <div className="flex justify-end mb-3">
+          <div className="flex rounded-md shadow-sm" role="group">
+            <button
+              onClick={() => setTimeRange('7d')}
+              className={`px-3 py-1.5 text-xs font-medium border rounded-l-lg ${
+                timeRange === '7d'
+                  ? 'bg-blue-600 text-white border-blue-600'
+                  : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+              }`}
+            >
+              7D
+            </button>
+            <button
+              onClick={() => setTimeRange('30d')}
+              className={`px-3 py-1.5 text-xs font-medium border-t border-b border-r ${
+                timeRange === '30d'
+                  ? 'bg-blue-600 text-white border-blue-600'
+                  : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+              }`}
+            >
+              30D
+            </button>
+            <button
+              onClick={() => setTimeRange('all')}
+              className={`px-3 py-1.5 text-xs font-medium border-t border-b border-r rounded-r-lg ${
+                timeRange === 'all'
+                  ? 'bg-blue-600 text-white border-blue-600'
+                  : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+              }`}
+            >
+              All
+            </button>
           </div>
         </div>
-      )}
 
-      {/* Aggregated P&L Chart with 7d/30d filters */}
-      <div className="mb-6">
-        <AggregatedPnLChart
-          currency={currency}
-          onCurrencyChange={setCurrency}
-        />
+        {/* Charts Grid */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          {/* Total PnL Chart */}
+          <div className="bg-white p-4 rounded-lg border border-gray-200">
+            <h3 className="text-sm font-medium text-gray-900 mb-3">
+              Total PnL Over Time
+            </h3>
+            <div style={{ height: 280 }}>
+              {pnlSeries.length > 0 ? (
+                <TimeSeriesLineChart
+                  labels={pnlSeries.map((p) => p.date)}
+                  datasets={[
+                    {
+                      label: 'Total PnL (USD)',
+                      data: pnlSeries.map((p) => p.total_pnl_usd),
+                      color: '#059669',
+                      fill: true,
+                    },
+                  ]}
+                  yFormat="currency"
+                  currency="USD"
+                />
+              ) : (
+                <div className="flex items-center justify-center h-full text-gray-500 text-sm">
+                  No PnL data available
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Weighted APR Chart */}
+          <div className="bg-white p-4 rounded-lg border border-gray-200">
+            <h3 className="text-sm font-medium text-gray-900 mb-3">
+              Weighted APR Over Time
+            </h3>
+            <div style={{ height: 280 }}>
+              {aprSeries.length > 0 ? (
+                <TimeSeriesLineChart
+                  labels={aprSeries.map((p) => p.date)}
+                  datasets={[
+                    {
+                      label: 'Weighted APR (%)',
+                      data: aprSeries.map((p) => p.weighted_apr_percent),
+                      color: '#2563EB',
+                      fill: true,
+                    },
+                  ]}
+                  yFormat="percent"
+                />
+              ) : (
+                <div className="flex items-center justify-center h-full text-gray-500 text-sm">
+                  No APR data available
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* AUM Chart */}
+          <div className="bg-white p-4 rounded-lg border border-gray-200">
+            <AUMChart timeRange={timeRange} onTimeRangeChange={setTimeRange} />
+          </div>
+        </div>
       </div>
 
       {/* Controls */}
@@ -496,7 +831,7 @@ const VaultsPage: React.FC = () => {
                 : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
             }`}
           >
-            Active ({vaults.filter(v => v.status === 'active').length})
+            Active ({vaults.filter((v) => v.status === 'active').length})
           </button>
           <button
             onClick={() => setFilter('closed')}
@@ -506,7 +841,7 @@ const VaultsPage: React.FC = () => {
                 : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
             }`}
           >
-            Closed ({vaults.filter(v => v.status !== 'active').length})
+            Closed ({vaults.filter((v) => v.status !== 'active').length})
           </button>
         </div>
 

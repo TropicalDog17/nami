@@ -463,43 +463,101 @@ export const TimeSeriesLineChart: React.FC<{
   yFormat?: 'percent' | 'currency' | 'number';
   currency?: Currency;
 }> = ({ labels, datasets, yFormat = 'number', currency = 'USD' }) => {
+  // Helper to create gradient for a given color
+  const createGradient = (ctx: CanvasRenderingContext2D, chartArea: { bottom: number; top: number }, color: string) => {
+    const gradient = ctx.createLinearGradient(0, chartArea.top, 0, chartArea.bottom);
+    // Convert hex to RGB
+    const hex = color.replace('#', '');
+    const r = parseInt(hex.substring(0, 2), 16);
+    const g = parseInt(hex.substring(2, 4), 16);
+    const b = parseInt(hex.substring(4, 6), 16);
+    gradient.addColorStop(0, `rgba(${r}, ${g}, ${b}, 0.3)`);
+    gradient.addColorStop(0.5, `rgba(${r}, ${g}, ${b}, 0.1)`);
+    gradient.addColorStop(1, `rgba(${r}, ${g}, ${b}, 0.02)`);
+    return gradient;
+  };
+
+  // Format labels to "Month Day" format
+  const formattedLabels = labels.map(label => {
+    const date = new Date(label);
+    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  });
+
   const chartData = {
-    labels,
+    labels: formattedLabels,
     datasets: datasets.map(ds => ({
       label: ds.label,
       data: ds.data,
-      borderColor: ds.color || '#3B82F6',
-      backgroundColor: (ds.color ? `${ds.color}33` : '#3B82F633'),
-      tension: 0.25,
+      borderColor: ds.color || '#22c55e',
+      backgroundColor: function (context: { chart: { canvas: HTMLCanvasElement; ctx: CanvasRenderingContext2D; chartArea?: { bottom: number; top: number; left: number; right: number } } }) {
+        const chart = context.chart;
+        const { ctx, chartArea } = chart;
+        if (!chartArea) {
+          return (ds.color ? `${ds.color}33` : '#22c55e33');
+        }
+        return createGradient(ctx, chartArea, ds.color || '#22c55e');
+      },
+      tension: 0.4,
+      borderWidth: 2.5,
       fill: ds.fill ?? true,
-      pointRadius: 2,
+      pointRadius: 0,
+      pointHoverRadius: 6,
+      pointHoverBackgroundColor: ds.color || '#22c55e',
+      pointHoverBorderColor: '#fff',
+      pointHoverBorderWidth: 2,
     })),
   }
   const options = {
     responsive: true,
     maintainAspectRatio: false,
+    interaction: {
+      mode: 'index' as const,
+      intersect: false,
+    },
     plugins: {
-      legend: { position: 'top' as const },
+      legend: {
+        position: 'top' as const,
+        labels: {
+          boxWidth: 12,
+          padding: 15,
+          font: {
+            size: 12,
+          },
+        },
+      },
       tooltip: {
         callbacks: {
+          title: function (context: { label: string }[]) {
+            return context[0]?.label ?? ''
+          },
           label: function (context: { parsed: { y: number }; dataset: { label?: string } }) {
             const value = context.parsed.y
             if (yFormat === 'percent') return `${context.dataset.label ?? ''}: ${Number(value).toFixed(2)}%`
-            if (yFormat === 'currency') return `${context.dataset.label ?? ''}: ${value.toLocaleString()} ${currency}`
+            if (yFormat === 'currency') return `${context.dataset.label ?? ''}: $${value.toLocaleString()}`
             return `${context.dataset.label ?? ''}: ${value.toLocaleString()}`
           }
         }
       }
     },
     scales: {
+      x: {
+        grid: {
+          display: false,
+        },
+        ticks: {
+          maxRotation: 0,
+          autoSkip: true,
+          maxTicksLimit: 6,
+        },
+      },
       y: {
-        beginAtZero: true,
+        beginAtZero: false,
         ticks: {
           // @ts-ignore
           callback: function (value: number | string) {
             const n = typeof value === 'number' ? value : parseFloat(String(value))
             if (yFormat === 'percent') return `${Number(n).toFixed(2)}%`
-            if (yFormat === 'currency') return `${n.toLocaleString()}`
+            if (yFormat === 'currency') return `$${n.toLocaleString()}`
             return `${n.toLocaleString()}`
           }
         }

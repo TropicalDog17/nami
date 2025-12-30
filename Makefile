@@ -99,6 +99,17 @@ run-dev: ## Run both backend and frontend simultaneously (requires database)
 	@echo ""
 	@(cd backend && npm run dev) & (cd frontend && npm run dev) & (cd ai-service && npm run dev) & wait
 
+run-dev-v2: ## Run both backend and frontend simultaneously (requires database)
+	@echo "🚀 Starting backend and frontend..."
+	@echo "Backend will be available at: http://localhost:8080"
+	@echo "Frontend will be available at: http://localhost:3000"
+	@echo "AI Service will be available at: http://localhost:8088"
+	@echo ""
+	@echo "Press Ctrl+C to stop all services"
+	@echo ""
+	@(cd backend && STORAGE_BACKEND=database npm run dev) & (cd frontend && npm run dev) & (cd ai-service && npm run dev) & wait
+
+
 run-backend: ## Run only the backend server (requires database)
 	@echo "🚀 Starting backend..."
 	@cd backend && npm run dev

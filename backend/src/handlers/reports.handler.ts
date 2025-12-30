@@ -6,6 +6,10 @@ import { transactionService } from '../services/transaction.service';
 import { priceService } from '../services/price.service';
 import { Asset, VaultEntry, PortfolioReportItem } from '../types';
 
+// Persistent price cache shared across all requests to avoid repeated API calls
+// Key: "assetType:assetSymbol", Value: rateUSD
+const persistentPriceCache = new Map<string, number>();
+
 export const reportsRouter = Router();
 
 async function usdToVnd(): Promise<number> {
@@ -150,12 +154,29 @@ function calculateIRRBasedAPR(
   return irr * 100;
 }
 
-async function computeMarkToMarketUSD(positions: Map<string, { asset: Asset; units: number }>, at?: string): Promise<number> {
+async function computeMarkToMarketUSD(
+  positions: Map<string, { asset: Asset; units: number }>,
+  at?: string,
+  priceCache?: Map<string, number>
+): Promise<number> {
   let aum = 0;
   for (const p of positions.values()) {
     if (Math.abs(p.units) < 1e-12) continue;
-    const rate = await priceService.getRateUSD(p.asset, at);
-    aum += p.units * rate.rateUSD;
+
+    let rateUSD = 1;
+    const assetKey = `${p.asset.type}:${p.asset.symbol}`;
+
+    // Check cache first
+    if (priceCache?.has(assetKey)) {
+      rateUSD = priceCache.get(assetKey)!;
+    } else {
+      const rate = await priceService.getRateUSD(p.asset, at);
+      rateUSD = rate.rateUSD;
+      // Cache the rate for this asset (prices are time-invariant in current implementation)
+      priceCache?.set(assetKey, rateUSD);
+    }
+
+    aum += p.units * rateUSD;
   }
   return aum;
 }
@@ -237,8 +258,8 @@ async function buildVaultDailySeries(vaultName: string, start?: string, end?: st
       // Rolling AUM: last valuation plus net flows since that valuation
       aum = lastValuationUSD + netFlowSinceValUSD;
     } else {
-      // If no valuation yet, mark-to-market from positions
-      aum = await computeMarkToMarketUSD(positions, day + 'T23:59:59Z');
+      // If no valuation yet, mark-to-market from positions (with persistent price caching)
+      aum = await computeMarkToMarketUSD(positions, day + 'T23:59:59Z', persistentPriceCache);
     }
 
     const pnl = aum + withdrawnCum - depositedCum; // profit = equity - net_contributed
@@ -646,7 +667,7 @@ async function buildVaultHeaderMetrics(vaultName: string) {
   if (typeof lastValuationUSD === 'number') {
     aum = lastValuationUSD + netFlowSinceValUSD;
   } else {
-    aum = await computeMarkToMarketUSD(positions);
+    aum = await computeMarkToMarketUSD(positions, undefined, persistentPriceCache);
   }
 
   const pnl = aum + withdrawnCum - depositedCum; // equity - net_contributed
