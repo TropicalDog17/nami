@@ -9,7 +9,7 @@ import {
   Legend,
   Filler,
 } from 'chart.js';
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { Line } from 'react-chartjs-2';
 
 import { reportsApi } from '../../services/api';

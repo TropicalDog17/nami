@@ -98,11 +98,6 @@ async function main() {
       maxRetries: 3
     })
 
-    // Build and initialize bot
-    const bot = buildBot(cfg, openai)
-    await bot.launch()
-    startupLogger.info({}, '📱 Telegram bot started')
-
     // Comprehensive health check endpoint
     app.get('/healthz', async (req, res) => {
       try {
@@ -130,13 +125,21 @@ async function main() {
     // API testing endpoints
     app.use('/api/test', apiTestRouter)
 
-    // Start server
+    // Start server FIRST
     const port = cfg.PORT
-    app.listen(port, () => {
+    const server = app.listen(port, () => {
       startupLogger.info(
         { port, nodeEnv: process.env.NODE_ENV || 'development' },
         '🚀 Nami AI Service is listening'
       )
+    })
+
+    // Build and initialize bot AFTER server is listening
+    const bot = buildBot(cfg, openai)
+    bot.launch().then(() => {
+      startupLogger.info({}, '📱 Telegram bot started')
+    }).catch((err) => {
+      startupLogger.error({ err }, '⚠️  Failed to launch Telegram bot (continuing without bot)')
     })
 
 

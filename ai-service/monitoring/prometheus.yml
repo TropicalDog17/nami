@@ -35,10 +35,10 @@ scrape_configs:
     honor_labels: true
     honor_timestamps: true
 
-  # AI Service (running in Docker, accessed via service name)
+  # AI Service (running on host, accessed via host.docker.internal)
   - job_name: 'nami-ai-service'
     static_configs:
-      - targets: ['ai-service:8081']
+      - targets: ['host.docker.internal:8088']
         labels:
           service: 'nami-ai-service'
           component: 'ai'

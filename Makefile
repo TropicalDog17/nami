@@ -1,7 +1,7 @@
 # Nami Transaction Tracking System - Makefile
 # This Makefile provides convenient targets for development, testing, and deployment
 
-.PHONY: help test test-integration test-unit test-isolated build run clean setup deps fmt fmt-backend fmt-frontend lint lint-backend lint-frontend docker-up docker-down docker-logs migrate db-reset demo backend frontend stop stop-backend stop-frontend install ci ci-backend ci-frontend monitoring monitoring-down monitoring-logs
+.PHONY: help test test-integration test-unit test-isolated build run clean setup deps fmt fmt-backend fmt-frontend lint lint-backend lint-frontend docker-up docker-down docker-logs migrate db-reset demo backend frontend stop stop-backend stop-frontend stop-ai-service install ci ci-backend ci-frontend monitoring monitoring-down monitoring-logs logs logs-backend logs-frontend logs-ai
 
 # Default target
 help: ## Show this help message
@@ -79,27 +79,47 @@ run: run-demo ## Run the full application (alias for run-demo)
 
 run-demo: ## Run the full demo environment (database + backend + frontend)
 	@echo "Starting full demo..."
-	@make docker-up && sleep 2 && make run-dev
+	@make run-dev
 
 run-dev: ## Run both backend and frontend simultaneously (requires database)
-	@echo "Starting backend and frontend..."
+	@echo "Starting backend, frontend, and AI service..."
 	@echo "Backend will be available at: http://localhost:8080"
 	@echo "Frontend will be available at: http://localhost:3000"
 	@echo "AI Service will be available at: http://localhost:8088"
 	@echo ""
+	@echo "Logs are being written to separate files:"
+	@echo "  - logs/backend.log"
+	@echo "  - logs/frontend.log"
+	@echo "  - logs/ai-service.log"
+	@echo ""
 	@echo "Press Ctrl+C to stop all services"
 	@echo ""
-	@(cd backend && npm run dev) & (cd frontend && npm run dev) & (cd ai-service && npm run dev) & wait
+	@mkdir -p logs
+	@(cd backend && npm run dev) > logs/backend.log 2>&1 & \
+	(cd frontend && npm run dev) > logs/frontend.log 2>&1 & \
+	(cd ai-service && npm run dev) > logs/ai-service.log 2>&1 & \
+	wait; \
+	make stop
 
 run-dev-v2: ## Run both backend and frontend simultaneously (requires database)
-	@echo "Starting backend and frontend..."
+	@echo "Starting backend, frontend, and AI service..."
 	@echo "Backend will be available at: http://localhost:8080"
 	@echo "Frontend will be available at: http://localhost:3000"
 	@echo "AI Service will be available at: http://localhost:8088"
 	@echo ""
+	@echo "Logs are being written to separate files:"
+	@echo "  - logs/backend.log"
+	@echo "  - logs/frontend.log"
+	@echo "  - logs/ai-service.log"
+	@echo ""
 	@echo "Press Ctrl+C to stop all services"
 	@echo ""
-	@(cd backend && STORAGE_BACKEND=database npm run dev) & (cd frontend && npm run dev) & (cd ai-service && npm run dev) & wait
+	@mkdir -p logs
+	@(cd backend && STORAGE_BACKEND=database npm run dev) > logs/backend.log 2>&1 & \
+	(cd frontend && npm run dev) > logs/frontend.log 2>&1 & \
+	(cd ai-service && npm run dev) > logs/ai-service.log 2>&1 & \
+	wait; \
+	make stop
 
 
 run-backend: ## Run only the backend server (requires database)
@@ -114,11 +134,6 @@ backend: run-backend ## Alias for run-backend
 frontend: run-frontend ## Alias for run-frontend
 
 # Stop targets
-stop: ## Stop backend, frontend, and docker services
-	@echo "Stopping all services..."
-	@make stop-backend || true
-	@make stop-frontend || true
-
 stop-backend: ## Stop backend service
 	@echo "Stopping backend..."
 	@lsof -ti tcp:8080 | xargs kill -TERM 2>/dev/null || true
@@ -130,16 +145,45 @@ stop-frontend: ## Stop frontend service
 	@lsof -ti tcp:3000 | xargs kill -TERM 2>/dev/null || true
 	@pkill -f "vite" 2>/dev/null || true
 
+stop-ai-service: ## Stop AI service
+	@echo "Stopping AI service..."
+	@lsof -ti tcp:8088 | xargs kill -TERM 2>/dev/null || true
+	@pkill -f "ai-service/src/index.ts" 2>/dev/null || true
+
+stop: ## Stop backend, frontend, and docker services
+	@echo "Stopping all services..."
+	@make stop-backend || true
+	@make stop-frontend || true
+	@make stop-ai-service || true
+
+# Log viewing targets
+logs: ## Show all logs (tail all log files)
+	@echo "Tailing all logs (Ctrl+C to exit)..."
+	@tail -f logs/*.log
+
+logs-backend: ## Show backend logs
+	@echo "Tailing backend logs (Ctrl+C to exit)..."
+	@tail -f logs/backend.log
+
+logs-frontend: ## Show frontend logs
+	@echo "Tailing frontend logs (Ctrl+C to exit)..."
+	@tail -f logs/frontend.log
+
+logs-ai: ## Show AI service logs
+	@echo "Tailing AI service logs (Ctrl+C to exit)..."
+	@tail -f logs/ai-service.log
+
 # Database targets
 migrate: ## Run database migrations (not applicable for this project)
 	@echo "No database migrations configured for this project"
 
 db-reset: docker-down docker-up ## Reset database (stop, start)
 
-docker-up: ## Start Docker services (PostgreSQL + AI Service + Monitoring)
+docker-up: ## Start Docker services (PostgreSQL + Monitoring)
 	@echo "Starting Docker services..."
 	@docker-compose --profile monitoring up -d
-	@echo "Docker services started (PostgreSQL, AI Service, Prometheus, Grafana)"
+	@echo "Docker services started (PostgreSQL, Prometheus, Grafana)"
+	@echo "Note: AI Service runs locally on port 8088"
 
 docker-down: ## Stop Docker services
 	@echo "Stopping Docker services..."
@@ -188,6 +232,10 @@ monitoring: ## Start monitoring stack (Prometheus + Grafana)
 	@echo "Monitoring stack started"
 	@echo "Grafana: http://localhost:3001 (admin/admin or set GRAFANA_PASSWORD env)"
 	@echo "Prometheus: http://localhost:9090"
+	@echo ""
+	@echo "Note: Make sure your services are running:"
+	@echo "  - Backend: http://localhost:8080/metrics"
+	@echo "  - AI Service: http://localhost:8088/metrics"
 
 monitoring-down: ## Stop monitoring stack
 	@echo "Stopping monitoring stack..."
