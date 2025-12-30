@@ -10,6 +10,11 @@ import { adminApi } from '../services/api';
 
 type TabId = 'types' | 'accounts' | 'assets' | 'tags' | 'pending';
 
+type TransactionType = { name: string; is_active?: boolean };
+type Account = { name: string; type: string; is_active?: boolean };
+type Asset = { symbol: string; name: string; decimals: number; is_active?: boolean };
+type Tag = { name: string; is_active?: boolean };
+
 type AdminItem = {
   id?: string | number;
   is_active?: boolean;
@@ -168,16 +173,16 @@ const AdminPage = () => {
         // Update
         switch (activeTab) {
           case 'types':
-            await actions.updateTransactionType(editingId, formData as any);
+            await actions.updateTransactionType(editingId, formData as TransactionType);
             break;
           case 'accounts':
-            await actions.updateAccount(editingId, formData as any);
+            await actions.updateAccount(editingId, formData as Account);
             break;
           case 'assets':
-            await actions.updateAsset(editingId, formData as any);
+            await actions.updateAsset(editingId, formData as Asset);
             break;
           case 'tags':
-            await actions.updateTag(editingId, formData as any);
+            await actions.updateTag(editingId, formData as Tag);
             break;
         }
         actions.setSuccess(`${activeTab.slice(0, -1)} updated successfully`);
@@ -185,16 +190,16 @@ const AdminPage = () => {
         // Create
         switch (activeTab) {
           case 'types':
-            await actions.createTransactionType(formData as any);
+            await actions.createTransactionType(formData as TransactionType);
             break;
           case 'accounts':
-            await actions.createAccount(formData as any);
+            await actions.createAccount(formData as Account);
             break;
           case 'assets':
-            await actions.createAsset(formData as any);
+            await actions.createAsset(formData as Asset);
             break;
           case 'tags':
-            await actions.createTag(formData as any);
+            await actions.createTag(formData as Tag);
             break;
         }
         actions.setSuccess(`${activeTab.slice(0, -1)} created successfully`);

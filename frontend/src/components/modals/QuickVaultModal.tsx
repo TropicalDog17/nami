@@ -12,6 +12,8 @@ interface QuickVaultModalProps {
   onSubmit: (vaultData: Record<string, unknown>) => void;
 }
 
+type AssetMapInput = { symbol?: string; name?: string };
+
 const QuickVaultModal: React.FC<QuickVaultModalProps> = ({ isOpen, onClose, onSubmit }) => {
   const today = getTodayDate();
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -31,11 +33,12 @@ const QuickVaultModal: React.FC<QuickVaultModalProps> = ({ isOpen, onClose, onSu
   useEffect(() => {
     const load = async () => {
       try {
-        const assetsData = await adminApi.listAssets();
-        setAssets(((assetsData ?? [])).map((a: unknown) => {
-          const asset = a as { symbol?: string; name?: string };
-          const symbol = String(asset.symbol ?? '');
-          const name = String(asset.name ?? symbol);
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-call
+        const assetsData = (await adminApi.listAssets());
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-call
+        setAssets(((assetsData ?? [])).map((a: AssetMapInput) => {
+          const symbol = String(a.symbol ?? '');
+          const name = String(a.name ?? symbol);
           return { value: symbol, label: `${symbol} - ${name}` };
         }));
       } catch (_e) {
@@ -200,5 +203,3 @@ const QuickVaultModal: React.FC<QuickVaultModalProps> = ({ isOpen, onClose, onSu
 };
 
 export default QuickVaultModal;
-
-

@@ -207,7 +207,7 @@ export const CashFlowChart: React.FC<{
       y: {
         beginAtZero: true,
         ticks: {
-          // @ts-ignore - chartjs types
+          // @ts-expect-error -- chartjs callback types not fully aligned - chartjs types
           callback: function (value: number | string) {
             const n =
               typeof value === 'number' ? value : parseFloat(String(value));
@@ -216,7 +216,7 @@ export const CashFlowChart: React.FC<{
         },
       },
       x: {
-        // @ts-ignore - chartjs types
+        // @ts-expect-error - chartjs types
         ticks: {
           fontSize: 10,
         },
@@ -388,7 +388,7 @@ export const PnLChart: React.FC<{ data: PnLData; currency?: Currency }> = ({
       y: {
         beginAtZero: true,
         ticks: {
-          // @ts-ignore - chartjs types
+          // @ts-expect-error -- chartjs callback types not fully aligned - chartjs types
           callback: function (value: number | string) {
             const n =
               typeof value === 'number' ? value : parseFloat(String(value));
@@ -460,7 +460,7 @@ export const PnLLineChart: React.FC<{ data: PnLData; currency?: Currency }> = ({
       y: {
         beginAtZero: true,
         ticks: {
-          // @ts-ignore - chartjs types
+          // @ts-expect-error -- chartjs callback types not fully aligned - chartjs types
           callback: function (value: number | string) {
             const n =
               typeof value === 'number' ? value : parseFloat(String(value));
@@ -511,7 +511,7 @@ export const AprChart: React.FC<{ apr?: number; benchmarkApr?: number }> = ({
       y: {
         beginAtZero: true,
         ticks: {
-          // @ts-ignore
+          // @ts-expect-error -- chartjs callback types not fully aligned
           callback: function (value: number | string) {
             const n =
               typeof value === 'number' ? value : parseFloat(String(value));
@@ -563,7 +563,7 @@ export const AprLineChart: React.FC<{
       y: {
         beginAtZero: true,
         ticks: {
-          // @ts-ignore
+          // @ts-expect-error -- chartjs callback types not fully aligned
           callback: function (value: number | string) {
             const n =
               typeof value === 'number' ? value : parseFloat(String(value));
@@ -587,7 +587,7 @@ export const TimeSeriesLineChart: React.FC<{
   }>;
   yFormat?: 'percent' | 'currency' | 'number';
   currency?: Currency;
-}> = ({ labels, datasets, yFormat = 'number', currency = 'USD' }) => {
+}> = ({ labels, datasets, yFormat = 'number', _currency = 'USD' }) => {
   // Helper to create gradient for a given color
   const createGradient = (
     ctx: CanvasRenderingContext2D,
@@ -622,7 +622,7 @@ export const TimeSeriesLineChart: React.FC<{
     datasets: datasets.map((ds) => ({
       label: ds.label,
       data: ds.data,
-      borderColor: ds.color || '#22c55e',
+      borderColor: ds.color ?? '#22c55e',
       backgroundColor: function (context: {
         chart: {
           canvas: HTMLCanvasElement;
@@ -640,14 +640,14 @@ export const TimeSeriesLineChart: React.FC<{
         if (!chartArea) {
           return ds.color ? `${ds.color}33` : '#22c55e33';
         }
-        return createGradient(ctx, chartArea, ds.color || '#22c55e');
+        return createGradient(ctx, chartArea, ds.color ?? '#22c55e');
       },
       tension: 0.4,
       borderWidth: 2.5,
       fill: ds.fill ?? true,
       pointRadius: 0,
       pointHoverRadius: 6,
-      pointHoverBackgroundColor: ds.color || '#22c55e',
+      pointHoverBackgroundColor: ds.color ?? '#22c55e',
       pointHoverBorderColor: '#fff',
       pointHoverBorderWidth: 2,
     })),
@@ -703,7 +703,7 @@ export const TimeSeriesLineChart: React.FC<{
       y: {
         beginAtZero: false,
         ticks: {
-          // @ts-ignore
+          // @ts-expect-error -- chartjs callback types not fully aligned
           callback: function (value: number | string) {
             const n =
               typeof value === 'number' ? value : parseFloat(String(value));
@@ -771,7 +771,7 @@ export const DailySpendingChart: React.FC<{
       legend: { position: 'top' as const },
       tooltip: {
         callbacks: {
-          // @ts-ignore - chartjs types
+          // @ts-expect-error -- chartjs callback types not fully aligned - chartjs types
           label: function (context: {
             parsed: { y: number };
             dataset: { label?: string };
@@ -786,7 +786,7 @@ export const DailySpendingChart: React.FC<{
       y: {
         beginAtZero: true,
         ticks: {
-          // @ts-ignore - chartjs types
+          // @ts-expect-error -- chartjs callback types not fully aligned - chartjs types
           callback: function (value: number | string) {
             const n =
               typeof value === 'number' ? value : parseFloat(String(value));
@@ -897,7 +897,7 @@ export const MonthlySpendingTrendChart: React.FC<{
       y: {
         beginAtZero: true,
         ticks: {
-          // @ts-ignore - chartjs types
+          // @ts-expect-error -- chartjs callback types not fully aligned - chartjs types
           callback: function (value: number | string) {
             const n =
               typeof value === 'number' ? value : parseFloat(String(value));
@@ -919,7 +919,8 @@ export const MonthlySpendingTrendChart: React.FC<{
 };
 
 // Spending Comparison Chart (Current vs Last Month by category)
-type SpendingComparisonData = {
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+type _SpendingComparisonData = {
   by_tag?: Record<
     string,
     { amount_usd: number; amount_vnd: number; count: number }
@@ -979,7 +980,7 @@ export const SpendingComparisonChart: React.FC<{
       legend: { position: 'top' as const },
       tooltip: {
         callbacks: {
-          // @ts-ignore - chartjs types
+          // @ts-expect-error -- chartjs callback types not fully aligned - chartjs types
           label: function (context: {
             dataset: { label?: string };
             parsed: { y: number };
@@ -994,7 +995,7 @@ export const SpendingComparisonChart: React.FC<{
       y: {
         beginAtZero: true,
         ticks: {
-          // @ts-ignore - chartjs types
+          // @ts-expect-error -- chartjs callback types not fully aligned - chartjs types
           callback: function (value: number | string) {
             const n =
               typeof value === 'number' ? value : parseFloat(String(value));

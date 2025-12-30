@@ -62,7 +62,7 @@ const QuickInvestmentModal: React.FC<QuickInvestmentModalProps> = ({ isOpen, onC
     return formData.vaultId ? vaultIdToInfo[formData.vaultId] : null;
   }, [formData.vaultId, vaultIdToInfo]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
     try {
@@ -78,12 +78,12 @@ const QuickInvestmentModal: React.FC<QuickInvestmentModalProps> = ({ isOpen, onC
       if (!cost || cost <= 0) {
         throw new Error('Enter a valid amount');
       }
-      onSubmit({  // removed await
+      onSubmit({
         vaultId: formData.vaultId,
         quantity: qty,
         cost,
-        account: formData.account || undefined,
-        note: formData.note || null,
+        account: formData.account ?? undefined,
+        note: formData.note ?? null,
         date: formData.date,
       });
       onClose();

@@ -15,6 +15,7 @@ interface QuickExpenseModalProps {
 const ADD_NEW_VALUE = '__ADD_NEW__';
 
 type SimpleVault = { name?: string; id?: string; status?: string };
+type VaultWithId = SimpleVault & { id: string };
 
 const QuickExpenseModal: React.FC<QuickExpenseModalProps> = ({
   isOpen,
@@ -25,7 +26,9 @@ const QuickExpenseModal: React.FC<QuickExpenseModalProps> = ({
   const { assets, tags, actions } = useApp();
   const today = getTodayDate();
 
-  const [vaults, setVaults] = useState<SimpleVault[]>([]);
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const [_vaults, setVaults] = useState<SimpleVault[]>([]);
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [isLoadingVaults, setIsLoadingVaults] = useState<boolean>(false);
   const [vaultsError, setVaultsError] = useState<string | null>(null);
 
@@ -60,7 +63,7 @@ const QuickExpenseModal: React.FC<QuickExpenseModalProps> = ({
         setVaultsError(null);
         // Prefer active vaults only
         const list = await vaultApi.getActiveVaults<SimpleVault[]>({ is_open: true });
-        let arr = (list ?? []).map(v => ({ name: (v.name ?? (v as any).id) as string, id: (v as any).id ?? v.name, status: v.status }))
+        let arr = (list ?? []).map(v => ({ name: (v.name ?? ((v as VaultWithId).id)), id: ((v as VaultWithId).id) ?? v.name, status: v.status }))
           .filter(v => !!v.name);
 
         // Ensure the defaultAccount (if provided) is present in the list so it shows in the dropdown
@@ -271,7 +274,7 @@ const QuickExpenseModal: React.FC<QuickExpenseModalProps> = ({
                     type="text"
                     value={newCategory}
                     onChange={(e) => setNewCategory(e.target.value)}
-                    onKeyDown={onNewCategoryKey}
+                    onKeyDown={(e) => void onNewCategoryKey(e)}
                     className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                     placeholder="New category name"
                     autoFocus

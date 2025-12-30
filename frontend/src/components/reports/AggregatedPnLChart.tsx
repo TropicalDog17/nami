@@ -113,7 +113,7 @@ export const AggregatedPnLChart: React.FC<AggregatedPnLChartProps> = ({
 
   useEffect(() => {
     void fetchData();
-  }, [timeRange, customStart, customEnd]);
+  }, [timeRange, customStart, customEnd, fetchData]);
 
   // Prepare chart data
   const labels = seriesData.map((d) => {

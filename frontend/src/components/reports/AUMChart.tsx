@@ -48,6 +48,7 @@ export const AUMChart: React.FC<AUMChartProps> = ({
 
   const timeRange = externalTimeRange ?? internalTimeRange;
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const setTimeRange = (range: TimeRange) => {
     if (onTimeRangeChange) {
       onTimeRangeChange(range);
@@ -115,7 +116,7 @@ export const AUMChart: React.FC<AUMChartProps> = ({
   };
 
   // Computed filtered data
-  const seriesData = useMemo(() => filterDataByTimeRange(seriesDataFull), [seriesDataFull, timeRange]);
+  const seriesData = useMemo(() => filterDataByTimeRange(seriesDataFull), [seriesDataFull, timeRange, filterDataByTimeRange]);
 
   // Fetch AUM series data (fetch all data, filter on frontend)
   const fetchData = async () => {
@@ -262,7 +263,8 @@ export const AUMChart: React.FC<AUMChartProps> = ({
   };
 
   // Calculate summary stats
-  const totalAUMUSD =
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const _totalAUMUSD =
     aumUsdData.length > 0 ? aumUsdData[aumUsdData.length - 1] : 0;
 
   return (

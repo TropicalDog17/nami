@@ -92,8 +92,8 @@ export const AdminAssetsTab: React.FC = () => {
       const payload =
         data && typeof data === 'object' && 'asset' in (data as Record<string, unknown>)
           ? {
-              ...(data as any).asset,
-              ...(((data as any).mapping) ? { mapping: (data as any).mapping } : {}),
+              ...((data as Record<string, unknown>).asset as Record<string, unknown>),
+              ...(((data as Record<string, unknown>).mapping) ? { mapping: (data as Record<string, unknown>).mapping } : {}),
             }
           : data;
 

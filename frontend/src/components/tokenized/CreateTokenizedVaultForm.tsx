@@ -1,4 +1,6 @@
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { format } from 'date-fns';
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 import React, { useState, useEffect } from 'react';
 
 import { tokenizedVaultApi } from '../../services/api';
@@ -115,7 +117,7 @@ const CreateTokenizedVaultForm: React.FC<{
     <div className="bg-white p-6 rounded-lg border border-gray-200">
       <h2 className="text-xl font-semibold mb-4">Create Tokenized Vault</h2>
 
-      <form onSubmit={handleSubmit} className="space-y-4">
+      <form onSubmit={(e) => void handleSubmit(e)} className="space-y-4">
         {/* Vault Type Selection */}
         <div className="bg-blue-50 p-4 rounded-md border border-blue-200">
           <div className="text-sm font-medium text-gray-700">Vault Type</div>

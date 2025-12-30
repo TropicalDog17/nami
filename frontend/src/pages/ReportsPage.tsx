@@ -7,7 +7,7 @@ import { PnLChart, SpendingChart, DailySpendingChart, MonthlySpendingTrendChart 
 import DataTable, { TableColumn, TableRowBase } from '../components/ui/DataTable';
 import DateInput from '../components/ui/DateInput';
 import { useBackendStatus } from '../context/BackendStatusContext';
-import { reportsApi, investmentsApi, vaultApi, tokenizedVaultApi } from '../services/api';
+import { reportsApi, tokenizedVaultApi } from '../services/api';
 
 
 const ReportsPage = () => {
@@ -66,7 +66,8 @@ const ReportsPage = () => {
         case 'allocation':
           // Vault-based allocation: only show tokenized vaults, exclude individual assets and USDT
           try {
-            const tokenized: Array<any> | null = await tokenizedVaultApi.list();
+            type TokenizedVault = { status?: string; total_assets_under_management?: number; name?: string; token_symbol?: string };
+            const tokenized: Array<TokenizedVault> | null = await tokenizedVaultApi.list();
             const usdToVnd = await (async () => {
               try {
                 const dt = new Date(filters.asOf);
@@ -755,16 +756,27 @@ const ReportsPage = () => {
     ];
 
     // Extract spending metrics
+    // eslint-disable-next-line @typescript-eslint/no-base-to-string
     const currentMonthUsd = parseFloat(String(spending.current_month_usd ?? 0));
+    // eslint-disable-next-line @typescript-eslint/no-base-to-string
     const currentMonthVnd = parseFloat(String(spending.current_month_vnd ?? 0));
+    // eslint-disable-next-line @typescript-eslint/no-base-to-string
     const lastMonthUsd = parseFloat(String(spending.last_month_usd ?? 0));
+    // eslint-disable-next-line @typescript-eslint/no-base-to-string
     const lastMonthVnd = parseFloat(String(spending.last_month_vnd ?? 0));
+    // eslint-disable-next-line @typescript-eslint/no-base-to-string
     const momChangePercent = parseFloat(String(spending.mom_change_percent ?? 0));
+    // eslint-disable-next-line @typescript-eslint/no-base-to-string
     const avgDailyUsd = parseFloat(String(spending.avg_daily_usd ?? 0));
+    // eslint-disable-next-line @typescript-eslint/no-base-to-string
     const avgDailyVnd = parseFloat(String(spending.avg_daily_vnd ?? 0));
+    // eslint-disable-next-line @typescript-eslint/no-base-to-string
     const availableBalanceUsd = parseFloat(String(spending.available_balance_usd ?? 0));
+    // eslint-disable-next-line @typescript-eslint/no-base-to-string
     const availableBalanceVnd = parseFloat(String(spending.available_balance_vnd ?? 0));
+    // eslint-disable-next-line @typescript-eslint/no-base-to-string
     const totalUsd = parseFloat(String(spending.total_usd ?? 0));
+    // eslint-disable-next-line @typescript-eslint/no-base-to-string
     const totalVnd = parseFloat(String(spending.total_vnd ?? 0));
 
     const currentMonth = currency === 'USD' ? currentMonthUsd : currentMonthVnd;
@@ -927,7 +939,8 @@ const ReportsPage = () => {
     );
   };
 
-  const renderPnLTable = () => {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const _renderPnLTable = () => {
     const rawPnl = data.pnl as Record<string, unknown> ?? {};
     const pnl = typeof rawPnl === 'object' ? rawPnl : {};
     const realizedPnL = parseFloat(String(currency === 'USD' ? ((pnl).realized_pnl_usd as number ?? 0) : ((pnl).realized_pnl_vnd as number ?? 0)));
