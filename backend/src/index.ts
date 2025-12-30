@@ -60,11 +60,22 @@ registerMetricsEndpoint();
 
 // OpenAPI/Swagger
 app.get("/api/openapi.json", (_req, res) => res.json(openapiSpec));
-app.use(
-  "/api/docs",
-  swaggerUi.serve,
-  swaggerUi.setup(openapiSpec, { explorer: true }),
-);
+
+// Swagger UI options to prevent caching issues
+const swaggerOptions = {
+  explorer: true,
+  swaggerOptions: {
+    url: "/api/openapi.json",
+  },
+};
+
+app.use("/api/docs", swaggerUi.serve);
+app.get("/api/docs", swaggerUi.setup(openapiSpec, swaggerOptions));
+
+// Also serve at /swagger/index.html for production
+app.use("/swagger", swaggerUi.serve);
+app.get("/swagger/", swaggerUi.setup(openapiSpec, swaggerOptions));
+app.get("/swagger/index.html", swaggerUi.setup(openapiSpec, swaggerOptions));
 
 // 404 handler - must be after all routes
 app.use(notFoundHandler);

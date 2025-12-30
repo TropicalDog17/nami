@@ -15,6 +15,7 @@
         "migrate:rollback-database": "ts-node-dev --transpile-only --exit-child src/scripts/rollback-database.ts"
     },
     "dependencies": {
+        "@asteasolutions/zod-to-openapi": "^7.3.4",
         "@types/swagger-ui-express": "^4.1.8",
         "axios": "^1.7.7",
         "better-sqlite3": "^12.5.0",
