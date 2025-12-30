@@ -4,6 +4,15 @@
  */
 
 import React, { ReactNode } from 'react';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
 
 export interface QuickModalProps {
   /** Whether the modal is open */
@@ -20,6 +29,8 @@ export interface QuickModalProps {
   className?: string;
   /** Maximum width of the modal */
   maxWidth?: 'sm' | 'md' | 'lg' | 'xl';
+  /** Description text for accessibility */
+  description?: string;
 }
 
 /**
@@ -55,38 +66,27 @@ export const QuickModal: React.FC<QuickModalProps> = ({
   error,
   className = '',
   maxWidth = 'md',
+  description,
 }) => {
-  if (!isOpen) return null;
-
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div
-        className={`bg-white rounded-lg p-6 w-full ${maxWidthClasses[maxWidth]} ${className}`}
-      >
-        {/* Header */}
-        <div className="flex justify-between items-center mb-4">
-          <h3 className="text-lg font-medium text-gray-900">{title}</h3>
-          <button
-            onClick={onClose}
-            className="text-gray-400 hover:text-gray-600 transition-colors"
-            aria-label="Close modal"
-            type="button"
-          >
-            <span className="text-2xl">&times;</span>
-          </button>
-        </div>
+    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className={`${maxWidthClasses[maxWidth]} ${className}`}>
+        <DialogHeader>
+          <DialogTitle>{title}</DialogTitle>
+          {description && <DialogDescription>{description}</DialogDescription>}
+        </DialogHeader>
 
         {/* Error message */}
         {error && (
-          <div className="mb-3 text-sm text-red-700 bg-red-50 border border-red-200 rounded p-2">
+          <div className="mb-3 text-sm text-destructive bg-destructive/10 border border-destructive/20 rounded p-2">
             {error}
           </div>
         )}
 
         {/* Content */}
         {children}
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 };
 
@@ -140,23 +140,22 @@ export const QuickModalFooter: React.FC<QuickModalFooterProps> = ({
   };
 
   return (
-    <div className="flex space-x-3">
-      <button
+    <DialogFooter>
+      <Button
         type="button"
+        variant="outline"
         onClick={handleSecondary}
-        className="flex-1 px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 transition-colors"
       >
         {secondaryText}
-      </button>
-      <button
+      </Button>
+      <Button
         type="button"
         onClick={onPrimary}
         disabled={primaryDisabled || primaryLoading}
-        className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
       >
         {primaryLoading ? 'Saving...' : primaryText}
-      </button>
-    </div>
+      </Button>
+    </DialogFooter>
   );
 };
 
@@ -172,6 +171,8 @@ export interface FormFieldProps {
   hint?: string;
   /** Optional error message */
   error?: string;
+  /** Required field indicator */
+  required?: boolean;
 }
 
 /**
@@ -182,18 +183,27 @@ export interface FormFieldProps {
  *   <input type="number" ... />
  * </FormField>
  */
-export const FormField: React.FC<FormFieldProps> = ({ label, children, hint, error }) => {
+import { Label } from '@/components/ui/label';
+
+export const FormField: React.FC<FormFieldProps> = ({
+  label,
+  children,
+  hint,
+  error,
+  required = false,
+}) => {
   return (
     <div>
-      <label className="block text-sm font-medium text-gray-700 mb-1">
+      <Label className={error ? 'text-destructive' : ''}>
         {label}
-      </label>
+        {required && <span className="text-destructive ml-1">*</span>}
+      </Label>
       {children}
       {hint && !error && (
-        <p className="text-xs text-gray-500 mt-1">{hint}</p>
+        <p className="text-xs text-muted-foreground mt-1">{hint}</p>
       )}
       {error && (
-        <p className="text-sm text-red-600 mt-1">{error}</p>
+        <p className="text-sm text-destructive mt-1">{error}</p>
       )}
     </div>
   );

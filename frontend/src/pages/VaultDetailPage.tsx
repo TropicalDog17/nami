@@ -1174,7 +1174,11 @@ const VaultDetailPage: React.FC = () => {
 
     const inceptionDate = new Date(tokenizedVaultDetails.inception_date);
     const asOfDate = tokenizedVaultDetails.as_of ? new Date(tokenizedVaultDetails.as_of) : new Date();
-    const daysSinceInception = Math.max(1, differenceInDays(asOfDate, inceptionDate));
+    // Check for invalid dates (e.g., SQL minimum date "0001-01-01")
+    const isValidDate = (d: Date) => d instanceof Date && !isNaN(d.getTime()) && d.getFullYear() > 1900;
+    const safeInceptionDate = isValidDate(inceptionDate) ? inceptionDate : new Date();
+    const safeAsOfDate = isValidDate(asOfDate) ? asOfDate : new Date();
+    const daysSinceInception = Math.max(1, differenceInDays(safeAsOfDate, safeInceptionDate));
     const yearsSinceInception = daysSinceInception / 365.25;
 
     // Performance for header should be price-based to avoid flow artifacts (use implied price when available)
@@ -1478,11 +1482,11 @@ const VaultDetailPage: React.FC = () => {
             <dl className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
               <div>
                 <dt className="text-gray-500">Inception Date</dt>
-                <dd className="text-gray-900">{format(new Date(tokenizedVaultDetails.inception_date), 'MMM d, yyyy')}</dd>
+                <dd className="text-gray-900">{isValidDate(new Date(tokenizedVaultDetails.inception_date)) ? format(new Date(tokenizedVaultDetails.inception_date), 'MMM d, yyyy') : '—'}</dd>
               </div>
               <div>
                 <dt className="text-gray-500">Last Updated</dt>
-                <dd className="text-gray-900">{format(new Date(tokenizedVaultDetails.last_updated), 'MMM d, yyyy HH:mm')}</dd>
+                <dd className="text-gray-900">{isValidDate(new Date(tokenizedVaultDetails.last_updated)) ? format(new Date(tokenizedVaultDetails.last_updated), 'MMM d, yyyy HH:mm') : '—'}</dd>
               </div>
               <div>
                 <dt className="text-gray-500">Created By</dt>
@@ -1491,7 +1495,7 @@ const VaultDetailPage: React.FC = () => {
               <div>
                 <dt className="text-gray-500">Price Last Updated</dt>
                 <dd className="text-gray-900">
-                  {tokenizedVaultDetails.price_last_updated_at
+                  {tokenizedVaultDetails.price_last_updated_at && isValidDate(new Date(tokenizedVaultDetails.price_last_updated_at))
                     ? format(new Date(tokenizedVaultDetails.price_last_updated_at), 'MMM d, yyyy HH:mm')
                     : '—'}
                 </dd>
@@ -1790,7 +1794,7 @@ const VaultDetailPage: React.FC = () => {
                 </div>
                 <div className="col-span-2">
                   <dt className="text-gray-500">Last Activity</dt>
-                  <dd className="text-gray-900">{ledgerHoldings.last_transaction_at ? format(new Date(String(ledgerHoldings.last_transaction_at)), 'MMM d, yyyy HH:mm') : '—'}</dd>
+                  <dd className="text-gray-900">{ledgerHoldings.last_transaction_at && isValidDate(new Date(String(ledgerHoldings.last_transaction_at))) ? format(new Date(String(ledgerHoldings.last_transaction_at)), 'MMM d, yyyy HH:mm') : '—'}</dd>
                 </div>
               </dl>
             ) : (
@@ -1802,7 +1806,7 @@ const VaultDetailPage: React.FC = () => {
             <DataTable<Record<string, unknown>>
               data={ledgerTransactions}
               columns={[
-                { key: 'timestamp', title: 'Time', render: (v) => (v && typeof v === 'string' ? format(new Date(v), 'MMM d, yyyy HH:mm') : '—') },
+                { key: 'timestamp', title: 'Time', render: (v) => (v && typeof v === 'string' && isValidDate(new Date(v)) ? format(new Date(v), 'MMM d, yyyy HH:mm') : '—') },
                 { key: 'type', title: 'Type' },
                 { key: 'status', title: 'Status' },
                 { key: 'amount_usd', title: 'Amount (USD)', render: (v) => formatCurrency(typeof v === 'string' ? parseFloat(v) : Number(v ?? 0)) },
@@ -1918,7 +1922,7 @@ const VaultDetailPage: React.FC = () => {
           <h3 className="text-sm font-medium text-gray-500 mb-2">Vault Status</h3>
           <p className="text-lg font-medium text-gray-900 capitalize">{vault.vault_status ?? 'Unknown'}</p>
           <p className="text-sm text-gray-600">
-            Created: {format(new Date(vault.created_at), 'MMM d, yyyy')}
+            Created: {isValidDate(new Date(vault.created_at)) ? format(new Date(vault.created_at), 'MMM d, yyyy') : '—'}
           </p>
         </div>
       </div>

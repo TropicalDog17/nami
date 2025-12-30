@@ -1,6 +1,11 @@
 import { useState, useEffect, FormEvent, ChangeEvent, KeyboardEvent, FC } from 'react'
 
 import { useApp } from '../../context/AppContext'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Checkbox } from '@/components/ui/checkbox'
 import ComboBox from '../ui/ComboBox'
 import DateInput from '../ui/DateInput'
 
@@ -239,71 +244,68 @@ const TransactionForm = ({ transaction = null, onSubmit, onCancel }: Props) => {
     options = null,
     ...props
   }) => (
-    <div>
-      <label htmlFor={field} className="block text-sm font-medium text-gray-700 mb-1">
+    <div className="space-y-2">
+      <Label htmlFor={field} className={errors[field] ? 'text-destructive' : ''}>
         {label}
-        {required && <span className="text-red-500 ml-1">*</span>}
-      </label>
+        {required && <span className="text-destructive ml-1">*</span>}
+      </Label>
       {options ? (
-        <select
-          id={field}
+        <Select
           value={(formData[field as keyof FormDataType] as string) ?? ''}
-          onChange={(e: ChangeEvent<HTMLSelectElement>) => handleInputChange(field as keyof FormDataType, e.target.value)}
-          className={`w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
-            errors[field] ? 'border-red-300' : 'border-gray-300'
-          }`}
-          {...props}
+          onValueChange={(value) => handleInputChange(field as keyof FormDataType, value)}
         >
-          <option value="">Select {label}</option>
-          {options.map((option) => (
-            <option key={option.value} value={option.value}>
-              {option.label}
-            </option>
-          ))}
-        </select>
+          <SelectTrigger id={field} className={errors[field] ? 'border-destructive' : ''}>
+            <SelectValue placeholder={`Select ${label}`} />
+          </SelectTrigger>
+          <SelectContent>
+            {options.map((option) => (
+              <SelectItem key={option.value} value={option.value}>
+                {option.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       ) : (
-        <input
+        <Input
           id={field}
           type={type}
           value={(formData[field as keyof FormDataType] as string) ?? ''}
           onChange={(e: ChangeEvent<HTMLInputElement>) => handleInputChange(field as keyof FormDataType, e.target.value)}
-          className={`w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
-            errors[field] ? 'border-red-300' : 'border-gray-300'
-          }`}
+          className={errors[field] ? 'border-destructive' : ''}
           {...props}
         />
       )}
       {errors[field] && (
-        <p className="mt-1 text-sm text-red-600">{errors[field]}</p>
+        <p className="text-sm text-destructive">{errors[field]}</p>
       )}
     </div>
   )
 
   return (
-    <div className="bg-white shadow-lg rounded-lg p-6">
+    <div className="bg-card shadow-lg rounded-lg p-6">
       <form onSubmit={handleSubmit} className="space-y-6">
-        <div className="border-b border-gray-200 pb-4">
-          <h3 className="text-lg font-medium text-gray-900">
+        <div className="border-b border-border pb-4">
+          <h3 className="text-lg font-medium text-foreground">
             {transaction ? 'Edit Transaction' : 'New Transaction'}
           </h3>
-          <p className="mt-1 text-sm text-gray-500">
+          <p className="mt-1 text-sm text-muted-foreground">
             Fill in the transaction details. Required fields are marked with *.
           </p>
         </div>
 
         {/* Basic Information */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          <div>
-            <label htmlFor="date" className="block text-sm font-medium text-gray-700 mb-1">
-              Date<span className="text-red-500 ml-1">*</span>
-            </label>
+          <div className="space-y-2">
+            <Label htmlFor="date" className={errors.date ? 'text-destructive' : ''}>
+              Date<span className="text-destructive ml-1">*</span>
+            </Label>
             <DateInput
               id="date"
               value={formData.date}
               onChange={(v: string) => handleInputChange('date', v)}
             />
             {errors.date && (
-              <p className="mt-1 text-sm text-red-600">{errors.date}</p>
+              <p className="text-sm text-destructive">{errors.date}</p>
             )}
           </div>
 
@@ -335,30 +337,30 @@ const TransactionForm = ({ transaction = null, onSubmit, onCancel }: Props) => {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          <div>
-            <label htmlFor="account" className="block text-sm font-medium text-gray-700 mb-1">
-              Account<span className="text-red-500 ml-1">*</span>
-            </label>
+          <div className="space-y-2">
+            <Label htmlFor="account" className={errors.account ? 'text-destructive' : ''}>
+              Account<span className="text-destructive ml-1">*</span>
+            </Label>
             <ComboBox
               id="account"
               value={formData.account}
               onChange={(v: string) => handleInputChange('account', v)}
-              options={(accounts ?? []).filter((a: unknown) => (a as { is_active: boolean }).is_active).map((a: unknown) => { 
+              options={(accounts ?? []).filter((a: unknown) => (a as { is_active: boolean }).is_active).map((a: unknown) => {
                 const typedA = a as { name: string; type?: string };
-                return { 
-                  value: typedA.name, 
-                  label: `${typedA.name} (${typedA.type ?? 'Unknown'})` 
-                } 
+                return {
+                  value: typedA.name,
+                  label: `${typedA.name} (${typedA.type ?? 'Unknown'})`
+                }
               })}
               placeholder="Select or type an account"
               allowCreate
-              onCreate={async (name: string) => { 
-                await actions.createAccount({ name, type: 'bank', is_active: true }); 
-                await actions.loadAccounts(); 
+              onCreate={async (name: string) => {
+                await actions.createAccount({ name, type: 'bank', is_active: true });
+                await actions.loadAccounts();
               }}
             />
             {errors.account && (
-              <p className="mt-1 text-sm text-red-600">{errors.account}</p>
+              <p className="text-sm text-destructive">{errors.account}</p>
             )}
           </div>
 
@@ -382,12 +384,14 @@ const TransactionForm = ({ transaction = null, onSubmit, onCancel }: Props) => {
         </div>
 
         {/* Amount Information */}
-        <div className="border-t border-gray-200 pt-4">
-          <h4 className="text-md font-medium text-gray-900 mb-4">Amount Information</h4>
+        <div className="border-t border-border pt-4">
+          <h4 className="text-md font-medium text-foreground mb-4">Amount Information</h4>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Quantity<span className="text-red-500 ml-1">*</span></label>
-              <input
+            <div className="space-y-2">
+              <Label className={errors.quantity ? 'text-destructive' : ''}>
+                Quantity<span className="text-destructive ml-1">*</span>
+              </Label>
+              <Input
                 inputMode="decimal"
                 pattern="[0-9]*[.,]?[0-9]*"
                 value={quantityDraft !== '' ? quantityDraft : String(formData.quantity ?? '')}
@@ -395,16 +399,18 @@ const TransactionForm = ({ transaction = null, onSubmit, onCancel }: Props) => {
                 onBlur={() => { if (quantityDraft !== '') { handleInputChange('quantity', normalizeNum(quantityDraft)); setQuantityDraft('') } }}
                 onKeyDown={(e: KeyboardEvent<HTMLInputElement>) => { if (e.key === 'Enter') { e.preventDefault(); if (quantityDraft !== '') { handleInputChange('quantity', normalizeNum(quantityDraft)); setQuantityDraft('') } } }}
                 placeholder="0.00000000"
-                className={`w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${errors['quantity'] ? 'border-red-300' : 'border-gray-300'}`}
+                className={errors.quantity ? 'border-destructive' : ''}
               />
-              {errors['quantity'] && (
-                <p className="mt-1 text-sm text-red-600">{errors['quantity']}</p>
+              {errors.quantity && (
+                <p className="text-sm text-destructive">{errors.quantity}</p>
               )}
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Price (Local Currency)<span className="text-red-500 ml-1">*</span></label>
-              <input
+            <div className="space-y-2">
+              <Label className={errors.price_local ? 'text-destructive' : ''}>
+                Price (Local Currency)<span className="text-destructive ml-1">*</span>
+              </Label>
+              <Input
                 inputMode="decimal"
                 pattern="[0-9]*[.,]?[0-9]*"
                 value={priceLocalDraft !== '' ? priceLocalDraft : String(formData.price_local ?? '')}
@@ -412,47 +418,45 @@ const TransactionForm = ({ transaction = null, onSubmit, onCancel }: Props) => {
                 onBlur={() => { if (priceLocalDraft !== '') { handleInputChange('price_local', normalizeNum(priceLocalDraft)); setPriceLocalDraft('') } }}
                 onKeyDown={(e: KeyboardEvent<HTMLInputElement>) => { if (e.key === 'Enter') { e.preventDefault(); if (priceLocalDraft !== '') { handleInputChange('price_local', normalizeNum(priceLocalDraft)); setPriceLocalDraft('') } } }}
                 placeholder="0.00000000"
-                className={`w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${errors['price_local'] ? 'border-red-300' : 'border-gray-300'}`}
+                className={errors.price_local ? 'border-destructive' : ''}
               />
-              {errors['price_local'] && (
-                <p className="mt-1 text-sm text-red-600">{errors['price_local']}</p>
+              {errors.price_local && (
+                <p className="text-sm text-destructive">{errors.price_local}</p>
               )}
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Amount (Local)</label>
-              <input
+            <div className="space-y-2">
+              <Label>Amount (Local)</Label>
+              <Input
                 type="number"
                 step="any"
                 readOnly
                 value={Number.isFinite(amountLocalNum) ? amountLocalNum.toFixed(8) : ''}
                 placeholder="Auto-calculated"
-                className="w-full px-3 py-2 border rounded-md shadow-sm bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                className="bg-muted"
               />
             </div>
           </div>
         </div>
 
         {/* Internal Flow Flag */}
-        <div className="border-t border-gray-200 pt-4">
-          <h4 className="text-md font-medium text-gray-900 mb-4">Advanced</h4>
-          <div className="flex items-center">
-            <input
+        <div className="border-t border-border pt-4">
+          <h4 className="text-md font-medium text-foreground mb-4">Advanced</h4>
+          <div className="flex items-center space-x-2">
+            <Checkbox
               id="internal_flow"
-              type="checkbox"
               checked={formData.internal_flow}
-              onChange={(e: ChangeEvent<HTMLInputElement>) => handleInputChange('internal_flow', e.target.checked)}
-              className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+              onCheckedChange={(checked) => handleInputChange('internal_flow', Boolean(checked))}
             />
-            <label htmlFor="internal_flow" className="ml-2 block text-sm text-gray-700">
+            <Label htmlFor="internal_flow" className="cursor-pointer">
               Treat as internal P2P trade (zero cash flow for Buy/Sell)
-            </label>
+            </Label>
           </div>
         </div>
 
         {/* FX Rates */}
-        <div className="border-t border-gray-200 pt-4">
-          <h4 className="text-md font-medium text-gray-900 mb-4">FX Rates & Dual Currency</h4>
+        <div className="border-t border-border pt-4">
+          <h4 className="text-md font-medium text-foreground mb-4">FX Rates & Dual Currency</h4>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             <InputField
               label="FX to USD"
@@ -470,35 +474,35 @@ const TransactionForm = ({ transaction = null, onSubmit, onCancel }: Props) => {
               placeholder="24000.0"
             />
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Amount (USD)</label>
-              <input
+            <div className="space-y-2">
+              <Label>Amount (USD)</Label>
+              <Input
                 type="number"
                 step="0.01"
                 readOnly
                 value={Number.isFinite(amountUsdNum) ? amountUsdNum.toFixed(2) : ''}
                 placeholder="Auto-calculated"
-                className="w-full px-3 py-2 border rounded-md shadow-sm bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                className="bg-muted"
               />
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Amount (VND)</label>
-              <input
+            <div className="space-y-2">
+              <Label>Amount (VND)</Label>
+              <Input
                 type="number"
                 step="0.01"
                 readOnly
                 value={Number.isFinite(amountVndNum) ? amountVndNum.toFixed(2) : ''}
                 placeholder="Auto-calculated"
-                className="w-full px-3 py-2 border rounded-md shadow-sm bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                className="bg-muted"
               />
             </div>
           </div>
         </div>
 
         {/* Fees */}
-        <div className="border-t border-gray-200 pt-4">
-          <h4 className="text-md font-medium text-gray-900 mb-4">Fees</h4>
+        <div className="border-t border-border pt-4">
+          <h4 className="text-md font-medium text-foreground mb-4">Fees</h4>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <InputField
               label="Fee (USD)"
@@ -519,8 +523,8 @@ const TransactionForm = ({ transaction = null, onSubmit, onCancel }: Props) => {
         </div>
 
         {/* Optional Fields */}
-        <div className="border-t border-gray-200 pt-4">
-          <h4 className="text-md font-medium text-gray-900 mb-4">Optional Tracking</h4>
+        <div className="border-t border-border pt-4">
+          <h4 className="text-md font-medium text-foreground mb-4">Optional Tracking</h4>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             <InputField
               label="Horizon"
@@ -531,20 +535,20 @@ const TransactionForm = ({ transaction = null, onSubmit, onCancel }: Props) => {
               ]}
             />
 
-            <div>
-              <label htmlFor="entry_date" className="block text-sm font-medium text-gray-700 mb-1">Entry Date</label>
+            <div className="space-y-2">
+              <Label htmlFor="entry_date">Entry Date</Label>
               <DateInput id="entry_date" value={formData.entry_date} onChange={(v: string) => handleInputChange('entry_date', v)} />
             </div>
 
-            <div>
-              <label htmlFor="exit_date" className="block text-sm font-medium text-gray-700 mb-1">Exit Date</label>
+            <div className="space-y-2">
+              <Label htmlFor="exit_date">Exit Date</Label>
               <DateInput id="exit_date" value={formData.exit_date} onChange={(v: string) => handleInputChange('exit_date', v)} />
             </div>
           </div>
         </div>
 
         {/* Note */}
-        <div className="border-t border-gray-200 pt-4">
+        <div className="border-t border-border pt-4">
           <InputField
             label="Note"
             field="note"
@@ -553,23 +557,20 @@ const TransactionForm = ({ transaction = null, onSubmit, onCancel }: Props) => {
         </div>
 
         {/* Action Buttons */}
-        <div className="border-t border-gray-200 pt-4 flex justify-end space-x-3">
+        <div className="border-t border-border pt-4 flex justify-end space-x-3">
           {onCancel && (
-            <button
+            <Button
               type="button"
+              variant="outline"
               onClick={onCancel}
-              className="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
             >
               Cancel
-            </button>
+            </Button>
           )}
 
-          <button
-            type="submit"
-            className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
-          >
+          <Button type="submit">
             {transaction ? 'Update Transaction' : 'Create Transaction'}
-          </button>
+          </Button>
         </div>
       </form>
     </div>
