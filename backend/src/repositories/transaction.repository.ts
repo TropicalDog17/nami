@@ -6,7 +6,9 @@ import { BaseDbRepository, rowToTransaction, transactionToRow } from "./base-db.
 // JSON-based implementation
 export class TransactionRepositoryJson implements ITransactionRepository {
   findAll(): Transaction[] {
-    return readStore().transactions;
+    return readStore().transactions.sort((a, b) =>
+      b.createdAt.localeCompare(a.createdAt)
+    );
   }
 
   findById(id: string): Transaction | undefined {
