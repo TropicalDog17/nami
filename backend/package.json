@@ -12,7 +12,8 @@
         "migrate:backfill-spending-vault": "ts-node-dev --transpile-only --exit-child src/scripts/backfillSpendingVault.ts",
         "migrate:income-to-spend": "ts-node-dev --transpile-only --exit-child src/scripts/migrateIncomeToSpend.ts",
         "migrate:to-database": "ts-node-dev --transpile-only --exit-child src/scripts/migrate-to-database.ts",
-        "migrate:rollback-database": "ts-node-dev --transpile-only --exit-child src/scripts/rollback-database.ts"
+        "migrate:rollback-database": "ts-node-dev --transpile-only --exit-child src/scripts/rollback-database.ts",
+        "migrate:to-prod": "ts-node-dev --transpile-only --exit-child src/scripts/migrate-to-prod.ts"
     },
     "dependencies": {
         "@asteasolutions/zod-to-openapi": "^7.3.4",

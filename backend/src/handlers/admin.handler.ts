@@ -3,6 +3,9 @@ import {
   adminRepository,
   pendingActionsRepository,
   settingsRepository,
+  transactionRepository,
+  vaultRepository,
+  loanRepository,
 } from "../repositories";
 import { vaultService } from "../services/vault.service";
 import { transactionService } from "../services/transaction.service";
@@ -631,3 +634,206 @@ adminRouter.delete(
     res.json({ deleted: 1 });
   },
 );
+
+// ==================== Data Export/Import ====================
+
+/**
+ * Export all data for migration
+ * GET /api/admin/export
+ */
+adminRouter.get("/admin/export", (_req: Request, res: Response) => {
+  try {
+    const data = {
+      version: 1,
+      exported_at: new Date().toISOString(),
+      transactions: transactionRepository.findAll(),
+      vaults: vaultRepository.findAll().map((vault) => ({
+        ...vault,
+        entries: vaultRepository.findAllEntries(vault.name),
+      })),
+      loans: loanRepository.findAll(),
+      types: adminRepository.findAllTypes(),
+      accounts: adminRepository.findAllAccounts(),
+      assets: adminRepository.findAllAssets(),
+      tags: adminRepository.findAllTags(),
+      pending_actions: pendingActionsRepository.findAll(),
+      settings: {
+        default_spending_vault: settingsRepository.getDefaultSpendingVaultName(),
+        default_income_vault: settingsRepository.getDefaultIncomeVaultName(),
+        borrowing: settingsRepository.getBorrowingSettings(),
+      },
+    };
+    res.json(data);
+  } catch (e: any) {
+    res.status(500).json({ error: e?.message || "Failed to export data" });
+  }
+});
+
+/**
+ * Import data for migration
+ * POST /api/admin/import
+ * Body: { transactions, vaults, loans, types, accounts, assets, tags, settings }
+ */
+adminRouter.post("/admin/import", async (req: Request, res: Response) => {
+  try {
+    const data = req.body;
+    if (!data || typeof data !== "object") {
+      return res.status(400).json({ error: "Invalid import data" });
+    }
+
+    const stats = {
+      transactions: 0,
+      vaults: 0,
+      vault_entries: 0,
+      loans: 0,
+      types: 0,
+      accounts: 0,
+      assets: 0,
+      tags: 0,
+      pending_actions: 0,
+    };
+
+    // Import types first (referenced by transactions)
+    if (Array.isArray(data.types)) {
+      for (const type of data.types) {
+        try {
+          adminRepository.createType({
+            name: type.name,
+            description: type.description,
+            is_active: type.is_active,
+          });
+          stats.types++;
+        } catch (e) {
+          // Skip duplicates
+        }
+      }
+    }
+
+    // Import accounts
+    if (Array.isArray(data.accounts)) {
+      for (const account of data.accounts) {
+        try {
+          adminRepository.createAccount({
+            name: account.name,
+            type: account.type,
+            is_active: account.is_active,
+          });
+          stats.accounts++;
+        } catch (e) {
+          // Skip duplicates
+        }
+      }
+    }
+
+    // Import assets
+    if (Array.isArray(data.assets)) {
+      for (const asset of data.assets) {
+        try {
+          adminRepository.createAsset({
+            symbol: asset.symbol,
+            name: asset.name,
+            decimals: asset.decimals,
+            is_active: asset.is_active,
+          });
+          stats.assets++;
+        } catch (e) {
+          // Skip duplicates
+        }
+      }
+    }
+
+    // Import tags
+    if (Array.isArray(data.tags)) {
+      for (const tag of data.tags) {
+        try {
+          adminRepository.createTag({
+            name: tag.name,
+            category: tag.category,
+            is_active: tag.is_active,
+          });
+          stats.tags++;
+        } catch (e) {
+          // Skip duplicates
+        }
+      }
+    }
+
+    // Import vaults (ensure they exist)
+    if (Array.isArray(data.vaults)) {
+      for (const vault of data.vaults) {
+        try {
+          vaultService.ensureVault(vault.name);
+          stats.vaults++;
+
+          // Import vault entries
+          if (Array.isArray(vault.entries)) {
+            for (const entry of vault.entries) {
+              try {
+                vaultRepository.createEntry(entry);
+                stats.vault_entries++;
+              } catch (e) {
+                // Skip duplicates
+              }
+            }
+          }
+        } catch (e) {
+          // Skip errors
+        }
+      }
+    }
+
+    // Import transactions
+    if (Array.isArray(data.transactions)) {
+      for (const tx of data.transactions) {
+        try {
+          transactionRepository.create(tx);
+          stats.transactions++;
+        } catch (e) {
+          // Skip duplicates
+        }
+      }
+    }
+
+    // Import loans
+    if (Array.isArray(data.loans)) {
+      for (const loan of data.loans) {
+        try {
+          loanRepository.create(loan);
+          stats.loans++;
+        } catch (e) {
+          // Skip duplicates
+        }
+      }
+    }
+
+    // Import pending actions
+    if (Array.isArray(data.pending_actions)) {
+      for (const action of data.pending_actions) {
+        try {
+          pendingActionsRepository.create(action);
+          stats.pending_actions++;
+        } catch (e) {
+          // Skip duplicates
+        }
+      }
+    }
+
+    // Import settings
+    if (data.settings) {
+      if (data.settings.default_spending_vault) {
+        settingsRepository.setDefaultSpendingVaultName(
+          data.settings.default_spending_vault,
+        );
+      }
+      if (data.settings.default_income_vault) {
+        settingsRepository.setDefaultIncomeVaultName(
+          data.settings.default_income_vault,
+        );
+      }
+    }
+
+    res.json({ ok: true, imported: stats });
+  } catch (e: any) {
+    res.status(500).json({ error: e?.message || "Failed to import data" });
+  }
+});
