@@ -7,7 +7,6 @@ import ToastWithProvider from './components/ui/Toast'
 import { AppProvider } from './context/AppContext'
 import { BackendStatusProvider } from './context/BackendStatusContext'
 import AdminPage from './pages/AdminPage'
-import CreditDashboardPage from './pages/CreditDashboardPage'
 import ReportsPage from './pages/ReportsPage'
 import TransactionPage from './pages/TransactionPage'
 import VaultDetailPage from './pages/VaultDetailPage'
@@ -25,7 +24,6 @@ function App() {
                 <Routes>
                   <Route path="/" element={<TransactionPage />} />
                   <Route path="/admin" element={<AdminPage />} />
-                  <Route path="/credit" element={<CreditDashboardPage />} />
                   <Route path="/reports" element={<ReportsPage />} />
                   <Route path="/vaults" element={<VaultsPage />} />
                   <Route path="/vault/:vaultId" element={<VaultDetailPage />} />
