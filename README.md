@@ -1,22 +1,10 @@
 # Nami - Transaction Tracking System
 
-Comprehensive financial transaction tracking system with dual-currency valuation (USD/VND), built with Go backend and React frontend.
+Financial transaction tracking system with dual-currency valuation (USD/VND) and AI-powered processing.
 
-## Project Structure
+## Structure
 
-- **`backend/`** - Go API server with PostgreSQL and comprehensive business logic
+- **`backend/`** - TypeScript API server with PostgreSQL
 - **`frontend/`** - React web application with Tailwind CSS
-- **`ai-service/`** - Telegram bot service for AI-powered transaction processing
-- **`docs/`** - Architecture and development documentation
-
-## Quick Start
-
-```bash
-make setup      # Development environment setup
-make dev        # Start all services
-make test       # Run all tests
-```
-
-## CI/CD
-
-Full CI/CD pipeline with automated testing, security scanning, and cross-platform builds. See [CI Documentation](docs/ci-setup.md).
+- **`ai-service/`** - Telegram bot for AI transaction processing
+- **`Makefile`** - Development commands (setup, dev, test)

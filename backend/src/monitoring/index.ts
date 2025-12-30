@@ -1,8 +1,8 @@
 import express from 'express';
 import promClient from 'prom-client';
-import { createMetricsMiddleware } from './middleware.js';
-import { registerDatabaseMetrics } from './database-collector.js';
-import { createCustomMetrics, CustomMetrics } from './metrics.js';
+import { createMetricsMiddleware } from './middleware';
+import { registerDatabaseMetrics } from './database-collector';
+import { createCustomMetrics, CustomMetrics } from './metrics';
 
 export function setupMonitoring(app: express.Application) {
   const register = promClient.register;

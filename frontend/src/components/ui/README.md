@@ -1,14 +1,12 @@
 # UI Components
 
-Fundamental UI utility components and building blocks for consistent design system.
+Fundamental UI utility components for the design system.
 
 ## Components
 
-- **`DataTable.tsx`** - Sortable and filterable data table component
-- **`ComboBox.tsx`** - Dropdown/combobox selection component
-- **`DateInput.tsx`** - Date picker input component
+- **`DataTable.tsx`** - Sortable and filterable data table
+- **`ComboBox.tsx`** - Dropdown/combobox selection
+- **`DateInput.tsx`** - Date picker input
 - **`Toast.tsx`** - Notification toast system
-- **`BackendStatus.tsx`** - Backend connectivity status indicator
-- **`ErrorBoundary.tsx`** - React error boundary component
-
-Provides reusable UI primitives, error handling, user feedback, and consistent interaction patterns throughout the application.
+- **`BackendStatus.tsx`** - Backend connectivity indicator
+- **`ErrorBoundary.tsx`** - React error boundary

@@ -10,8 +10,7 @@ HTTP API for external communications and service monitoring.
 
 ## Endpoints
 
-- `GET /healthz` - Comprehensive health status
+- `GET /healthz` - Health status
 - `GET /ready` - Readiness probe
-- `POST /telegram/webhook` - Telegram bot webhook
+- `POST /telegram/webhook` - Telegram webhook
 
-Handles request validation, HMAC authentication, and structured error responses.

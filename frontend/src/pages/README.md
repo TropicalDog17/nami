@@ -1,14 +1,13 @@
 # Page Components
 
-Route-level React components implementing main application interfaces.
+Route-level React components for main application interfaces.
 
 ## Components
 
-- **`TransactionPage.tsx`** - Transaction management and entry
+- **`TransactionPage.tsx`** - Transaction management
 - **`ReportsPage.tsx`** - Financial reporting and analytics
-- **`AdminPage.tsx`** - System configuration interface
-- **`VaultsPage.tsx`** - Vault overview and management
-- **`VaultDetailPage.tsx`** - Detailed vault view and operations
-- **`CreditDashboardPage.tsx`** - Credit card spending dashboard
+- **`AdminPage.tsx`** - System configuration
+- **`VaultsPage.tsx`** - Vault overview
+- **`VaultDetailPage.tsx`** - Detailed vault view
+- **`CreditDashboardPage.tsx`** - Credit card dashboard
 
-Implements page-specific business logic, data presentation, and navigation integration.

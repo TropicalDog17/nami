@@ -1,6 +1,6 @@
 # Test Suite
 
-Testing infrastructure for the Nami AI Service with unit, integration, and LLM testing.
+Testing infrastructure with unit, integration, and LLM testing.
 
 ## Structure
 
@@ -16,5 +16,3 @@ npm test              # All tests
 npm run test:unit     # Unit tests only
 npm run test:llm      # LLM integration tests
 ```
-
-Covers natural language processing, vision analysis, error handling, and performance validation with comprehensive mocking infrastructure.

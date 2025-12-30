@@ -1,5 +1,5 @@
 import promClient from 'prom-client';
-import { CustomMetrics } from './metrics.js';
+import { CustomMetrics } from './metrics';
 
 export function registerDatabaseMetrics(
   register: promClient.Registry,
@@ -21,7 +21,7 @@ export function registerDatabaseMetrics(
   const collectInterval = setInterval(() => {
     try {
       // Dynamic import to avoid circular dependency
-      import('../database/connection.js').then(({ getConnection }) => {
+      import('../database/connection').then(({ getConnection }) => {
         const db = getConnection();
 
         // Get database size
