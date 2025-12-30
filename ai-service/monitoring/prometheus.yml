@@ -23,7 +23,7 @@ scrape_configs:
         labels:
           service: 'prometheus'
 
-  # Backend Service
+  # Backend Service (running on host, accessed via host.docker.internal)
   - job_name: 'nami-backend'
     static_configs:
       - targets: ['host.docker.internal:8080']
@@ -35,10 +35,10 @@ scrape_configs:
     honor_labels: true
     honor_timestamps: true
 
-  # AI Service
+  # AI Service (running in Docker, accessed via service name)
   - job_name: 'nami-ai-service'
     static_configs:
-      - targets: ['host.docker.internal:8081']
+      - targets: ['ai-service:8081']
         labels:
           service: 'nami-ai-service'
           component: 'ai'
