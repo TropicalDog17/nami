@@ -2,6 +2,7 @@ import React, { useState, KeyboardEvent, useEffect } from 'react';
 
 import { useApp } from '../../context/AppContext';
 import { vaultApi } from '../../services/api';
+import { toISODateTime, getTodayDate } from '../../utils/dateUtils';
 
 interface QuickExpenseModalProps {
   isOpen: boolean;
@@ -22,7 +23,7 @@ const QuickExpenseModal: React.FC<QuickExpenseModalProps> = ({
   defaultAccount,
 }) => {
   const { assets, tags, actions } = useApp();
-  const today = new Date().toISOString().split('T')[0];
+  const today = getTodayDate();
 
   const [vaults, setVaults] = useState<SimpleVault[]>([]);
   const [isLoadingVaults, setIsLoadingVaults] = useState<boolean>(false);
@@ -83,13 +84,6 @@ const QuickExpenseModal: React.FC<QuickExpenseModalProps> = ({
     setIsSubmitting(true);
 
     try {
-      const toISODateTime = (value?: string) => {
-        if (!value) return new Date().toISOString();
-        const s = String(value);
-        if (s.includes('T')) return s;
-        const timePart = new Date().toISOString().split('T')[1];
-        return `${s}T${timePart}`;
-      };
       const transactionData = {
         date: toISODateTime(formData.date),
         type: 'expense',

@@ -1,6 +1,8 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 
 import { adminApi } from '../../services/api';
+import { getTodayDate } from '../../utils/dateUtils';
+
 import ComboBox from '../ui/ComboBox';
 import DateInput from '../ui/DateInput';
 
@@ -11,7 +13,7 @@ interface QuickInitBalanceModalProps {
 }
 
 const QuickInitBalanceModal: React.FC<QuickInitBalanceModalProps> = ({ isOpen, onClose, onSubmit }) => {
-  const today = useMemo(() => new Date().toISOString().split('T')[0], []);
+  const today = getTodayDate();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [form, setForm] = useState({
     date: today,

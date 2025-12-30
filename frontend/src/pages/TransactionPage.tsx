@@ -6,6 +6,8 @@ import React, {
   useCallback,
 } from 'react';
 
+import { toISODateTime, getTodayDate } from '../utils/dateUtils';
+
 import TransactionForm from '../components/forms/TransactionForm';
 import QuickBorrowLoanModal from '../components/modals/QuickBorrowLoanModal';
 import QuickBuyModal from '../components/modals/QuickBuyModal';
@@ -27,6 +29,8 @@ import { useToast } from '../components/ui/Toast';
 import { useApp } from '../context/AppContext';
 import { useBackendStatus } from '../context/BackendStatusContext';
 import { useQuickCreate } from '../hooks/useQuickCreate';
+import { useModalManager } from '../hooks/useModalManager';
+import type { ModalType } from '../types';
 import {
   transactionApi,
   adminApi,
@@ -84,20 +88,17 @@ const TransactionPage: React.FC = () => {
   const [fxRateCache, setFxRateCache] = useState<Map<string, number>>(
     new Map()
   );
-  const [isQuickExpenseOpen, setIsQuickExpenseOpen] = useState(false);
-  const [expenseDefaultAccount, setExpenseDefaultAccount] = useState<string | undefined>(undefined);
-  const [isQuickIncomeOpen, setIsQuickIncomeOpen] = useState(false);
-  const [isQuickVaultOpen, setIsQuickVaultOpen] = useState(false);
-  const [isQuickInitOpen, setIsQuickInitOpen] = useState(false);
-  const [isQuickInvestmentOpen, setIsQuickInvestmentOpen] = useState(false);
-  const [isQuickTransferOpen, setIsQuickTransferOpen] = useState(false);
-  const [isQuickBorrowOpen, setIsQuickBorrowOpen] = useState(false);
-  const [isQuickLoanOpen, setIsQuickLoanOpen] = useState(false);
-  const [isQuickRepayOpen, setIsQuickRepayOpen] = useState(false);
-  const [isQuickBuyOpen, setIsQuickBuyOpen] = useState(false);
-  const [isQuickSellOpen, setIsQuickSellOpen] = useState(false);
   const [isQuickMenuOpen, setIsQuickMenuOpen] = useState(false);
   const quickMenuRef = useRef<HTMLDivElement | null>(null);
+
+  // Modal manager - replaces 11 individual useState hooks for modals
+  const {
+    isModalOpen,
+    openModal: openQuickModal,
+    closeModal: closeQuickModal,
+  } = useModalManager();
+
+  const [expenseDefaultAccount, setExpenseDefaultAccount] = useState<string | undefined>(undefined);
 
   const {
     createExpense,
@@ -107,16 +108,7 @@ const TransactionPage: React.FC = () => {
     error: quickError,
   } = useQuickCreate();
 
-  const todayStr = useMemo(() => new Date().toISOString().split('T')[0], []);
-
-  // Ensure any date string includes time (RFC 3339). If only YYYY-MM-DD provided, append current time.
-  const toISODateTime = (value?: string): string => {
-    if (!value) return new Date().toISOString();
-    const s = String(value);
-    if (s.includes('T')) return s;
-    const timePart = new Date().toISOString().split('T')[1];
-    return `${s}T${timePart}`;
-  };
+  const todayStr = getTodayDate();
 
   // Load transactions and master data on mount
   const loadMasterData = useCallback(async (): Promise<void> => {
@@ -1597,7 +1589,7 @@ const TransactionPage: React.FC = () => {
                       onClick={() => {
                         setIsQuickMenuOpen(false);
                         setExpenseDefaultAccount(undefined);
-                        setIsQuickExpenseOpen(true);
+                        openQuickModal('expense');
                       }}
                     >
                       Expense
@@ -1607,7 +1599,7 @@ const TransactionPage: React.FC = () => {
                       onClick={() => {
                         setIsQuickMenuOpen(false);
                         setExpenseDefaultAccount('Spend');
-                        setIsQuickExpenseOpen(true);
+                        openQuickModal('expense');
                       }}
                     >
                       Cash Expense
@@ -1617,7 +1609,7 @@ const TransactionPage: React.FC = () => {
                       onClick={() => {
                         setIsQuickMenuOpen(false);
                         setExpenseDefaultAccount('Borrowings');
-                        setIsQuickExpenseOpen(true);
+                        openQuickModal('expense');
                       }}
                     >
                       Credit Expense
@@ -1626,7 +1618,7 @@ const TransactionPage: React.FC = () => {
                       className="w-full text-left px-4 py-2 text-sm hover:bg-gray-50"
                       onClick={() => {
                         setIsQuickMenuOpen(false);
-                        setIsQuickIncomeOpen(true);
+                        openQuickModal('income');
                       }}
                     >
                       Income
@@ -1635,7 +1627,7 @@ const TransactionPage: React.FC = () => {
                       className="w-full text-left px-4 py-2 text-sm hover:bg-gray-50"
                       onClick={() => {
                         setIsQuickMenuOpen(false);
-                        setIsQuickBorrowOpen(true);
+                        openQuickModal('borrowLoan');
                       }}
                     >
                       Borrow
@@ -1644,7 +1636,7 @@ const TransactionPage: React.FC = () => {
                       className="w-full text-left px-4 py-2 text-sm hover:bg-gray-50"
                       onClick={() => {
                         setIsQuickMenuOpen(false);
-                        setIsQuickLoanOpen(true);
+                        openQuickModal('loan');
                       }}
                     >
                       Loan
@@ -1653,7 +1645,7 @@ const TransactionPage: React.FC = () => {
                       className="w-full text-left px-4 py-2 text-sm hover:bg-gray-50"
                       onClick={() => {
                         setIsQuickMenuOpen(false);
-                        setIsQuickRepayOpen(true);
+                        openQuickModal('repay');
                       }}
                     >
                       Repay
@@ -1662,7 +1654,7 @@ const TransactionPage: React.FC = () => {
                       className="w-full text-left px-4 py-2 text-sm hover:bg-gray-50"
                       onClick={() => {
                         setIsQuickMenuOpen(false);
-                        setIsQuickBuyOpen(true);
+                        openQuickModal('buy');
                       }}
                     >
                       Quick Buy
@@ -1671,7 +1663,7 @@ const TransactionPage: React.FC = () => {
                       className="w-full text-left px-4 py-2 text-sm hover:bg-gray-50"
                       onClick={() => {
                         setIsQuickMenuOpen(false);
-                        setIsQuickSellOpen(true);
+                        openQuickModal('sell');
                       }}
                     >
                       Quick Sell
@@ -1680,7 +1672,7 @@ const TransactionPage: React.FC = () => {
                       className="w-full text-left px-4 py-2 text-sm hover:bg-gray-50"
                       onClick={() => {
                         setIsQuickMenuOpen(false);
-                        setIsQuickVaultOpen(true);
+                        openQuickModal('vault');
                       }}
                     >
                       New Vault
@@ -1689,7 +1681,7 @@ const TransactionPage: React.FC = () => {
                       className="w-full text-left px-4 py-2 text-sm hover:bg-gray-50"
                       onClick={() => {
                         setIsQuickMenuOpen(false);
-                        setIsQuickInitOpen(true);
+                        openQuickModal('initBalance');
                       }}
                     >
                       Init Balance
@@ -1698,7 +1690,7 @@ const TransactionPage: React.FC = () => {
                       className="w-full text-left px-4 py-2 text-sm hover:bg-gray-50"
                       onClick={() => {
                         setIsQuickMenuOpen(false);
-                        setIsQuickInvestmentOpen(true);
+                        openQuickModal('investment');
                       }}
                     >
                       New Investment
@@ -1707,7 +1699,7 @@ const TransactionPage: React.FC = () => {
                       className="w-full text-left px-4 py-2 text-sm hover:bg-gray-50"
                       onClick={() => {
                         setIsQuickMenuOpen(false);
-                        setIsQuickTransferOpen(true);
+                        openQuickModal('transfer');
                       }}
                     >
                       Transfer
@@ -1925,71 +1917,71 @@ const TransactionPage: React.FC = () => {
       />
 
       <QuickExpenseModal
-        isOpen={isQuickExpenseOpen}
-        onClose={() => setIsQuickExpenseOpen(false)}
+        isOpen={isModalOpen('expense')}
+        onClose={closeQuickModal}
         onSubmit={handleQuickExpenseSubmit}
         defaultAccount={expenseDefaultAccount}
       />
       <QuickIncomeModal
-        isOpen={isQuickIncomeOpen}
-        onClose={() => setIsQuickIncomeOpen(false)}
+        isOpen={isModalOpen('income')}
+        onClose={closeQuickModal}
         onSubmit={handleQuickIncomeSubmit}
       />
       <QuickVaultModal
-        isOpen={isQuickVaultOpen}
-        onClose={() => setIsQuickVaultOpen(false)}
+        isOpen={isModalOpen('vault')}
+        onClose={closeQuickModal}
         onSubmit={handleQuickVaultSubmit}
       />
       <QuickInvestmentModal
-        isOpen={isQuickInvestmentOpen}
-        onClose={() => setIsQuickInvestmentOpen(false)}
+        isOpen={isModalOpen('investment')}
+        onClose={closeQuickModal}
         onSubmit={handleQuickInvestmentSubmit}
       />
       <QuickInitBalanceModal
-        isOpen={isQuickInitOpen}
-        onClose={() => setIsQuickInitOpen(false)}
+        isOpen={isModalOpen('initBalance')}
+        onClose={closeQuickModal}
         onSubmit={handleQuickInitSubmit}
       />
       <QuickTransferModal
-        isOpen={isQuickTransferOpen}
-        onClose={() => setIsQuickTransferOpen(false)}
+        isOpen={isModalOpen('transfer')}
+        onClose={closeQuickModal}
         onSubmit={handleQuickTransferSubmit}
       />
       <QuickBuyModal
-        isOpen={isQuickBuyOpen}
-        onClose={() => setIsQuickBuyOpen(false)}
+        isOpen={isModalOpen('buy')}
+        onClose={closeQuickModal}
         onSubmitted={async () => {
           await loadTransactions();
           showSuccessToast('Buy recorded');
         }}
       />
       <QuickSellModal
-        isOpen={isQuickSellOpen}
-        onClose={() => setIsQuickSellOpen(false)}
+        isOpen={isModalOpen('sell')}
+        onClose={closeQuickModal}
         onSubmitted={async () => {
           await loadTransactions();
           showSuccessToast('Sell recorded');
         }}
       />
       <QuickBorrowLoanModal
-        isOpen={isQuickBorrowOpen}
+        isOpen={isModalOpen('borrowLoan')}
         mode="borrow"
-        onClose={() => setIsQuickBorrowOpen(false)}
+        onClose={closeQuickModal}
         onSubmit={async (d) => {
           await handleQuickBorrowSubmit(d);
         }}
       />
       <QuickBorrowLoanModal
-        isOpen={isQuickLoanOpen}
+        isOpen={isModalOpen('loan')}
         mode="loan"
-        onClose={() => setIsQuickLoanOpen(false)}
+        onClose={closeQuickModal}
         onSubmit={async (d) => {
           await handleQuickLoanSubmit(d);
         }}
       />
       <QuickRepayModal
-        isOpen={isQuickRepayOpen}
-        onClose={() => setIsQuickRepayOpen(false)}
+        isOpen={isModalOpen('repay')}
+        onClose={closeQuickModal}
         onSubmit={async (d) => {
           await handleQuickRepaySubmit(d);
         }}

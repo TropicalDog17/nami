@@ -2,6 +2,14 @@ import express from "express";
 import cors from "cors";
 import swaggerUi from "swagger-ui-express";
 
+import { config } from "./core/config";
+import { logger } from "./core/logger";
+import {
+    errorHandler,
+    requestLogger,
+    notFoundHandler,
+} from "./core/middleware";
+
 import { transactionsRouter } from "./handlers/transaction.handler";
 import { reportsRouter } from "./handlers/reports.handler";
 import { actionsRouter } from "./handlers/actions.handler";
@@ -21,7 +29,8 @@ import { logger } from "./utils/logger.js";
 const app = express();
 
 // Setup monitoring FIRST (before routes)
-const { metricsMiddleware, registerMetricsEndpoint, metrics } = setupMonitoring(app);
+const { metricsMiddleware, registerMetricsEndpoint, metrics } =
+    setupMonitoring(app);
 app.use(metricsMiddleware);
 setMetrics(metrics);
 
@@ -29,13 +38,14 @@ app.use(cors());
 app.use(express.json());
 
 app.get("/health", (_req, res) =>
-  res.json({
-    ok: true,
-    timestamp: new Date().toISOString(),
-    uptime: process.uptime(),
-  })
+    res.json({
+        ok: true,
+        timestamp: new Date().toISOString(),
+        uptime: process.uptime(),
+    })
 );
 
+// API routes
 app.use("/api", transactionsRouter);
 app.use("/api", reportsRouter);
 app.use("/api", actionsRouter);
@@ -52,50 +62,57 @@ registerMetricsEndpoint();
 // OpenAPI/Swagger
 app.get("/api/openapi.json", (_req, res) => res.json(openapiSpec));
 app.use(
-  "/api/docs",
-  swaggerUi.serve,
-  swaggerUi.setup(openapiSpec, { explorer: true }),
+    "/api/docs",
+    swaggerUi.serve,
+    swaggerUi.setup(openapiSpec, { explorer: true })
 );
 
+// 404 handler - must be after all routes
+app.use(notFoundHandler);
+
+// Global error handler - must be last
+app.use(errorHandler);
+
 async function bootstrap() {
-  try {
-    // Initialize database if using database backend
-    if (process.env.STORAGE_BACKEND === "database") {
-      initializeDatabase();
-      logger.info("Database initialized");
+    try {
+        // Initialize database if using database backend
+        if (process.env.STORAGE_BACKEND === "database") {
+            initializeDatabase();
+            logger.info("Database initialized");
+        }
+
+        // Ensure default vaults exist at startup
+        const defaultSpendingVault =
+            settingsRepository.getDefaultSpendingVaultName();
+        const defaultIncomeVault =
+            settingsRepository.getDefaultIncomeVaultName();
+        vaultService.ensureVault(defaultSpendingVault);
+        vaultService.ensureVault(defaultIncomeVault);
+
+        // Initialize borrowing settings
+        settingsRepository.getBorrowingSettings();
+
+        logger.info("Initialization complete.");
+        logger.info({ defaultSpendingVault }, "Default spending vault");
+        logger.info({ defaultIncomeVault }, "Default income vault");
+    } catch (e) {
+        const msg = (e as { message?: string } | null)?.message ?? String(e);
+        logger.error({ error: msg }, "Bootstrap failed");
     }
-
-    // Ensure default vaults exist at startup
-    const defaultSpendingVault =
-      settingsRepository.getDefaultSpendingVaultName();
-    const defaultIncomeVault = settingsRepository.getDefaultIncomeVaultName();
-    vaultService.ensureVault(defaultSpendingVault);
-    vaultService.ensureVault(defaultIncomeVault);
-
-    // Initialize borrowing settings
-    settingsRepository.getBorrowingSettings();
-
-    logger.info("Initialization complete.");
-    logger.info({ defaultSpendingVault }, "Default spending vault");
-    logger.info({ defaultIncomeVault }, "Default income vault");
-  } catch (e) {
-    const msg = (e as { message?: string } | null)?.message ?? String(e);
-    logger.error({ error: msg }, "Bootstrap failed");
-  }
 }
 
-const PORT = process.env.PORT || 8080;
+const PORT = config.port;
 bootstrap().finally(() => {
-  app.listen(PORT, () => {
-    logger.info(`Portfolio backend listening on http://localhost:${PORT}`);
-    logger.info(`Swagger UI at http://localhost:${PORT}/api/docs`);
-    logger.info(`Metrics at http://localhost:${PORT}/metrics`);
-  });
+    app.listen(PORT, () => {
+        logger.info(`Portfolio backend listening on http://localhost:${PORT}`);
+        logger.info(`Swagger UI at http://localhost:${PORT}/api/docs`);
+        logger.info(`Metrics at http://localhost:${PORT}/metrics`);
+    });
 });
 
 // Graceful shutdown
 process.on("SIGINT", () => {
-  logger.info("Shutting down gracefully...");
-  closeConnection();
-  process.exit(0);
+    logger.info("Shutting down gracefully...");
+    closeConnection();
+    process.exit(0);
 });
