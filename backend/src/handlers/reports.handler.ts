@@ -342,10 +342,10 @@ reportsRouter.get('/reports/cashflow', async (req, res) => {
   try {
     const start = req.query.start_date ? new Date(String(req.query.start_date)) : undefined;
     const end = req.query.end_date ? new Date(String(req.query.end_date)) : undefined;
-    const account = req.query.account ? String(req.query.account) : undefined; // optional per-vault filter
+    const account = req.query.account ? String(req.query.account) : settingsRepository.getDefaultSpendingVaultName();
 
-    // Collect vault entries across all vaults (or a single vault if filtered)
-    const vaultNames = account ? [account] : vaultRepository.findAll().map(v => v.name);
+    // Collect vault entries from the spending vault only (or a specific vault if filtered)
+    const vaultNames = [account];
     const entries = vaultNames.flatMap(name => vaultRepository.findAllEntries(name));
 
     const inRange = (d: string) => {
