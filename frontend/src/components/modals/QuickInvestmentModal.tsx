@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 
-import ComboBox from '../ui/ComboBox';
 import { adminApi, tokenizedVaultApi } from '../../services/api';
+import ComboBox from '../ui/ComboBox';
 
 interface QuickInvestmentModalProps {
   isOpen: boolean;

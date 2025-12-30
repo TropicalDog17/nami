@@ -1,8 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
 
+import { adminApi } from '../../services/api';
 import ComboBox from '../ui/ComboBox';
 import DateInput from '../ui/DateInput';
-import { adminApi } from '../../services/api';
 
 interface QuickVaultModalProps {
   isOpen: boolean;
@@ -34,7 +34,7 @@ const QuickVaultModal: React.FC<QuickVaultModalProps> = ({ isOpen, onClose, onSu
   useEffect(() => {
     const load = async () => {
       try {
-        const assetsData = (await adminApi.listAssets()) as AssetLite[] | null;
+        const assetsData = (await adminApi.listAssets());
         setAssets(((assetsData ?? [])).map((a) => {
           const symbol = String(a.symbol ?? '');
           const name = String(a.name ?? symbol);

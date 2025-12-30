@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 
+import { AggregatedPnLChart } from '../components/reports/AggregatedPnLChart';
 import { TimeSeriesLineChart } from '../components/reports/Charts';
 import AUMChart from '../components/reports/AUMChart';
 import CreateTokenizedVaultForm from '../components/tokenized/CreateTokenizedVaultForm';

@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 
+import QuickBuyModal from '../components/modals/QuickBuyModal';
+import QuickSellModal from '../components/modals/QuickSellModal';
 import AssetAllocationChart from '../components/reports/AssetAllocationChart';
 import CashFlowChart from '../components/reports/CashFlowChart';
 import { PnLChart, SpendingChart, DailySpendingChart, MonthlySpendingTrendChart } from '../components/reports/Charts';
@@ -8,8 +10,6 @@ import DataTable, { TableColumn, TableRowBase } from '../components/ui/DataTable
 import DateInput from '../components/ui/DateInput';
 import { useBackendStatus } from '../context/BackendStatusContext';
 import { reportsApi, investmentsApi, vaultApi, tokenizedVaultApi } from '../services/api';
-import QuickBuyModal from '../components/modals/QuickBuyModal';
-import QuickSellModal from '../components/modals/QuickSellModal';
 
 
 const ReportsPage = () => {

@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react';
 
+import { transactionApi } from '../../services/api';
 import ComboBox from '../ui/ComboBox';
 import DateInput from '../ui/DateInput';
-import { transactionApi } from '../../services/api';
 
 interface QuickSellModalProps {
   isOpen: boolean;

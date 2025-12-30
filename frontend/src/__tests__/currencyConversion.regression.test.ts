@@ -1,10 +1,19 @@
-import { vi, describe, it, expect } from 'vitest';
+import { describe, it, expect } from 'vitest';
+
+type TransactionRow = {
+  id?: number;
+  amount_local?: number | string | null;
+  fx_to_usd?: number | string | null;
+  fx_to_vnd?: number | string | null;
+  amount_usd?: number | string | null;
+  amount_vnd?: number | string | null;
+};
 
 describe('Currency Conversion Regression Tests', () => {
   describe('GitHub Issue #2: Currency switching doesn\'t apply historical FX conversion', () => {
     it('should handle transactions with missing FX rate data gracefully', () => {
       // Regression test for edge cases where FX data might be missing
-      const transactionWithMissingFX = {
+      const transactionWithMissingFX: TransactionRow = {
         id: 1,
         amount_local: 1000,
         fx_to_usd: null,
@@ -13,7 +22,7 @@ describe('Currency Conversion Regression Tests', () => {
         amount_vnd: 24000000,
       };
 
-      const convertWithFallback = (row: any, currency: 'USD' | 'VND') => {
+      const convertWithFallback = (row: TransactionRow, currency: 'USD' | 'VND') => {
         const amountLocal = Number(row?.amount_local ?? 0);
         const fxToUsd = Number(row?.fx_to_usd ?? 1);
         const fxToVnd = Number(row?.fx_to_vnd ?? 24000);
@@ -34,7 +43,7 @@ describe('Currency Conversion Regression Tests', () => {
     });
 
     it('should handle zero amounts correctly', () => {
-      const zeroTransaction = {
+      const zeroTransaction: TransactionRow = {
         id: 1,
         amount_local: 0,
         fx_to_usd: 1.0,
@@ -43,7 +52,7 @@ describe('Currency Conversion Regression Tests', () => {
         amount_vnd: 0,
       };
 
-      const convertAmount = (row: any, currency: 'USD' | 'VND') => {
+      const convertAmount = (row: TransactionRow, currency: 'USD' | 'VND') => {
         const amountLocal = Number(row?.amount_local ?? 0);
         const fxToUsd = Number(row?.fx_to_usd ?? 1);
         const fxToVnd = Number(row?.fx_to_vnd ?? 24000);
@@ -61,14 +70,14 @@ describe('Currency Conversion Regression Tests', () => {
     });
 
     it('should handle very large amounts without overflow', () => {
-      const largeTransaction = {
+      const largeTransaction: TransactionRow = {
         id: 1,
         amount_local: 1000000000, // 1 billion
         fx_to_usd: 1.5,
         fx_to_vnd: 35000,
       };
 
-      const convertAmount = (row: any, currency: 'USD' | 'VND') => {
+      const convertAmount = (row: TransactionRow, currency: 'USD' | 'VND') => {
         const amountLocal = Number(row?.amount_local ?? 0);
         const fxToUsd = Number(row?.fx_to_usd ?? 1);
         const fxToVnd = Number(row?.fx_to_vnd ?? 24000);
@@ -86,14 +95,14 @@ describe('Currency Conversion Regression Tests', () => {
     });
 
     it('should handle decimal FX rates correctly', () => {
-      const decimalFXTransaction = {
+      const decimalFXTransaction: TransactionRow = {
         id: 1,
         amount_local: 1000.50,
         fx_to_usd: 0.85,
         fx_to_vnd: 19845.75,
       };
 
-      const convertAmount = (row: any, currency: 'USD' | 'VND') => {
+      const convertAmount = (row: TransactionRow, currency: 'USD' | 'VND') => {
         const amountLocal = Number(row?.amount_local ?? 0);
         const fxToUsd = Number(row?.fx_to_usd ?? 1);
         const fxToVnd = Number(row?.fx_to_vnd ?? 24000);
@@ -117,14 +126,14 @@ describe('Currency Conversion Regression Tests', () => {
 
     it('should maintain consistency across multiple currency switches', () => {
       // Test that switching back and forth between currencies produces consistent results
-      const transaction = {
+      const transaction: TransactionRow = {
         id: 1,
         amount_local: 1000,
         fx_to_usd: 1.2,
         fx_to_vnd: 28000,
       };
 
-      const convertAmount = (row: any, currency: 'USD' | 'VND') => {
+      const convertAmount = (row: TransactionRow, currency: 'USD' | 'VND') => {
         const amountLocal = Number(row?.amount_local ?? 0);
         const fxToUsd = Number(row?.fx_to_usd ?? 1);
         const fxToVnd = Number(row?.fx_to_vnd ?? 24000);
@@ -151,14 +160,14 @@ describe('Currency Conversion Regression Tests', () => {
     });
 
     it('should handle extreme FX rate values', () => {
-      const extremeFXTransaction = {
+      const extremeFXTransaction: TransactionRow = {
         id: 1,
         amount_local: 1,
         fx_to_usd: 0.0001, // Very small FX rate
         fx_to_vnd: 100000, // Very large FX rate
       };
 
-      const convertAmount = (row: any, currency: 'USD' | 'VND') => {
+      const convertAmount = (row: TransactionRow, currency: 'USD' | 'VND') => {
         const amountLocal = Number(row?.amount_local ?? 0);
         const fxToUsd = Number(row?.fx_to_usd ?? 1);
         const fxToVnd = Number(row?.fx_to_vnd ?? 24000);
@@ -199,7 +208,7 @@ describe('Currency Conversion Regression Tests', () => {
         },
       ];
 
-      const convertWithFallback = (row: any, currency: 'USD' | 'VND') => {
+      const convertWithFallback = (row: TransactionRow, currency: 'USD' | 'VND') => {
         const amountLocal = Number(row?.amount_local ?? 0);
         const fxToUsd = Number(row?.fx_to_usd ?? 1);
         const fxToVnd = Number(row?.fx_to_vnd ?? 24000);

@@ -2,12 +2,12 @@ import { format, differenceInDays } from 'date-fns';
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 
-import ComboBox from '../components/ui/ComboBox';
-import DataTable, { TableColumn } from '../components/ui/DataTable';
-import ManualPricingControl from '../components/tokenized/ManualPricingControl';
-import { HoldingsChart, TimeSeriesLineChart } from '../components/reports/Charts';
 import QuickBorrowLoanModal from '../components/modals/QuickBorrowLoanModal';
 import QuickRepayModal from '../components/modals/QuickRepayModal';
+import { HoldingsChart, TimeSeriesLineChart } from '../components/reports/Charts';
+import ManualPricingControl from '../components/tokenized/ManualPricingControl';
+import ComboBox from '../components/ui/ComboBox';
+import DataTable, { TableColumn } from '../components/ui/DataTable';
 import { useToast } from '../components/ui/Toast';
 import { vaultApi, transactionApi, tokenizedVaultApi, vaultLedgerApi, portfolioApi, reportsApi, ApiError } from '../services/api';
 import { formatCurrency, formatPercentage, formatPnL, getDecimalPlaces } from '../utils/currencyFormatter';
@@ -130,7 +130,7 @@ const VaultDetailPage: React.FC = () => {
   const rollingAUM = useMemo(() => {
     try {
       if (!Array.isArray(ledgerTransactions) || ledgerTransactions.length === 0) return undefined;
-      const txs = [...ledgerTransactions].filter(t => t && t.timestamp).sort((a, b) => new Date(String(a.timestamp)).getTime() - new Date(String(b.timestamp)).getTime());
+      const txs = [...ledgerTransactions].filter(t => t?.timestamp).sort((a, b) => new Date(String(a.timestamp)).getTime() - new Date(String(b.timestamp)).getTime());
       let lastValIdx = -1;
       for (let i = txs.length - 1; i >= 0; i--) {
         const t = txs[i];
@@ -157,7 +157,7 @@ const VaultDetailPage: React.FC = () => {
   const impliedPriceFromLedger = useMemo(() => {
     try {
       if (!Array.isArray(ledgerTransactions) || ledgerTransactions.length === 0) return undefined;
-      const txs = [...ledgerTransactions].filter(t => t && t.timestamp).sort((a, b) => new Date(String(a.timestamp)).getTime() - new Date(String(b.timestamp)).getTime());
+      const txs = [...ledgerTransactions].filter(t => t?.timestamp).sort((a, b) => new Date(String(a.timestamp)).getTime() - new Date(String(b.timestamp)).getTime());
       let lastValIdx = -1;
       for (let i = txs.length - 1; i >= 0; i--) {
         if (String(txs[i].type || '').toUpperCase() === 'VALUATION') { lastValIdx = i; break; }
@@ -319,7 +319,7 @@ const VaultDetailPage: React.FC = () => {
             vaultLedgerApi.transactions<any[]>(vaultId, { limit: 100 }),
           ]);
           setLedgerHoldings(h ?? null);
-          const ppsRaw = (h as any)?.share_price;
+          const ppsRaw = (h)?.share_price;
           const pps = typeof ppsRaw === 'string' ? parseFloat(ppsRaw) : (ppsRaw ?? 1);
           const mapped = (Array.isArray(tx) ? tx : []).map((e: any) => {
             const usd = typeof e?.usdValue === 'string' ? parseFloat(e.usdValue) : Number(e?.usdValue ?? 0);
@@ -351,7 +351,7 @@ const VaultDetailPage: React.FC = () => {
         setRetryCount(0);
       }
     } catch (err) {
-      const apiErr = err as unknown as ApiError;
+      const apiErr = err as ApiError;
       // If route param looks like a tokenized ID and backend says 404, stop here with a clear error
       if (apiErr instanceof ApiError && apiErr.status === 404 && isTokenizedId) {
         setError('Tokenized vault not found');
@@ -1139,8 +1139,8 @@ const VaultDetailPage: React.FC = () => {
     const aprSinceInception = daysSinceInception >= 30 && yearsSinceInception > 0
       ? (Math.pow(1 + roiDecimal, 1 / yearsSinceInception) - 1) * 100
       : performance;
-    const perfDisplay = (typeof headerMetrics?.roi_percent === 'number' && isFinite(headerMetrics!.roi_percent)) ? headerMetrics!.roi_percent : performance;
-    const aprDisplay = (typeof headerMetrics?.apr_percent === 'number' && isFinite(headerMetrics!.apr_percent)) ? headerMetrics!.apr_percent : aprSinceInception;
+    const perfDisplay = (typeof headerMetrics?.roi_percent === 'number' && isFinite(headerMetrics.roi_percent)) ? headerMetrics.roi_percent : performance;
+    const aprDisplay = (typeof headerMetrics?.apr_percent === 'number' && isFinite(headerMetrics.apr_percent)) ? headerMetrics.apr_percent : aprSinceInception;
     const status = tokenizedVaultDetails.status?.toLowerCase() ?? 'unknown';
     const statusConfig: Record<string, { label: string; className: string }> = {
       active: { label: 'Active', className: 'bg-green-100 text-green-800' },
@@ -1344,12 +1344,12 @@ const VaultDetailPage: React.FC = () => {
             <p className="text-2xl font-bold text-gray-900">{(() => {
               const base = isNaN(totalValue) ? 0 : totalValue;
               const roll = typeof rollingAUM === 'number' && isFinite(rollingAUM) ? rollingAUM : undefined;
-              const backend = typeof headerMetrics?.aum_usd === 'number' && isFinite(headerMetrics!.aum_usd) ? headerMetrics!.aum_usd : undefined;
+              const backend = typeof headerMetrics?.aum_usd === 'number' && isFinite(headerMetrics.aum_usd) ? headerMetrics.aum_usd : undefined;
               return formatCurrency(backend ?? roll ?? base);
             })()}</p>
             <p className="text-sm text-gray-600">{(() => {
               if (tokenizedVaultDetails.is_user_defined_price) return 'Manual pricing';
-              return (typeof headerMetrics?.aum_usd === 'number' && isFinite(headerMetrics!.aum_usd))
+              return (typeof headerMetrics?.aum_usd === 'number' && isFinite(headerMetrics.aum_usd))
                 ? 'Backend rolling AUM'
                 : (typeof rollingAUM === 'number' && isFinite(rollingAUM)) ? 'Rolling since last valuation' : 'Total vault value';
             })()}</p>

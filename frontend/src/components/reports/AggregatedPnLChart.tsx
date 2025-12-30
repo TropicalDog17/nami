@@ -1,5 +1,3 @@
-import { useState, useEffect } from 'react';
-import { Line } from 'react-chartjs-2';
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -11,6 +9,9 @@ import {
   Legend,
   Filler,
 } from 'chart.js';
+import { useState, useEffect } from 'react';
+import { Line } from 'react-chartjs-2';
+
 import { reportsApi } from '../../services/api';
 
 ChartJS.register(

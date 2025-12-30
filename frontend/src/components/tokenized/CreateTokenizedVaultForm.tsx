@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react';
 import { format } from 'date-fns';
-import { useToast } from '../ui/Toast';
+import React, { useState, useEffect } from 'react';
+
 import { tokenizedVaultApi } from '../../services/api';
+import { useToast } from '../ui/Toast';
 
 type VaultType = 'user_defined';
 

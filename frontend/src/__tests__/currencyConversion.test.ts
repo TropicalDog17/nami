@@ -1,9 +1,19 @@
-import { vi, describe, it, expect } from 'vitest';
+import { describe, it, expect } from 'vitest';
+
+type TransactionRow = {
+  id?: number;
+  date?: string;
+  amount_local?: number;
+  fx_to_usd?: number;
+  fx_to_vnd?: number;
+  amount_usd?: number;
+  amount_vnd?: number;
+};
 
 describe('Currency Conversion Logic', () => {
   it('should convert amounts using historical FX rates', () => {
     // Test the currency conversion logic implemented in TransactionPage
-    const transaction1 = {
+    const transaction1: TransactionRow = {
       id: 1,
       date: '2024-01-15',
       amount_local: 1000,
@@ -11,7 +21,7 @@ describe('Currency Conversion Logic', () => {
       fx_to_vnd: 24000.0,
     };
 
-    const transaction2 = {
+    const transaction2: TransactionRow = {
       id: 2,
       date: '2024-02-15',
       amount_local: 1000,
@@ -20,7 +30,7 @@ describe('Currency Conversion Logic', () => {
     };
 
     // Simulate the conversion logic from TransactionPage.tsx
-    const convertAmount = (row: any, currency: 'USD' | 'VND') => {
+    const convertAmount = (row: TransactionRow, currency: 'USD' | 'VND') => {
       const amountLocal = Number(row?.amount_local ?? 0);
       const fxToUsd = Number(row?.fx_to_usd ?? 1);
       const fxToVnd = Number(row?.fx_to_vnd ?? 24000);
@@ -47,7 +57,7 @@ describe('Currency Conversion Logic', () => {
   });
 
   it('should handle fallback to pre-calculated values when conversion data missing', () => {
-    const transactionWithMissingFX = {
+    const transactionWithMissingFX: TransactionRow = {
       id: 1,
       amount_local: 0, // No local amount
       amount_usd: 1000,
@@ -55,7 +65,7 @@ describe('Currency Conversion Logic', () => {
     };
 
     // Test fallback logic
-    const convertWithFallback = (row: any, currency: 'USD' | 'VND') => {
+    const convertWithFallback = (row: TransactionRow, currency: 'USD' | 'VND') => {
       const amountLocal = Number(row?.amount_local ?? 0);
       const fxToUsd = Number(row?.fx_to_usd ?? 1);
       const fxToVnd = Number(row?.fx_to_vnd ?? 24000);

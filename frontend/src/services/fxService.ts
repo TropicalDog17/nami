@@ -33,7 +33,7 @@ class FXRateService {
 
   // Generate cache key for FX rates
   private getCacheKey(from: string, to: string, date?: string): string {
-    const dateKey = date || 'today';
+    const dateKey = date ?? 'today';
     return `${from}-${to}-${dateKey}`;
   }
 
@@ -108,28 +108,28 @@ class FXRateService {
 
     // De-duplicate in-flight requests
     if (this.pending.has(cacheKey)) {
-      return this.pending.get(cacheKey)!;
+      return this.pending.get(cacheKey) as Promise<number>;
     }
 
     const fetchPromise = (async (): Promise<number> => {
       try {
         let rate: number;
         if (dateStr) {
-          const response = await fxApi.getHistoricalRate(fromUpper, toUpper, dateStr) as any;
+          const response = await fxApi.getHistoricalRate(fromUpper, toUpper, dateStr) as Array<{ rate?: number; Rate?: number }>;
           if (response && Array.isArray(response) && response.length > 0) {
-            rate = Number(response[0].rate || response[0].Rate);
+            rate = Number(response[0].rate ?? response[0].Rate);
           } else {
             throw new Error('Invalid historical rate response');
           }
         } else {
-          const response = await fxApi.getTodayRate(fromUpper, toUpper) as any;
-          rate = Number(response.rate || response.Rate);
+          const response = await fxApi.getTodayRate(fromUpper, toUpper) as { rate?: number; Rate?: number };
+          rate = Number(response.rate ?? response.Rate);
         }
 
         if (!rate || rate <= 0) throw new Error('Invalid rate received');
         this.setCache(cacheKey, rate);
         return rate;
-      } catch (error) {
+      } catch {
         // Compute deterministic fallback and cache it to prevent spamming
         let fallback = 1.0;
         if (fromUpper === 'USD' && toUpper === 'VND') fallback = this.FALLBACK_VND_RATE;

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { useToast } from '../ui/Toast';
+
 import { tokenizedVaultApi } from '../../services/api';
+import { useToast } from '../ui/Toast';
 
 interface ManualPricingControlProps {
   vaultId: string;

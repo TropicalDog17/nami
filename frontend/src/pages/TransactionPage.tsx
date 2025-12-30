@@ -6,17 +6,17 @@ import React, {
   useCallback,
 } from 'react';
 
+import TransactionForm from '../components/forms/TransactionForm';
+import QuickBorrowLoanModal from '../components/modals/QuickBorrowLoanModal';
+import QuickBuyModal from '../components/modals/QuickBuyModal';
 import QuickExpenseModal from '../components/modals/QuickExpenseModal';
 import QuickIncomeModal from '../components/modals/QuickIncomeModal';
 import QuickInitBalanceModal from '../components/modals/QuickInitBalanceModal';
 import QuickInvestmentModal from '../components/modals/QuickInvestmentModal';
-import QuickVaultModal from '../components/modals/QuickVaultModal';
-import QuickTransferModal from '../components/modals/QuickTransferModal';
-import QuickBorrowLoanModal from '../components/modals/QuickBorrowLoanModal';
 import QuickRepayModal from '../components/modals/QuickRepayModal';
-import QuickBuyModal from '../components/modals/QuickBuyModal';
 import QuickSellModal from '../components/modals/QuickSellModal';
-import TransactionForm from '../components/forms/TransactionForm';
+import QuickTransferModal from '../components/modals/QuickTransferModal';
+import QuickVaultModal from '../components/modals/QuickVaultModal';
 import ComboBox from '../components/ui/ComboBox';
 import DataTable, {
   TableColumn,
@@ -25,7 +25,6 @@ import DataTable, {
 import DateInput from '../components/ui/DateInput';
 import { useToast } from '../components/ui/Toast';
 import { useApp } from '../context/AppContext';
-import { fxService } from '../services/fxService';
 import { useBackendStatus } from '../context/BackendStatusContext';
 import { useQuickCreate } from '../hooks/useQuickCreate';
 import {
@@ -37,6 +36,7 @@ import {
   tokenizedVaultApi,
   ApiError,
 } from '../services/api';
+import { fxService } from '../services/fxService';
 
 type IdType = string | number;
 type Transaction = TableRowBase & Record<string, unknown>;
@@ -102,7 +102,6 @@ const TransactionPage: React.FC = () => {
   const {
     createExpense,
     createIncome,
-    createVault,
     createInvestment,
     isLoading: _isQuickLoading,
     error: quickError,
@@ -171,53 +170,54 @@ const TransactionPage: React.FC = () => {
       const data = (await transactionApi.list(fxFilters)) as unknown[];
 
       // Handle both TransactionWithFX and basic Transaction responses
-      if (data && data.length > 0 && 'fx_rates' in (data[0] as any)) {
+      if (data && data.length > 0 && 'fx_rates' in (data[0] as Record<string, unknown>)) {
         // FX-enhanced response
         setTransactions(data as Transaction[]);
       } else {
         // Fallback to basic response: map backend Transaction -> UI row shape
-        const mapped = (data || []).map((raw: any) => {
-          const assetObj = raw?.asset;
+        const mapped = (data ?? []).map((raw: unknown) => {
+          const rawRecord = raw as Record<string, unknown>;
+          const assetObj = rawRecord?.asset;
           const assetSym = typeof assetObj === 'string'
             ? assetObj
-            : (assetObj?.symbol ?? String(assetObj ?? ''));
-          const type = String(raw?.type ?? '').toLowerCase();
-          const created = String(raw?.createdAt || raw?.date || '') || undefined;
+            : ((assetObj as Record<string, unknown> | null)?.symbol ?? String(assetObj ?? ''));
+          const type = String(rawRecord?.type ?? '').toLowerCase();
+          const created = String(rawRecord?.createdAt ?? rawRecord?.date ?? '') || undefined;
           // normalize date to a full ISO string to ensure Safari/Chrome parsing
           let dateISO: string | undefined = undefined;
           if (created) {
             const d = new Date(created);
-            dateISO = isNaN(d.getTime()) ? created : d.toISOString();
+            dateISO = Number.isNaN(d.getTime()) ? created : d.toISOString();
           }
-          const qty = Number(raw?.amount ?? raw?.quantity ?? 0) || 0;
+          const qty = Number(rawRecord?.amount ?? rawRecord?.quantity ?? 0) ?? 0;
           // cashflow sign
           let cashflow = 0;
           if (type === 'income' || type === 'transfer_in') cashflow = qty;
           else if (type === 'expense' || type === 'transfer_out') cashflow = -qty;
           else if (type === 'repay') {
-            const dir = String(raw?.direction || '').toLowerCase();
+            const dir = String(rawRecord?.direction ?? '').toLowerCase();
             cashflow = dir === 'loan' ? qty : dir === 'borrow' ? -qty : 0;
           } else cashflow = 0; // initial/borrow/loan treated neutral
 
-          const localCurrency = assetSym || 'USD';
+          const localCurrency = assetSym ?? 'USD';
 
           const row: Record<string, unknown> = {
-            id: raw?.id,
+            id: rawRecord?.id,
             date: dateISO ?? undefined,
             type,
             asset: assetSym,
-            account: raw?.account ?? '',
+            account: rawRecord?.account ?? '',
             quantity: qty,
             amount_local: qty,
             local_currency: localCurrency,
             cashflow_local: cashflow,
-            counterparty: raw?.counterparty ?? null,
-            tag: raw?.tag ?? null,
-            note: raw?.note ?? null,
+            counterparty: rawRecord?.counterparty ?? null,
+            tag: rawRecord?.tag ?? null,
+            note: rawRecord?.note ?? null,
           };
           return row as Transaction;
         });
-        setTransactions(mapped as Transaction[]);
+        setTransactions(mapped);
       }
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Unknown error';
@@ -351,7 +351,7 @@ const TransactionPage: React.FC = () => {
         };
         if (vaultId.startsWith('vault_')) {
           // Tokenized vault deposit (USD amount)
-          const account = (investmentData as any).account as string | undefined;
+          const account = investmentData.account as string | undefined;
           await tokenizedVaultApi.deposit(vaultId, {
             amount: cost,
             notes: note,
@@ -361,7 +361,7 @@ const TransactionPage: React.FC = () => {
           if (account) {
             await transactionApi.create({
               date: toISODateTime(
-                (investmentData as any).date as string | undefined
+                investmentData.date as string | undefined
               ),
               type: 'deposit',
               asset: 'USD',
@@ -378,11 +378,11 @@ const TransactionPage: React.FC = () => {
           // Legacy investment vault deposit (qty x cost)
           await vaultApi.depositToVault(vaultId, { quantity, cost, note });
           // Also reflect as a neutral deposit in Transactions if a source account is provided
-          const account = (investmentData as any).account as string | undefined;
+          const account = investmentData.account as string | undefined;
           if (account) {
             await transactionApi.create({
               date: toISODateTime(
-                (investmentData as any).date as string | undefined
+                investmentData.date as string | undefined
               ),
               type: 'deposit',
               asset: 'USD',
@@ -407,9 +407,9 @@ const TransactionPage: React.FC = () => {
     } catch (e: unknown) {
       const msg =
         (e as { message?: string } | null)?.message ??
-        ((investmentData.vaultId
+        (investmentData.vaultId
           ? 'Failed to record vault deposit'
-          : 'Failed to record investment') as string);
+          : 'Failed to record investment');
       actions.setError(msg);
       showErrorToast(msg);
       throw e;
@@ -461,9 +461,9 @@ const TransactionPage: React.FC = () => {
       const payload = {
         asset: toAssetObj(data.asset),
         amount: Number(data.amount),
-        account: data.account || undefined,
-        counterparty: data.counterparty || 'general',
-        note: data.note || undefined,
+        account: data.account ?? undefined,
+        counterparty: data.counterparty ?? 'general',
+        note: data.note ?? undefined,
         at: toISODateTime(data.date),
       };
       await transactionApi.borrow(payload);
@@ -483,9 +483,9 @@ const TransactionPage: React.FC = () => {
       const payload = {
         asset: toAssetObj(data.asset),
         amount: Number(data.amount),
-        account: data.account || undefined,
-        counterparty: data.counterparty || 'general',
-        note: data.note || undefined,
+        account: data.account ?? undefined,
+        counterparty: data.counterparty ?? 'general',
+        note: data.note ?? undefined,
         at: toISODateTime(data.date),
       };
       await transactionApi.loan(payload);
@@ -505,12 +505,12 @@ const TransactionPage: React.FC = () => {
       const payload = {
         asset: toAssetObj(data.asset),
         amount: Number(data.amount),
-        account: data.account || undefined,
+        account: data.account ?? undefined,
         direction: data.direction,
-        counterparty: data.counterparty || 'general',
-        note: data.note || undefined,
+        counterparty: data.counterparty ?? 'general',
+        note: data.note ?? undefined,
         at: toISODateTime(data.date),
-      } as any;
+      };
       await transactionApi.repay(payload);
       await loadTransactions();
       actions.setError(null);
@@ -560,7 +560,7 @@ const TransactionPage: React.FC = () => {
     const [invHorizon, setInvHorizon] = useState('');
     const [invOpenOptions, setInvOpenOptions] = useState<Option[]>([]);
     const [invId, setInvId] = useState('');
-    const [invIdToInfo, setInvIdToInfo] = useState<Record<string, any>>({});
+    const [invIdToInfo, setInvIdToInfo] = useState<Record<string, unknown>>({});
     const [submitting, setSubmitting] = useState(false);
     const [qaError, setQaError] = useState<string | null>(null);
     const number = (s?: string) => (s ? parseFloat(String(s)) : 0);
@@ -635,7 +635,7 @@ const TransactionPage: React.FC = () => {
       setQaError(null);
       try {
         setSubmitting(true);
-        let created: any = null;
+        let created: Transaction | null = null;
         if (invMode === 'stake') {
           // Stake: create an incoming stake via investment API
           const fxUSD = 1;
@@ -654,17 +654,17 @@ const TransactionPage: React.FC = () => {
             fx_to_vnd: fxVND,
             amount_usd: amountUSD,
             amount_vnd: amountVND,
-            counterparty: qa.counterparty || null,
-            tag: qa.tag || null,
-            note: qa.note || null,
-            horizon: invHorizon || null,
-            investment_id: invId || null,
+            counterparty: qa.counterparty ?? null,
+            tag: qa.tag ?? null,
+            note: qa.note ?? null,
+            horizon: invHorizon ?? null,
+            investment_id: invId ?? null,
           };
           await investmentsApi.stake(stake);
           // Quick feedback: reload transactions list minimally
           await loadTransactions();
         } else if (invMode === 'unstake') {
-          const info = invIdToInfo[invId] || {};
+          const info = (invIdToInfo[invId] ?? {}) as Record<string, unknown>;
           const unstakeQty = number(qa.quantity);
           const fxUSD = 1;
           const fxVND = 1;
@@ -674,37 +674,37 @@ const TransactionPage: React.FC = () => {
           const unstake = {
             date: toISODateTime(qa.date),
             type: 'unstake',
-            asset: info.asset || qa.asset,
-            account: info.account || invAccount,
+            asset: (info.asset ?? qa.asset) as string,
+            account: (info.account ?? invAccount) as string,
             quantity: unstakeQty,
             price_local: number(qa.price_local ?? '1'),
             fx_to_usd: fxUSD,
             fx_to_vnd: fxVND,
             amount_usd: amountUSD,
             amount_vnd: amountVND,
-            counterparty: qa.counterparty || null,
-            tag: qa.tag || null,
-            note: qa.note || null,
+            counterparty: qa.counterparty ?? null,
+            tag: qa.tag ?? null,
+            note: qa.note ?? null,
             investment_id: invId,
           };
           await investmentsApi.unstake(unstake);
           await loadTransactions();
         } else {
           // Plain transaction
-          const payload: Record<string, any> = {
+          const payload: Record<string, unknown> = {
             date: toISODateTime(qa.date),
             type: qa.type,
             asset: qa.asset,
             account: qa.account,
             quantity: number(qa.quantity),
             price_local: number(qa.price_local ?? '1'),
-            counterparty: qa.counterparty || null,
-            tag: qa.tag || null,
-            note: qa.note || null,
+            counterparty: qa.counterparty ?? null,
+            tag: qa.tag ?? null,
+            note: qa.note ?? null,
             fx_to_usd: 0,
             fx_to_vnd: 0,
           };
-          created = await transactionApi.create(payload);
+          created = await transactionApi.create(payload) as Transaction;
           if (created) onCreated(created);
         }
         if (addAnother) {
@@ -715,9 +715,10 @@ const TransactionPage: React.FC = () => {
         }
         actions.setError(null);
         showSuccessToast('Transaction created');
-      } catch (e: any) {
-        setQaError((e as { message?: string }).message ?? 'Failed to create');
-        actions.setError(e?.message ?? 'Failed to create');
+      } catch (e: unknown) {
+        const message = (e as { message?: string }).message ?? 'Failed to create';
+        setQaError(message);
+        actions.setError(message);
       } finally {
         setSubmitting(false);
       }
@@ -738,12 +739,12 @@ const TransactionPage: React.FC = () => {
             remaining_qty: number;
             horizon?: string;
           }>;
-          const idMap: Record<string, any> = {};
+          const idMap: Record<string, { id: string; deposit_date: string; asset: string; account: string; remaining_qty: number; horizon?: string }> = {};
           const options: Option[] = list.map((inv) => {
             idMap[String(inv.id)] = inv;
             const dStr = (() => {
               const d = new Date(inv.deposit_date);
-              return isNaN(d.getTime())
+              return Number.isNaN(d.getTime())
                 ? String(inv.deposit_date)
                 : d.toISOString().split('T')[0];
             })();
@@ -755,7 +756,9 @@ const TransactionPage: React.FC = () => {
           });
           setInvIdToInfo(idMap);
           setInvOpenOptions(options);
-        } catch {}
+        } catch {
+          // Ignore errors when loading open investments
+        }
       };
       if (invMode === 'unstake') void loadOpen();
     }, [invMode]);
@@ -896,7 +899,7 @@ const TransactionPage: React.FC = () => {
             <select
               className="px-2 py-1 border rounded text-sm"
               value={invMode}
-              onChange={(e) => setInvMode(e.target.value as any)}
+              onChange={(e) => setInvMode(e.target.value as 'none' | 'stake' | 'unstake')}
             >
               <option value="none">None</option>
               <option value="stake">Stake (open/add)</option>
@@ -954,7 +957,7 @@ const TransactionPage: React.FC = () => {
           {invMode === 'unstake' && (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               <ComboBox
-                options={invOpenOptions as any}
+                options={invOpenOptions}
                 value={invId}
                 onChange={(v) => setInvId(String(v))}
                 placeholder="Active Investment (required)"
@@ -1130,7 +1133,7 @@ const TransactionPage: React.FC = () => {
     if (!confirm(`Delete ${ids.length} selected transaction(s)?`)) return;
     try {
       const res = await transactionApi.deleteMany(ids);
-      const deleted = (res as any)?.deleted ?? ids.length;
+      const deleted = ((res as Record<string, unknown>)?.deleted ?? ids.length) as number;
       setTransactions((prev) =>
         prev.filter(
           (tx) => !(tx.id !== undefined && selectedIds.has(tx.id as IdType))
@@ -1139,8 +1142,9 @@ const TransactionPage: React.FC = () => {
       setSelectedIds(new Set());
       actions.setError(null);
       showSuccessToast(`Deleted ${deleted} transaction(s)`);
-    } catch (err: any) {
-      actions.setError(err?.message ?? 'Unknown error');
+    } catch (err: unknown) {
+      const message = (err as { message?: string })?.message ?? 'Unknown error';
+      actions.setError(message);
       showErrorToast('Failed to delete selected. Please try again.');
     }
   };
@@ -1205,24 +1209,26 @@ const TransactionPage: React.FC = () => {
   // Helper function to convert amount using FX data from API response
   const convertAmountSync = useCallback(
     (
-      row: any, // Transaction or TransactionWithFX
+      row: Transaction, // Transaction or TransactionWithFX
       targetCurrency: 'USD' | 'VND'
     ): { amount: number; cashflow: number; isLoading: boolean } => {
       const rowId = String(row?.id ?? 'unknown');
       const cacheKey = getFXCacheKey(rowId, targetCurrency);
 
       const amountLocal = Number(row?.amount_local ?? 0);
-      const localCurrency = (row?.local_currency as string) || 'USD';
+      const localCurrency = (row?.local_currency as string) ?? 'USD';
       const cashflowLocal = Number(row?.cashflow_local ?? 0);
 
       // Check cached converted value first
       if (fxConversionCache.has(cacheKey)) {
-        const cachedAmount = fxConversionCache.get(cacheKey)!;
-        return {
-          amount: cachedAmount,
-          cashflow: cachedAmount,
-          isLoading: false,
-        };
+        const cachedAmount = fxConversionCache.get(cacheKey);
+        if (cachedAmount !== undefined) {
+          return {
+            amount: cachedAmount,
+            cashflow: cachedAmount,
+            isLoading: false,
+          };
+        }
       }
 
       // If same currency, no conversion needed
@@ -1258,21 +1264,23 @@ const TransactionPage: React.FC = () => {
         const raw = row?.date as string | undefined;
         if (!raw) return 'today';
         const d = new Date(raw);
-        return isNaN(d.getTime()) ? 'today' : d.toISOString().split('T')[0];
+        return Number.isNaN(d.getTime()) ? 'today' : d.toISOString().split('T')[0];
       })();
       const rateKey = `${localCurrency}-${targetCurrency}-${dateStr}`;
       if (fxRateCache.has(rateKey)) {
-        const rate = fxRateCache.get(rateKey)!;
-        const convertedAmount = amountLocal * rate;
-        const convertedCashflow = cashflowLocal * rate;
-        setFxConversionCache((prev) =>
-          new Map(prev).set(cacheKey, convertedAmount)
-        );
-        return {
-          amount: convertedAmount,
-          cashflow: convertedCashflow,
-          isLoading: false,
-        };
+        const rate = fxRateCache.get(rateKey);
+        if (rate !== undefined) {
+          const convertedAmount = amountLocal * rate;
+          const convertedCashflow = cashflowLocal * rate;
+          setFxConversionCache((prev) =>
+            new Map(prev).set(cacheKey, convertedAmount)
+          );
+          return {
+            amount: convertedAmount,
+            cashflow: convertedCashflow,
+            isLoading: false,
+          };
+        }
       }
 
       // 3) Kick off an async online fetch if not already loading
@@ -1326,10 +1334,10 @@ const TransactionPage: React.FC = () => {
       editable: true,
       editType: 'date',
       render: (_value, _column, row) => {
-        const raw = (row as any)?.date || (row as any)?.createdAt || (row as any)?.at;
+        const raw = (row as Record<string, unknown>)?.date ?? (row as Record<string, unknown>)?.createdAt ?? (row as Record<string, unknown>)?.at;
         if (!raw) return '-';
         const d = new Date(String(raw));
-        if (isNaN(d.getTime())) return '-';
+        if (Number.isNaN(d.getTime())) return '-';
         return d.toLocaleDateString();
       },
     },
@@ -1410,9 +1418,11 @@ const TransactionPage: React.FC = () => {
         if (!value) return '-';
         if (typeof value === 'string') return value;
         try {
-          const v = value as any;
+          const v = value as Record<string, unknown>;
           if (v?.symbol) return String(v.symbol);
-        } catch {}
+        } catch {
+          // Fall through to default handling
+        }
         // Fallback
         return typeof value === 'object' ? JSON.stringify(value) : String(value);
       },
@@ -1451,7 +1461,6 @@ const TransactionPage: React.FC = () => {
         const {
           amount: convertedAmount,
           cashflow: convertedCashflow,
-          isLoading,
         } = convertAmountSync(row, currency as 'USD' | 'VND');
 
         // For zero amounts, return dash
@@ -1758,7 +1767,7 @@ const TransactionPage: React.FC = () => {
                   await adminApi.recalcFX(false);
                   await loadTransactions();
                   showSuccessToast('Refreshed derived fields (missing only)');
-                } catch (e) {
+                } catch {
                   showErrorToast('Refresh failed');
                 } finally {
                   setBulkRefreshing(false);
@@ -1903,7 +1912,7 @@ const TransactionPage: React.FC = () => {
             } else {
               await loadTransactions();
             }
-          } catch (e) {
+          } catch {
             showErrorToast('Row refresh failed');
           } finally {
             setBusyRowIds((s) => {

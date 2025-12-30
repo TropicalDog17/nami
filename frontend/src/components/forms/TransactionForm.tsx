@@ -1,8 +1,8 @@
 import { useState, useEffect, FormEvent, ChangeEvent, KeyboardEvent, FC } from 'react'
 
+import { useApp } from '../../context/AppContext'
 import ComboBox from '../ui/ComboBox'
 import DateInput from '../ui/DateInput'
-import { useApp } from '../../context/AppContext'
 
 interface Transaction {
   id?: string;
