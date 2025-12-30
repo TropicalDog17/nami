@@ -1,6 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
 
 import { adminApi } from '../../services/api';
+import { getTodayDate } from '../../utils/dateUtils';
+
 import ComboBox from '../ui/ComboBox';
 import DateInput from '../ui/DateInput';
 
@@ -10,13 +12,8 @@ interface QuickVaultModalProps {
   onSubmit: (vaultData: Record<string, unknown>) => void;
 }
 
-interface AssetLite {
-  symbol: string;
-  name?: string;
-}
-
 const QuickVaultModal: React.FC<QuickVaultModalProps> = ({ isOpen, onClose, onSubmit }) => {
-  const today = useMemo(() => new Date().toISOString().split('T')[0], []);
+  const today = getTodayDate();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isUsdOnly, setIsUsdOnly] = useState(false);
   const [form, setForm] = useState({
@@ -34,10 +31,11 @@ const QuickVaultModal: React.FC<QuickVaultModalProps> = ({ isOpen, onClose, onSu
   useEffect(() => {
     const load = async () => {
       try {
-        const assetsData = (await adminApi.listAssets());
-        setAssets(((assetsData ?? [])).map((a) => {
-          const symbol = String(a.symbol ?? '');
-          const name = String(a.name ?? symbol);
+        const assetsData = await adminApi.listAssets();
+        setAssets(((assetsData ?? [])).map((a: unknown) => {
+          const asset = a as { symbol?: string; name?: string };
+          const symbol = String(asset.symbol ?? '');
+          const name = String(asset.name ?? symbol);
           return { value: symbol, label: `${symbol} - ${name}` };
         }));
       } catch (_e) {

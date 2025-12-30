@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 
 import { useApp } from '../../context/AppContext';
+import { getTodayDate } from '../../utils/dateUtils';
 
 interface QuickTransferModalProps {
   isOpen: boolean;
@@ -14,7 +15,7 @@ const QuickTransferModal: React.FC<QuickTransferModalProps> = ({
   onSubmit
 }) => {
   const { accounts, assets } = useApp();
-  const today = new Date().toISOString().split('T')[0];
+  const today = getTodayDate();
 
   const [formData, setFormData] = useState({
     date: today,

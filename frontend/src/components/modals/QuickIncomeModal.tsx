@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 
 import { useApp } from '../../context/AppContext';
+import { toISODateTime, getTodayDate } from '../../utils/dateUtils';
 
 interface FormData {
   date: string;
@@ -19,7 +20,7 @@ interface Props {
 
 const QuickIncomeModal = ({ isOpen, onClose, onSubmit }: Props) => {
   const { accounts, assets } = useApp() as { accounts: Array<{ is_active: boolean; name: string; type?: string }>; assets: Array<{ is_active: boolean; symbol: string; name?: string }> };
-  const today = new Date().toISOString().split('T')[0];
+  const today = getTodayDate();
 
   const [formData, setFormData] = useState<FormData>({
     date: today,
@@ -39,17 +40,6 @@ const QuickIncomeModal = ({ isOpen, onClose, onSubmit }: Props) => {
     e.preventDefault();
     setIsSubmitting(true);
     try {
-      const toISODateTime = (value?: string) => {
-        console.log('toISODateTime input:', value);
-        if (!value || value === 'undefined' || value === 'null') return new Date().toISOString();
-        const s = String(value);
-        if (s.includes('T')) return s;
-        // Append current time to the date
-        const timePart = new Date().toISOString().split('T')[1];
-        const result = `${s}T${timePart}`;
-        console.log('toISODateTime output:', result);
-        return result;
-      };
       const transactionData = {
         date: toISODateTime(formData.date),
         type: 'income',
