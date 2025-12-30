@@ -16,13 +16,13 @@ setup: ## Set up the development environment (install dependencies, setup databa
 	@make install && make docker-up && make migrate
 	@echo "✅ Development environment ready!"
 
-install: ## Install all dependencies (Go modules and Node packages)
-	@echo "📦 Installing Go dependencies..."
-	@cd backend && go mod download
-	@cd backend/migrations && go mod download
+install: ## Install all dependencies (Node packages)
 	@echo "📦 Installing Node dependencies..."
-	@cd frontend && npm install
+	@cd backend && pnpm install
+	@cd frontend && pnpm install
+	@cd ai-service && pnpm install	
 	@echo "✅ Dependencies installed"
+
 
 deps: install ## Alias for install
 

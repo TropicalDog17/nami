@@ -3,7 +3,6 @@ import cors from "cors";
 import swaggerUi from "swagger-ui-express";
 
 import { config } from "./core/config";
-import { logger } from "./core/logger";
 import {
     errorHandler,
     requestLogger,
@@ -23,8 +22,8 @@ import { aiRouter } from "./handlers/ai.handler";
 import { settingsRepository } from "./repositories";
 import { vaultService } from "./services/vault.service";
 import { initializeDatabase, closeConnection } from "./database/connection";
-import { setupMonitoring, setMetrics } from "./monitoring/index.js";
-import { logger } from "./utils/logger.js";
+import { setupMonitoring, setMetrics } from "./monitoring";
+import { logger } from "./utils/logger";
 
 const app = express();
 
