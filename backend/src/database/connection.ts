@@ -2,7 +2,9 @@ import Database from "better-sqlite3";
 import path from "path";
 import fs from "fs";
 
-const DATA_DIR = path.resolve(__dirname, "..", "..", "data");
+// Use /tmp for Vercel serverless (ephemeral storage)
+const isVercel = process.env.VERCEL === "1";
+const DATA_DIR = isVercel ? "/tmp" : path.resolve(__dirname, "..", "..", "data");
 const DB_PATH = path.join(DATA_DIR, "nami.db");
 
 let db: Database.Database | null = null;
@@ -11,8 +13,8 @@ export function getConnection(dbPath?: string): Database.Database {
   if (!db) {
     const actualPath = dbPath || DB_PATH;
 
-    // Ensure data directory exists
-    if (!fs.existsSync(DATA_DIR)) {
+    // Ensure data directory exists (skip for /tmp which always exists)
+    if (!isVercel && !fs.existsSync(DATA_DIR)) {
       fs.mkdirSync(DATA_DIR, { recursive: true });
     }
 
