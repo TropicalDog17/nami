@@ -1,7 +1,7 @@
 # Nami Transaction Tracking System - Makefile
 # This Makefile provides convenient targets for development, testing, and deployment
 
-.PHONY: help test test-integration test-unit test-isolated build run clean setup deps fmt lint docker-up docker-down docker-logs migrate db-reset demo backend frontend stop stop-backend stop-frontend install swagger swagger-install test-setup test-teardown clean-test-results backend-cover ci ci-backend ci-frontend
+.PHONY: help test test-integration test-unit test-isolated build run clean setup deps fmt fmt-backend fmt-frontend lint lint-backend lint-frontend docker-up docker-down docker-logs migrate db-reset demo backend frontend stop stop-backend stop-frontend install swagger swagger-install test-setup test-teardown clean-test-results backend-cover ci ci-backend ci-frontend
 
 # Default target
 help: ## Show this help message
@@ -161,17 +161,29 @@ docker-logs: ## Show Docker service logs
 	@docker-compose logs -f
 
 # Code quality targets
-fmt: ## Format Go code
-	@echo "🎨 Formatting Go code..."
-	@cd backend && go fmt ./...
-	@cd backend/migrations && go fmt ./...
-	@echo "✅ Code formatted"
+fmt: fmt-backend fmt-frontend ## Format all code
 
-lint: ## Run Go linter
-	@echo "🔍 Running Go linter..."
-	@cd backend && go vet ./...
-	@cd backend/migrations && go vet ./...
-	@echo "✅ Linting completed"
+fmt-backend: ## Format backend code
+	@echo "🎨 Formatting backend code..."
+	@cd backend && npx prettier --write "src/**/*.ts" 2>/dev/null || echo "⚠️  Prettier not installed, skipping formatting"
+	@echo "✅ Backend code formatting completed"
+
+fmt-frontend: ## Format frontend code
+	@echo "🎨 Formatting frontend code..."
+	@cd frontend && npm run lint:fix
+	@echo "✅ Frontend code formatted"
+
+lint: lint-backend lint-frontend ## Run linters for both backend and frontend
+
+lint-backend: ## Run backend linter (TypeScript compiler check)
+	@echo "🔍 Running backend linter (TypeScript compiler)..."
+	@cd backend && npm run build
+	@echo "✅ Backend linting completed"
+
+lint-frontend: ## Run frontend linter (ESLint)
+	@echo "🔍 Running frontend linter..."
+	@cd frontend && npm run lint
+	@echo "✅ Frontend linting completed"
 
 # Swagger/OpenAPI
 swagger-install: ## Install swag CLI (OpenAPI generator)
@@ -194,6 +206,6 @@ backend-cover: ## Run backend unit tests with coverage and enforce threshold (ov
 # CI/CD targets
 ci: deps fmt lint test ## Run full CI pipeline (deps, format, lint, test)
 
-ci-backend: deps fmt lint test-integration test-unit ## Run CI for backend only
+ci-backend: deps fmt-backend lint-backend test-integration test-unit ## Run CI for backend only
 
-ci-frontend: test-isolated ## Run CI for frontend smoke tests only
+ci-frontend: fmt-frontend lint-frontend test-isolated ## Run CI for frontend only
