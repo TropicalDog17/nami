@@ -3,7 +3,7 @@
  * Provides financial formulas like IRR, ROI, APR
  */
 
-import { Asset } from '../types';
+import { Asset } from "../types";
 
 export interface CashFlow {
   amount: number;
@@ -31,18 +31,26 @@ export interface CashFlowWithDate extends CashFlow {
 export function calculateIRR(
   cashFlows: CashFlow[],
   maxIterations = 100,
-  tolerance = 1e-10
+  tolerance = 1e-10,
 ): number {
   if (cashFlows.length === 0) return 0;
 
   // Check if there are meaningful cash flows
-  const totalIn = cashFlows.filter((cf) => cf.amount < 0).reduce((s, cf) => s + Math.abs(cf.amount), 0);
-  const totalOut = cashFlows.filter((cf) => cf.amount > 0).reduce((s, cf) => s + cf.amount, 0);
+  const totalIn = cashFlows
+    .filter((cf) => cf.amount < 0)
+    .reduce((s, cf) => s + Math.abs(cf.amount), 0);
+  const totalOut = cashFlows
+    .filter((cf) => cf.amount > 0)
+    .reduce((s, cf) => s + cf.amount, 0);
 
   if (totalIn < 1e-8) return 0; // No meaningful deposits
 
   // Simple case: single deposit and single terminal value
-  if (cashFlows.length === 2 && cashFlows[0].amount < 0 && cashFlows[1].amount > 0) {
+  if (
+    cashFlows.length === 2 &&
+    cashFlows[0].amount < 0 &&
+    cashFlows[1].amount > 0
+  ) {
     const pv = -cashFlows[0].amount;
     const fv = cashFlows[1].amount;
     const days = cashFlows[1].daysFromStart - cashFlows[0].daysFromStart;
@@ -120,7 +128,7 @@ export function calculateIRR(
 export function calculateIRRBasedAPR(
   cashFlows: CashFlow[],
   totalDays: number,
-  roi: number
+  roi: number,
 ): number {
   // For very short periods (< 30 days), don't annualize to avoid misleading extrapolation
   if (totalDays < 30) {
@@ -154,12 +162,24 @@ export function annualizeRate(rate: number, days: number): number {
  * Date utilities
  */
 export function toISODate(d: Date): string {
-  const dd = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 0, 0, 0, 0));
+  const dd = new Date(
+    Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 0, 0, 0, 0),
+  );
   return dd.toISOString().slice(0, 10);
 }
 
 export function addDays(d: Date, n: number): Date {
-  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + n, 0, 0, 0, 0));
+  return new Date(
+    Date.UTC(
+      d.getUTCFullYear(),
+      d.getUTCMonth(),
+      d.getUTCDate() + n,
+      0,
+      0,
+      0,
+      0,
+    ),
+  );
 }
 
 export function dateDiffInDays(a: Date, b: Date): number {

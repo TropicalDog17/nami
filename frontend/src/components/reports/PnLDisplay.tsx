@@ -1,6 +1,7 @@
 import React from 'react';
 
 import { formatCurrency, formatPercentage, formatPnL } from '../../utils/currencyFormatter';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
 interface PnLData {
   realized_pnl_usd: number;
@@ -41,19 +42,22 @@ const PnLDisplay: React.FC<PnLDisplayProps> = ({
   return (
     <div className="space-y-6">
       {/* Title */}
-      <div>
-        <h3 className="text-lg font-medium text-gray-900">
-          Profit & Loss - {period}
-        </h3>
-        <p className="text-sm text-gray-500">
-          Investment performance breakdown
-        </p>
-      </div>
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg font-medium">
+            Profit & Loss - {period}
+          </CardTitle>
+          <p className="text-sm text-gray-500">
+            Investment performance breakdown
+          </p>
+        </CardHeader>
+      </Card>
 
       {/* Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {/* Realized PnL */}
-        <div className="bg-white p-6 rounded-lg border border-gray-200">
+        <Card>
+          <CardContent className="p-6">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-gray-600">Realized PnL</p>
@@ -67,10 +71,12 @@ const PnLDisplay: React.FC<PnLDisplayProps> = ({
               </svg>
             </div>
           </div>
-        </div>
+        </CardContent>
+        </Card>
 
         {/* Unrealized PnL */}
-        <div className="bg-white p-6 rounded-lg border border-gray-200">
+        <Card>
+          <CardContent className="p-6">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-gray-600">Unrealized PnL</p>
@@ -84,10 +90,12 @@ const PnLDisplay: React.FC<PnLDisplayProps> = ({
               </svg>
             </div>
           </div>
-        </div>
+        </CardContent>
+        </Card>
 
         {/* Total PnL */}
-        <div className="bg-gradient-to-r from-indigo-50 to-purple-50 p-6 rounded-lg border border-indigo-200">
+        <Card className="bg-gradient-to-r from-indigo-50 to-purple-50 p-6 rounded-lg border border-indigo-200">
+          <CardContent className="p-0">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-indigo-800">Total PnL</p>
@@ -101,11 +109,13 @@ const PnLDisplay: React.FC<PnLDisplayProps> = ({
               </svg>
             </div>
           </div>
-        </div>
+        </CardContent>
+        </Card>
       </div>
 
       {/* Detailed Breakdown */}
-      <div className="bg-white p-6 rounded-lg border border-gray-200">
+      <Card>
+        <CardContent className="p-6">
         <h4 className="text-md font-medium text-gray-900 mb-6">Performance Breakdown</h4>
 
         <div className="space-y-6">
@@ -176,34 +186,43 @@ const PnLDisplay: React.FC<PnLDisplayProps> = ({
             </div>
           </div>
         </div>
-      </div>
+      </CardContent>
+      </Card>
 
       {/* Performance Metrics */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <div className="text-center p-4 bg-gray-50 rounded-lg">
+        <Card className="text-center p-4 bg-gray-50 rounded-lg">
+          <CardContent className="p-0">
           <p className="text-sm text-gray-600">Win Rate</p>
           <p className="text-xl font-bold text-gray-900">
             {totalPnL > 0 ? 'Profitable' : totalPnL < 0 ? 'Loss' : 'Breakeven'}
           </p>
-        </div>
-        <div className="text-center p-4 bg-gray-50 rounded-lg">
+        </CardContent>
+        </Card>
+        <Card className="text-center p-4 bg-gray-50 rounded-lg">
+          <CardContent className="p-0">
           <p className="text-sm text-gray-600">Performance</p>
           <p className={`text-xl font-bold ${totalPnL > 0 ? 'text-green-600' : totalPnL < 0 ? 'text-red-600' : 'text-gray-600'}`}>
             {totalPnL > 0 ? '📈' : totalPnL < 0 ? '📉' : '➡️'}
           </p>
-        </div>
-        <div className="text-center p-4 bg-gray-50 rounded-lg">
+        </CardContent>
+        </Card>
+        <Card className="text-center p-4 bg-gray-50 rounded-lg">
+          <CardContent className="p-0">
           <p className="text-sm text-gray-600">Efficiency</p>
           <p className="text-xl font-bold text-gray-900">
             {totalCost > 0 ? formatPercentage(totalPnL / totalCost, 1) : 'N/A'}
           </p>
-        </div>
-        <div className="text-center p-4 bg-gray-50 rounded-lg">
+        </CardContent>
+        </Card>
+        <Card className="text-center p-4 bg-gray-50 rounded-lg">
+          <CardContent className="p-0">
           <p className="text-sm text-gray-600">Total Return</p>
           <p className={`text-xl font-bold ${totalPnLFormatted.colorClass}`}>
             {totalPnLFormatted.sign}{formatPercentage(totalPnL / totalCost, 1)}
           </p>
-        </div>
+        </CardContent>
+        </Card>
       </div>
     </div>
   );

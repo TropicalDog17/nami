@@ -425,15 +425,13 @@ vaultsRouter.post(
         });
       }
 
-      res
-        .status(201)
-        .json({
-          ok: true,
-          source: name,
-          destination,
-          reward_usd: amount,
-          marked_to,
-        });
+      res.status(201).json({
+        ok: true,
+        source: name,
+        destination,
+        reward_usd: amount,
+        marked_to,
+      });
     } catch (e: any) {
       res
         .status(400)

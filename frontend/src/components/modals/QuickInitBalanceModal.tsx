@@ -1,5 +1,16 @@
 import React, { useEffect, useState } from 'react';
 
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+
 import { adminApi } from '../../services/api';
 import { getTodayDate } from '../../utils/dateUtils';
 import ComboBox from '../ui/ComboBox';
@@ -88,25 +99,22 @@ const QuickInitBalanceModal: React.FC<QuickInitBalanceModalProps> = ({ isOpen, o
     }
   };
 
-  if (!isOpen) return null;
-
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg p-6 w-full max-w-md">
-        <div className="flex justify-between items-center mb-4">
-          <h3 className="text-lg font-medium text-gray-900">Initialize Balance</h3>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">×</button>
-        </div>
+    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Initialize Balance</DialogTitle>
+        </DialogHeader>
         {error && (
-          <div className="mb-3 text-sm text-red-700 bg-red-50 border border-red-200 rounded p-2">{error}</div>
+          <div className="mb-3 text-sm text-destructive bg-destructive/10 border border-destructive/20 rounded p-2">{error}</div>
         )}
         <form onSubmit={(e) => void submit(e)} className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Date</label>
+          <div className="space-y-2">
+            <Label htmlFor="date">Date</Label>
             <DateInput value={form.date} onChange={(v) => setForm((s) => ({ ...s, date: v }))} />
           </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Account</label>
+          <div className="space-y-2">
+            <Label htmlFor="account">Account</Label>
             <ComboBox
               options={accounts}
               value={form.account}
@@ -114,8 +122,8 @@ const QuickInitBalanceModal: React.FC<QuickInitBalanceModalProps> = ({ isOpen, o
               placeholder="Account"
             />
           </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Asset</label>
+          <div className="space-y-2">
+            <Label htmlFor="asset">Asset</Label>
             <ComboBox
               options={assets}
               value={form.asset}
@@ -124,47 +132,47 @@ const QuickInitBalanceModal: React.FC<QuickInitBalanceModalProps> = ({ isOpen, o
             />
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Quantity</label>
-              <input
+            <div className="space-y-2">
+              <Label htmlFor="quantity">Quantity</Label>
+              <Input
+                id="quantity"
                 type="number"
                 step="any"
                 placeholder="e.g. 1"
                 value={form.quantity}
                 onChange={(e) => setForm((s) => ({ ...s, quantity: e.target.value }))}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md"
               />
             </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Unit Price (Local)</label>
-              <input
+            <div className="space-y-2">
+              <Label htmlFor="price_local">Unit Price (Local)</Label>
+              <Input
+                id="price_local"
                 type="number"
                 step="any"
                 placeholder="optional (e.g. 2400 for 1 oz XAU)"
                 value={form.price_local}
                 onChange={(e) => setForm((s) => ({ ...s, price_local: e.target.value }))}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md"
               />
-              <div className="text-xs text-gray-500 mt-1">Leave blank to use defaults. For non-crypto assets like XAU, provide USD unit price.</div>
+              <div className="text-xs text-muted-foreground">Leave blank to use defaults. For non-crypto assets like XAU, provide USD unit price.</div>
             </div>
           </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Note (optional)</label>
-            <input
+          <div className="space-y-2">
+            <Label htmlFor="note">Note (optional)</Label>
+            <Input
+              id="note"
               type="text"
               placeholder="e.g., Starting balance"
               value={form.note}
               onChange={(e) => setForm((s) => ({ ...s, note: e.target.value }))}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md"
             />
           </div>
-          <div className="flex space-x-3">
-            <button type="button" onClick={onClose} className="flex-1 px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50">Cancel</button>
-            <button type="submit" disabled={isSubmitting} className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50">{isSubmitting ? 'Creating...' : 'Create Balance'}</button>
-          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
+            <Button type="submit" disabled={isSubmitting}>{isSubmitting ? 'Creating...' : 'Create Balance'}</Button>
+          </DialogFooter>
         </form>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 };
 

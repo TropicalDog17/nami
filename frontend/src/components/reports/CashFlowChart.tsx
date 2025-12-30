@@ -1,5 +1,7 @@
 import React from 'react';
 
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+
 interface CashFlowData {
   total_in_usd?: number;
   total_out_usd?: number;
@@ -67,39 +69,48 @@ const CashFlowChart: React.FC<CashFlowChartProps> = ({ data, currency }) => {
   return (
     <div className="space-y-6">
       {/* Title */}
-      <div>
-        <h3 className="text-lg font-medium text-gray-900">Cash Flow Analysis</h3>
-        <p className="text-sm text-gray-500">Overview of cash inflows and outflows</p>
-      </div>
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg font-medium">Cash Flow Analysis</CardTitle>
+          <p className="text-sm text-gray-500">Overview of cash inflows and outflows</p>
+        </CardHeader>
+      </Card>
 
       {/* Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="bg-green-50 p-6 rounded-lg border border-green-200">
+        <Card className="bg-green-50 p-6 rounded-lg border border-green-200">
+          <CardContent className="p-0">
           <h4 className="text-sm font-medium text-green-800 mb-2">Total Inflow</h4>
           <p className="text-3xl font-bold text-green-900">
             {formatCurrency(totalIn)}
           </p>
-        </div>
+        </CardContent>
+        </Card>
 
-        <div className="bg-red-50 p-6 rounded-lg border border-red-200">
+        <Card className="bg-red-50 p-6 rounded-lg border border-red-200">
+          <CardContent className="p-0">
           <h4 className="text-sm font-medium text-red-800 mb-2">Total Outflow</h4>
           <p className="text-3xl font-bold text-red-900">
             {formatCurrency(totalOut)}
           </p>
-        </div>
+        </CardContent>
+        </Card>
 
-        <div className={`${getNetBgColor(netFlow)} p-6 rounded-lg border border-${netFlow >= 0 ? 'green' : 'red'}-200`}>
+        <Card className={`${getNetBgColor(netFlow)} p-6 rounded-lg border border-${netFlow >= 0 ? 'green' : 'red'}-200`}>
+          <CardContent className="p-0">
           <h4 className={`text-sm font-medium ${netFlow >= 0 ? 'text-green-800' : 'text-red-800'} mb-2`}>
             Net Cash Flow
           </h4>
           <p className={`text-3xl font-bold ${netFlow >= 0 ? 'text-green-900' : 'text-red-900'}`}>
             {netFlow >= 0 ? '+' : '-'}{formatCurrency(Math.abs(netFlow))}
           </p>
-        </div>
+        </CardContent>
+        </Card>
       </div>
 
       {/* Operating vs Financing */}
-      <div className="bg-white p-6 rounded-lg border border-gray-200">
+      <Card>
+        <CardContent className="p-6">
         <h4 className="text-md font-medium text-gray-900 mb-4">Operating vs Financing Activities</h4>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -145,13 +156,15 @@ const CashFlowChart: React.FC<CashFlowChartProps> = ({ data, currency }) => {
             </div>
           </div>
         </div>
-      </div>
+      </CardContent>
+      </Card>
 
       {/* Cash Flow Breakdown by Type */}
       {data.by_type && (
-        <div className="bg-white p-6 rounded-lg border border-gray-200">
-          <h4 className="text-md font-medium text-gray-900 mb-4">Cash Flow by Transaction Type</h4>
-          <div className="space-y-3">
+        <Card>
+          <CardContent className="p-6">
+            <h4 className="text-md font-medium text-gray-900 mb-4">Cash Flow by Transaction Type</h4>
+            <div className="space-y-3">
             {Object.entries(data.by_type).map(([type, flowData]) => {
               const inflow = currency === 'USD' ? (flowData.inflow_usd ?? 0) : (flowData.inflow_vnd ?? 0);
               const outflow = currency === 'USD' ? (flowData.outflow_usd ?? 0) : (flowData.outflow_vnd ?? 0);
@@ -179,8 +192,9 @@ const CashFlowChart: React.FC<CashFlowChartProps> = ({ data, currency }) => {
                 </div>
               );
             })}
-          </div>
-        </div>
+            </div>
+          </CardContent>
+        </Card>
       )}
     </div>
   );

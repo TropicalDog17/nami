@@ -1,5 +1,16 @@
 import React, { useEffect, useState } from 'react';
 
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+
 import { transactionApi } from '../../services/api';
 import ComboBox from '../ui/ComboBox';
 import DateInput from '../ui/DateInput';
@@ -57,45 +68,62 @@ const QuickSellModal: React.FC<QuickSellModalProps> = ({ isOpen, onClose, onSubm
     }
   };
 
-  if (!isOpen) return null;
-
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg p-6 w-full max-w-md">
-        <div className="flex justify-between items-center mb-4">
-          <h3 className="text-lg font-medium text-gray-900">Quick Sell (Spot)</h3>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">×</button>
-        </div>
+    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Quick Sell (Spot)</DialogTitle>
+        </DialogHeader>
         <form onSubmit={(e) => void handleSubmit(e)} className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Date</label>
+          <div className="space-y-2">
+            <Label htmlFor="date">Date</Label>
             <DateInput value={date} onChange={(v) => setDate(v)} />
           </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Exchange Account</label>
+          <div className="space-y-2">
+            <Label htmlFor="exchangeAccount">Exchange Account</Label>
             <ComboBox options={exchangeOptions} value={exchangeAccount} onChange={setExchangeAccount} placeholder="Select exchange" />
           </div>
           <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Base Asset</label>
-              <input className="w-full px-3 py-2 border rounded-md" value={baseAsset} onChange={(e) => setBaseAsset(e.target.value.toUpperCase())} />
+            <div className="space-y-2">
+              <Label htmlFor="baseAsset">Base Asset</Label>
+              <Input
+                id="baseAsset"
+                value={baseAsset}
+                onChange={(e) => setBaseAsset(e.target.value.toUpperCase())}
+              />
             </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Quantity</label>
-              <input type="number" step="any" className="w-full px-3 py-2 border rounded-md" value={quantity} onChange={(e) => setQuantity(e.target.value)} required />
+            <div className="space-y-2">
+              <Label htmlFor="quantity">Quantity</Label>
+              <Input
+                id="quantity"
+                type="number"
+                step="any"
+                value={quantity}
+                onChange={(e) => setQuantity(e.target.value)}
+                required
+              />
             </div>
           </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Unit Price (USD)</label>
-            <input type="number" step="any" className="w-full px-3 py-2 border rounded-md" value={unitPriceUSD} onChange={(e) => setUnitPriceUSD(e.target.value)} required />
+          <div className="space-y-2">
+            <Label htmlFor="unitPriceUSD">Unit Price (USD)</Label>
+            <Input
+              id="unitPriceUSD"
+              type="number"
+              step="any"
+              value={unitPriceUSD}
+              onChange={(e) => setUnitPriceUSD(e.target.value)}
+              required
+            />
           </div>
-          <div className="flex space-x-3">
-            <button type="button" onClick={onClose} className="flex-1 px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50">Cancel</button>
-            <button type="submit" disabled={isSubmitting || !exchangeAccount || !baseAsset || !quantity || !unitPriceUSD} className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50">{isSubmitting ? 'Saving...' : 'Sell'}</button>
-          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
+            <Button type="submit" disabled={isSubmitting || !exchangeAccount || !baseAsset || !quantity || !unitPriceUSD}>
+              {isSubmitting ? 'Saving...' : 'Sell'}
+            </Button>
+          </DialogFooter>
         </form>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 };
 

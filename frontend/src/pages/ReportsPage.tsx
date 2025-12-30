@@ -1,6 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+
 import AssetAllocationChart from '../components/reports/AssetAllocationChart';
 import CashFlowChart from '../components/reports/CashFlowChart';
 import { PnLChart, SpendingChart, DailySpendingChart, MonthlySpendingTrendChart } from '../components/reports/Charts';
@@ -155,39 +158,33 @@ const ReportsPage = () => {
 
   const renderFilters = () => {
     return (
-      <div
-        className="bg-white p-4 rounded-lg shadow mb-6"
-        data-testid="reports-filters"
-      >
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          {/* Currency Toggle */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Currency
-            </label>
-            <div className="flex space-x-2">
-              <button
-                onClick={() => setCurrency('USD')}
-                className={`px-3 py-2 rounded text-sm font-medium ${currency === 'USD'
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                  }`}
-                data-testid="currency-usd-button"
-              >
-                USD
-              </button>
-              <button
-                onClick={() => setCurrency('VND')}
-                className={`px-3 py-2 rounded text-sm font-medium ${currency === 'VND'
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                  }`}
-                data-testid="currency-vnd-button"
-              >
-                VND
-              </button>
+      <Card className="mb-6" data-testid="reports-filters">
+        <CardContent className="pt-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            {/* Currency Toggle */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Currency
+              </label>
+              <div className="flex space-x-2">
+                <Button
+                  onClick={() => setCurrency('USD')}
+                  variant={currency === 'USD' ? 'default' : 'secondary'}
+                  size="sm"
+                  data-testid="currency-usd-button"
+                >
+                  USD
+                </Button>
+                <Button
+                  onClick={() => setCurrency('VND')}
+                  variant={currency === 'VND' ? 'default' : 'secondary'}
+                  size="sm"
+                  data-testid="currency-vnd-button"
+                >
+                  VND
+                </Button>
+              </div>
             </div>
-          </div>
 
           {/* Date Filters */}
           {(activeTab === 'cashflow' ||
@@ -256,7 +253,8 @@ const ReportsPage = () => {
               </div>
             )}
         </div>
-      </div>
+        </CardContent>
+      </Card>
     );
   };
 
@@ -528,101 +526,111 @@ const ReportsPage = () => {
         {/* Summary Stats - Combined */}
         {cashFlow.total_in_usd !== undefined && (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-            <div className="bg-green-50 p-4 rounded-lg">
-              <h4 className="text-sm font-medium text-green-800">
-                Combined Inflow
-              </h4>
-              <p className="text-2xl font-bold text-green-900">
-                {currency === 'USD'
-                  ? `$${parseFloat(String(cashFlow.combined_in_usd ?? cashFlow.total_in_usd ?? 0)).toLocaleString()}`
-                  : `₫${parseFloat(String(cashFlow.combined_in_vnd ?? cashFlow.total_in_vnd ?? 0)).toLocaleString()}`}
-              </p>
-            </div>
-            <div className="bg-red-50 p-4 rounded-lg">
-              <h4 className="text-sm font-medium text-red-800">
-                Combined Outflow
-              </h4>
-              <p className="text-2xl font-bold text-red-900">
-                {currency === 'USD'
-                  ? `$${parseFloat(String(cashFlow.combined_out_usd ?? cashFlow.total_out_usd ?? 0)).toLocaleString()}`
-                  : `₫${parseFloat(String(cashFlow.combined_out_vnd ?? cashFlow.total_out_vnd ?? 0)).toLocaleString()}`}
-              </p>
-            </div>
-            <div className="bg-blue-50 p-4 rounded-lg">
-              <h4 className="text-sm font-medium text-blue-800">
-                Combined Net
-              </h4>
-              <p className="text-2xl font-bold text-blue-900">
-                {currency === 'USD'
-                  ? `$${parseFloat(String(cashFlow.combined_net_usd ?? cashFlow.net_usd ?? 0)).toLocaleString()}`
-                  : `₫${parseFloat(String(cashFlow.combined_net_vnd ?? cashFlow.net_vnd ?? 0)).toLocaleString()}`}
-              </p>
-            </div>
+            <Card className="bg-green-50 border-green-200">
+              <CardContent className="p-4">
+                <h4 className="text-sm font-medium text-green-800">
+                  Combined Inflow
+                </h4>
+                <p className="text-2xl font-bold text-green-900">
+                  {currency === 'USD'
+                    ? `$${parseFloat(String(cashFlow.combined_in_usd ?? cashFlow.total_in_usd ?? 0)).toLocaleString()}`
+                    : `₫${parseFloat(String(cashFlow.combined_in_vnd ?? cashFlow.total_in_vnd ?? 0)).toLocaleString()}`}
+                </p>
+              </CardContent>
+            </Card>
+            <Card className="bg-red-50 border-red-200">
+              <CardContent className="p-4">
+                <h4 className="text-sm font-medium text-red-800">
+                  Combined Outflow
+                </h4>
+                <p className="text-2xl font-bold text-red-900">
+                  {currency === 'USD'
+                    ? `$${parseFloat(String(cashFlow.combined_out_usd ?? cashFlow.total_out_usd ?? 0)).toLocaleString()}`
+                    : `₫${parseFloat(String(cashFlow.combined_out_vnd ?? cashFlow.total_out_vnd ?? 0)).toLocaleString()}`}
+                </p>
+              </CardContent>
+            </Card>
+            <Card className="bg-blue-50 border-blue-200">
+              <CardContent className="p-4">
+                <h4 className="text-sm font-medium text-blue-800">
+                  Combined Net
+                </h4>
+                <p className="text-2xl font-bold text-blue-900">
+                  {currency === 'USD'
+                    ? `$${parseFloat(String(cashFlow.combined_net_usd ?? cashFlow.net_usd ?? 0)).toLocaleString()}`
+                    : `₫${parseFloat(String(cashFlow.combined_net_vnd ?? cashFlow.net_vnd ?? 0)).toLocaleString()}`}
+                </p>
+              </CardContent>
+            </Card>
           </div>
         )}
 
         {/* Secondary: Operating vs Financing */}
         {cashFlow.operating_in_usd !== undefined && (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-            <div className="bg-gray-50 p-4 rounded-lg">
-              <h4 className="text-sm font-medium text-gray-800 mb-2">
-                Operating
-              </h4>
-              <div className="flex items-center justify-between text-sm">
-                <span>Inflow</span>
-                <span>
-                  {currency === 'USD'
-                    ? `$${parseFloat(String(cashFlow.operating_in_usd ?? 0)).toLocaleString()}`
-                    : `₫${parseFloat(String(cashFlow.operating_in_vnd ?? 0)).toLocaleString()}`}
-                </span>
-              </div>
-              <div className="flex items-center justify-between text-sm">
-                <span>Outflow</span>
-                <span>
-                  {currency === 'USD'
-                    ? `$${parseFloat(String(cashFlow.operating_out_usd ?? 0)).toLocaleString()}`
-                    : `₫${parseFloat(String(cashFlow.operating_out_vnd ?? 0)).toLocaleString()}`}
-                </span>
-              </div>
-              <div className="flex items-center justify-between font-semibold">
-                <span>Net</span>
-                <span>
-                  {currency === 'USD'
-                    ? `$${parseFloat(String(cashFlow.operating_net_usd ?? 0)).toLocaleString()}`
-                    : `₫${parseFloat(String(cashFlow.operating_net_vnd ?? 0)).toLocaleString()}`}
-                </span>
-              </div>
-            </div>
+            <Card className="bg-gray-50">
+              <CardContent className="p-4">
+                <h4 className="text-sm font-medium text-gray-800 mb-2">
+                  Operating
+                </h4>
+                <div className="flex items-center justify-between text-sm">
+                  <span>Inflow</span>
+                  <span>
+                    {currency === 'USD'
+                      ? `$${parseFloat(String(cashFlow.operating_in_usd ?? 0)).toLocaleString()}`
+                      : `₫${parseFloat(String(cashFlow.operating_in_vnd ?? 0)).toLocaleString()}`}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between text-sm">
+                  <span>Outflow</span>
+                  <span>
+                    {currency === 'USD'
+                      ? `$${parseFloat(String(cashFlow.operating_out_usd ?? 0)).toLocaleString()}`
+                      : `₫${parseFloat(String(cashFlow.operating_out_vnd ?? 0)).toLocaleString()}`}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between font-semibold">
+                  <span>Net</span>
+                  <span>
+                    {currency === 'USD'
+                      ? `$${parseFloat(String(cashFlow.operating_net_usd ?? 0)).toLocaleString()}`
+                      : `₫${parseFloat(String(cashFlow.operating_net_vnd ?? 0)).toLocaleString()}`}
+                  </span>
+                </div>
+              </CardContent>
+            </Card>
 
-            <div className="bg-gray-50 p-4 rounded-lg">
-              <h4 className="text-sm font-medium text-gray-800 mb-2">
-                Financing
-              </h4>
-              <div className="flex items-center justify-between text-sm">
-                <span>Inflow (Borrow)</span>
-                <span>
-                  {currency === 'USD'
-                    ? `$${parseFloat(String(cashFlow.financing_in_usd ?? 0)).toLocaleString()}`
-                    : `₫${parseFloat(String(cashFlow.financing_in_vnd ?? 0)).toLocaleString()}`}
-                </span>
-              </div>
-              <div className="flex items-center justify-between text-sm">
-                <span>Outflow (Repay + Interest)</span>
-                <span>
-                  {currency === 'USD'
-                    ? `$${parseFloat(String(cashFlow.financing_out_usd ?? 0)).toLocaleString()}`
-                    : `₫${parseFloat(String(cashFlow.financing_out_vnd ?? 0)).toLocaleString()}`}
-                </span>
-              </div>
-              <div className="flex items-center justify-between font-semibold">
-                <span>Net</span>
-                <span>
-                  {currency === 'USD'
-                    ? `$${parseFloat(String(cashFlow.financing_net_usd ?? 0)).toLocaleString()}`
-                    : `₫${parseFloat(String(cashFlow.financing_net_vnd ?? 0)).toLocaleString()}`}
-                </span>
-              </div>
-            </div>
+            <Card className="bg-gray-50">
+              <CardContent className="p-4">
+                <h4 className="text-sm font-medium text-gray-800 mb-2">
+                  Financing
+                </h4>
+                <div className="flex items-center justify-between text-sm">
+                  <span>Inflow (Borrow)</span>
+                  <span>
+                    {currency === 'USD'
+                      ? `$${parseFloat(String(cashFlow.financing_in_usd ?? 0)).toLocaleString()}`
+                      : `₫${parseFloat(String(cashFlow.financing_in_vnd ?? 0)).toLocaleString()}`}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between text-sm">
+                  <span>Outflow (Repay + Interest)</span>
+                  <span>
+                    {currency === 'USD'
+                      ? `$${parseFloat(String(cashFlow.financing_out_usd ?? 0)).toLocaleString()}`
+                      : `₫${parseFloat(String(cashFlow.financing_out_vnd ?? 0)).toLocaleString()}`}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between font-semibold">
+                  <span>Net</span>
+                  <span>
+                    {currency === 'USD'
+                      ? `$${parseFloat(String(cashFlow.financing_net_usd ?? 0)).toLocaleString()}`
+                      : `₫${parseFloat(String(cashFlow.financing_net_vnd ?? 0)).toLocaleString()}`}
+                  </span>
+                </div>
+              </CardContent>
+            </Card>
           </div>
         )}
 
@@ -782,147 +790,171 @@ const ReportsPage = () => {
         {/* Key Metrics Cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           {/* Available Balance */}
-          <div className={`p-4 rounded-lg border-2 ${availableBalance >= 0 ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
-            <div className="flex items-center justify-between mb-1">
-              <h4 className={`text-sm font-medium ${availableBalance >= 0 ? 'text-green-800' : 'text-red-800'}`}>
-                Available Balance
-              </h4>
-              <span className="text-lg">{availableBalance >= 0 ? '💰' : '⚠️'}</span>
-            </div>
-            <p className={`text-2xl font-bold ${availableBalance >= 0 ? 'text-green-900' : 'text-red-900'}`}>
-              {currencySymbol}{Math.abs(availableBalance).toLocaleString(undefined, { maximumFractionDigits: 0 })}
-            </p>
-            <p className="text-xs text-gray-600 mt-1">Income - Expenses</p>
-          </div>
+          <Card className={`border-2 ${availableBalance >= 0 ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between mb-1">
+                <h4 className={`text-sm font-medium ${availableBalance >= 0 ? 'text-green-800' : 'text-red-800'}`}>
+                  Available Balance
+                </h4>
+                <span className="text-lg">{availableBalance >= 0 ? '💰' : '⚠️'}</span>
+              </div>
+              <p className={`text-2xl font-bold ${availableBalance >= 0 ? 'text-green-900' : 'text-red-900'}`}>
+                {currencySymbol}{Math.abs(availableBalance).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+              </p>
+              <p className="text-xs text-gray-600 mt-1">Income - Expenses</p>
+            </CardContent>
+          </Card>
 
           {/* Current Month Spending */}
-          <div className="bg-orange-50 p-4 rounded-lg border-2 border-orange-200">
-            <div className="flex items-center justify-between mb-1">
-              <h4 className="text-sm font-medium text-orange-800">{currentMonthName} Spending</h4>
-              <span className="text-lg">📊</span>
-            </div>
-            <p className="text-2xl font-bold text-orange-900">
-              {currencySymbol}{currentMonth.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-            </p>
-            {lastMonth > 0 && (
-              <div className="flex items-center mt-1">
-                <span className={`text-xs font-medium ${momChangePercent <= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                  {momChangePercent <= 0 ? '↓' : '↑'} {Math.abs(momChangePercent).toFixed(1)}% vs last month
-                </span>
+          <Card className="bg-orange-50 border-2 border-orange-200">
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between mb-1">
+                <h4 className="text-sm font-medium text-orange-800">{currentMonthName} Spending</h4>
+                <span className="text-lg">📊</span>
               </div>
-            )}
-          </div>
+              <p className="text-2xl font-bold text-orange-900">
+                {currencySymbol}{currentMonth.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+              </p>
+              {lastMonth > 0 && (
+                <div className="flex items-center mt-1">
+                  <span className={`text-xs font-medium ${momChangePercent <= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                    {momChangePercent <= 0 ? '↓' : '↑'} {Math.abs(momChangePercent).toFixed(1)}% vs last month
+                  </span>
+                </div>
+              )}
+            </CardContent>
+          </Card>
 
           {/* Daily Average */}
-          <div className="bg-blue-50 p-4 rounded-lg border-2 border-blue-200">
-            <div className="flex items-center justify-between mb-1">
-              <h4 className="text-sm font-medium text-blue-800">Daily Average</h4>
-              <span className="text-lg">📅</span>
-            </div>
-            <p className="text-2xl font-bold text-blue-900">
-              {currencySymbol}{avgDaily.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-            </p>
-            <p className="text-xs text-gray-600 mt-1">This month so far</p>
-          </div>
+          <Card className="bg-blue-50 border-2 border-blue-200">
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between mb-1">
+                <h4 className="text-sm font-medium text-blue-800">Daily Average</h4>
+                <span className="text-lg">📅</span>
+              </div>
+              <p className="text-2xl font-bold text-blue-900">
+                {currencySymbol}{avgDaily.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+              </p>
+              <p className="text-xs text-gray-600 mt-1">This month so far</p>
+            </CardContent>
+          </Card>
 
           {/* Period Total */}
-          <div className="bg-purple-50 p-4 rounded-lg border-2 border-purple-200">
-            <div className="flex items-center justify-between mb-1">
-              <h4 className="text-sm font-medium text-purple-800">Period Total</h4>
-              <span className="text-lg">🛒</span>
-            </div>
-            <p className="text-2xl font-bold text-purple-900">
-              {currencySymbol}{total.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-            </p>
-            <p className="text-xs text-gray-600 mt-1">Selected date range</p>
-          </div>
+          <Card className="bg-purple-50 border-2 border-purple-200">
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between mb-1">
+                <h4 className="text-sm font-medium text-purple-800">Period Total</h4>
+                <span className="text-lg">🛒</span>
+              </div>
+              <p className="text-2xl font-bold text-purple-900">
+                {currencySymbol}{total.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+              </p>
+              <p className="text-xs text-gray-600 mt-1">Selected date range</p>
+            </CardContent>
+          </Card>
         </div>
 
         {/* Month Comparison Card */}
         {(currentMonth > 0 || lastMonth > 0) && (
-          <div className="bg-white p-4 rounded-lg border border-gray-200">
-            <h4 className="text-sm font-medium text-gray-700 mb-3">Month-over-Month Comparison</h4>
-            <div className="flex items-center gap-8">
-              <div className="flex-1">
-                <div className="flex justify-between text-sm mb-1">
-                  <span className="text-gray-600">Current Month</span>
-                  <span className="font-medium text-orange-600">{currencySymbol}{currentMonth.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
+          <Card>
+            <CardContent className="p-4">
+              <h4 className="text-sm font-medium text-gray-700 mb-3">Month-over-Month Comparison</h4>
+              <div className="flex items-center gap-8">
+                <div className="flex-1">
+                  <div className="flex justify-between text-sm mb-1">
+                    <span className="text-gray-600">Current Month</span>
+                    <span className="font-medium text-orange-600">{currencySymbol}{currentMonth.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
+                  </div>
+                  <div className="w-full bg-gray-200 rounded-full h-3">
+                    <div
+                      className="bg-orange-500 h-3 rounded-full transition-all duration-500"
+                      style={{ width: `${Math.min((currentMonth / Math.max(currentMonth, lastMonth)) * 100, 100)}%` }}
+                    />
+                  </div>
                 </div>
-                <div className="w-full bg-gray-200 rounded-full h-3">
-                  <div
-                    className="bg-orange-500 h-3 rounded-full transition-all duration-500"
-                    style={{ width: `${Math.min((currentMonth / Math.max(currentMonth, lastMonth)) * 100, 100)}%` }}
-                  />
+                <div className="flex-1">
+                  <div className="flex justify-between text-sm mb-1">
+                    <span className="text-gray-600">Last Month</span>
+                    <span className="font-medium text-gray-600">{currencySymbol}{lastMonth.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
+                  </div>
+                  <div className="w-full bg-gray-200 rounded-full h-3">
+                    <div
+                      className="bg-gray-400 h-3 rounded-full transition-all duration-500"
+                      style={{ width: `${Math.min((lastMonth / Math.max(currentMonth, lastMonth)) * 100, 100)}%` }}
+                    />
+                  </div>
+                </div>
+                <div className="text-center px-4 py-2 rounded-lg bg-gray-50">
+                  <div className={`text-lg font-bold ${momChangePercent <= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                    {momChangePercent <= 0 ? '↓' : '↑'} {Math.abs(momChangePercent).toFixed(1)}%
+                  </div>
+                  <div className="text-xs text-gray-500">Change</div>
                 </div>
               </div>
-              <div className="flex-1">
-                <div className="flex justify-between text-sm mb-1">
-                  <span className="text-gray-600">Last Month</span>
-                  <span className="font-medium text-gray-600">{currencySymbol}{lastMonth.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
-                </div>
-                <div className="w-full bg-gray-200 rounded-full h-3">
-                  <div
-                    className="bg-gray-400 h-3 rounded-full transition-all duration-500"
-                    style={{ width: `${Math.min((lastMonth / Math.max(currentMonth, lastMonth)) * 100, 100)}%` }}
-                  />
-                </div>
-              </div>
-              <div className="text-center px-4 py-2 rounded-lg bg-gray-50">
-                <div className={`text-lg font-bold ${momChangePercent <= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                  {momChangePercent <= 0 ? '↓' : '↑'} {Math.abs(momChangePercent).toFixed(1)}%
-                </div>
-                <div className="text-xs text-gray-500">Change</div>
-              </div>
-            </div>
-          </div>
+            </CardContent>
+          </Card>
         )}
 
         {/* Charts Section */}
         {spending.total_usd !== undefined && (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {/* Monthly Spending Trend */}
-            <div className="bg-white p-6 rounded-lg border border-gray-200">
-              <h4 className="text-lg font-medium text-gray-900 mb-4">Monthly Spending Trend (12 months)</h4>
-              <div style={{ height: '300px' }}>
-                <MonthlySpendingTrendChart data={spending as { monthly_trend?: Array<{ month: string; amount_usd: number; amount_vnd: number }> }} currency={currency} />
-              </div>
-            </div>
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg">Monthly Spending Trend (12 months)</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div style={{ height: '300px' }}>
+                  <MonthlySpendingTrendChart data={spending as { monthly_trend?: Array<{ month: string; amount_usd: number; amount_vnd: number }> }} currency={currency} />
+                </div>
+              </CardContent>
+            </Card>
 
             {/* Spending by Category */}
-            <div className="bg-white p-6 rounded-lg border border-gray-200">
-              <h4 className="text-lg font-medium text-gray-900 mb-4">Spending by Category</h4>
-              <div style={{ height: '300px' }}>
-                <SpendingChart data={spending} currency={currency} />
-              </div>
-            </div>
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg">Spending by Category</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div style={{ height: '300px' }}>
+                  <SpendingChart data={spending} currency={currency} />
+                </div>
+              </CardContent>
+            </Card>
           </div>
         )}
 
         {/* Daily Spending Chart - Full Width */}
         {spending.total_usd !== undefined && (
-          <div className="bg-white p-6 rounded-lg border border-gray-200">
-            <h4 className="text-lg font-medium text-gray-900 mb-4">Daily Spending (Selected Period)</h4>
-            <div style={{ height: '250px' }}>
-              <DailySpendingChart data={spending} currency={currency} />
-            </div>
-          </div>
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg">Daily Spending (Selected Period)</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div style={{ height: '250px' }}>
+                <DailySpendingChart data={spending} currency={currency} />
+              </div>
+            </CardContent>
+          </Card>
         )}
 
         {/* Category Breakdown Table */}
-        <div className="bg-white rounded-lg border border-gray-200">
-          <div className="px-4 py-3 border-b border-gray-200">
-            <h4 className="text-lg font-medium text-gray-900">Spending by Category</h4>
-          </div>
-          <DataTable
-            data={byTag}
-            columns={columns}
-            loading={loading}
-            emptyMessage="No spending data found"
-            filterable={true}
-            sortable={true}
-            pagination={true}
-          />
-        </div>
+        <Card>
+          <CardHeader>
+            <CardTitle>Spending by Category</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <DataTable
+              data={byTag}
+              columns={columns}
+              loading={loading}
+              emptyMessage="No spending data found"
+              filterable={true}
+              sortable={true}
+              pagination={true}
+            />
+          </CardContent>
+        </Card>
       </div>
     );
   };
@@ -970,106 +1002,118 @@ const ReportsPage = () => {
       <div>
         {/* P&L Summary Cards */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-          <div className={`p-4 rounded-lg ${realizedPnL >= 0 ? 'bg-green-50' : 'bg-red-50'}`} data-testid="pnl-value">
-            <h4 className={`text-sm font-medium ${realizedPnL >= 0 ? 'text-green-800' : 'text-red-800'}`}>
-              Realized P&L
-            </h4>
-            <p className={`text-2xl font-bold ${realizedPnL >= 0 ? 'text-green-900' : 'text-red-900'}`}>
-              {currency === 'USD'
-                ? `$${Math.abs(realizedPnL).toLocaleString()}`
-                : `₫${Math.abs(realizedPnL).toLocaleString()}`}
-            </p>
-            <p className="text-xs text-gray-600 mt-1">
-              Gains/losses from closed positions
-            </p>
-          </div>
+          <Card className={realizedPnL >= 0 ? 'bg-green-50' : 'bg-red-50'} data-testid="pnl-value">
+            <CardContent className="p-4">
+              <h4 className={`text-sm font-medium ${realizedPnL >= 0 ? 'text-green-800' : 'text-red-800'}`}>
+                Realized P&L
+              </h4>
+              <p className={`text-2xl font-bold ${realizedPnL >= 0 ? 'text-green-900' : 'text-red-900'}`}>
+                {currency === 'USD'
+                  ? `$${Math.abs(realizedPnL).toLocaleString()}`
+                  : `₫${Math.abs(realizedPnL).toLocaleString()}`}
+              </p>
+              <p className="text-xs text-gray-600 mt-1">
+                Gains/losses from closed positions
+              </p>
+            </CardContent>
+          </Card>
           {/* Unrealized P&L removed */}
-          <div className={`p-4 rounded-lg ${totalPnL >= 0 ? 'bg-purple-50' : 'bg-red-100'}`}>
-            <h4 className={`text-sm font-medium ${totalPnL >= 0 ? 'text-purple-800' : 'text-red-800'}`}>
-              Total P&L
-            </h4>
-            <p className={`text-2xl font-bold ${totalPnL >= 0 ? 'text-purple-900' : 'text-red-900'}`}>
-              {currency === 'USD'
-                ? `$${Math.abs(totalPnL).toLocaleString()}`
-                : `₫${Math.abs(totalPnL).toLocaleString()}`}
-            </p>
-            <p className="text-xs text-gray-600 mt-1">
-              Total investment performance
-            </p>
-          </div>
+          <Card className={totalPnL >= 0 ? 'bg-purple-50' : 'bg-red-100'}>
+            <CardContent className="p-4">
+              <h4 className={`text-sm font-medium ${totalPnL >= 0 ? 'text-purple-800' : 'text-red-800'}`}>
+                Total P&L
+              </h4>
+              <p className={`text-2xl font-bold ${totalPnL >= 0 ? 'text-purple-900' : 'text-red-900'}`}>
+                {currency === 'USD'
+                  ? `$${Math.abs(totalPnL).toLocaleString()}`
+                  : `₫${Math.abs(totalPnL).toLocaleString()}`}
+              </p>
+              <p className="text-xs text-gray-600 mt-1">
+                Total investment performance
+              </p>
+            </CardContent>
+          </Card>
         </div>
 
         {/* P&L Chart and Additional Metrics */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
           {/* P&L Chart */}
-          <div className="bg-white p-6 rounded-lg border border-gray-200">
-            <h4 className="text-lg font-medium text-gray-900 mb-4">
-              P&L Breakdown
-            </h4>
-            <div style={{ height: '300px' }}>
-              <PnLChart data={pnl} currency={currency} />
-            </div>
-          </div>
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg">P&L Breakdown</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div style={{ height: '300px' }}>
+                <PnLChart data={pnl} currency={currency} />
+              </div>
+            </CardContent>
+          </Card>
 
           {/* Detailed Metrics */}
           <div className="space-y-4">
             {pnl.roi_percent !== undefined && (
-              <div className="bg-gray-50 p-4 rounded-lg">
-                <h4 className="text-sm font-medium text-gray-800">
-                  Return on Investment (ROI)
-                </h4>
-                <p className={`text-xl font-bold ${parseFloat(String((pnl).roi_percent as number ?? 0)) >= 0 ? 'text-green-900' : 'text-red-900'}`}>
-                  {parseFloat(String((pnl).roi_percent as number ?? 0)).toFixed(2)}%
-                </p>
-                <p className="text-xs text-gray-600 mt-1">
-                  Percentage return on invested capital
-                </p>
-              </div>
+              <Card className="bg-gray-50">
+                <CardContent className="p-4">
+                  <h4 className="text-sm font-medium text-gray-800">
+                    Return on Investment (ROI)
+                  </h4>
+                  <p className={`text-xl font-bold ${parseFloat(String((pnl).roi_percent as number ?? 0)) >= 0 ? 'text-green-900' : 'text-red-900'}`}>
+                    {parseFloat(String((pnl).roi_percent as number ?? 0)).toFixed(2)}%
+                  </p>
+                  <p className="text-xs text-gray-600 mt-1">
+                    Percentage return on invested capital
+                  </p>
+                </CardContent>
+              </Card>
             )}
 
             {/* P&L Breakdown Summary */}
-            <div className="bg-white p-4 rounded-lg border border-gray-200">
-              <h4 className="text-sm font-medium text-gray-800 mb-2">
-                P&L Summary
-              </h4>
-              <div className="space-y-2">
-                <div className="flex justify-between items-center">
-                  <span className="text-sm text-gray-600">Realized</span>
-                  <span className={`text-sm font-medium ${realizedPnL >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                    {currency === 'USD'
-                      ? `$${Math.abs(realizedPnL).toLocaleString()}`
-                      : `₫${Math.abs(realizedPnL).toLocaleString()}`}
-                  </span>
-                </div>
-                {/* Unrealized removed */}
-                <div className="pt-2 mt-2 border-t border-gray-200">
+            <Card>
+              <CardContent className="p-4">
+                <h4 className="text-sm font-medium text-gray-800 mb-2">
+                  P&L Summary
+                </h4>
+                <div className="space-y-2">
                   <div className="flex justify-between items-center">
-                    <span className="text-sm font-medium text-gray-900">Total</span>
-                    <span className={`text-sm font-bold ${totalPnL >= 0 ? 'text-purple-600' : 'text-red-700'}`}>
+                    <span className="text-sm text-gray-600">Realized</span>
+                    <span className={`text-sm font-medium ${realizedPnL >= 0 ? 'text-green-600' : 'text-red-600'}`}>
                       {currency === 'USD'
-                        ? `$${Math.abs(totalPnL).toLocaleString()}`
-                        : `₫${Math.abs(totalPnL).toLocaleString()}`}
+                        ? `$${Math.abs(realizedPnL).toLocaleString()}`
+                        : `₫${Math.abs(realizedPnL).toLocaleString()}`}
                     </span>
                   </div>
+                  {/* Unrealized removed */}
+                  <div className="pt-2 mt-2 border-t border-gray-200">
+                    <div className="flex justify-between items-center">
+                      <span className="text-sm font-medium text-gray-900">Total</span>
+                      <span className={`text-sm font-bold ${totalPnL >= 0 ? 'text-purple-600' : 'text-red-700'}`}>
+                        {currency === 'USD'
+                          ? `$${Math.abs(totalPnL).toLocaleString()}`
+                          : `₫${Math.abs(totalPnL).toLocaleString()}`}
+                      </span>
+                    </div>
+                  </div>
                 </div>
-              </div>
-            </div>
+              </CardContent>
+            </Card>
 
             {/* By-Asset Breakdown (USD) */}
-            <div className="bg-white p-4 rounded-lg border border-gray-200">
-              <h4 className="text-sm font-medium text-gray-800 mb-2">
-                By Asset (USD)
-              </h4>
-              <DataTable
-                data={byAssetEntries}
-                columns={assetColumns}
-                loading={loading}
-                emptyMessage="No asset P&L data"
-                filterable={true}
-                sortable={true}
-                pagination={true}
-              />
-            </div>
+            <Card>
+              <CardContent className="p-4">
+                <h4 className="text-sm font-medium text-gray-800 mb-2">
+                  By Asset (USD)
+                </h4>
+                <DataTable
+                  data={byAssetEntries}
+                  columns={assetColumns}
+                  loading={loading}
+                  emptyMessage="No asset P&L data"
+                  filterable={true}
+                  sortable={true}
+                  pagination={true}
+                />
+              </CardContent>
+            </Card>
           </div>
         </div>
       </div>
@@ -1079,25 +1123,30 @@ const ReportsPage = () => {
   const renderContent = () => {
     if (!isOnline) {
       return (
-        <div className="bg-orange-50 border border-orange-200 rounded-md p-4 text-center">
-          <p className="text-orange-800">
-            Backend is offline. Please check your connection.
-          </p>
-        </div>
+        <Card className="bg-orange-50 border-orange-200">
+          <CardContent className="p-4 text-center">
+            <p className="text-orange-800">
+              Backend is offline. Please check your connection.
+            </p>
+          </CardContent>
+        </Card>
       );
     }
 
     if (error) {
       return (
-        <div className="bg-red-50 border border-red-200 rounded-md p-4 text-center">
-          <p className="text-red-800">{error}</p>
-          <button
-            onClick={() => { void fetchData(); }}
-            className="mt-2 bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700"
-          >
-            Retry
-          </button>
-        </div>
+        <Card className="bg-red-50 border-red-200">
+          <CardContent className="p-4 text-center">
+            <p className="text-red-800">{error}</p>
+            <Button
+              onClick={() => { void fetchData(); }}
+              variant="destructive"
+              className="mt-2"
+            >
+              Retry
+            </Button>
+          </CardContent>
+        </Card>
       );
     }
 
@@ -1136,18 +1185,19 @@ const ReportsPage = () => {
       <div className="border-b border-gray-200 mb-6">
         <nav className="-mb-px flex space-x-8">
           {tabs.map((tab) => (
-            <button
+            <Button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
+              variant="ghost"
               className={`${activeTab === tab.id
-                ? 'border-blue-500 text-blue-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                } whitespace-nowrap py-2 px-1 border-b-2 font-medium text-sm flex items-center space-x-2`}
+                ? 'border-blue-500 text-blue-600 border-b-2'
+                : 'border-transparent text-gray-500 hover:text-gray-700'
+                } whitespace-nowrap py-2 px-1 font-medium text-sm flex items-center space-x-2 rounded-none`}
               data-testid={`reports-tab-${tab.id}`}
             >
               <span>{tab.icon}</span>
               <span>{tab.name}</span>
-            </button>
+            </Button>
           ))}
         </nav>
       </div>
@@ -1156,17 +1206,18 @@ const ReportsPage = () => {
       {renderFilters()}
 
       {/* Content */}
-      <div className="bg-white shadow rounded-lg">
-        <div className="px-4 py-5 sm:p-6">
-          <h2
-            className="text-lg font-medium text-gray-900 mb-4"
+      <Card>
+        <CardHeader>
+          <CardTitle
             data-testid={`reports-section-title-${activeTab}`}
           >
             {tabs.find((t) => t.id === activeTab)?.name} Report
-          </h2>
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
           {renderContent()}
-        </div>
-      </div>
+        </CardContent>
+      </Card>
     </div>
   );
 };

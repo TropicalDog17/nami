@@ -1,5 +1,11 @@
 import React, { useState } from 'react';
 
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Checkbox } from '@/components/ui/checkbox';
+
 interface AssetFormData {
   symbol: string;
   name: string;
@@ -153,262 +159,255 @@ export const AssetFormAdvanced: React.FC<AssetFormAdvancedProps> = ({ onSubmit, 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
       {/* Asset Information */}
-      <div className="bg-white p-4 rounded-lg border border-gray-200">
-        <h3 className="text-lg font-semibold mb-4">Asset Information</h3>
-        
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Symbol* <span className="text-gray-500 text-xs">(e.g., BTC, XAU, USD)</span>
-            </label>
-            <input
-              type="text"
-              name="symbol"
-              value={assetData.symbol}
-              onChange={handleAssetChange}
-              required
-              className="w-full border border-gray-300 rounded px-3 py-2"
-              placeholder="BTC"
-            />
-          </div>
+      <Card>
+        <CardHeader>
+          <CardTitle>Asset Information</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="symbol">
+                Symbol* <span className="text-muted-foreground text-xs">(e.g., BTC, XAU, USD)</span>
+              </Label>
+              <Input
+                id="symbol"
+                type="text"
+                name="symbol"
+                value={assetData.symbol}
+                onChange={handleAssetChange}
+                required
+                placeholder="BTC"
+              />
+            </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Name* <span className="text-gray-500 text-xs">(e.g., Bitcoin, Gold)</span>
-            </label>
-            <input
-              type="text"
-              name="name"
-              value={assetData.name}
-              onChange={handleAssetChange}
-              required
-              className="w-full border border-gray-300 rounded px-3 py-2"
-              placeholder="Bitcoin"
-            />
-          </div>
+            <div className="space-y-2">
+              <Label htmlFor="name">
+                Name* <span className="text-muted-foreground text-xs">(e.g., Bitcoin, Gold)</span>
+              </Label>
+              <Input
+                id="name"
+                type="text"
+                name="name"
+                value={assetData.name}
+                onChange={handleAssetChange}
+                required
+                placeholder="Bitcoin"
+              />
+            </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Decimals <span className="text-gray-500 text-xs">(Crypto: 8, Commodities: 4, Fiat: 2)</span>
-            </label>
-            <input
-              type="number"
-              name="decimals"
-              value={assetData.decimals}
-              onChange={handleAssetChange}
-              min="0"
-              max="18"
-              className="w-full border border-gray-300 rounded px-3 py-2"
-            />
-          </div>
+            <div className="space-y-2">
+              <Label htmlFor="decimals">
+                Decimals <span className="text-muted-foreground text-xs">(Crypto: 8, Commodities: 4, Fiat: 2)</span>
+              </Label>
+              <Input
+                id="decimals"
+                type="number"
+                name="decimals"
+                value={assetData.decimals}
+                onChange={handleAssetChange}
+                min="0"
+                max="18"
+              />
+            </div>
 
-          <div className="flex items-center pt-6">
-            <input
-              type="checkbox"
-              name="is_active"
-              checked={assetData.is_active}
-              onChange={handleAssetChange}
-              className="mr-2"
-            />
-            <label className="text-sm font-medium text-gray-700">Active</label>
+            <div className="flex items-center pt-6">
+              <Checkbox
+                id="is_active"
+                name="is_active"
+                checked={assetData.is_active}
+                onCheckedChange={(checked) => {
+                  setAssetData((prev) => ({ ...prev, is_active: Boolean(checked) }));
+                }}
+              />
+              <Label htmlFor="is_active" className="ml-2 cursor-pointer">Active</Label>
+            </div>
           </div>
-        </div>
-      </div>
+        </CardContent>
+      </Card>
 
       {/* Price Provider Configuration */}
-      <div className="bg-white p-4 rounded-lg border border-gray-200">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-semibold">Price Provider (Optional)</h3>
-          <label className="flex items-center">
-            <input
-              type="checkbox"
-              checked={enableMapping}
-              onChange={(e) => setEnableMapping(e.target.checked)}
-              className="mr-2"
-            />
-            <span className="text-sm font-medium">Enable Price Fetching</span>
-          </label>
-        </div>
-
-        {enableMapping && (
-          <div className="space-y-4">
-            {/* Provider Selection */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Select Provider Template
-              </label>
-              <div className="grid grid-cols-3 gap-2">
-                {Object.entries(PROVIDER_TEMPLATES).map(([key, template]) => (
-                  <button
-                    key={key}
-                    type="button"
-                    onClick={() => handleProviderSelect(key as keyof typeof PROVIDER_TEMPLATES)}
-                    className={`px-4 py-2 rounded border ${
-                      selectedProvider === key
-                        ? 'bg-blue-500 text-white border-blue-600'
-                        : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
-                    }`}
-                  >
-                    {template.name}
-                  </button>
-                ))}
-              </div>
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <CardTitle>Price Provider (Optional)</CardTitle>
+            <div className="flex items-center space-x-2">
+              <Checkbox
+                id="enableMapping"
+                checked={enableMapping}
+                onCheckedChange={(checked) => setEnableMapping(Boolean(checked))}
+              />
+              <Label htmlFor="enableMapping" className="cursor-pointer">Enable Price Fetching</Label>
             </div>
-
-            {/* Basic Configuration */}
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Provider ID* <span className="text-gray-500 text-xs">(e.g., {PROVIDER_TEMPLATES[selectedProvider].example_provider_id})</span>
-                </label>
-                <input
-                  type="text"
-                  name="provider_id"
-                  value={mappingData.provider_id}
-                  onChange={handleMappingChange}
-                  required
-                  className="w-full border border-gray-300 rounded px-3 py-2"
-                  placeholder={PROVIDER_TEMPLATES[selectedProvider].example_provider_id}
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Quote Currency
-                </label>
-                <input
-                  type="text"
-                  name="quote_currency"
-                  value={mappingData.quote_currency}
-                  onChange={handleMappingChange}
-                  className="w-full border border-gray-300 rounded px-3 py-2"
-                  placeholder="USD"
-                />
-              </div>
-            </div>
-
-            {/* Auto-populate Options */}
-            <div className="bg-blue-50 p-3 rounded border border-blue-200">
-              <div className="flex items-center mb-2">
-                <input
-                  type="checkbox"
-                  name="auto_populate"
-                  checked={mappingData.auto_populate}
-                  onChange={handleMappingChange}
-                  className="mr-2"
-                />
-                <label className="text-sm font-medium text-gray-700">
-                  Auto-populate historical prices
-                </label>
-              </div>
-
-              {mappingData.auto_populate && (
-                <div className="mt-2">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Populate from date
-                  </label>
-                  <input
-                    type="date"
-                    name="populate_from_date"
-                    value={mappingData.populate_from_date ?? ''}
-                    onChange={handleMappingChange}
-                    className="w-full border border-gray-300 rounded px-3 py-2"
-                  />
-                  <p className="text-xs text-gray-500 mt-1">
-                    Leave empty to populate from 1 year ago
-                  </p>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {enableMapping && (
+            <div className="space-y-4">
+              {/* Provider Selection */}
+              <div className="space-y-2">
+                <Label>Select Provider Template</Label>
+                <div className="grid grid-cols-3 gap-2">
+                  {Object.entries(PROVIDER_TEMPLATES).map(([key, template]) => (
+                    <Button
+                      key={key}
+                      type="button"
+                      variant={selectedProvider === key ? 'default' : 'outline'}
+                      onClick={() => handleProviderSelect(key as keyof typeof PROVIDER_TEMPLATES)}
+                    >
+                      {template.name}
+                    </Button>
+                  ))}
                 </div>
-              )}
-            </div>
+              </div>
 
-            {/* Advanced Configuration Toggle */}
-            <div>
-              <button
-                type="button"
-                onClick={() => setShowAdvanced(!showAdvanced)}
-                className="text-sm text-blue-600 hover:text-blue-800"
-              >
-                {showAdvanced ? '▼' : '▶'} Advanced Configuration (API Endpoint, Headers, Auth)
-              </button>
-            </div>
-
-            {showAdvanced && (
-              <div className="space-y-4 pl-4 border-l-2 border-gray-200">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    API Endpoint
-                  </label>
-                  <input
+              {/* Basic Configuration */}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="provider_id">
+                    Provider ID* <span className="text-muted-foreground text-xs">(e.g., {PROVIDER_TEMPLATES[selectedProvider].example_provider_id})</span>
+                  </Label>
+                  <Input
+                    id="provider_id"
                     type="text"
-                    name="api_endpoint"
-                    value={mappingData.api_endpoint ?? ''}
+                    name="provider_id"
+                    value={mappingData.provider_id}
                     onChange={handleMappingChange}
-                    className="w-full border border-gray-300 rounded px-3 py-2 font-mono text-sm"
-                    placeholder="https://api.example.com/{date}"
+                    required
+                    placeholder={PROVIDER_TEMPLATES[selectedProvider].example_provider_id}
                   />
-                  <p className="text-xs text-gray-500 mt-1">
-                    Use placeholders: {'{symbol}'}, {'{date}'}, {'{currency}'}, {'{provider_id}'}
-                  </p>
                 </div>
 
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Response Path
-                  </label>
-                  <input
+                <div className="space-y-2">
+                  <Label htmlFor="quote_currency">Quote Currency</Label>
+                  <Input
+                    id="quote_currency"
                     type="text"
-                    name="response_path"
-                    value={mappingData.response_path ?? ''}
+                    name="quote_currency"
+                    value={mappingData.quote_currency}
                     onChange={handleMappingChange}
-                    className="w-full border border-gray-300 rounded px-3 py-2 font-mono text-sm"
-                    placeholder="data.price"
+                    placeholder="USD"
                   />
-                  <p className="text-xs text-gray-500 mt-1">
-                    JSON path to extract price (e.g., rates.XAU or data.price)
-                  </p>
+                </div>
+              </div>
+
+              {/* Auto-populate Options */}
+              <div className="bg-muted p-3 rounded border">
+                <div className="flex items-center mb-2 space-x-2">
+                  <Checkbox
+                    id="auto_populate"
+                    name="auto_populate"
+                    checked={mappingData.auto_populate}
+                    onCheckedChange={(checked) => {
+                      setMappingData((prev) => ({ ...prev, auto_populate: Boolean(checked) }));
+                    }}
+                  />
+                  <Label htmlFor="auto_populate" className="cursor-pointer">
+                    Auto-populate historical prices
+                  </Label>
                 </div>
 
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    API Configuration (JSON)
-                  </label>
-                  <textarea
-                    value={apiConfigJson}
-                    onChange={(e) => setApiConfigJson(e.target.value)}
-                    rows={8}
-                    className="w-full border border-gray-300 rounded px-3 py-2 font-mono text-sm"
-                    placeholder={`{
+                {mappingData.auto_populate && (
+                  <div className="mt-2 space-y-2">
+                    <Label htmlFor="populate_from_date">Populate from date</Label>
+                    <Input
+                      id="populate_from_date"
+                      type="date"
+                      name="populate_from_date"
+                      value={mappingData.populate_from_date ?? ''}
+                      onChange={handleMappingChange}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Leave empty to populate from 1 year ago
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              {/* Advanced Configuration Toggle */}
+              <div>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setShowAdvanced(!showAdvanced)}
+                  className="text-sm"
+                >
+                  {showAdvanced ? '▼' : '▶'} Advanced Configuration (API Endpoint, Headers, Auth)
+                </Button>
+              </div>
+
+              {showAdvanced && (
+                <div className="space-y-4 pl-4 border-l-2 border-border">
+                  <div className="space-y-2">
+                    <Label htmlFor="api_endpoint">API Endpoint</Label>
+                    <Input
+                      id="api_endpoint"
+                      type="text"
+                      name="api_endpoint"
+                      value={mappingData.api_endpoint ?? ''}
+                      onChange={handleMappingChange}
+                      className="font-mono text-sm"
+                      placeholder="https://api.example.com/{date}"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Use placeholders: {'{symbol}'}, {'{date}'}, {'{currency}'}, {'{provider_id}'}
+                    </p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="response_path">Response Path</Label>
+                    <Input
+                      id="response_path"
+                      type="text"
+                      name="response_path"
+                      value={mappingData.response_path ?? ''}
+                      onChange={handleMappingChange}
+                      className="font-mono text-sm"
+                      placeholder="data.price"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      JSON path to extract price (e.g., rates.XAU or data.price)
+                    </p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="api_config">API Configuration (JSON)</Label>
+                    <textarea
+                      id="api_config"
+                      value={apiConfigJson}
+                      onChange={(e) => setApiConfigJson(e.target.value)}
+                      rows={8}
+                      className="w-full px-3 py-2 border border-input rounded-md font-mono text-sm bg-background focus:outline-none focus:ring-2 focus:ring-ring"
+                      placeholder={`{
   "headers": {"Accept": "application/json"},
   "query_params": {"key": "\${API_KEY}"},
   "auth_type": "bearer",
   "auth_value": "\${TOKEN}"
 }`}
-                  />
-                  <p className="text-xs text-gray-500 mt-1">
-                    Configure headers, query params, and authentication. Use ${'${VAR}'} for env variables.
-                  </p>
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Configure headers, query params, and authentication. Use ${'${VAR}'} for env variables.
+                    </p>
+                  </div>
                 </div>
-              </div>
-            )}
-          </div>
-        )}
-      </div>
+              )}
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Form Actions */}
       <div className="flex justify-end space-x-3">
-        <button
+        <Button
           type="button"
+          variant="outline"
           onClick={onCancel}
-          className="px-4 py-2 border border-gray-300 rounded text-gray-700 hover:bg-gray-50"
         >
           Cancel
-        </button>
-        <button
-          type="submit"
-          className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
-        >
+        </Button>
+        <Button type="submit">
           Create Asset
-        </button>
+        </Button>
       </div>
     </form>
   );

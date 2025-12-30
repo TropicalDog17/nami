@@ -9,6 +9,8 @@ import ManualPricingControl from '../components/tokenized/ManualPricingControl';
 import ComboBox from '../components/ui/ComboBox';
 import DataTable, { TableColumn } from '../components/ui/DataTable';
 import { useToast } from '../components/ui/Toast';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { vaultApi, transactionApi, tokenizedVaultApi, vaultLedgerApi, portfolioApi, reportsApi, ApiError } from '../services/api';
 import { formatCurrency, formatPercentage, formatPnL, getDecimalPlaces } from '../utils/currencyFormatter';
 
@@ -1141,12 +1143,9 @@ const VaultDetailPage: React.FC = () => {
         <div className="text-center">
           <h1 className="text-2xl font-bold text-red-600 mb-4">Vault Not Found</h1>
           <p className="text-gray-600 mb-4">{error}</p>
-          <button
-            onClick={() => navigate('/vaults')}
-            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
-          >
+          <Button onClick={() => navigate('/vaults')}>
             Back to Vaults
-          </button>
+          </Button>
         </div>
       </div>
     );
@@ -1271,12 +1270,13 @@ const VaultDetailPage: React.FC = () => {
       <div className="px-4 py-6 sm:px-0" data-testid="tokenized-vault-detail-page">
         <div className="mb-6 flex items-center justify-between">
           <div>
-            <button
+            <Button
               onClick={() => navigate('/vaults')}
-              className="mb-4 text-blue-600 hover:text-blue-800 flex items-center"
+              variant="link"
+              className="mb-4 px-0"
             >
               ← Back to Vaults
-            </button>
+            </Button>
             <h1 className="text-3xl font-bold text-gray-900 mb-1">
               {tokenizedVaultDetails.name} ({tokenizedVaultDetails.token_symbol})
             </h1>
@@ -1289,24 +1289,26 @@ const VaultDetailPage: React.FC = () => {
 
         {/* Borrowings special summary */}
         {isBorrowings && (
-          <div className="bg-white p-4 rounded-lg border border-gray-200 mb-6">
-            <div className="flex items-center justify-between mb-3">
-              <h2 className="text-lg font-semibold">Borrowings Overview</h2>
+          <Card className="mb-6">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
+              <CardTitle className="text-lg font-semibold">Borrowings Overview</CardTitle>
               <div className="flex gap-2">
-                <button
+                <Button
                   onClick={() => { setShowBorrowModal(true); setShowRepayModal(false); }}
-                  className="px-3 py-1.5 bg-red-600 text-white rounded-md hover:bg-red-700"
+                  variant="destructive"
+                  size="sm"
                 >
                   Borrow
-                </button>
-                <button
+                </Button>
+                <Button
                   onClick={() => { setShowRepayModal(true); setShowBorrowModal(false); }}
-                  className="px-3 py-1.5 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+                  size="sm"
                 >
                   Repay
-                </button>
+                </Button>
               </div>
-            </div>
+            </CardHeader>
+            <CardContent>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
                 <div className="text-gray-500 text-sm">Outstanding Balance</div>
@@ -1346,16 +1348,18 @@ const VaultDetailPage: React.FC = () => {
                 </table>
               </div>
             )}
-          </div>
+          </CardContent>
+          </Card>
         )}
 
         {/* Spend Vault Summary */}
         {isSpend && !isBorrowings && (
-          <div className="bg-white p-4 rounded-lg border border-gray-200 mb-6">
-            <div className="flex items-center justify-between mb-3">
-              <h2 className="text-lg font-semibold">💰 Spend Account Overview</h2>
+          <Card className="mb-6">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
+              <CardTitle className="text-lg font-semibold">💰 Spend Account Overview</CardTitle>
               <span className="text-xs text-gray-500">Cash Tracking</span>
-            </div>
+            </CardHeader>
+            <CardContent>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
                 <div className="text-gray-500 text-sm">Current Balance</div>
@@ -1387,98 +1391,116 @@ const VaultDetailPage: React.FC = () => {
                 No P&amp;L or ROI calculations for this account (it&apos;s cash, not an investment)
               </p>
             </div>
-          </div>
+          </CardContent>
+          </Card>
         )}
 
         {!isBorrowings && !isSpend && (
         <>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
-          <div className="bg-white p-4 rounded-lg border border-gray-200">
-            <h3 className="text-sm font-medium text-gray-500 mb-2">Token Price</h3>
-            <p className="text-2xl font-bold text-gray-900">${isNaN(tokenPrice) ? '0.0000' : tokenPrice.toFixed(4)}</p>
-            <p className="text-sm text-gray-600">{tokenizedVaultDetails.is_user_defined_price ? 'Manual price' : 'Live price'}</p>
-          </div>
-          <div className="bg-white p-4 rounded-lg border border-gray-200">
-            <h3 className="text-sm font-medium text-gray-500 mb-2">Total Supply</h3>
-            <p className="text-2xl font-bold text-gray-900">
-              {isNaN(totalSupply) ? '0' : totalSupply.toLocaleString(undefined, { maximumFractionDigits: 2 })}
-            </p>
-            <p className="text-sm text-gray-600">Tokens issued</p>
-          </div>
-          <div className="bg-white p-4 rounded-lg border border-gray-200">
-            <h3 className="text-sm font-medium text-gray-500 mb-2">Assets Under Management</h3>
-            <p className="text-2xl font-bold text-gray-900">{(() => {
-              const base = isNaN(totalValue) ? 0 : totalValue;
-              const roll = typeof rollingAUM === 'number' && isFinite(rollingAUM) ? rollingAUM : undefined;
-              const backend = typeof headerMetrics?.aum_usd === 'number' && isFinite(headerMetrics.aum_usd) ? headerMetrics.aum_usd : undefined;
-              return formatCurrency(backend ?? roll ?? base);
-            })()}</p>
-            <p className="text-sm text-gray-600">{(() => {
-              if (tokenizedVaultDetails.is_user_defined_price) return 'Manual pricing';
-              return (typeof headerMetrics?.aum_usd === 'number' && isFinite(headerMetrics.aum_usd))
-                ? 'Backend rolling AUM'
-                : (typeof rollingAUM === 'number' && isFinite(rollingAUM)) ? 'Rolling since last valuation' : 'Total vault value';
-            })()}</p>
-          </div>
-          <div className="bg-white p-4 rounded-lg border border-gray-200">
-            <h3 className="text-sm font-medium text-gray-500 mb-2">Performance Since Inception</h3>
-            <p className={`text-2xl font-bold ${perfDisplay >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-              {formatPercentage((perfDisplay || 0) / 100, 2)}
-            </p>
-            <p className="text-sm text-gray-600">Relative to initial share price</p>
-          </div>
-          <div className="bg-white p-4 rounded-lg border border-gray-200">
-            <h3 className="text-sm font-medium text-gray-500 mb-2">APR Since Inception</h3>
-            <p className={`text-2xl font-bold ${aprDisplay >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-              {formatPercentage((aprDisplay || 0) / 100, 2)}
-            </p>
-            <p className="text-sm text-gray-600">Annualized from inception</p>
-          </div>
+          <Card>
+            <CardContent className="p-4">
+              <h3 className="text-sm font-medium text-gray-500 mb-2">Token Price</h3>
+              <p className="text-2xl font-bold text-gray-900">${isNaN(tokenPrice) ? '0.0000' : tokenPrice.toFixed(4)}</p>
+              <p className="text-sm text-gray-600">{tokenizedVaultDetails.is_user_defined_price ? 'Manual price' : 'Live price'}</p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-4">
+              <h3 className="text-sm font-medium text-gray-500 mb-2">Total Supply</h3>
+              <p className="text-2xl font-bold text-gray-900">
+                {isNaN(totalSupply) ? '0' : totalSupply.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+              </p>
+              <p className="text-sm text-gray-600">Tokens issued</p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-4">
+              <h3 className="text-sm font-medium text-gray-500 mb-2">Assets Under Management</h3>
+              <p className="text-2xl font-bold text-gray-900">{(() => {
+                const base = isNaN(totalValue) ? 0 : totalValue;
+                const roll = typeof rollingAUM === 'number' && isFinite(rollingAUM) ? rollingAUM : undefined;
+                const backend = typeof headerMetrics?.aum_usd === 'number' && isFinite(headerMetrics.aum_usd) ? headerMetrics.aum_usd : undefined;
+                return formatCurrency(backend ?? roll ?? base);
+              })()}</p>
+              <p className="text-sm text-gray-600">{(() => {
+                if (tokenizedVaultDetails.is_user_defined_price) return 'Manual pricing';
+                return (typeof headerMetrics?.aum_usd === 'number' && isFinite(headerMetrics.aum_usd))
+                  ? 'Backend rolling AUM'
+                  : (typeof rollingAUM === 'number' && isFinite(rollingAUM)) ? 'Rolling since last valuation' : 'Total vault value';
+              })()}</p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-4">
+              <h3 className="text-sm font-medium text-gray-500 mb-2">Performance Since Inception</h3>
+              <p className={`text-2xl font-bold ${perfDisplay >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                {formatPercentage((perfDisplay || 0) / 100, 2)}
+              </p>
+              <p className="text-sm text-gray-600">Relative to initial share price</p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-4">
+              <h3 className="text-sm font-medium text-gray-500 mb-2">APR Since Inception</h3>
+              <p className={`text-2xl font-bold ${aprDisplay >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                {formatPercentage((aprDisplay || 0) / 100, 2)}
+              </p>
+              <p className="text-sm text-gray-600">Annualized from inception</p>
+            </CardContent>
+          </Card>
         </div>
 
         {/* Time Series: APR and PnL over time */}
         {vaultSeries.length > 0 && (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
-            <div className="bg-white p-4 rounded-lg border border-gray-200">
-              <h3 className="text-sm font-medium text-gray-900 mb-3">PnL Over Time</h3>
-              <div style={{ height: 280 }}>
-                <TimeSeriesLineChart
-                  labels={vaultSeries.map(p => p.date)}
-                  datasets={[{ label: 'PnL (USD)', data: vaultSeries.map(p => p.pnl_usd), color: '#059669', fill: true }]}
-                  yFormat="currency"
-                  currency="USD"
-                />
-              </div>
-            </div>
-            <div className="bg-white p-4 rounded-lg border border-gray-200">
-              <h3 className="text-sm font-medium text-gray-900 mb-3">APR Over Time</h3>
-              <div style={{ height: 280 }}>
-                <TimeSeriesLineChart
-                  labels={vaultSeries.map(p => p.date)}
-                  datasets={[{ label: 'APR (%)', data: vaultSeries.map(p => p.apr_percent), color: '#2563EB', fill: true }]}
-                  yFormat="percent"
-                />
-              </div>
-            </div>
+            <Card>
+              <CardContent className="p-4">
+                <h3 className="text-sm font-medium text-gray-900 mb-3">PnL Over Time</h3>
+                <div style={{ height: 280 }}>
+                  <TimeSeriesLineChart
+                    labels={vaultSeries.map(p => p.date)}
+                    datasets={[{ label: 'PnL (USD)', data: vaultSeries.map(p => p.pnl_usd), color: '#059669', fill: true }]}
+                    yFormat="currency"
+                    currency="USD"
+                  />
+                </div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="p-4">
+                <h3 className="text-sm font-medium text-gray-900 mb-3">APR Over Time</h3>
+                <div style={{ height: 280 }}>
+                  <TimeSeriesLineChart
+                    labels={vaultSeries.map(p => p.date)}
+                    datasets={[{ label: 'APR (%)', data: vaultSeries.map(p => p.apr_percent), color: '#2563EB', fill: true }]}
+                    yFormat="percent"
+                  />
+                </div>
+              </CardContent>
+            </Card>
           </div>
         )}
         </>
         )}
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-          <div className="bg-white p-4 rounded-lg border border-gray-200">
-            <ManualPricingControl
-              vaultId={tokenizedVaultDetails.id}
-              currentPrice={isNaN(tokenPrice) ? 0 : tokenPrice}
-              currentTotalValue={(typeof rollingAUM === 'number' && isFinite(rollingAUM)) ? rollingAUM : (isNaN(totalValue) ? 0 : totalValue)}
-              totalSupply={isNaN(totalSupply) ? 0 : totalSupply}
-              isManualPricing={tokenizedVaultDetails.is_user_defined_price}
-              onMetricsUpdate={handleTokenizedMetricsUpdate}
-              onPricingModeChange={handleTokenizedPricingModeChange}
-            />
-          </div>
-          <div className="bg-white p-4 rounded-lg border border-gray-200">
-            <h3 className="text-sm font-medium text-gray-900 mb-3">Vault Configuration</h3>
+          <Card>
+            <CardContent className="p-4">
+              <ManualPricingControl
+                vaultId={tokenizedVaultDetails.id}
+                currentPrice={isNaN(tokenPrice) ? 0 : tokenPrice}
+                currentTotalValue={(typeof rollingAUM === 'number' && isFinite(rollingAUM)) ? rollingAUM : (isNaN(totalValue) ? 0 : totalValue)}
+                totalSupply={isNaN(totalSupply) ? 0 : totalSupply}
+                isManualPricing={tokenizedVaultDetails.is_user_defined_price}
+                onMetricsUpdate={handleTokenizedMetricsUpdate}
+                onPricingModeChange={handleTokenizedPricingModeChange}
+              />
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-4">
+              <h3 className="text-sm font-medium text-gray-900 mb-3">Vault Configuration</h3>
             <dl className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
               <div>
                 <dt className="text-gray-500">Inception Date</dt>
@@ -1509,81 +1531,84 @@ const VaultDetailPage: React.FC = () => {
                 <dd className="text-gray-900">{formatCurrency(parseFloat(tokenizedVaultDetails.min_withdrawal_amount ?? '0'))}</dd>
               </div>
             </dl>
-          </div>
+          </CardContent>
+          </Card>
         </div>
 
         <div className="flex flex-wrap gap-3 mb-6">
           {tokenizedVaultDetails.status === 'active' && (
-            <button
+            <Button
               onClick={() => {
                 void handleTokenizedClose();
               }}
-              className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700"
+              variant="destructive"
             >
               Close Vault
-            </button>
+            </Button>
           )}
-          <button
+          <Button
             onClick={() => {
               void handleTokenizedDelete();
             }}
-            className="px-4 py-2 bg-gray-700 text-white rounded-md hover:bg-gray-800"
+            variant="secondary"
           >
             Delete Vault
-          </button>
-          <button
+          </Button>
+          <Button
             onClick={() => setShowLiveMetrics((s) => !s)}
-            className="px-4 py-2 bg-yellow-600 text-white rounded-md hover:bg-yellow-700"
+            variant="outline"
           >
             {showLiveMetrics ? 'Hide Asset Breakdown' : 'Show Asset Breakdown'}
-          </button>
-          <button
+          </Button>
+          <Button
             onClick={() => {
               void loadVault();
             }}
-            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
           >
             Refresh
-          </button>
+          </Button>
           {canDeposit && (
-            <button
+            <Button
               onClick={() => {
                 setShowTokenizedDepositForm((s) => !s);
                 setShowTokenizedWithdrawForm(false);
               }}
-              className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700"
+              variant="default"
             >
               Deposit
-            </button>
+            </Button>
           )}
           {canWithdraw && (
-            <button
+            <Button
               onClick={() => {
                 setShowTokenizedWithdrawForm((s) => !s);
                 setShowTokenizedDepositForm(false);
               }}
-              className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
             >
               Withdraw
-            </button>
+            </Button>
           )}
-          <button
+          <Button
             onClick={() => {
               setShowRewardForm((s) => !s);
               setShowTokenizedDepositForm(false);
               setShowTokenizedWithdrawForm(false);
             }}
-            className="px-4 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700"
-          >
-            Distribute Reward
-          </button>
+            variant="default"
+              className="bg-purple-600 hover:bg-purple-700"
+            >
+              Distribute Reward
+            </Button>
         </div>
 
         {(showTokenizedDepositForm || showTokenizedWithdrawForm) && (
-          <div className="bg-white p-4 rounded-lg border border-gray-200 mb-6">
-            <h3 className="text-lg font-semibold mb-4">
-              {showTokenizedDepositForm ? 'Deposit to Vault' : 'Withdraw from Vault'}
-            </h3>
+          <Card className="mb-6">
+            <CardHeader>
+              <h3 className="text-lg font-semibold mb-4">
+                {showTokenizedDepositForm ? 'Deposit to Vault' : 'Withdraw from Vault'}
+              </h3>
+            </CardHeader>
+            <CardContent>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Amount (USD)</label>
@@ -1639,37 +1664,39 @@ const VaultDetailPage: React.FC = () => {
             </div>
             <div className="flex space-x-3">
               {showTokenizedDepositForm ? (
-                <button
+                <Button
                   onClick={() => { void handleTokenizedDeposit(); }}
-                  className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700"
                 >
                   Deposit
-                </button>
+                </Button>
               ) : (
-                <button
+                <Button
                   onClick={() => { void handleTokenizedWithdraw(); }}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
                 >
                   Withdraw
-                </button>
+                </Button>
               )}
-              <button
+              <Button
                 onClick={() => {
                   setShowTokenizedDepositForm(false);
                   setShowTokenizedWithdrawForm(false);
                   setTokenizedNotes('');
                 }}
-                className="px-4 py-2 border border-gray-300 rounded-md hover:bg-gray-50"
+                variant="outline"
               >
                 Cancel
-              </button>
+              </Button>
             </div>
-          </div>
+          </CardContent>
+          </Card>
         )}
 
         {showRewardForm && (
-          <div className="bg-white p-4 rounded-lg border border-gray-200 mb-6">
-            <h3 className="text-lg font-semibold mb-4">Distribute Reward</h3>
+          <Card className="mb-6">
+            <CardHeader>
+              <h3 className="text-lg font-semibold mb-4">Distribute Reward</h3>
+            </CardHeader>
+            <CardContent>
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Reward (USD)</label>
@@ -1724,25 +1751,27 @@ const VaultDetailPage: React.FC = () => {
               </label>
             </div>
             <div className="flex space-x-3">
-              <button
+              <Button
                 onClick={() => { void handleDistributeReward(); }}
-                className="px-4 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700"
+                className="bg-purple-600 hover:bg-purple-700"
               >
                 Distribute
-              </button>
-              <button
+              </Button>
+              <Button
                 onClick={() => { setShowRewardForm(false); setRewardAmount(''); setRewardNote(''); }}
-                className="px-4 py-2 border border-gray-300 rounded-md hover:bg-gray-50"
+                variant="outline"
               >
                 Cancel
-              </button>
+              </Button>
             </div>
-          </div>
+          </CardContent>
+          </Card>
         )}
 
         {tokenizedVaultDetails.asset_breakdown && tokenizedVaultDetails.asset_breakdown.length > 0 && (
-          <div className="bg-white p-4 rounded-lg border border-gray-200">
-            <h2 className="text-xl font-semibold mb-4">Asset Breakdown</h2>
+          <Card>
+            <CardContent className="p-4">
+              <h2 className="text-xl font-semibold mb-4">Asset Breakdown</h2>
             <DataTable<TokenizedVaultAsset>
               data={tokenizedVaultDetails.asset_breakdown}
               columns={tokenizedAssetColumns}
@@ -1753,13 +1782,15 @@ const VaultDetailPage: React.FC = () => {
               selectableRows={false}
               data-testid="tokenized-vault-assets-table"
             />
-          </div>
+          </CardContent>
+          </Card>
         )}
 
         {/* Ledger-derived holdings and transaction history */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mt-6">
-          <div className="bg-white p-4 rounded-lg border border-gray-200 lg:col-span-1">
-            <h2 className="text-lg font-semibold mb-3">Ledger Holdings</h2>
+          <Card className="lg:col-span-1">
+            <CardContent className="p-4">
+              <h2 className="text-lg font-semibold mb-3">Ledger Holdings</h2>
             {ledgerHoldings ? (
               <dl className="grid grid-cols-2 gap-3 text-sm">
                 <div>
@@ -1800,9 +1831,11 @@ const VaultDetailPage: React.FC = () => {
             ) : (
               <div className="text-sm text-gray-600">No ledger holdings available.</div>
             )}
-          </div>
-          <div className="bg-white p-4 rounded-lg border border-gray-200 lg:col-span-2">
-            <h2 className="text-lg font-semibold mb-3">Ledger Transactions</h2>
+          </CardContent>
+          </Card>
+          <Card className="lg:col-span-2">
+            <CardContent className="p-4">
+              <h2 className="text-lg font-semibold mb-3">Ledger Transactions</h2>
             <DataTable<Record<string, unknown>>
               data={ledgerTransactions}
               columns={[
@@ -1832,7 +1865,8 @@ const VaultDetailPage: React.FC = () => {
               selectableRows={false}
               data-testid="tokenized-vault-ledger-table"
             />
-          </div>
+          </CardContent>
+          </Card>
         </div>
       </div>
     );
@@ -1844,12 +1878,9 @@ const VaultDetailPage: React.FC = () => {
         <div className="text-center">
           <h1 className="text-2xl font-bold text-red-600 mb-4">Vault Not Found</h1>
           <p className="text-gray-600 mb-4">The requested vault could not be found.</p>
-          <button
-            onClick={() => navigate('/vaults')}
-            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
-          >
+          <Button onClick={() => navigate('/vaults')}>
             Back to Vaults
-          </button>
+          </Button>
         </div>
       </div>
     );
@@ -1859,12 +1890,13 @@ const VaultDetailPage: React.FC = () => {
     <div className="px-4 py-6 sm:px-0" data-testid="vault-detail-page">
       {/* Header */}
       <div className="mb-6">
-        <button
+        <Button
           onClick={() => navigate('/vaults')}
-          className="mb-4 text-blue-600 hover:text-blue-800 flex items-center"
+          variant="link"
+          className="mb-4 px-0"
         >
           ← Back to Vaults
-        </button>
+        </Button>
         <h1 className="text-3xl font-bold text-gray-900 mb-2">
           {`${vault.asset} @ ${vault.account}${vault.horizon ? ` [${vault.horizon}]` : ''}`}
         </h1>
@@ -1876,111 +1908,120 @@ const VaultDetailPage: React.FC = () => {
 
       {/* Vault Overview Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        <div className="bg-white p-4 rounded-lg border border-gray-200">
-          <h3 className="text-sm font-medium text-gray-500 mb-2">Total Deposited</h3>
-          <p className="text-2xl font-bold text-gray-900">
-            {(() => {
-              const isUSD = String(vault.asset ?? '').toUpperCase() === 'USD';
-              const decimals = getDecimalPlaces(vault.asset ?? 'USD');
-              const value = isUSD
-                ? (typeof vault.deposit_cost === 'string' ? parseFloat(vault.deposit_cost) : (vault.deposit_cost as unknown as number))
-                : (typeof vault.deposit_qty === 'string' ? parseFloat(vault.deposit_qty) : (vault.deposit_qty as unknown as number));
-              return `${formatVaultNumber(value ?? 0, isUSD ? 2 : decimals)} ${vault.asset}`;
-            })()}
-          </p>
-          <p className="text-sm text-gray-600">{formatCurrency(parseFloat(vault.deposit_cost ?? '0'))}</p>
-        </div>
+        <Card>
+          <CardContent className="p-4">
+            <h3 className="text-sm font-medium text-gray-500 mb-2">Total Deposited</h3>
+            <p className="text-2xl font-bold text-gray-900">
+              {(() => {
+                const isUSD = String(vault.asset ?? '').toUpperCase() === 'USD';
+                const decimals = getDecimalPlaces(vault.asset ?? 'USD');
+                const value = isUSD
+                  ? (typeof vault.deposit_cost === 'string' ? parseFloat(vault.deposit_cost) : (vault.deposit_cost as unknown as number))
+                  : (typeof vault.deposit_qty === 'string' ? parseFloat(vault.deposit_qty) : (vault.deposit_qty as unknown as number));
+                return `${formatVaultNumber(value ?? 0, isUSD ? 2 : decimals)} ${vault.asset}`;
+              })()}
+            </p>
+            <p className="text-sm text-gray-600">{formatCurrency(parseFloat(vault.deposit_cost ?? '0'))}</p>
+          </CardContent>
+        </Card>
 
-        <div className="bg-white p-4 rounded-lg border border-gray-200">
-          <h3 className="text-sm font-medium text-gray-500 mb-2">Current Balance</h3>
-          <p className="text-2xl font-bold text-gray-900">
-            {(() => {
-              const isUSD = String(vault.asset ?? '').toUpperCase() === 'USD';
-              if (isUSD) {
-                const deposit = typeof vault.deposit_cost === 'string' ? parseFloat(vault.deposit_cost) : (vault.deposit_cost as unknown as number);
-                const withdrawn = typeof vault.withdrawal_value === 'string' ? parseFloat(vault.withdrawal_value) : (vault.withdrawal_value as unknown as number);
-                const remainingUSD = (deposit ?? 0) - (withdrawn ?? 0);
-                return `${formatVaultNumber(remainingUSD < 0 ? 0 : remainingUSD, 2)} USD`;
-              }
-              const decimals = getDecimalPlaces(vault.asset ?? 'USD');
-              const qty = typeof vault.remaining_qty === 'string' ? parseFloat(vault.remaining_qty) : (vault.remaining_qty as unknown as number);
-              return `${formatVaultNumber(qty ?? 0, decimals)} ${vault.asset}`;
-            })()}
-          </p>
-          <p className="text-sm text-gray-600">Remaining in vault</p>
-        </div>
+        <Card>
+          <CardContent className="p-4">
+            <h3 className="text-sm font-medium text-gray-500 mb-2">Current Balance</h3>
+            <p className="text-2xl font-bold text-gray-900">
+              {(() => {
+                const isUSD = String(vault.asset ?? '').toUpperCase() === 'USD';
+                if (isUSD) {
+                  const deposit = typeof vault.deposit_cost === 'string' ? parseFloat(vault.deposit_cost) : (vault.deposit_cost as unknown as number);
+                  const withdrawn = typeof vault.withdrawal_value === 'string' ? parseFloat(vault.withdrawal_value) : (vault.withdrawal_value as unknown as number);
+                  const remainingUSD = (deposit ?? 0) - (withdrawn ?? 0);
+                  return `${formatVaultNumber(remainingUSD < 0 ? 0 : remainingUSD, 2)} USD`;
+                }
+                const decimals = getDecimalPlaces(vault.asset ?? 'USD');
+                const qty = typeof vault.remaining_qty === 'string' ? parseFloat(vault.remaining_qty) : (vault.remaining_qty as unknown as number);
+                return `${formatVaultNumber(qty ?? 0, decimals)} ${vault.asset}`;
+              })()}
+            </p>
+            <p className="text-sm text-gray-600">Remaining in vault</p>
+          </CardContent>
+        </Card>
 
-        <div className="bg-white p-4 rounded-lg border border-gray-200">
-          <h3 className="text-sm font-medium text-gray-500 mb-2">Realized P&L</h3>
-          <p className={`text-2xl font-bold ${parseFloat(vault.pnl ?? '0') >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-            {formatCurrency(parseFloat(vault.pnl ?? '0'))}
-          </p>
-          <p className="text-sm text-gray-600">{formatVaultNumber(vault.pnl_percent, 2)}% ROI</p>
-        </div>
+        <Card>
+          <CardContent className="p-4">
+            <h3 className="text-sm font-medium text-gray-500 mb-2">Realized P&L</h3>
+            <p className={`text-2xl font-bold ${parseFloat(vault.pnl ?? '0') >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+              {formatCurrency(parseFloat(vault.pnl ?? '0'))}
+            </p>
+            <p className="text-sm text-gray-600">{formatVaultNumber(vault.pnl_percent, 2)}% ROI</p>
+          </CardContent>
+        </Card>
 
-        <div className="bg-white p-4 rounded-lg border border-gray-200">
-          <h3 className="text-sm font-medium text-gray-500 mb-2">Vault Status</h3>
-          <p className="text-lg font-medium text-gray-900 capitalize">{vault.vault_status ?? 'Unknown'}</p>
-          <p className="text-sm text-gray-600">
-            Created: {isValidDate(new Date(vault.created_at)) ? format(new Date(vault.created_at), 'MMM d, yyyy') : '—'}
-          </p>
-        </div>
+        <Card>
+          <CardContent className="p-4">
+            <h3 className="text-sm font-medium text-gray-500 mb-2">Vault Status</h3>
+            <p className="text-lg font-medium text-gray-900 capitalize">{vault.vault_status ?? 'Unknown'}</p>
+            <p className="text-sm text-gray-600">
+              Created: {isValidDate(new Date(vault.created_at)) ? format(new Date(vault.created_at), 'MMM d, yyyy') : '—'}
+            </p>
+          </CardContent>
+        </Card>
       </div>
 
       {/* Action Buttons */}
       <div className="flex space-x-3 mb-6">
-        <button
+        <Button
           onClick={() => setShowDepositForm(!showDepositForm)}
-          className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700"
           disabled={!vault.is_open}
         >
           Deposit to Vault
-        </button>
-        <button
+        </Button>
+        <Button
           onClick={() => setShowWithdrawForm(!showWithdrawForm)}
-          className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
           disabled={!vault.is_open}
         >
           Withdraw from Vault
-        </button>
+        </Button>
         {vault.is_open && (
-        <button
+        <Button
           onClick={() => { void handleEndVault(); }}
-            className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700"
+            variant="destructive"
           >
             End Vault
-          </button>
+          </Button>
         )}
-        <button
+        <Button
           onClick={() => { void handleDeleteVault(); }}
-          className="px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700"
+          variant="secondary"
         >
           Delete Vault
-        </button>
-        <button
+        </Button>
+        <Button
           onClick={() => setShowLiveMetrics((s) => !s)}
-          className="px-4 py-2 bg-yellow-600 text-white rounded-md hover:bg-yellow-700"
+          variant="outline"
         >
           {showLiveMetrics ? 'Hide Live Metrics' : 'Show Live Metrics'}
-        </button>
-        <button
+        </Button>
+        <Button
           onClick={() => { void handleManualUpdate(); }}
-          className="px-4 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700"
+          className="bg-purple-600 hover:bg-purple-700"
         >
           Manual Update
-        </button>
-        <button
+        </Button>
+        <Button
           onClick={() => setShowRewardForm((s) => !s)}
-          className="px-4 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700"
+          className="bg-purple-600 hover:bg-purple-700"
         >
           Distribute Reward
-        </button>
+        </Button>
       </div>
 
       {/* Deposit Form */}
       {showDepositForm && (
-        <div className="bg-white p-4 rounded-lg border border-gray-200 mb-6">
-          <h3 className="text-lg font-semibold mb-4">Deposit to Vault</h3>
+        <Card className="mb-6">
+          <CardHeader>
+            <h3 className="text-lg font-semibold mb-4">Deposit to Vault</h3>
+          </CardHeader>
+          <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
             {isUsdOnlyVault ? (
               <div className="px-3 py-2 border rounded-md bg-gray-50 text-gray-700 flex items-center">Quantity fixed to 1</div>
@@ -2010,26 +2051,29 @@ const VaultDetailPage: React.FC = () => {
             />
           </div>
           <div className="flex space-x-3">
-            <button
+            <Button
               onClick={() => { void handleDeposit(); }}
-              className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700"
             >
               Deposit
-            </button>
-            <button
+            </Button>
+            <Button
               onClick={() => setShowDepositForm(false)}
-              className="px-4 py-2 border border-gray-300 rounded-md hover:bg-gray-50"
+              variant="outline"
             >
               Cancel
-            </button>
+            </Button>
           </div>
-        </div>
+        </CardContent>
+        </Card>
       )}
 
       {/* Withdraw Form */}
       {showWithdrawForm && (
-        <div className="bg-white p-4 rounded-lg border border-gray-200 mb-6">
-          <h3 className="text-lg font-semibold mb-4">Withdraw from Vault</h3>
+        <Card className="mb-6">
+          <CardHeader>
+            <h3 className="text-lg font-semibold mb-4">Withdraw from Vault</h3>
+          </CardHeader>
+          <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
             {isUsdOnlyVault ? (
               <>
@@ -2076,26 +2120,27 @@ const VaultDetailPage: React.FC = () => {
             />
           </div>
           <div className="flex space-x-3">
-            <button
+            <Button
               onClick={() => { void handleWithdraw(); }}
-              className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
             >
               Withdraw
-            </button>
-            <button
+            </Button>
+            <Button
               onClick={() => setShowWithdrawForm(false)}
-              className="px-4 py-2 border border-gray-300 rounded-md hover:bg-gray-50"
+              variant="outline"
             >
               Cancel
-            </button>
+            </Button>
           </div>
-        </div>
+        </CardContent>
+        </Card>
       )}
 
       {/* Vault Details Table */}
       {(manualMetrics ?? liveMetrics) && (
-        <div className="bg-white p-4 rounded-lg border border-gray-200 mb-6">
-          <h3 className="text-lg font-semibold mb-2">{liveMetrics ? 'Live Metrics' : 'Manual Update'}</h3>
+        <Card className="mb-6">
+          <CardContent className="p-4">
+            <h3 className="text-lg font-semibold mb-2">{liveMetrics ? 'Live Metrics' : 'Manual Update'}</h3>
           <div className="text-sm text-gray-700 mb-2">
             As of: {(liveMetrics ?? manualMetrics)?.as_of ? new Date(String((liveMetrics ?? manualMetrics)?.as_of)).toLocaleString() : '—'}
           </div>
@@ -2129,7 +2174,8 @@ const VaultDetailPage: React.FC = () => {
               </div>
             </div>
           )}
-        </div>
+        </CardContent>
+        </Card>
       )}
       <div className="mb-8">
         <h2 className="text-xl font-semibold mb-4">Vault Details</h2>

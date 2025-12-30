@@ -24,10 +24,17 @@ import {
   PendingActionsRepositoryJson,
   SettingsRepositoryDb,
   SettingsRepositoryJson,
-} from '../core/di';
+} from "../core/di";
 
 // Re-export repository instances (backward compatibility)
-export { transactionRepository, vaultRepository, loanRepository, adminRepository, pendingActionsRepository, settingsRepository };
+export {
+  transactionRepository,
+  vaultRepository,
+  loanRepository,
+  adminRepository,
+  pendingActionsRepository,
+  settingsRepository,
+};
 
 // Export classes for type imports and testing
 export {
@@ -46,5 +53,5 @@ export {
 };
 
 // Export other repository types
-export * from './base.repository';
-export * from './repository.interface';
+export * from "./base.repository";
+export * from "./repository.interface";

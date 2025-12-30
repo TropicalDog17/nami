@@ -108,7 +108,11 @@ export interface ISettingsRepository {
   setDefaultIncomeVaultName(name: string): void;
 
   // Borrowing settings
-  getBorrowingSettings(): { name: string; rate: number; lastAccrualStart?: string };
+  getBorrowingSettings(): {
+    name: string;
+    rate: number;
+    lastAccrualStart?: string;
+  };
 }
 
 // Pending actions repository interface

@@ -1,4 +1,4 @@
-import promBundle from 'express-prom-bundle';
+import promBundle from "express-prom-bundle";
 
 export function createMetricsMiddleware() {
   return promBundle({
@@ -7,14 +7,14 @@ export function createMetricsMiddleware() {
     includeStatusCode: true,
     promClient: {
       collectDefaultMetrics: {
-        prefix: 'nami_backend_http_',
+        prefix: "nami_backend_http_",
       },
     },
     normalizePath: [
-      ['/api/transactions/.*', '/api/transactions/:id'],
-      ['/api/vaults/.*', '/api/vaults/:name'],
-      ['/api/cons-vaults/.*', '/api/cons-vaults/:id'],
-      ['/api/reports/.*', '/api/reports/:type'],
+      ["/api/transactions/.*", "/api/transactions/:id"],
+      ["/api/vaults/.*", "/api/vaults/:name"],
+      ["/api/cons-vaults/.*", "/api/cons-vaults/:id"],
+      ["/api/reports/.*", "/api/reports/:type"],
     ],
   });
 }

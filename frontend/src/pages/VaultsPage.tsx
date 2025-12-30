@@ -2,6 +2,9 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 // eslint-disable-next-line import/no-named-as-default
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+
 import AUMChart from '../components/reports/AUMChart';
 import { TimeSeriesLineChart } from '../components/reports/Charts';
 import CreateTokenizedVaultForm from '../components/tokenized/CreateTokenizedVaultForm';
@@ -50,7 +53,7 @@ const VaultsPage: React.FC = () => {
   const [showCreateForm, setShowCreateForm] = useState<boolean>(false);
   const [filter, setFilter] = useState<'all' | 'active' | 'closed'>('active');
 
-  // Unified time range for all three charts
+  // Unified time range for all charts
   const [timeRange, setTimeRange] = useState<TimeRange>('30d');
 
   // Aggregate time series data for PNL chart
@@ -62,9 +65,6 @@ const VaultsPage: React.FC = () => {
   const [aprSeriesFull, setAprSeriesFull] = useState<
     Array<{ date: string; weighted_apr_percent: number }>
   >([]);
-
-  // Aggregate APR from backend (for stats card)
-  const [aggregateAPR, setAggregateAPR] = useState<number | null>(null);
 
   const loadVaults = useCallback(async (): Promise<void> => {
     try {
@@ -82,7 +82,7 @@ const VaultsPage: React.FC = () => {
       if (Array.isArray(rows)) {
         for (const r of rows) mapAPR.set(r.vault, Number(r.apr_percent) || 0);
       }
-      const vts = (vaultsData ?? []).map((v) => ({
+      const vts = (vaultsData ?? []).map((v: TokenizedVault) => ({
         ...v,
         apr_percent: mapAPR.get(v.id),
       }));
@@ -244,7 +244,6 @@ const VaultsPage: React.FC = () => {
         );
         if (activeVaults.length === 0) {
           setAprSeriesFull([]);
-          setAggregateAPR(null);
           return;
         }
 
@@ -266,10 +265,6 @@ const VaultsPage: React.FC = () => {
 
         const series = result?.series ?? [];
         if (Array.isArray(series) && series.length > 0) {
-          // Set the latest APR value for the stats card
-          const latestAPR = series[series.length - 1].apr_percent;
-          setAggregateAPR(latestAPR);
-
           // Find the earliest inception date among active vaults
           const earliestInception = activeVaults.reduce((earliest, vault) => {
             const inceptionDate = new Date(vault.inception_date);
@@ -291,11 +286,9 @@ const VaultsPage: React.FC = () => {
           setAprSeriesFull(aggregated);
         } else {
           setAprSeriesFull([]);
-          setAggregateAPR(null);
         }
       } catch {
         setAprSeriesFull([]);
-        setAggregateAPR(null);
       }
     };
 
@@ -358,12 +351,13 @@ const VaultsPage: React.FC = () => {
       title: 'Vault Name',
       render: (value, _column, row) => (
         <div>
-          <button
+          <Button
+            variant="link"
             onClick={() => handleViewVault(row)}
-            className="text-blue-600 hover:text-blue-800 font-medium text-left"
+            className="p-0 h-auto font-medium text-left"
           >
             {value}
-          </button>
+          </Button>
           <div className="text-sm text-gray-500">{row.token_symbol}</div>
           {row.description && (
             <div
@@ -549,27 +543,29 @@ const VaultsPage: React.FC = () => {
       render: (_value, _column, row) => (
         <div className="flex space-x-2">
           {row.status === 'active' && (
-            <button
+            <Button
+              variant="destructive"
+              size="sm"
               onClick={(e) => {
                 e.stopPropagation();
                 void handleCloseVault(row);
               }}
-              className="px-2 py-1 bg-red-600 text-white text-xs rounded hover:bg-red-700"
               title="Close Vault"
             >
               Close
-            </button>
+            </Button>
           )}
-          <button
+          <Button
+            variant="secondary"
+            size="sm"
             onClick={(e) => {
               e.stopPropagation();
               void handleDeleteVault(row);
             }}
-            className="px-2 py-1 bg-gray-600 text-white text-xs rounded hover:bg-gray-700"
             title="Delete Vault"
           >
             Delete
-          </button>
+          </Button>
         </div>
       ),
     },
@@ -583,29 +579,6 @@ const VaultsPage: React.FC = () => {
         : vault.status !== 'active'
     );
   }, [vaults, filter]);
-
-  const totalStats = useMemo(() => {
-    const stats = {
-      totalVaults: filteredVaults.length,
-      activeVaults: filteredVaults.filter((v) => v.status === 'active').length,
-      totalAUM: 0,
-      totalSupply: 0,
-    } as {
-      totalVaults: number;
-      activeVaults: number;
-      totalAUM: number;
-      totalSupply: number;
-    };
-
-    filteredVaults.forEach((vault) => {
-      const aum = parseFloat(vault.total_assets_under_management || '0');
-      const supply = parseFloat(vault.total_supply || '0');
-      stats.totalAUM += aum;
-      stats.totalSupply += supply;
-    });
-
-    return stats;
-  }, [filteredVaults]);
 
   if (loading) {
     return (
@@ -629,198 +602,134 @@ const VaultsPage: React.FC = () => {
         </p>
       </div>
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        <div className="bg-white p-4 rounded-lg border border-gray-200">
-          <h3 className="text-sm font-medium text-gray-500 mb-2">
-            Total Vaults
-          </h3>
-          <p className="text-2xl font-bold text-gray-900">
-            {filteredVaults.length}
-          </p>
-          <p className="text-sm text-gray-600">
-            {filteredVaults.filter((v) => v.status === 'active').length} active
-          </p>
-        </div>
-
-        <div className="bg-white p-4 rounded-lg border border-gray-200">
-          <h3 className="text-sm font-medium text-gray-500 mb-2">Total AUM</h3>
-          <p className="text-2xl font-bold text-gray-900">
-            {formatCurrency(totalStats.totalAUM)}
-          </p>
-          <p className="text-sm text-gray-600">Assets under management</p>
-        </div>
-
-        <div className="bg-white p-4 rounded-lg border border-gray-200">
-          <h3 className="text-sm font-medium text-gray-500 mb-2">
-            Total Supply
-          </h3>
-          <p className="text-2xl font-bold text-gray-900">
-            {totalStats.totalSupply.toLocaleString(undefined, {
-              maximumFractionDigits: 0,
-            })}
-          </p>
-          <p className="text-sm text-gray-600">Total tokens issued</p>
-        </div>
-
-        <div className="bg-white p-4 rounded-lg border border-gray-200">
-          <h3 className="text-sm font-medium text-gray-500 mb-2">Avg APR</h3>
-          <p
-            className={`text-2xl font-bold ${aggregateAPR !== null ? (aggregateAPR >= 0 ? 'text-green-600' : 'text-red-600') : 'text-gray-600'}`}
-          >
-            {aggregateAPR !== null
-              ? formatPercentage(aggregateAPR / 100, 2)
-              : '—'}
-          </p>
-          <p className="text-sm text-gray-600">
-            Since inception (IRR-based, all vaults)
-          </p>
-        </div>
-      </div>
-
-      {/* Time Series Charts with unified filter */}
+      {/* Time Series with unified filter */}
       <div className="mb-6">
         {/* Unified Time Range Filter */}
         <div className="flex justify-end mb-3">
-          <div className="flex rounded-md shadow-sm" role="group">
-            <button
+          <div className="inline-flex rounded-md shadow-sm" role="group">
+            <Button
+              variant={timeRange === '7d' ? 'default' : 'outline'}
+              size="sm"
               onClick={() => setTimeRange('7d')}
-              className={`px-3 py-1.5 text-xs font-medium border rounded-l-lg ${
-                timeRange === '7d'
-                  ? 'bg-blue-600 text-white border-blue-600'
-                  : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
-              }`}
+              className="rounded-r-none rounded-l-lg"
             >
               7D
-            </button>
-            <button
+            </Button>
+            <Button
+              variant={timeRange === '30d' ? 'default' : 'outline'}
+              size="sm"
               onClick={() => setTimeRange('30d')}
-              className={`px-3 py-1.5 text-xs font-medium border-t border-b border-r ${
-                timeRange === '30d'
-                  ? 'bg-blue-600 text-white border-blue-600'
-                  : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
-              }`}
+              className="rounded-none border-l-0"
             >
               30D
-            </button>
-            <button
+            </Button>
+            <Button
+              variant={timeRange === 'all' ? 'default' : 'outline'}
+              size="sm"
               onClick={() => setTimeRange('all')}
-              className={`px-3 py-1.5 text-xs font-medium border-t border-b border-r rounded-r-lg ${
-                timeRange === 'all'
-                  ? 'bg-blue-600 text-white border-blue-600'
-                  : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
-              }`}
+              className="rounded-l-none rounded-r-lg border-l-0"
             >
               All
-            </button>
+            </Button>
           </div>
         </div>
 
-        {/* Charts Grid */}
+        {/* Metrics and Charts Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          {/* Metrics Cards (spans all 3 columns) */}
+          <AUMChart timeRange={timeRange} onTimeRangeChange={setTimeRange} />
+
           {/* Total PnL Chart */}
-          <div className="bg-white p-4 rounded-lg border border-gray-200">
-            <h3 className="text-sm font-medium text-gray-900 mb-3">
-              Total PnL Over Time
-            </h3>
-            <div style={{ height: 280 }}>
-              {pnlSeries.length > 0 ? (
-                <TimeSeriesLineChart
-                  labels={pnlSeries.map((p) => p.date)}
-                  datasets={[
-                    {
-                      label: 'Total PnL (USD)',
-                      data: pnlSeries.map((p) => p.total_pnl_usd),
-                      color: '#059669',
-                      fill: true,
-                    },
-                  ]}
-                  yFormat="currency"
-                  currency="USD"
-                />
-              ) : (
-                <div className="flex items-center justify-center h-full text-gray-500 text-sm">
-                  No PnL data available
-                </div>
-              )}
-            </div>
-          </div>
+          <Card className="col-span-1 lg:col-span-1">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm font-medium">
+                Total PnL Over Time
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div style={{ height: 280 }}>
+                {pnlSeries.length > 0 ? (
+                  <TimeSeriesLineChart
+                    labels={pnlSeries.map((p) => p.date)}
+                    datasets={[
+                      {
+                        label: 'Total PnL (USD)',
+                        data: pnlSeries.map((p) => p.total_pnl_usd),
+                        color: '#059669',
+                        fill: true,
+                      },
+                    ]}
+                    yFormat="currency"
+                    currency="USD"
+                  />
+                ) : (
+                  <div className="flex items-center justify-center h-full text-gray-500 text-sm">
+                    No PnL data available
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
 
           {/* Weighted APR Chart */}
-          <div className="bg-white p-4 rounded-lg border border-gray-200">
-            <h3 className="text-sm font-medium text-gray-900 mb-3">
-              Weighted APR Over Time
-            </h3>
-            <div style={{ height: 280 }}>
-              {aprSeries.length > 0 ? (
-                <TimeSeriesLineChart
-                  labels={aprSeries.map((p) => p.date)}
-                  datasets={[
-                    {
-                      label: 'Weighted APR (%)',
-                      data: aprSeries.map((p) => p.weighted_apr_percent),
-                      color: '#2563EB',
-                      fill: true,
-                    },
-                  ]}
-                  yFormat="percent"
-                />
-              ) : (
-                <div className="flex items-center justify-center h-full text-gray-500 text-sm">
-                  No APR data available
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* AUM Chart */}
-          <div className="bg-white p-4 rounded-lg border border-gray-200">
-            <AUMChart timeRange={timeRange} onTimeRangeChange={setTimeRange} />
-          </div>
+          <Card className="col-span-1 lg:col-span-1">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm font-medium">
+                Weighted APR Over Time
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div style={{ height: 280 }}>
+                {aprSeries.length > 0 ? (
+                  <TimeSeriesLineChart
+                    labels={aprSeries.map((p) => p.date)}
+                    datasets={[
+                      {
+                        label: 'Weighted APR (%)',
+                        data: aprSeries.map((p) => p.weighted_apr_percent),
+                        color: '#2563EB',
+                        fill: true,
+                      },
+                    ]}
+                    yFormat="percent"
+                  />
+                ) : (
+                  <div className="flex items-center justify-center h-full text-gray-500 text-sm">
+                    No APR data available
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
         </div>
       </div>
 
       {/* Controls */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 space-y-3 sm:space-y-0">
         <div className="flex space-x-2">
-          <button
+          <Button
+            variant={filter === 'all' ? 'default' : 'outline'}
             onClick={() => setFilter('all')}
-            className={`px-4 py-2 rounded-md text-sm font-medium ${
-              filter === 'all'
-                ? 'bg-blue-600 text-white'
-                : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
-            }`}
           >
             All ({vaults.length})
-          </button>
-          <button
+          </Button>
+          <Button
+            variant={filter === 'active' ? 'default' : 'outline'}
             onClick={() => setFilter('active')}
-            className={`px-4 py-2 rounded-md text-sm font-medium ${
-              filter === 'active'
-                ? 'bg-green-600 text-white'
-                : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
-            }`}
           >
             Active ({vaults.filter((v) => v.status === 'active').length})
-          </button>
-          <button
+          </Button>
+          <Button
+            variant={filter === 'closed' ? 'secondary' : 'outline'}
             onClick={() => setFilter('closed')}
-            className={`px-4 py-2 rounded-md text-sm font-medium ${
-              filter === 'closed'
-                ? 'bg-gray-600 text-white'
-                : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
-            }`}
           >
             Closed ({vaults.filter((v) => v.status !== 'active').length})
-          </button>
+          </Button>
         </div>
 
-        <button
-          onClick={handleCreateVault}
-          className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 flex items-center"
-        >
+        <Button onClick={handleCreateVault}>
           <span className="mr-2">+</span> Create Tokenized Vault
-        </button>
+        </Button>
       </div>
 
       {/* Create Vault Form */}
@@ -835,19 +744,21 @@ const VaultsPage: React.FC = () => {
       )}
 
       {/* Vaults Table */}
-      <div className="bg-white rounded-lg border border-gray-200">
-        <DataTable<TokenizedVault>
-          data={filteredVaults}
-          columns={vaultColumns}
-          loading={loading}
-          error={error}
-          emptyMessage="No vaults found"
-          editable={false}
-          selectableRows={false}
-          onRowClick={handleViewVault}
-          data-testid="vaults-table"
-        />
-      </div>
+      <Card>
+        <CardContent className="p-0">
+          <DataTable<TokenizedVault>
+            data={filteredVaults}
+            columns={vaultColumns}
+            loading={loading}
+            error={error}
+            emptyMessage="No vaults found"
+            editable={false}
+            selectableRows={false}
+            onRowClick={handleViewVault}
+            data-testid="vaults-table"
+          />
+        </CardContent>
+      </Card>
     </div>
   );
 };

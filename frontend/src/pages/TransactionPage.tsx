@@ -17,6 +17,7 @@ import QuickRepayModal from '../components/modals/QuickRepayModal';
 import QuickSellModal from '../components/modals/QuickSellModal';
 import QuickTransferModal from '../components/modals/QuickTransferModal';
 import QuickVaultModal from '../components/modals/QuickVaultModal';
+import { Button } from '../components/ui/button';
 import ComboBox from '../components/ui/ComboBox';
 import DataTable, {
   TableColumn,
@@ -761,12 +762,13 @@ const TransactionPage: React.FC = () => {
           <h3 className="text-md font-semibold">Quick Add</h3>
           <div className="flex items-center gap-2">
             <span className="text-sm text-gray-500">Press Esc to close</span>
-            <button
+            <Button
+              variant="outline"
+              size="sm"
               onClick={() => setShowQuickAdd(false)}
-              className="px-2 py-1 text-sm rounded border border-gray-300 hover:bg-gray-50"
             >
               Close
-            </button>
+            </Button>
           </div>
         </div>
 
@@ -1019,33 +1021,32 @@ const TransactionPage: React.FC = () => {
             </span>
           </div>
           <div className="flex items-center gap-2">
-            <button
-              className={`px-4 py-2 text-sm rounded-md text-white ${submitting ? 'bg-gray-400' : 'bg-blue-600 hover:bg-blue-700'}`}
+            <Button
               onClick={() => {
                 void submit(false);
               }}
               disabled={submitting}
             >
               Add
-            </button>
-            <button
-              className={`px-4 py-2 text-sm rounded-md border ${submitting ? 'bg-gray-100' : 'bg-white hover:bg-gray-50'}`}
+            </Button>
+            <Button
+              variant="outline"
               onClick={() => {
                 void submit(true);
               }}
               disabled={submitting}
             >
               Add & New
-            </button>
-            <button
-              className="px-4 py-2 text-sm rounded-md border bg-white hover:bg-gray-50"
+            </Button>
+            <Button
+              variant="outline"
               onClick={() => {
                 setShowForm(true);
                 setShowQuickAdd(false);
               }}
             >
               Advanced…
-            </button>
+            </Button>
           </div>
         </div>
       </div>
@@ -1502,9 +1503,10 @@ const TransactionPage: React.FC = () => {
     return (
       <div className="px-4 py-6 sm:px-0">
         <div className="mb-6">
-          <button
+          <Button
+            variant="ghost"
             onClick={handleFormCancel}
-            className="inline-flex items-center text-sm text-gray-500 hover:text-gray-700"
+            className="text-gray-500 hover:text-gray-700"
           >
             <svg
               className="w-4 h-4 mr-1"
@@ -1520,7 +1522,7 @@ const TransactionPage: React.FC = () => {
               />
             </svg>
             Back to Transactions
-          </button>
+          </Button>
         </div>
 
         <TransactionForm
@@ -1555,9 +1557,8 @@ const TransactionPage: React.FC = () => {
           </div>
           <div className="flex items-center space-x-3">
             <div className="relative" ref={quickMenuRef}>
-              <button
+              <Button
                 onClick={() => setIsQuickMenuOpen((s) => !s)}
-                className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
                 title="Quick Add (N)"
               >
                 <svg
@@ -1585,12 +1586,13 @@ const TransactionPage: React.FC = () => {
                     clipRule="evenodd"
                   />
                 </svg>
-              </button>
+              </Button>
               {isQuickMenuOpen && (
                 <div className="absolute right-0 mt-2 w-44 rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5 z-10">
                   <div className="py-1">
-                    <button
-                      className="w-full text-left px-4 py-2 text-sm hover:bg-gray-50"
+                    <Button
+                      variant="ghost"
+                      className="w-full justify-start"
                       onClick={() => {
                         setIsQuickMenuOpen(false);
                         setExpenseDefaultAccount(undefined);
@@ -1598,9 +1600,10 @@ const TransactionPage: React.FC = () => {
                       }}
                     >
                       Expense
-                    </button>
-                    <button
-                      className="w-full text-left px-4 py-2 text-sm hover:bg-gray-50"
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      className="w-full justify-start"
                       onClick={() => {
                         setIsQuickMenuOpen(false);
                         setExpenseDefaultAccount('Spend');
@@ -1608,9 +1611,10 @@ const TransactionPage: React.FC = () => {
                       }}
                     >
                       Cash Expense
-                    </button>
-                    <button
-                      className="w-full text-left px-4 py-2 text-sm hover:bg-gray-50"
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      className="w-full justify-start"
                       onClick={() => {
                         setIsQuickMenuOpen(false);
                         setExpenseDefaultAccount('Borrowings');
@@ -1618,104 +1622,113 @@ const TransactionPage: React.FC = () => {
                       }}
                     >
                       Credit Expense
-                    </button>
-                    <button
-                      className="w-full text-left px-4 py-2 text-sm hover:bg-gray-50"
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      className="w-full justify-start"
                       onClick={() => {
                         setIsQuickMenuOpen(false);
                         openQuickModal('income');
                       }}
                     >
                       Income
-                    </button>
-                    <button
-                      className="w-full text-left px-4 py-2 text-sm hover:bg-gray-50"
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      className="w-full justify-start"
                       onClick={() => {
                         setIsQuickMenuOpen(false);
                         openQuickModal('borrowLoan');
                       }}
                     >
                       Borrow
-                    </button>
-                    <button
-                      className="w-full text-left px-4 py-2 text-sm hover:bg-gray-50"
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      className="w-full justify-start"
                       onClick={() => {
                         setIsQuickMenuOpen(false);
                         openQuickModal('loan');
                       }}
                     >
                       Loan
-                    </button>
-                    <button
-                      className="w-full text-left px-4 py-2 text-sm hover:bg-gray-50"
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      className="w-full justify-start"
                       onClick={() => {
                         setIsQuickMenuOpen(false);
                         openQuickModal('repay');
                       }}
                     >
                       Repay
-                    </button>
-                    <button
-                      className="w-full text-left px-4 py-2 text-sm hover:bg-gray-50"
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      className="w-full justify-start"
                       onClick={() => {
                         setIsQuickMenuOpen(false);
                         openQuickModal('buy');
                       }}
                     >
                       Quick Buy
-                    </button>
-                    <button
-                      className="w-full text-left px-4 py-2 text-sm hover:bg-gray-50"
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      className="w-full justify-start"
                       onClick={() => {
                         setIsQuickMenuOpen(false);
                         openQuickModal('sell');
                       }}
                     >
                       Quick Sell
-                    </button>
-                    <button
-                      className="w-full text-left px-4 py-2 text-sm hover:bg-gray-50"
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      className="w-full justify-start"
                       onClick={() => {
                         setIsQuickMenuOpen(false);
                         openQuickModal('vault');
                       }}
                     >
                       New Vault
-                    </button>
-                    <button
-                      className="w-full text-left px-4 py-2 text-sm hover:bg-gray-50"
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      className="w-full justify-start"
                       onClick={() => {
                         setIsQuickMenuOpen(false);
                         openQuickModal('initBalance');
                       }}
                     >
                       Init Balance
-                    </button>
-                    <button
-                      className="w-full text-left px-4 py-2 text-sm hover:bg-gray-50"
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      className="w-full justify-start"
                       onClick={() => {
                         setIsQuickMenuOpen(false);
                         openQuickModal('investment');
                       }}
                     >
                       New Investment
-                    </button>
-                    <button
-                      className="w-full text-left px-4 py-2 text-sm hover:bg-gray-50"
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      className="w-full justify-start"
                       onClick={() => {
                         setIsQuickMenuOpen(false);
                         openQuickModal('transfer');
                       }}
                     >
                       Transfer
-                    </button>
+                    </Button>
                   </div>
                 </div>
               )}
             </div>
-            <button
+            <Button
               onClick={() => setShowForm(true)}
-              className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
             >
               <svg
                 className="w-4 h-4 mr-2"
@@ -1731,10 +1744,10 @@ const TransactionPage: React.FC = () => {
                 />
               </svg>
               New Transaction
-            </button>
-            <button
+            </Button>
+            <Button
+              variant={selectedIds.size > 0 ? "destructive" : "secondary"}
               onClick={() => void handleDeleteSelected()}
-              className={`inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white ${selectedIds.size > 0 ? 'bg-red-600 hover:bg-red-700' : 'bg-gray-400 cursor-not-allowed'}`}
               disabled={selectedIds.size === 0}
               title={
                 selectedIds.size === 0
@@ -1756,8 +1769,9 @@ const TransactionPage: React.FC = () => {
                 />
               </svg>
               Delete Selected
-            </button>
-            <button
+            </Button>
+            <Button
+              variant="outline"
               onClick={() => {
                 void (async () => {
                   try {
@@ -1772,7 +1786,6 @@ const TransactionPage: React.FC = () => {
                   }
                 })();
               }}
-              className={`inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${bulkRefreshing ? 'opacity-70 cursor-not-allowed' : ''}`}
               disabled={bulkRefreshing}
             >
               {bulkRefreshing ? (
@@ -1812,10 +1825,10 @@ const TransactionPage: React.FC = () => {
                 </svg>
               )}
               {bulkRefreshing ? 'Refreshing...' : 'Refresh'}
-            </button>
-            <button className="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2">
+            </Button>
+            <Button variant="outline">
               Export
-            </button>
+            </Button>
           </div>
         </div>
       </div>
@@ -1833,26 +1846,20 @@ const TransactionPage: React.FC = () => {
       {/* Currency Toggle */}
       <div className="mb-6">
         <div className="inline-flex rounded-md shadow-sm">
-          <button
+          <Button
+            variant={currency === 'USD' ? 'default' : 'outline'}
+            className="rounded-r-none"
             onClick={() => actions.setCurrency('USD')}
-            className={`px-4 py-2 text-sm font-medium border rounded-l-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
-              currency === 'USD'
-                ? 'bg-blue-600 text-white border-blue-600'
-                : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
-            }`}
           >
             USD View
-          </button>
-          <button
+          </Button>
+          <Button
+            variant={currency === 'VND' ? 'default' : 'outline'}
+            className="rounded-l-none"
             onClick={() => actions.setCurrency('VND')}
-            className={`px-4 py-2 text-sm font-medium border-t border-b border-r rounded-r-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
-              currency === 'VND'
-                ? 'bg-blue-600 text-white border-blue-600'
-                : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
-            }`}
           >
             VND View
-          </button>
+          </Button>
         </div>
       </div>
 

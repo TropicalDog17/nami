@@ -9,7 +9,7 @@ interface Config {
   nodeEnv: string;
 
   // Storage
-  storageBackend: 'database' | 'json';
+  storageBackend: "database" | "json";
 
   // AI/Security
   backendSigningSecret?: string;
@@ -35,7 +35,7 @@ function getEnv(key: string, fallback?: string): string {
 function getBool(key: string, fallback: boolean): boolean {
   const value = process.env[key];
   if (value === undefined) return fallback;
-  return value === '1' || value.toLowerCase() === 'true';
+  return value === "1" || value.toLowerCase() === "true";
 }
 
 /**
@@ -56,11 +56,12 @@ function getNumber(key: string, fallback: number): number {
  */
 function loadConfig(): Config {
   return {
-    port: getNumber('PORT', 8080),
-    nodeEnv: getEnv('NODE_ENV', 'development'),
-    storageBackend: (getEnv('STORAGE_BACKEND', 'json') === 'database' ? 'database' : 'json'),
+    port: getNumber("PORT", 8080),
+    nodeEnv: getEnv("NODE_ENV", "development"),
+    storageBackend:
+      getEnv("STORAGE_BACKEND", "json") === "database" ? "database" : "json",
     backendSigningSecret: process.env.BACKEND_SIGNING_SECRET,
-    noExternalRates: getBool('NO_EXTERNAL_RATES', false),
+    noExternalRates: getBool("NO_EXTERNAL_RATES", false),
   };
 }
 
@@ -86,11 +87,25 @@ export function resetConfig(): void {
 
 // Export convenience getters
 export const config = {
-  get port(): number { return getConfig().port; },
-  get nodeEnv(): string { return getConfig().nodeEnv; },
-  get storageBackend(): 'database' | 'json' { return getConfig().storageBackend; },
-  get backendSigningSecret(): string | undefined { return getConfig().backendSigningSecret; },
-  get noExternalRates(): boolean { return getConfig().noExternalRates; },
-  get isDevelopment(): boolean { return getConfig().nodeEnv !== 'production'; },
-  get isProduction(): boolean { return getConfig().nodeEnv === 'production'; },
+  get port(): number {
+    return getConfig().port;
+  },
+  get nodeEnv(): string {
+    return getConfig().nodeEnv;
+  },
+  get storageBackend(): "database" | "json" {
+    return getConfig().storageBackend;
+  },
+  get backendSigningSecret(): string | undefined {
+    return getConfig().backendSigningSecret;
+  },
+  get noExternalRates(): boolean {
+    return getConfig().noExternalRates;
+  },
+  get isDevelopment(): boolean {
+    return getConfig().nodeEnv !== "production";
+  },
+  get isProduction(): boolean {
+    return getConfig().nodeEnv === "production";
+  },
 };

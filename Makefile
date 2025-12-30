@@ -18,9 +18,9 @@ setup: ## Set up the development environment (install dependencies, setup databa
 
 install: ## Install all dependencies (Node packages)
 	@echo "Installing Node dependencies..."
-	@cd backend && npm install
-	@cd frontend && npm install
-	@cd ai-service && npm install
+	@cd backend && pnpm install
+	@cd frontend && pnpm install
+	@cd ai-service && pnpm install
 	@echo "Dependencies installed"
 
 
@@ -95,9 +95,9 @@ run-dev: ## Run both backend and frontend simultaneously (requires database)
 	@echo "Press Ctrl+C to stop all services"
 	@echo ""
 	@mkdir -p logs
-	@(cd backend && npm run dev) > logs/backend.log 2>&1 & \
-	(cd frontend && npm run dev) > logs/frontend.log 2>&1 & \
-	(cd ai-service && npm run dev) > logs/ai-service.log 2>&1 & \
+	@(cd backend && pnpm run dev) > logs/backend.log 2>&1 & \
+	(cd frontend && pnpm run dev) > logs/frontend.log 2>&1 & \
+	(cd ai-service && pnpm run dev) > logs/ai-service.log 2>&1 & \
 	wait; \
 	make stop
 

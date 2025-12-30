@@ -1,5 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
 
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+
 import { AdminAssetsTab } from '../components/AdminAssetsTab';
 import { AdminPendingActions } from '../components/AdminPendingActions';
 import DataTable from '../components/ui/DataTable';
@@ -403,8 +406,9 @@ const AdminPage = () => {
       <div className="border-b border-gray-200 mb-6">
         <nav className="-mb-px flex space-x-8">
           {tabs.map((tab) => (
-            <button
+            <Button
               key={tab.id}
+              variant="ghost"
               onClick={() => setActiveTab(tab.id)}
               className={`${
                 activeTab === tab.id
@@ -415,7 +419,7 @@ const AdminPage = () => {
             >
               <span>{tab.icon}</span>
               <span>{tab.name}</span>
-            </button>
+            </Button>
           ))}
         </nav>
       </div>
@@ -424,14 +428,14 @@ const AdminPage = () => {
       {activeTab === 'assets' ? (
         <AdminAssetsTab />
       ) : activeTab === 'pending' ? (
-        <div className="bg-white shadow rounded-lg">
-          <div className="px-4 py-5 sm:p-6">
+        <Card>
+          <CardContent className="px-4 py-5 sm:p-6">
             <AdminPendingActions />
-          </div>
-        </div>
+          </CardContent>
+        </Card>
       ) : (
-        <div className="bg-white shadow rounded-lg">
-          <div className="px-4 py-5 sm:p-6">
+        <Card>
+          <CardContent className="px-4 py-5 sm:p-6">
             <div className="flex justify-between items-center mb-4">
               <h2
                 className="text-lg font-medium text-gray-900"
@@ -439,44 +443,50 @@ const AdminPage = () => {
               >
                 {tabs.find((t) => t.id === activeTab)?.name}
               </h2>
-              <button
+              <Button
                 onClick={handleCreate}
-                className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 flex items-center space-x-2"
+                className="flex items-center space-x-2"
                 data-testid="add-new-button"
               >
                 <span>+</span>
                 <span>Add New</span>
-              </button>
+              </Button>
             </div>
 
             {renderForm()}
             {renderTable()}
-          </div>
-        </div>
+          </CardContent>
+        </Card>
       )}
 
       {/* Notifications */}
       {error && (
-        <div className="mb-4 p-4 bg-red-100 border border-red-400 text-red-700 rounded flex justify-between items-center">
-          <span>{error}</span>
-          <button
-            onClick={() => actions.clearError()}
-            className="ml-2 text-red-700 hover:text-red-900 font-bold"
-          >
-            ×
-          </button>
-        </div>
+        <Card className="mb-4 border-red-400 bg-red-100">
+          <CardContent className="p-4 flex justify-between items-center">
+            <span className="text-red-700">{error}</span>
+            <Button
+              variant="ghost"
+              onClick={() => actions.clearError()}
+              className="ml-2 text-red-700 hover:text-red-900 font-bold"
+            >
+              ×
+            </Button>
+          </CardContent>
+        </Card>
       )}
       {success && (
-        <div className="mb-4 p-4 bg-green-100 border border-green-400 text-green-700 rounded flex justify-between items-center">
-          <span>{success}</span>
-          <button
-            onClick={() => actions.clearSuccess()}
-            className="ml-2 text-green-700 hover:text-green-900 font-bold"
-          >
-            ×
-          </button>
-        </div>
+        <Card className="mb-4 border-green-400 bg-green-100">
+          <CardContent className="p-4 flex justify-between items-center">
+            <span className="text-green-700">{success}</span>
+            <Button
+              variant="ghost"
+              onClick={() => actions.clearSuccess()}
+              className="ml-2 text-green-700 hover:text-green-900 font-bold"
+            >
+              ×
+            </Button>
+          </CardContent>
+        </Card>
       )}
 
       {loading && <div className="loading">Loading...</div>}
@@ -696,49 +706,49 @@ const AdminForm: React.FC<{ type: 'types' | 'accounts' | 'assets' | 'tags'; item
   };
 
   return (
-    <div className="bg-gray-50 p-4 rounded-lg mb-6" data-testid="admin-form">
-      <h3
-        className="text-lg font-medium text-gray-900 mb-4"
-        data-testid="admin-form-title"
-      >
-        {item ? 'Edit' : 'Create New'} {type.slice(0, -1)}
-      </h3>
+    <Card className="bg-gray-50 p-4 rounded-lg mb-6" data-testid="admin-form">
+      <CardHeader className="mb-4">
+        <CardTitle className="text-lg" data-testid="admin-form-title">
+          {item ? 'Edit' : 'Create New'} {type.slice(0, -1)}
+        </CardTitle>
+      </CardHeader>
 
-      <form onSubmit={handleSubmit} data-testid="admin-form-element">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-          {renderFields()}
+      <CardContent>
+        <form onSubmit={handleSubmit} data-testid="admin-form-element">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+            {renderFields()}
 
-          <div className="flex items-center">
-            <input
-              type="checkbox"
-              name="is_active"
-              checked={Boolean((formData).is_active)}
-              onChange={handleChange}
-              className="mr-2"
-            />
-            <label className="text-sm font-medium text-gray-700">Active</label>
+            <div className="flex items-center">
+              <input
+                type="checkbox"
+                name="is_active"
+                checked={Boolean((formData).is_active)}
+                onChange={handleChange}
+                className="mr-2"
+              />
+              <label className="text-sm font-medium text-gray-700">Active</label>
+            </div>
           </div>
-        </div>
 
-        <div className="flex space-x-3">
-          <button
-            type="submit"
-            className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
-            data-testid="admin-form-submit"
-          >
-            {item ? 'Update' : 'Create'}
-          </button>
-          <button
-            type="button"
-            onClick={onCancel}
-            className="bg-gray-300 text-gray-700 px-4 py-2 rounded hover:bg-gray-400"
-            data-testid="admin-form-cancel"
-          >
-            Cancel
-          </button>
-        </div>
-      </form>
-    </div>
+          <div className="flex space-x-3">
+            <Button
+              type="submit"
+              data-testid="admin-form-submit"
+            >
+              {item ? 'Update' : 'Create'}
+            </Button>
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={onCancel}
+              data-testid="admin-form-cancel"
+            >
+              Cancel
+            </Button>
+          </div>
+        </form>
+      </CardContent>
+    </Card>
   );
 };
 

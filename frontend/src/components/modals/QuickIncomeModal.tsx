@@ -1,5 +1,23 @@
 import React, { useState } from 'react';
 
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+
 import { useApp } from '../../context/AppContext';
 import { toISODateTime, getTodayDate } from '../../utils/dateUtils';
 
@@ -66,62 +84,96 @@ const QuickIncomeModal = ({ isOpen, onClose, onSubmit }: Props) => {
     }
   };
 
-  if (!isOpen) return null;
-
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg p-6 w-full max-w-md">
-        <div className="flex justify-between items-center mb-4">
-          <h3 className="text-lg font-medium text-gray-900">Quick Income Entry</h3>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">×</button>
-        </div>
+    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Quick Income Entry</DialogTitle>
+        </DialogHeader>
         <form onSubmit={(e) => void handleSubmit(e)} className="space-y-4">
           <div className="grid grid-cols-1 gap-3">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Date</label>
-              <input type="date" value={formData.date} onChange={(e) => handleInputChange('date', e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" required />
+            <div className="space-y-2">
+              <Label htmlFor="date">Date</Label>
+              <Input
+                id="date"
+                type="date"
+                value={formData.date}
+                onChange={(e) => handleInputChange('date', e.target.value)}
+                required
+              />
             </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Amount</label>
-              <input type="number" step="0.01" value={formData.amount} onChange={(e) => handleInputChange('amount', e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="0.00" required />
+            <div className="space-y-2">
+              <Label htmlFor="amount">Amount</Label>
+              <Input
+                id="amount"
+                type="number"
+                step="0.01"
+                value={formData.amount}
+                onChange={(e) => handleInputChange('amount', e.target.value)}
+                placeholder="0.00"
+                required
+              />
             </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Receiving Account</label>
-              <select value={formData.account} onChange={(e) => handleInputChange('account', e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" required>
-                <option value="">Select account</option>
-                {accounts.filter(a => a.is_active).map(a => (
-                  <option key={a.name} value={a.name}>
-                    {a.name}
-                  </option>
-                ))}
-              </select>
+            <div className="space-y-2">
+              <Label htmlFor="account">Receiving Account</Label>
+              <Select value={formData.account} onValueChange={(value) => handleInputChange('account', value)} required>
+                <SelectTrigger id="account">
+                  <SelectValue placeholder="Select account" />
+                </SelectTrigger>
+                <SelectContent>
+                  {accounts.filter(a => a.is_active).map(a => (
+                    <SelectItem key={a.name} value={a.name}>
+                      {a.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Currency</label>
-              <select value={formData.asset} onChange={(e) => handleInputChange('asset', e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
-                {assets.filter(a => a.is_active).map(a => (
-                  <option key={a.symbol} value={a.symbol}>
-                    {a.symbol} - {a.name ?? ''}
-                  </option>
-                ))}
-              </select>
+            <div className="space-y-2">
+              <Label htmlFor="asset">Currency</Label>
+              <Select value={formData.asset} onValueChange={(value) => handleInputChange('asset', value)}>
+                <SelectTrigger id="asset">
+                  <SelectValue placeholder="Select currency" />
+                </SelectTrigger>
+                <SelectContent>
+                  {assets.filter(a => a.is_active).map(a => (
+                    <SelectItem key={a.symbol} value={a.symbol}>
+                      {a.symbol} - {a.name ?? ''}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Income Source</label>
-              <input type="text" value={formData.payer} onChange={(e) => handleInputChange('payer', e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Employer, Client, Platform" />
+            <div className="space-y-2">
+              <Label htmlFor="payer">Income Source</Label>
+              <Input
+                id="payer"
+                type="text"
+                value={formData.payer}
+                onChange={(e) => handleInputChange('payer', e.target.value)}
+                placeholder="Employer, Client, Platform"
+              />
             </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Note</label>
-              <input type="text" value={formData.note} onChange={(e) => handleInputChange('note', e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Optional details (e.g., September payroll)" />
+            <div className="space-y-2">
+              <Label htmlFor="note">Note</Label>
+              <Input
+                id="note"
+                type="text"
+                value={formData.note}
+                onChange={(e) => handleInputChange('note', e.target.value)}
+                placeholder="Optional details (e.g., September payroll)"
+              />
             </div>
           </div>
-          <div className="flex space-x-3">
-            <button type="button" onClick={onClose} className="flex-1 px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50">Cancel</button>
-            <button type="submit" disabled={isSubmitting || !formData.amount || !formData.account} className="flex-1 px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:opacity-50">{isSubmitting ? 'Saving...' : 'Save Income'}</button>
-          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
+            <Button type="submit" disabled={isSubmitting || !formData.amount || !formData.account}>
+              {isSubmitting ? 'Saving...' : 'Save Income'}
+            </Button>
+          </DialogFooter>
         </form>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 };
 

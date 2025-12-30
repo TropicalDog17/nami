@@ -1,5 +1,23 @@
 import React, { useState } from 'react';
 
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+
 import { useApp } from '../../context/AppContext';
 
 interface Account {
@@ -41,8 +59,6 @@ const QuickBorrowLoanModal: React.FC<QuickBorrowLoanModalProps> = ({ isOpen, mod
   });
   const [submitting, setSubmitting] = useState(false);
 
-  if (!isOpen) return null;
-
   const title = mode === 'borrow' ? 'Quick Borrow' : 'Quick Loan';
   const cta = mode === 'borrow' ? 'Save Borrow' : 'Save Loan';
 
@@ -68,106 +84,103 @@ const QuickBorrowLoanModal: React.FC<QuickBorrowLoanModalProps> = ({ isOpen, mod
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg p-6 w-full max-w-md">
-        <div className="flex justify-between items-center mb-4">
-          <h3 className="text-lg font-medium text-gray-900">{title}</h3>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">×</button>
-        </div>
+    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>{title}</DialogTitle>
+        </DialogHeader>
 
         <form onSubmit={(e) => void handleSubmit(e)} className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Date</label>
-            <input
+          <div className="space-y-2">
+            <Label htmlFor="date">Date</Label>
+            <Input
+              id="date"
               type="date"
               value={form.date}
               onChange={(e) => setForm((s) => ({ ...s, date: e.target.value }))}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
               required
             />
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Amount</label>
-            <input
+          <div className="space-y-2">
+            <Label htmlFor="amount">Amount</Label>
+            <Input
+              id="amount"
               type="number"
               step="any"
               value={form.amount}
               onChange={(e) => setForm((s) => ({ ...s, amount: e.target.value }))}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
               placeholder="0.00"
               required
             />
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Account</label>
-            <select
+          <div className="space-y-2">
+            <Label htmlFor="account">Account</Label>
+            <Select
               value={form.account}
-              onChange={(e) => setForm((s) => ({ ...s, account: e.target.value }))}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              onValueChange={(value) => setForm((s) => ({ ...s, account: value }))}
             >
-              <option value="">Select account</option>
-              {(accounts ?? []).filter((a: Account) => a.is_active).map((a: Account) => (
-                <option key={a.name} value={a.name}>{a.name}</option>
-              ))}
-            </select>
+              <SelectTrigger id="account">
+                <SelectValue placeholder="Select account" />
+              </SelectTrigger>
+              <SelectContent>
+                <option value="">Select account</option>
+                {(accounts ?? []).filter((a: Account) => a.is_active).map((a: Account) => (
+                  <option key={a.name} value={a.name}>{a.name}</option>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Asset</label>
-            <select
+          <div className="space-y-2">
+            <Label htmlFor="asset">Asset</Label>
+            <Select
               value={form.asset}
-              onChange={(e) => setForm((s) => ({ ...s, asset: e.target.value }))}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              onValueChange={(value) => setForm((s) => ({ ...s, asset: value }))}
             >
-              {(assets ?? []).filter((as: Asset) => as.is_active).map((as: Asset) => (
-                <option key={as.symbol} value={as.symbol}>{as.symbol}{as.name ? ` - ${as.name}` : ''}</option>
-              ))}
-            </select>
+              <SelectTrigger id="asset">
+                <SelectValue placeholder="Select asset" />
+              </SelectTrigger>
+              <SelectContent>
+                {(assets ?? []).filter((as: Asset) => as.is_active).map((as: Asset) => (
+                  <option key={as.symbol} value={as.symbol}>{as.symbol}{as.name ? ` - ${as.name}` : ''}</option>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Counterparty (optional)</label>
-            <input
+          <div className="space-y-2">
+            <Label htmlFor="counterparty">Counterparty (optional)</Label>
+            <Input
+              id="counterparty"
               type="text"
               value={form.counterparty}
               onChange={(e) => setForm((s) => ({ ...s, counterparty: e.target.value }))}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
               placeholder="e.g., Alice"
             />
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Note (optional)</label>
-            <input
+          <div className="space-y-2">
+            <Label htmlFor="note">Note (optional)</Label>
+            <Input
+              id="note"
               type="text"
               value={form.note}
               onChange={(e) => setForm((s) => ({ ...s, note: e.target.value }))}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
               placeholder="Description"
             />
           </div>
 
-          <div className="flex space-x-3">
-            <button
-              type="button"
-              onClick={onClose}
-              className="flex-1 px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={submitting || !form.amount}
-              className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50"
-            >
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
+            <Button type="submit" disabled={submitting || !form.amount}>
               {submitting ? 'Saving…' : cta}
-            </button>
-          </div>
+            </Button>
+          </DialogFooter>
         </form>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 };
 

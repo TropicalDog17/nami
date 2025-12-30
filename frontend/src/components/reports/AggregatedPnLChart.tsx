@@ -1,29 +1,13 @@
-import {
-  Chart as ChartJS,
-  CategoryScale,
-  LinearScale,
-  PointElement,
-  LineElement,
-  Title,
-  Tooltip,
-  Legend,
-  Filler,
-} from 'chart.js';
-import { useState, useEffect } from 'react';
-import { Line } from 'react-chartjs-2';
+import { useState, useEffect, useCallback } from 'react';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, ResponsiveContainer } from 'recharts';
 
 import { reportsApi } from '../../services/api';
-
-ChartJS.register(
-  CategoryScale,
-  LinearScale,
-  PointElement,
-  LineElement,
-  Title,
-  Tooltip,
-  Legend,
-  Filler
-);
+import { Card, CardContent, CardHeader } from '@/components/ui/card';
+import {
+  ChartContainer,
+  ChartTooltip,
+  ChartTooltipContent,
+} from '@/components/ui/chart';
 
 type Currency = 'USD' | 'VND';
 
@@ -45,6 +29,17 @@ type AggregatedPnLChartProps = {
 };
 
 type TimeRange = '7d' | '30d' | 'custom';
+
+const chartConfig = {
+  aum: {
+    label: 'AUM',
+    color: 'hsl(217, 91%, 60%)',
+  },
+  pnl: {
+    label: 'Cumulative P&L',
+    color: 'hsl(142, 76%, 36%)',
+  },
+};
 
 export const AggregatedPnLChart: React.FC<AggregatedPnLChartProps> = ({
   currency = 'USD',
@@ -77,9 +72,6 @@ export const AggregatedPnLChart: React.FC<AggregatedPnLChartProps> = ({
         case 'custom':
           startDate = customStart;
           break;
-        case 'all':
-          startDate = '';
-          break;
         default:
           startDate = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
       }
@@ -108,150 +100,31 @@ export const AggregatedPnLChart: React.FC<AggregatedPnLChartProps> = ({
   }, [fetchData]);
 
   // Prepare chart data
-  const labels = seriesData.map((d) => {
-    const date = new Date(d.date);
-    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-  });
-
   const pnlKey = currency === 'USD' ? 'pnl_usd' : 'pnl_vnd';
   const aumKey = currency === 'USD' ? 'aum_usd' : 'aum_vnd';
 
-  const pnlData = seriesData.map((d) => d[pnlKey]);
-  const aumData = seriesData.map((d) => d[aumKey]);
-
-  // Calculate cumulative PnL from start
-  const cumulativePnLData: number[] = [];
-  let cumulativePnL = 0;
-  for (let i = 0; i < pnlData.length; i++) {
-    if (i === 0) {
-      cumulativePnL = pnlData[i];
-    } else {
-      cumulativePnL += pnlData[i] - pnlData[i - 1];
-    }
-    cumulativePnLData.push(cumulativePnL);
-  }
-
-  const chartData = {
-    labels,
-    datasets: [
-      {
-        label: `AUM (${currency})`,
-        data: aumData,
-        borderColor: '#3B82F6',
-        backgroundColor: 'rgba(59, 130, 246, 0.1)',
-        borderWidth: 2,
-        tension: 0.3,
-        fill: true,
-        pointRadius: 0,
-        pointHoverRadius: 4,
-        yAxisID: 'y',
-      },
-      {
-        label: `Cumulative P&L (${currency})`,
-        data: cumulativePnLData,
-        borderColor: cumulativePnLData[cumulativePnLData.length - 1] >= 0 ? '#10B981' : '#EF4444',
-        backgroundColor: cumulativePnLData[cumulativePnLData.length - 1] >= 0
-          ? 'rgba(16, 185, 129, 0.1)'
-          : 'rgba(239, 68, 68, 0.1)',
-        borderWidth: 2,
-        tension: 0.3,
-        fill: true,
-        pointRadius: 0,
-        pointHoverRadius: 4,
-        yAxisID: 'y1',
-      },
-    ],
-  };
-
-  const options = {
-    responsive: true,
-    maintainAspectRatio: false,
-    interaction: {
-      mode: 'index' as const,
-      intersect: false,
-    },
-    plugins: {
-      legend: {
-        position: 'top' as const,
-        labels: {
-          boxWidth: 12,
-          padding: 15,
-          font: {
-            size: 12,
-          },
-        },
-      },
-      title: {
-        display: false,
-      },
-      tooltip: {
-        callbacks: {
-          label: function (context: { dataset: { label?: string }; parsed: { y: number } }) {
-            const label = context.dataset.label ?? '';
-            const value = context.parsed.y;
-            return `${label}: ${value.toLocaleString()} ${currency}`;
-          },
-        },
-      },
-    },
-    scales: {
-      x: {
-        grid: {
-          display: false,
-        },
-        ticks: {
-          maxRotation: 0,
-          autoSkip: true,
-          maxTicksLimit: 10,
-        },
-      },
-      y: {
-        type: 'linear' as const,
-        display: true,
-        position: 'left' as const,
-        title: {
-          display: true,
-          text: `AUM (${currency})`,
-        },
-        ticks: {
-          callback: function (value: number) {
-            return value.toLocaleString();
-          },
-        },
-      },
-      y1: {
-        type: 'linear' as const,
-        display: true,
-        position: 'right' as const,
-        title: {
-          display: true,
-          text: `Cumulative P&L (${currency})`,
-        },
-        grid: {
-          drawOnChartArea: false,
-        },
-        ticks: {
-          callback: function (value: number) {
-            return value.toLocaleString();
-          },
-        },
-      },
-    },
-  };
+  const chartData = seriesData.map((d) => {
+    const date = new Date(d.date);
+    return {
+      date: date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+      aum: d[aumKey],
+      pnl: d[pnlKey],
+    };
+  });
 
   // Calculate summary stats
-  const totalAUM = aumData.length > 0 ? aumData[aumData.length - 1] : 0;
-  const totalPnL = cumulativePnLData.length > 0 ? cumulativePnLData[cumulativePnLData.length - 1] : 0;
+  const totalAUM = seriesData.length > 0 ? seriesData[seriesData.length - 1][aumKey] : 0;
+  const totalPnL = seriesData.length > 0 ? seriesData[seriesData.length - 1][pnlKey] : 0;
   const totalDeposits = seriesData.length > 0 ? seriesData[seriesData.length - 1].deposits_cum_usd : 0;
   const totalWithdrawals = seriesData.length > 0 ? seriesData[seriesData.length - 1].withdrawals_cum_usd : 0;
   const roi = seriesData.length > 0 ? seriesData[seriesData.length - 1].roi_percent : 0;
   const apr = seriesData.length > 0 ? seriesData[seriesData.length - 1].apr_percent : 0;
 
   return (
-    <div className="bg-white rounded-lg shadow p-6">
-      {/* Header with Time Range Selector and Currency Toggle */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
-        <h3 className="text-lg font-medium text-gray-900">Aggregated P&L Overview</h3>
+    <Card>
+      <CardHeader>
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <h3 className="text-lg font-medium">Aggregated P&L Overview</h3>
 
         <div className="flex flex-col sm:flex-row gap-3">
           {/* Time Range Selector */}
@@ -312,9 +185,11 @@ export const AggregatedPnLChart: React.FC<AggregatedPnLChartProps> = ({
             </button>
           </div>
         </div>
-      </div>
+        </div>
+      </CardHeader>
 
-      {/* Custom Date Range Inputs */}
+      <CardContent>
+        {/* Custom Date Range Inputs */}
       {timeRange === 'custom' && (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
           <div>
@@ -342,7 +217,7 @@ export const AggregatedPnLChart: React.FC<AggregatedPnLChartProps> = ({
         </div>
       )}
 
-      {/* Summary Stats Cards */}
+        {/* Summary Stats Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4 mb-6">
         <div className="bg-blue-50 p-3 rounded-lg">
           <p className="text-xs font-medium text-blue-800">AUM</p>
@@ -390,7 +265,7 @@ export const AggregatedPnLChart: React.FC<AggregatedPnLChartProps> = ({
         </div>
       </div>
 
-      {/* Chart */}
+        {/* Chart */}
       {loading ? (
         <div className="flex items-center justify-center h-80">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
@@ -405,10 +280,73 @@ export const AggregatedPnLChart: React.FC<AggregatedPnLChartProps> = ({
         </div>
       ) : (
         <div style={{ height: '350px' }}>
-          <Line data={chartData} options={options} />
+          <ChartContainer config={chartConfig}>
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart
+                data={chartData}
+                margin={{ top: 10, right: 60, left: 10, bottom: 0 }}
+              >
+                <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                <XAxis
+                  dataKey="date"
+                  tickLine={false}
+                  axisLine={false}
+                  tickMargin={8}
+                  className="text-xs"
+                />
+                <YAxis
+                  yAxisId="left"
+                  tickLine={false}
+                  axisLine={false}
+                  tickMargin={8}
+                  className="text-xs"
+                  tickFormatter={(value) => value.toLocaleString()}
+                />
+                <YAxis
+                  yAxisId="right"
+                  orientation="right"
+                  tickLine={false}
+                  axisLine={false}
+                  tickMargin={8}
+                  className="text-xs"
+                  tickFormatter={(value) => value.toLocaleString()}
+                />
+                <ChartTooltip
+                  cursor={false}
+                  content={
+                    <ChartTooltipContent
+                      formatter={(value, name) => {
+                        const label = name === 'aum' ? 'AUM' : 'Cumulative P&L';
+                        return `${label}: ${Number(value).toLocaleString()} ${currency}`;
+                      }}
+                    />
+                  }
+                />
+                <Line
+                  yAxisId="left"
+                  type="monotone"
+                  dataKey="aum"
+                  stroke="var(--color-aum)"
+                  strokeWidth={2}
+                  dot={false}
+                  activeDot={{ r: 4 }}
+                />
+                <Line
+                  yAxisId="right"
+                  type="monotone"
+                  dataKey="pnl"
+                  stroke="var(--color-pnl)"
+                  strokeWidth={2}
+                  dot={false}
+                  activeDot={{ r: 4 }}
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          </ChartContainer>
         </div>
       )}
-    </div>
+      </CardContent>
+    </Card>
   );
 };
 

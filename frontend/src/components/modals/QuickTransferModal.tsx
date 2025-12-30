@@ -1,5 +1,23 @@
 import React, { useState } from 'react';
 
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+
 import { useApp } from '../../context/AppContext';
 import { getTodayDate } from '../../utils/dateUtils';
 
@@ -83,146 +101,138 @@ const QuickTransferModal: React.FC<QuickTransferModalProps> = ({
     setFormData(prev => ({ ...prev, [field]: value }));
   };
 
-  if (!isOpen) return null;
-
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg p-6 w-full max-w-md">
-        <div className="flex justify-between items-center mb-4">
-          <h3 className="text-lg font-medium text-gray-900">Transfer Funds</h3>
-          <button
-            onClick={onClose}
-            className="text-gray-400 hover:text-gray-600"
-          >
-            ×
-          </button>
-        </div>
+    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Transfer Funds</DialogTitle>
+        </DialogHeader>
 
         <form onSubmit={(e) => void handleSubmit(e)} className="space-y-4">
           <div className="grid grid-cols-1 gap-3">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Date</label>
-              <input
+            <div className="space-y-2">
+              <Label htmlFor="date">Date</Label>
+              <Input
+                id="date"
                 type="date"
                 value={formData.date}
                 onChange={(e) => handleInputChange('date', e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                 required
               />
             </div>
 
             <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Quantity</label>
-                  <input
+                <div className="space-y-2">
+                  <Label htmlFor="quantity">Quantity</Label>
+                  <Input
+                    id="quantity"
                     type="number"
                     step="any"
                     value={formData.quantity}
                     onChange={(e) => handleInputChange('quantity', e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                     placeholder="0.00"
                     required
                   />
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Asset</label>
-                  <select
+                <div className="space-y-2">
+                  <Label htmlFor="asset">Asset</Label>
+                  <Select
                     value={formData.asset}
-                    onChange={(e) => handleInputChange('asset', e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    onValueChange={(value) => handleInputChange('asset', value)}
                   >
-                    {(assets ?? []).filter((as: unknown) => {
-                      const typedAs = as as { is_active: boolean };
-                      return typedAs.is_active;
-                    }).map((as: unknown) => {
-                      const typedAs = as as { symbol: string; name?: string };
-                      return <option key={typedAs.symbol} value={typedAs.symbol}>{typedAs.symbol}</option>;
-                    })}
-                  </select>
+                    <SelectTrigger id="asset">
+                      <SelectValue placeholder="Select asset" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(assets ?? []).filter((as: unknown) => {
+                        const typedAs = as as { is_active: boolean };
+                        return typedAs.is_active;
+                      }).map((as: unknown) => {
+                        const typedAs = as as { symbol: string; name?: string };
+                        return <option key={typedAs.symbol} value={typedAs.symbol}>{typedAs.symbol}</option>;
+                      })}
+                    </SelectContent>
+                  </Select>
                 </div>
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">From Account</label>
-              <select
+            <div className="space-y-2">
+              <Label htmlFor="from_account">From Account</Label>
+              <Select
                 value={formData.from_account}
-                onChange={(e) => handleInputChange('from_account', e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                onValueChange={(value) => handleInputChange('from_account', value)}
                 required
               >
-                <option value="">Select source</option>
-                {(accounts ?? []).filter((a: unknown) => {
-                   const typedA = a as { is_active: boolean };
-                   return typedA.is_active;
-                }).map((a: unknown) => {
-                   const typedA = a as { name: string; type: string };
-                   return <option key={typedA.name} value={typedA.name}>{typedA.name} ({typedA.type})</option>;
-                })}
-              </select>
+                <SelectTrigger id="from_account">
+                  <SelectValue placeholder="Select source" />
+                </SelectTrigger>
+                <SelectContent>
+                  {(accounts ?? []).filter((a: unknown) => {
+                     const typedA = a as { is_active: boolean };
+                     return typedA.is_active;
+                  }).map((a: unknown) => {
+                     const typedA = a as { name: string; type: string };
+                     return <option key={typedA.name} value={typedA.name}>{typedA.name} ({typedA.type})</option>;
+                  })}
+                </SelectContent>
+              </Select>
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">To Account</label>
-              <select
+            <div className="space-y-2">
+              <Label htmlFor="to_account">To Account</Label>
+              <Select
                 value={formData.to_account}
-                onChange={(e) => handleInputChange('to_account', e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                onValueChange={(value) => handleInputChange('to_account', value)}
                 required
               >
-                <option value="">Select destination</option>
-                {(accounts ?? []).filter((a: unknown) => {
-                   const typedA = a as { is_active: boolean; name: string };
-                   return typedA.is_active && typedA.name !== formData.from_account;
-                }).map((a: unknown) => {
-                   const typedA = a as { name: string; type: string };
-                   return <option key={typedA.name} value={typedA.name}>{typedA.name} ({typedA.type})</option>;
-                })}
-              </select>
+                <SelectTrigger id="to_account">
+                  <SelectValue placeholder="Select destination" />
+                </SelectTrigger>
+                <SelectContent>
+                  {(accounts ?? []).filter((a: unknown) => {
+                     const typedA = a as { is_active: boolean; name: string };
+                     return typedA.is_active && typedA.name !== formData.from_account;
+                  }).map((a: unknown) => {
+                     const typedA = a as { name: string; type: string };
+                     return <option key={typedA.name} value={typedA.name}>{typedA.name} ({typedA.type})</option>;
+                  })}
+                </SelectContent>
+              </Select>
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Fee (optional)</label>
-              <input
+            <div className="space-y-2">
+              <Label htmlFor="fee">Fee (optional)</Label>
+              <Input
+                id="fee"
                 type="number"
                 step="any"
                 value={formData.fee}
                 onChange={(e) => handleInputChange('fee', e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                 placeholder="0.00"
               />
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Note</label>
-              <input
+            <div className="space-y-2">
+              <Label htmlFor="note">Note</Label>
+              <Input
+                id="note"
                 type="text"
                 value={formData.note}
                 onChange={(e) => handleInputChange('note', e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                 placeholder="Description"
               />
             </div>
           </div>
 
-          <div className="flex space-x-3">
-            <button
-              type="button"
-              onClick={onClose}
-              className="flex-1 px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={isSubmitting || !formData.quantity || !formData.from_account || !formData.to_account}
-              className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50"
-            >
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
+            <Button type="submit" disabled={isSubmitting || !formData.quantity || !formData.from_account || !formData.to_account}>
               {isSubmitting ? 'Transferring...' : 'Transfer'}
-            </button>
-          </div>
+            </Button>
+          </DialogFooter>
         </form>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 };
 

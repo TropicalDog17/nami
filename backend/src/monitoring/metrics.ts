@@ -1,4 +1,4 @@
-import promClient from 'prom-client';
+import promClient from "prom-client";
 
 export interface CustomMetrics {
   transactionCreations: promClient.Counter<string>;
@@ -7,33 +7,35 @@ export interface CustomMetrics {
   databaseErrors: promClient.Counter<string>;
 }
 
-export function createCustomMetrics(register: promClient.Registry): CustomMetrics {
+export function createCustomMetrics(
+  register: promClient.Registry,
+): CustomMetrics {
   return {
     transactionCreations: new promClient.Counter({
-      name: 'nami_transactions_total',
-      help: 'Total number of transactions created',
-      labelNames: ['type', 'status'] as const,
+      name: "nami_transactions_total",
+      help: "Total number of transactions created",
+      labelNames: ["type", "status"] as const,
       registers: [register],
     }),
 
     vaultOperations: new promClient.Counter({
-      name: 'nami_vault_operations_total',
-      help: 'Total number of vault operations',
-      labelNames: ['operation', 'status'] as const,
+      name: "nami_vault_operations_total",
+      help: "Total number of vault operations",
+      labelNames: ["operation", "status"] as const,
       registers: [register],
     }),
 
     databaseOperations: new promClient.Counter({
-      name: 'nami_database_operations_total',
-      help: 'Total number of database operations',
-      labelNames: ['operation', 'table', 'status'] as const,
+      name: "nami_database_operations_total",
+      help: "Total number of database operations",
+      labelNames: ["operation", "table", "status"] as const,
       registers: [register],
     }),
 
     databaseErrors: new promClient.Counter({
-      name: 'nami_database_errors_total',
-      help: 'Total number of database errors',
-      labelNames: ['operation', 'error_type'] as const,
+      name: "nami_database_errors_total",
+      help: "Total number of database errors",
+      labelNames: ["operation", "error_type"] as const,
       registers: [register],
     }),
   };

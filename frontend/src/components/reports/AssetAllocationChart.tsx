@@ -1,6 +1,7 @@
 import React from 'react';
 
 import { formatCurrency, formatPercentage } from '../../utils/currencyFormatter';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
 interface AssetData {
   [key: string]: {
@@ -63,13 +64,17 @@ const AssetAllocationChart: React.FC<AssetAllocationChartProps> = ({
   if (assets.length === 0) {
     return (
       <div className="space-y-6">
-        <div>
-          <h3 className="text-lg font-medium text-gray-900">Asset Allocation</h3>
-          <p className="text-sm text-gray-500">Portfolio diversification by asset</p>
-        </div>
-        <div className="bg-gray-50 p-6 rounded-lg border border-gray-200">
-          <p className="text-center text-gray-500">No assets to display</p>
-        </div>
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg font-medium">Asset Allocation</CardTitle>
+            <p className="text-sm text-gray-500">Portfolio diversification by asset</p>
+          </CardHeader>
+          <CardContent>
+            <div className="bg-gray-50 p-6 rounded-lg border border-gray-200">
+              <p className="text-center text-gray-500">No assets to display</p>
+            </div>
+          </CardContent>
+        </Card>
       </div>
     );
   }
@@ -77,15 +82,18 @@ const AssetAllocationChart: React.FC<AssetAllocationChartProps> = ({
   return (
     <div className="space-y-6">
       {/* Title */}
-      <div>
-        <h3 className="text-lg font-medium text-gray-900">Asset Allocation</h3>
-        <p className="text-sm text-gray-500">
-          Portfolio diversification by asset
-        </p>
-      </div>
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg font-medium">Asset Allocation</CardTitle>
+          <p className="text-sm text-gray-500">
+            Portfolio diversification by asset
+          </p>
+        </CardHeader>
+      </Card>
 
       {/* Total Portfolio Value */}
-      <div className="bg-gradient-to-r from-blue-50 to-indigo-50 p-6 rounded-lg border border-blue-200" data-testid="total-portfolio-value">
+      <Card>
+        <CardContent className="bg-gradient-to-r from-blue-50 to-indigo-50 p-6 rounded-lg border border-blue-200" data-testid="total-portfolio-value">
         <div className="text-center">
           <p className="text-sm font-medium text-blue-800 mb-2">
             Total Portfolio Value
@@ -94,10 +102,12 @@ const AssetAllocationChart: React.FC<AssetAllocationChartProps> = ({
             {formatCurrency(totalValue, currency)}
           </p>
         </div>
-      </div>
+      </CardContent>
+      </Card>
 
       {/* Horizontal Bar Chart */}
-      <div className="bg-white p-6 rounded-lg border border-gray-200" data-testid="asset-breakdown">
+      <Card>
+        <CardContent className="p-6" data-testid="asset-breakdown">
         <h4 className="text-md font-medium text-gray-900 mb-4">
           Allocation Breakdown
         </h4>
@@ -140,7 +150,8 @@ const AssetAllocationChart: React.FC<AssetAllocationChartProps> = ({
             </div>
           ))}
         </div>
-      </div>
+      </CardContent>
+      </Card>
 
       {/* Allocation Summary */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">

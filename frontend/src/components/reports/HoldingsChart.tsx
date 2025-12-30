@@ -6,6 +6,7 @@ import React from 'react';
 import { Doughnut } from 'react-chartjs-2';
 
 import type { Currency } from './chartConfig';
+import { Card, CardContent } from '@/components/ui/card';
 
 export type HoldingsData = {
   by_asset?: Record<
@@ -103,5 +104,11 @@ export const HoldingsChart: React.FC<HoldingsChartProps> = ({
     },
   };
 
-  return <Doughnut data={chartData} options={options} />;
+  return (
+    <Card>
+      <CardContent>
+        <Doughnut data={chartData} options={options} />
+      </CardContent>
+    </Card>
+  );
 };

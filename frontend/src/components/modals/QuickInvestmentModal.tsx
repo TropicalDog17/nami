@@ -1,5 +1,17 @@
 import React, { useEffect, useMemo, useState } from 'react';
 
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Checkbox } from '@/components/ui/checkbox';
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+
 import { adminApi, tokenizedVaultApi } from '../../services/api';
 import ComboBox from '../ui/ComboBox';
 
@@ -92,18 +104,15 @@ const QuickInvestmentModal: React.FC<QuickInvestmentModalProps> = ({ isOpen, onC
     }
   };
 
-  if (!isOpen) return null;
-
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg p-6 w-full max-w-md">
-        <div className="flex justify-between items-center mb-4">
-          <h3 className="text-lg font-medium text-gray-900">Deposit to Vault</h3>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">×</button>
-        </div>
+    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Deposit to Vault</DialogTitle>
+        </DialogHeader>
         <form onSubmit={(e) => void handleSubmit(e)} className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Vault</label>
+          <div className="space-y-2">
+            <Label htmlFor="vaultId">Vault</Label>
             <ComboBox
               options={vaultOptions}
               value={formData.vaultId}
@@ -111,13 +120,13 @@ const QuickInvestmentModal: React.FC<QuickInvestmentModalProps> = ({ isOpen, onC
               placeholder="Select a vault"
             />
             {selectedVault && (
-              <div className="mt-1 text-xs text-gray-500">
+              <div className="mt-1 text-xs text-muted-foreground">
                 Selected: {selectedVault.name} ({selectedVault.token_symbol})
               </div>
             )}
           </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Source Account</label>
+          <div className="space-y-2">
+            <Label htmlFor="account">Source Account</Label>
             <ComboBox
               options={accountOptions}
               value={formData.account}
@@ -133,43 +142,73 @@ const QuickInvestmentModal: React.FC<QuickInvestmentModalProps> = ({ isOpen, onC
             />
           </div>
 
-          <div className="flex items-center">
-            <label className="flex items-center text-sm text-gray-700">
-              <input type="checkbox" className="mr-2" checked={isUsdOnly} onChange={(e) => setIsUsdOnly(e.target.checked)} />
-              USD-only deposit (enter USD amount only)
-            </label>
+          <div className="flex items-center space-x-2">
+            <Checkbox
+              id="isUsdOnly"
+              checked={isUsdOnly}
+              onCheckedChange={(checked) => setIsUsdOnly(Boolean(checked))}
+            />
+            <Label htmlFor="isUsdOnly" className="cursor-pointer">USD-only deposit (enter USD amount only)</Label>
           </div>
           <div>
             {isUsdOnly ? (
               <>
-                <label htmlFor="usd-amount" className="block text-sm font-medium text-gray-700 mb-1">Amount (USD)</label>
-                <input id="usd-amount" aria-label="Amount (USD)" type="number" step="any" value={usdAmount} onChange={(e) => setUsdAmount(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" required />
-                <div className="mt-1 text-xs text-gray-500">Quantity is fixed to 1 in USD-only mode.</div>
+                <Label htmlFor="usd-amount">Amount (USD)</Label>
+                <Input
+                  id="usd-amount"
+                  aria-label="Amount (USD)"
+                  type="number"
+                  step="any"
+                  value={usdAmount}
+                  onChange={(e) => setUsdAmount(e.target.value)}
+                  required
+                />
+                <div className="mt-1 text-xs text-muted-foreground">Quantity is fixed to 1 in USD-only mode.</div>
               </>
             ) : (
               <>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Quantity</label>
-                <input type="number" step="any" value={formData.quantity} onChange={(e) => handleChange('quantity', e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" required />
+                <Label htmlFor="quantity">Quantity</Label>
+                <Input
+                  id="quantity"
+                  type="number"
+                  step="any"
+                  value={formData.quantity}
+                  onChange={(e) => handleChange('quantity', e.target.value)}
+                  required
+                />
               </>
             )}
           </div>
           {!isUsdOnly && (
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Price (Local)</label>
-              <input type="number" step="any" value={formData.price_local} onChange={(e) => handleChange('price_local', e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" required />
+            <div className="space-y-2">
+              <Label htmlFor="price_local">Price (Local)</Label>
+              <Input
+                id="price_local"
+                type="number"
+                step="any"
+                value={formData.price_local}
+                onChange={(e) => handleChange('price_local', e.target.value)}
+                required
+              />
             </div>
           )}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Note</label>
-            <input value={formData.note} onChange={(e) => handleChange('note', e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" />
+          <div className="space-y-2">
+            <Label htmlFor="note">Note</Label>
+            <Input
+              id="note"
+              value={formData.note}
+              onChange={(e) => handleChange('note', e.target.value)}
+            />
           </div>
-          <div className="flex space-x-3">
-            <button type="button" onClick={onClose} className="flex-1 px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50">Cancel</button>
-            <button type="submit" disabled={isSubmitting || !formData.vaultId || (!isUsdOnly && !formData.quantity) || (isUsdOnly && !usdAmount)} className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50">{isSubmitting ? 'Saving...' : 'Save Deposit'}</button>
-          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
+            <Button type="submit" disabled={isSubmitting || !formData.vaultId || (!isUsdOnly && !formData.quantity) || (isUsdOnly && !usdAmount)}>
+              {isSubmitting ? 'Saving...' : 'Save Deposit'}
+            </Button>
+          </DialogFooter>
         </form>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 };
 

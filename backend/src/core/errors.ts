@@ -10,7 +10,7 @@ export class AppError extends Error {
     public message: string,
     public statusCode: number = 500,
     public code?: string,
-    public details?: unknown
+    public details?: unknown,
   ) {
     super(message);
     this.name = this.constructor.name;
@@ -34,7 +34,7 @@ export class AppError extends Error {
  */
 export class ValidationError extends AppError {
   constructor(message: string, details?: unknown) {
-    super(message, 400, 'VALIDATION_ERROR', details);
+    super(message, 400, "VALIDATION_ERROR", details);
   }
 }
 
@@ -43,8 +43,10 @@ export class ValidationError extends AppError {
  */
 export class NotFoundError extends AppError {
   constructor(resource: string, identifier?: string) {
-    const message = identifier ? `${resource} not found: ${identifier}` : `${resource} not found`;
-    super(message, 404, 'NOT_FOUND', { resource, identifier });
+    const message = identifier
+      ? `${resource} not found: ${identifier}`
+      : `${resource} not found`;
+    super(message, 404, "NOT_FOUND", { resource, identifier });
   }
 }
 
@@ -53,7 +55,7 @@ export class NotFoundError extends AppError {
  */
 export class BusinessError extends AppError {
   constructor(message: string, details?: unknown) {
-    super(message, 400, 'BUSINESS_ERROR', details);
+    super(message, 400, "BUSINESS_ERROR", details);
   }
 }
 
@@ -62,7 +64,7 @@ export class BusinessError extends AppError {
  */
 export class ConflictError extends AppError {
   constructor(message: string, details?: unknown) {
-    super(message, 409, 'CONFLICT', details);
+    super(message, 409, "CONFLICT", details);
   }
 }
 
@@ -71,7 +73,12 @@ export class ConflictError extends AppError {
  */
 export class ExternalServiceError extends AppError {
   constructor(service: string, message?: string) {
-    super(message || `External service error: ${service}`, 503, 'EXTERNAL_SERVICE_ERROR', { service });
+    super(
+      message || `External service error: ${service}`,
+      503,
+      "EXTERNAL_SERVICE_ERROR",
+      { service },
+    );
   }
 }
 

@@ -1,5 +1,23 @@
 import React, { useState, KeyboardEvent, useEffect } from 'react';
 
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+
 import { useApp } from '../../context/AppContext';
 import { vaultApi } from '../../services/api';
 import { toISODateTime, getTodayDate } from '../../utils/dateUtils';
@@ -156,190 +174,183 @@ const QuickExpenseModal: React.FC<QuickExpenseModalProps> = ({
     }
   };
 
-  if (!isOpen) return null;
-
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg p-6 w-full max-w-md">
-        <div className="flex justify-between items-center mb-4">
-          <h3 className="text-lg font-medium text-gray-900">Quick Expense Entry</h3>
-          <button
-            onClick={onClose}
-            className="text-gray-400 hover:text-gray-600"
-          >
-            ×
-          </button>
-        </div>
+    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Quick Expense Entry</DialogTitle>
+        </DialogHeader>
 
         <form onSubmit={(e) => { void handleSubmit(e); }} className="space-y-4">
           <div className="grid grid-cols-1 gap-3">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Date</label>
-              <input
+            <div className="space-y-2">
+              <Label htmlFor="date">Date</Label>
+              <Input
+                id="date"
                 type="date"
                 value={formData.date}
                 onChange={(e) => handleInputChange('date', e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                 required
               />
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Due Date (optional)</label>
-              <input
+            <div className="space-y-2">
+              <Label htmlFor="dueDate">Due Date (optional)</Label>
+              <Input
+                id="dueDate"
                 type="date"
                 value={formData.dueDate}
                 onChange={(e) => handleInputChange('dueDate', e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Amount</label>
-              <input
+            <div className="space-y-2">
+              <Label htmlFor="amount">Amount</Label>
+              <Input
+                id="amount"
                 type="number"
                 step="0.01"
                 value={formData.amount}
                 onChange={(e) => handleInputChange('amount', e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                 placeholder="0.00"
                 required
               />
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+            <div className="space-y-2">
+              <Label htmlFor="account">
                 Paying Vault
                 <span className="ml-2 text-xs font-normal text-blue-600">
                   (All expenses use Spend vault)
                 </span>
-              </label>
-              <select
+              </Label>
+              <Select
                 value={formData.account}
-                onChange={(e) => handleInputChange('account', e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-100 cursor-not-allowed"
+                onValueChange={(value) => handleInputChange('account', value)}
                 required
                 disabled={true}
               >
-                <option value="Spend">💰 Spend</option>
-              </select>
-              <p className="text-xs text-gray-500 mt-1">
+                <SelectTrigger id="account" className="bg-muted cursor-not-allowed">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <option value="Spend">💰 Spend</option>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
                 Expenses are automatically withdrawn from your Spend vault
               </p>
               {vaultsError ? (
-                <p className="text-sm text-red-600 mt-1">{vaultsError}</p>
+                <p className="text-sm text-destructive mt-1">{vaultsError}</p>
               ) : null}
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Currency</label>
-              <select
+            <div className="space-y-2">
+              <Label htmlFor="asset">Currency</Label>
+              <Select
                 value={formData.asset}
-                onChange={(e) => handleInputChange('asset', e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                onValueChange={(value) => handleInputChange('asset', value)}
               >
-                {(assets ?? []).filter((as: unknown) => {
-                  const typedAs = as as { is_active: boolean };
-                  return typedAs.is_active;
-                }).map((as: unknown) => {
-                  const typedAs = as as { symbol: string; name?: string };
-                  return <option key={typedAs.symbol} value={typedAs.symbol}>{typedAs.symbol}{typedAs.name ? ` - ${typedAs.name}` : ''}</option>;
-                })}
-              </select>
+                <SelectTrigger id="asset">
+                  <SelectValue placeholder="Select currency" />
+                </SelectTrigger>
+                <SelectContent>
+                  {(assets ?? []).filter((as: unknown) => {
+                    const typedAs = as as { is_active: boolean };
+                    return typedAs.is_active;
+                  }).map((as: unknown) => {
+                    const typedAs = as as { symbol: string; name?: string };
+                    return <option key={typedAs.symbol} value={typedAs.symbol}>{typedAs.symbol}{typedAs.name ? ` - ${typedAs.name}` : ''}</option>;
+                  })}
+                </SelectContent>
+              </Select>
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
+            <div className="space-y-2">
+              <Label htmlFor="category">Category</Label>
               {!isAddingCategory ? (
-                <select
+                <Select
                   value={formData.category}
-                  onChange={(e) => onCategoryChange(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  onValueChange={(value) => onCategoryChange(value)}
                   required
                 >
-                  <option value="">Select category</option>
-                  {tags?.filter(t => t.is_active).map(tag => (
-                    <option key={tag.name} value={tag.name}>
-                      {tag.name}
-                    </option>
-                  ))}
-                  <option value={ADD_NEW_VALUE}>+ Add new category…</option>
-                </select>
+                  <SelectTrigger id="category">
+                    <SelectValue placeholder="Select category" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <option value="">Select category</option>
+                    {tags?.filter(t => t.is_active).map(tag => (
+                      <option key={tag.name} value={tag.name}>
+                        {tag.name}
+                      </option>
+                    ))}
+                    <option value={ADD_NEW_VALUE}>+ Add new category…</option>
+                  </SelectContent>
+                </Select>
               ) : (
                 <div className="flex items-center gap-2">
-                  <input
+                  <Input
                     type="text"
                     value={newCategory}
                     onChange={(e) => setNewCategory(e.target.value)}
                     onKeyDown={onNewCategoryKey}
-                    className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="flex-1"
                     placeholder="New category name"
                     autoFocus
                   />
-                  <button
+                  <Button
                     type="button"
                     onClick={() => void saveNewCategory()}
                     disabled={isSavingCategory || !newCategory.trim()}
-                    className="px-3 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:opacity-50"
                   >
                     {isSavingCategory ? 'Adding…' : 'Add'}
-                  </button>
-                  <button
+                  </Button>
+                  <Button
                     type="button"
+                    variant="outline"
                     onClick={() => { setIsAddingCategory(false); setNewCategory(''); }}
-                    className="px-3 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50"
                   >
                     Cancel
-                  </button>
+                  </Button>
                 </div>
               )}
               {categoryError ? (
-                <p className="text-sm text-red-600 mt-1">{categoryError}</p>
+                <p className="text-sm text-destructive mt-1">{categoryError}</p>
               ) : null}
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Payee</label>
-              <input
+            <div className="space-y-2">
+              <Label htmlFor="payee">Payee</Label>
+              <Input
+                id="payee"
                 type="text"
                 value={formData.payee}
                 onChange={(e) => handleInputChange('payee', e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                 placeholder="Merchant or recipient"
               />
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Note</label>
-              <input
+            <div className="space-y-2">
+              <Label htmlFor="note">Note</Label>
+              <Input
+                id="note"
                 type="text"
                 value={formData.note}
                 onChange={(e) => handleInputChange('note', e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                 placeholder="What was this expense for?"
               />
             </div>
           </div>
 
-          <div className="flex space-x-3">
-            <button
-              type="button"
-              onClick={onClose}
-              className="flex-1 px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={isSubmitting || !formData.amount || !formData.account}
-              className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50"
-            >
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
+            <Button type="submit" disabled={isSubmitting || !formData.amount || !formData.account}>
               {isSubmitting ? 'Saving...' : 'Save Expense'}
-            </button>
-          </div>
+            </Button>
+          </DialogFooter>
         </form>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 };
 

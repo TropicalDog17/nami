@@ -1,5 +1,24 @@
 import React, { useEffect, useMemo, useState } from 'react';
 
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Checkbox } from '@/components/ui/checkbox';
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+
 import { adminApi } from '../../services/api';
 import { getTodayDate } from '../../utils/dateUtils';
 import ComboBox from '../ui/ComboBox';
@@ -94,44 +113,40 @@ const QuickVaultModal: React.FC<QuickVaultModalProps> = ({ isOpen, onClose, onSu
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg p-6 w-full max-w-md">
-        <div className="flex justify-between items-center mb-4">
-          <h3 className="text-lg font-medium text-gray-900">Create New Vault</h3>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">×</button>
-        </div>
+    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Create New Vault</DialogTitle>
+        </DialogHeader>
         {error && (
-          <div className="mb-3 text-sm text-red-700 bg-red-50 border border-red-200 rounded p-2">{error}</div>
+          <div className="mb-3 text-sm text-destructive bg-destructive/10 border border-destructive/20 rounded p-2">{error}</div>
         )}
         <form onSubmit={(e) => { void submit(e); }} className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Name</label>
-            <input
+          <div className="space-y-2">
+            <Label htmlFor="name">Name</Label>
+            <Input
+              id="name"
               type="text"
               placeholder="Unique vault name"
               value={form.name}
               onChange={(e) => setForm((s) => ({ ...s, name: e.target.value }))}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md"
             />
           </div>
-          <div className="flex items-center">
-            <label className="flex items-center text-sm text-gray-700">
-              <input
-                type="checkbox"
-                className="mr-2"
-                checked={isUsdOnly}
-                onChange={(e) => {
-                  const next = e.target.checked;
-                  setIsUsdOnly(next);
-                  setForm((s) => ({ ...s, asset: next ? 'USD' : '', depositQty: next ? '1' : '' }));
-                }}
-              />
-              USD-only mode (track by USD; Quantity fixed to 1)
-            </label>
+          <div className="flex items-center space-x-2">
+            <Checkbox
+              id="isUsdOnly"
+              checked={isUsdOnly}
+              onCheckedChange={(checked) => {
+                const next = Boolean(checked);
+                setIsUsdOnly(next);
+                setForm((s) => ({ ...s, asset: next ? 'USD' : '', depositQty: next ? '1' : '' }));
+              }}
+            />
+            <Label htmlFor="isUsdOnly" className="cursor-pointer">USD-only mode (track by USD; Quantity fixed to 1)</Label>
           </div>
           {!isUsdOnly && (
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Asset</label>
+            <div className="space-y-2">
+              <Label htmlFor="asset">Asset</Label>
               <ComboBox
                 options={assets}
                 value={form.asset}
@@ -140,61 +155,65 @@ const QuickVaultModal: React.FC<QuickVaultModalProps> = ({ isOpen, onClose, onSu
               />
             </div>
           )}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Horizon (optional)</label>
-            <select
-              className="w-full px-3 py-2 border border-gray-300 rounded-md"
+          <div className="space-y-2">
+            <Label htmlFor="horizon">Horizon (optional)</Label>
+            <Select
               value={form.horizon}
-              onChange={(e) => setForm((s) => ({ ...s, horizon: e.target.value }))}
+              onValueChange={(value) => setForm((s) => ({ ...s, horizon: value }))}
             >
-              <option value="">Select…</option>
-              <option value="short-term">Short-term</option>
-              <option value="long-term">Long-term</option>
-              <option value="speculative">Speculative</option>
-            </select>
+              <SelectTrigger id="horizon">
+                <SelectValue placeholder="Select horizon" />
+              </SelectTrigger>
+              <SelectContent>
+                <option value="">Select…</option>
+                <option value="short-term">Short-term</option>
+                <option value="long-term">Long-term</option>
+                <option value="speculative">Speculative</option>
+              </SelectContent>
+            </Select>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             {isUsdOnly ? (
-              <div className="px-3 py-2 border rounded-md bg-gray-50 text-gray-700 flex items-center">Quantity fixed to 1</div>
+              <div className="px-3 py-2 border rounded-md bg-muted text-foreground flex items-center">Quantity fixed to 1</div>
             ) : (
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Deposit Quantity</label>
-                <input
+              <div className="space-y-2">
+                <Label htmlFor="depositQty">Deposit Quantity</Label>
+                <Input
+                  id="depositQty"
                   type="number"
                   step="any"
                   placeholder="e.g. 10.5"
                   value={form.depositQty}
                   onChange={(e) => setForm((s) => ({ ...s, depositQty: e.target.value }))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md"
                 />
               </div>
             )}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Deposit Cost (USD)</label>
-              <input
+            <div className="space-y-2">
+              <Label htmlFor="depositCost">Deposit Cost (USD)</Label>
+              <Input
+                id="depositCost"
                 type="number"
                 step="any"
                 placeholder="Total invested USD"
                 value={form.depositCost}
                 onChange={(e) => setForm((s) => ({ ...s, depositCost: e.target.value }))}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md"
               />
             </div>
           </div>
           {!!unitCost && !isUsdOnly && (
-            <div className="text-xs text-gray-500">Unit cost preview: ${unitCost.toLocaleString(undefined, { maximumFractionDigits: 8 })} per unit</div>
+            <div className="text-xs text-muted-foreground">Unit cost preview: ${unitCost.toLocaleString(undefined, { maximumFractionDigits: 8 })} per unit</div>
           )}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Date</label>
+          <div className="space-y-2">
+            <Label htmlFor="date">Date</Label>
             <DateInput value={form.date} onChange={(v) => setForm((s) => ({ ...s, date: v }))} />
           </div>
-          <div className="flex space-x-3">
-            <button type="button" onClick={onClose} className="flex-1 px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50">Cancel</button>
-            <button type="submit" disabled={isSubmitting} className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50">{isSubmitting ? 'Creating...' : 'Create Vault'}</button>
-          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
+            <Button type="submit" disabled={isSubmitting}>{isSubmitting ? 'Creating...' : 'Create Vault'}</Button>
+          </DialogFooter>
         </form>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 };
 

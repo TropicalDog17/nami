@@ -1,21 +1,21 @@
-import express from 'express';
-import promClient from 'prom-client';
-import { createMetricsMiddleware } from './middleware';
-import { registerDatabaseMetrics } from './database-collector';
-import { createCustomMetrics, CustomMetrics } from './metrics';
+import express from "express";
+import promClient from "prom-client";
+import { createMetricsMiddleware } from "./middleware";
+import { registerDatabaseMetrics } from "./database-collector";
+import { createCustomMetrics, CustomMetrics } from "./metrics";
 
 export function setupMonitoring(app: express.Application) {
   const register = promClient.register;
 
   // Default labels for all metrics
   register.setDefaultLabels({
-    service: 'nami-backend',
-    environment: process.env.NODE_ENV || 'development',
+    service: "nami-backend",
+    environment: process.env.NODE_ENV || "development",
   });
 
   // Collect default Node.js metrics
   promClient.collectDefaultMetrics({
-    prefix: 'nami_backend_',
+    prefix: "nami_backend_",
     register,
   });
 
@@ -30,9 +30,9 @@ export function setupMonitoring(app: express.Application) {
 
   // Register metrics endpoint
   const registerMetricsEndpoint = () => {
-    app.get('/metrics', async (_req, res) => {
+    app.get("/metrics", async (_req, res) => {
       try {
-        res.set('Content-Type', register.contentType);
+        res.set("Content-Type", register.contentType);
         res.end(await register.metrics());
       } catch (err) {
         res.status(500).end((err as Error).message);
@@ -57,7 +57,7 @@ export function setMetrics(metrics: CustomMetrics) {
 
 export function getMetrics(): CustomMetrics {
   if (!globalMetrics) {
-    throw new Error('Metrics not initialized. Call setupMonitoring first.');
+    throw new Error("Metrics not initialized. Call setupMonitoring first.");
   }
   return globalMetrics;
 }

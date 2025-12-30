@@ -2,11 +2,11 @@
  * Express middleware for error handling, validation, and logging
  */
 
-import { Request, Response, NextFunction } from 'express';
-import { ZodError } from 'zod';
-import { AppError, isAppError, ValidationError } from './errors';
-import { logger } from './logger';
-import { config } from './config';
+import { Request, Response, NextFunction } from "express";
+import { ZodError } from "zod";
+import { AppError, isAppError, ValidationError } from "./errors";
+import { logger } from "./logger";
+import { config } from "./config";
 
 /**
  * Standard error response format
@@ -26,28 +26,28 @@ export function errorHandler(
   err: unknown,
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ): void {
   // Log error
   if (err instanceof Error) {
-    logger.error(
-      `${req.method} ${req.path} - ${err.message}`,
-      err,
-      { method: req.method, path: req.path, query: req.query }
-    );
+    logger.error(`${req.method} ${req.path} - ${err.message}`, err, {
+      method: req.method,
+      path: req.path,
+      query: req.query,
+    });
   } else {
-    logger.error(
-      `${req.method} ${req.path} - Unknown error`,
-      undefined,
-      { method: req.method, path: req.path, error: err }
-    );
+    logger.error(`${req.method} ${req.path} - Unknown error`, undefined, {
+      method: req.method,
+      path: req.path,
+      error: err,
+    });
   }
 
   // Handle Zod validation errors
   if (err instanceof ZodError) {
     const response: ErrorResponse = {
-      error: 'Validation failed',
-      code: 'VALIDATION_ERROR',
+      error: "Validation failed",
+      code: "VALIDATION_ERROR",
       details: err.errors,
     };
     res.status(400).json(response);
@@ -68,7 +68,7 @@ export function errorHandler(
   // Handle generic errors
   if (err instanceof Error) {
     const response: ErrorResponse = {
-      error: err.message || 'Internal server error',
+      error: err.message || "Internal server error",
     };
     if (config.isDevelopment && err.stack) {
       response.stack = err.stack;
@@ -79,7 +79,7 @@ export function errorHandler(
 
   // Unknown error type
   res.status(500).json({
-    error: 'Internal server error',
+    error: "Internal server error",
   });
 }
 
@@ -87,10 +87,14 @@ export function errorHandler(
  * Request logging middleware
  * Logs incoming requests with timing
  */
-export function requestLogger(req: Request, res: Response, next: NextFunction): void {
+export function requestLogger(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): void {
   const start = Date.now();
 
-  res.on('finish', () => {
+  res.on("finish", () => {
     const duration = Date.now() - start;
     logger.info(`${req.method} ${req.path} - ${res.statusCode}`, {
       method: req.method,
@@ -123,9 +127,9 @@ export function validateRequest<T>(schema: { parse: (data: unknown) => T }) {
  */
 export function notFoundHandler(req: Request, res: Response): void {
   res.status(404).json({
-    error: 'Not found',
-    code: 'NOT_FOUND',
-    details: { path: req.method + ' ' + req.path },
+    error: "Not found",
+    code: "NOT_FOUND",
+    details: { path: req.method + " " + req.path },
   });
 }
 
@@ -133,7 +137,7 @@ export function notFoundHandler(req: Request, res: Response): void {
  * Async route wrapper to catch errors in async handlers
  */
 export function asyncHandler(
-  fn: (req: Request, res: Response, next: NextFunction) => Promise<void>
+  fn: (req: Request, res: Response, next: NextFunction) => Promise<void>,
 ) {
   return (req: Request, res: Response, next: NextFunction): void => {
     Promise.resolve(fn(req, res, next)).catch(next);

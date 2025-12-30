@@ -11,7 +11,14 @@ import {
   LineElement,
 } from 'chart.js';
 import React from 'react';
-import { Bar, Doughnut, Line } from 'react-chartjs-2';
+import { Bar, Doughnut } from 'react-chartjs-2';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, ResponsiveContainer } from 'recharts';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+  ChartContainer,
+  ChartTooltip,
+  ChartTooltipContent,
+} from '@/components/ui/chart';
 
 ChartJS.register(
   CategoryScale,
@@ -406,6 +413,13 @@ export const PnLChart: React.FC<{ data: PnLData; currency?: Currency }> = ({
 };
 
 // P&L Line Chart
+const pnlLineChartConfig = {
+  value: {
+    label: 'P&L',
+    color: 'hsl(142, 76%, 36%)',
+  },
+};
+
 export const PnLLineChart: React.FC<{ data: PnLData; currency?: Currency }> = ({
   data,
   currency = 'USD',
@@ -425,53 +439,50 @@ export const PnLLineChart: React.FC<{ data: PnLData; currency?: Currency }> = ({
     )
   );
 
-  const chartData = {
-    labels: ['Realized P&L', 'Total P&L'],
-    datasets: [
-      {
-        label: `P&L (${currency})`,
-        data: [realizedPnL, totalPnL],
-        borderColor: '#10B981',
-        backgroundColor: 'rgba(16, 185, 129, 0.15)',
-        borderWidth: 2,
-        tension: 0.3,
-        fill: true,
-        pointRadius: 4,
-      },
-    ],
-  };
+  const chartData = [
+    { category: 'Realized P&L', value: realizedPnL },
+    { category: 'Total P&L', value: totalPnL },
+  ];
 
-  const options = {
-    responsive: true,
-    maintainAspectRatio: false,
-    plugins: {
-      legend: { display: false },
-      title: { display: false },
-      tooltip: {
-        callbacks: {
-          label: function (context: { parsed: { y: number }; label?: string }) {
-            const value = context.parsed.y;
-            return `${context.label ?? 'Value'}: ${value.toLocaleString()} ${currency}`;
-          },
-        },
-      },
-    },
-    scales: {
-      y: {
-        beginAtZero: true,
-        ticks: {
-          // @ts-expect-error - chartjs types - chartjs types
-          callback: function (value: number | string) {
-            const n =
-              typeof value === 'number' ? value : parseFloat(String(value));
-            return n.toLocaleString();
-          },
-        },
-      },
-    },
-  };
-
-  return <Line data={chartData} options={options} />;
+  return (
+    <ChartContainer config={pnlLineChartConfig} className="h-full w-full">
+      <ResponsiveContainer width="100%" height="100%">
+        <LineChart data={chartData} margin={{ top: 10, right: 10, left: 10, bottom: 0 }}>
+          <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+          <XAxis
+            dataKey="category"
+            tickLine={false}
+            axisLine={false}
+            tickMargin={8}
+            className="text-xs"
+          />
+          <YAxis
+            tickLine={false}
+            axisLine={false}
+            tickMargin={8}
+            className="text-xs"
+            tickFormatter={(value) => value.toLocaleString()}
+          />
+          <ChartTooltip
+            cursor={false}
+            content={
+              <ChartTooltipContent
+                formatter={(value) => `${Number(value).toLocaleString()} ${currency}`}
+              />
+            }
+          />
+          <Line
+            type="monotone"
+            dataKey="value"
+            stroke="var(--color-value)"
+            strokeWidth={2}
+            dot={{ r: 4 }}
+            activeDot={{ r: 6 }}
+          />
+        </LineChart>
+      </ResponsiveContainer>
+    </ChartContainer>
+  );
 };
 
 // APR Comparison Chart (vault APR vs benchmark)
@@ -525,55 +536,61 @@ export const AprChart: React.FC<{ apr?: number; benchmarkApr?: number }> = ({
 };
 
 // APR as Line chart
+const aprLineChartConfig = {
+  value: {
+    label: 'APR',
+    color: 'hsl(217, 91%, 60%)',
+  },
+};
+
 export const AprLineChart: React.FC<{
   apr?: number;
   benchmarkApr?: number;
 }> = ({ apr = 0, benchmarkApr = 0 }) => {
-  const labels = ['Vault APR', 'Benchmark APR'];
-  const dataset = [apr, benchmarkApr];
-  const chartData = {
-    labels,
-    datasets: [
-      {
-        label: 'APR (%)',
-        data: dataset,
-        borderColor: '#3B82F6',
-        backgroundColor: 'rgba(59, 130, 246, 0.2)',
-        tension: 0.3,
-        fill: true,
-        pointRadius: 4,
-      },
-    ],
-  };
-  const options = {
-    responsive: true,
-    maintainAspectRatio: false,
-    plugins: {
-      legend: { display: false },
-      tooltip: {
-        callbacks: {
-          label: function (context: { parsed: { y: number }; label?: string }) {
-            const value = context.parsed.y;
-            return `${context.label ?? 'APR'}: ${Number(value).toFixed(2)}%`;
-          },
-        },
-      },
-    },
-    scales: {
-      y: {
-        beginAtZero: true,
-        ticks: {
-          // @ts-expect-error - chartjs types
-          callback: function (value: number | string) {
-            const n =
-              typeof value === 'number' ? value : parseFloat(String(value));
-            return `${Number(n).toFixed(2)}%`;
-          },
-        },
-      },
-    },
-  };
-  return <Line data={chartData} options={options} />;
+  const chartData = [
+    { category: 'Vault APR', value: apr },
+    { category: 'Benchmark APR', value: benchmarkApr },
+  ];
+
+  return (
+    <ChartContainer config={aprLineChartConfig} className="h-full w-full">
+      <ResponsiveContainer width="100%" height="100%">
+        <LineChart data={chartData} margin={{ top: 10, right: 10, left: 10, bottom: 0 }}>
+          <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+          <XAxis
+            dataKey="category"
+            tickLine={false}
+            axisLine={false}
+            tickMargin={8}
+            className="text-xs"
+          />
+          <YAxis
+            tickLine={false}
+            axisLine={false}
+            tickMargin={8}
+            className="text-xs"
+            tickFormatter={(value) => `${Number(value).toFixed(2)}%`}
+          />
+          <ChartTooltip
+            cursor={false}
+            content={
+              <ChartTooltipContent
+                formatter={(value) => `${Number(value).toFixed(2)}%`}
+              />
+            }
+          />
+          <Line
+            type="monotone"
+            dataKey="value"
+            stroke="var(--color-value)"
+            strokeWidth={2}
+            dot={{ r: 4 }}
+            activeDot={{ r: 6 }}
+          />
+        </LineChart>
+      </ResponsiveContainer>
+    </ChartContainer>
+  );
 };
 
 // Generic time-series line chart
@@ -587,135 +604,79 @@ export const TimeSeriesLineChart: React.FC<{
   }>;
   yFormat?: 'percent' | 'currency' | 'number';
   currency?: Currency;
-}> = ({ labels, datasets, yFormat = 'number', _currency = 'USD' }) => {
-  // Helper to create gradient for a given color
-  const createGradient = (
-    ctx: CanvasRenderingContext2D,
-    chartArea: { bottom: number; top: number },
-    color: string
-  ) => {
-    const gradient = ctx.createLinearGradient(
-      0,
-      chartArea.top,
-      0,
-      chartArea.bottom
-    );
-    // Convert hex to RGB
-    const hex = color.replace('#', '');
-    const r = parseInt(hex.substring(0, 2), 16);
-    const g = parseInt(hex.substring(2, 4), 16);
-    const b = parseInt(hex.substring(4, 6), 16);
-    gradient.addColorStop(0, `rgba(${r}, ${g}, ${b}, 0.3)`);
-    gradient.addColorStop(0.5, `rgba(${r}, ${g}, ${b}, 0.1)`);
-    gradient.addColorStop(1, `rgba(${r}, ${g}, ${b}, 0.02)`);
-    return gradient;
-  };
+}> = ({ labels, datasets, yFormat = 'number', currency = 'USD' }) => {
+  // Create safe keys for CSS variables (no spaces or special characters)
+  const datasetKeys = datasets.map((ds, index) => `dataset${index}`);
 
-  // Format labels to "Month Day" format
-  const formattedLabels = labels.map((label) => {
+  // Format labels to "Month Day" format and combine with data
+  const chartData = labels.map((label, index) => {
     const date = new Date(label);
-    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    const formattedDate = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    const dataPoint: Record<string, string | number> = { date: formattedDate };
+    datasets.forEach((ds, dsIndex) => {
+      dataPoint[datasetKeys[dsIndex]] = ds.data[index] || 0;
+    });
+    return dataPoint;
   });
 
-  const chartData = {
-    labels: formattedLabels,
-    datasets: datasets.map((ds) => ({
+  // Create chart config from datasets using safe keys
+  const chartConfig = datasets.reduce((acc, ds, index) => {
+    const key = datasetKeys[index];
+    acc[key] = {
       label: ds.label,
-      data: ds.data,
-      borderColor: ds.color ?? '#22c55e',
-      backgroundColor: function (context: {
-        chart: {
-          canvas: HTMLCanvasElement;
-          ctx: CanvasRenderingContext2D;
-          chartArea?: {
-            bottom: number;
-            top: number;
-            left: number;
-            right: number;
-          };
-        };
-      }) {
-        const chart = context.chart;
-        const { ctx, chartArea } = chart;
-        if (!chartArea) {
-          return ds.color ? `${ds.color}33` : '#22c55e33';
-        }
-        return createGradient(ctx, chartArea, ds.color ?? '#22c55e');
-      },
-      tension: 0.4,
-      borderWidth: 2.5,
-      fill: ds.fill ?? true,
-      pointRadius: 0,
-      pointHoverRadius: 6,
-      pointHoverBackgroundColor: ds.color ?? '#22c55e',
-      pointHoverBorderColor: '#fff',
-      pointHoverBorderWidth: 2,
-    })),
+      color: ds.color || `hsl(${index * 60}, 70%, 50%)`,
+    };
+    return acc;
+  }, {} as Record<string, { label: string; color: string }>);
+
+  const formatValue = (value: number) => {
+    if (yFormat === 'percent') return `${Number(value).toFixed(2)}%`;
+    if (yFormat === 'currency') return `$${value.toLocaleString()}`;
+    return `${value.toLocaleString()}`;
   };
-  const options = {
-    responsive: true,
-    maintainAspectRatio: false,
-    interaction: {
-      mode: 'index' as const,
-      intersect: false,
-    },
-    plugins: {
-      legend: {
-        position: 'top' as const,
-        labels: {
-          boxWidth: 12,
-          padding: 15,
-          font: {
-            size: 12,
-          },
-        },
-      },
-      tooltip: {
-        callbacks: {
-          title: function (context: { label: string }[]) {
-            return context[0]?.label ?? '';
-          },
-          label: function (context: {
-            parsed: { y: number };
-            dataset: { label?: string };
-          }) {
-            const value = context.parsed.y;
-            if (yFormat === 'percent')
-              return `${context.dataset.label ?? ''}: ${Number(value).toFixed(2)}%`;
-            if (yFormat === 'currency')
-              return `${context.dataset.label ?? ''}: $${value.toLocaleString()}`;
-            return `${context.dataset.label ?? ''}: ${value.toLocaleString()}`;
-          },
-        },
-      },
-    },
-    scales: {
-      x: {
-        grid: {
-          display: false,
-        },
-        ticks: {
-          maxRotation: 0,
-          autoSkip: true,
-          maxTicksLimit: 6,
-        },
-      },
-      y: {
-        beginAtZero: false,
-        ticks: {
-          // @ts-expect-error - chartjs types
-          callback: function (value: number | string) {
-            const n =
-              typeof value === 'number' ? value : parseFloat(String(value));
-            if (yFormat === 'percent') return `${Number(n).toFixed(2)}%`;
-            if (yFormat === 'currency') return `$${n.toLocaleString()}`;
-            return `${n.toLocaleString()}`;
-          },
-        },
-      },
-    },
-  };
-  return <Line data={chartData} options={options} />;
+
+  return (
+    <ChartContainer config={chartConfig} className="h-full w-full">
+      <ResponsiveContainer width="100%" height="100%">
+        <LineChart data={chartData} margin={{ top: 10, right: 10, left: 10, bottom: 0 }}>
+          <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+          <XAxis
+            dataKey="date"
+            tickLine={false}
+            axisLine={false}
+            tickMargin={8}
+            className="text-xs"
+          />
+          <YAxis
+            tickLine={false}
+            axisLine={false}
+            tickMargin={8}
+            className="text-xs"
+            tickFormatter={formatValue}
+          />
+          <ChartTooltip
+            cursor={false}
+            content={
+              <ChartTooltipContent
+                formatter={(value) => formatValue(Number(value))}
+              />
+            }
+          />
+          {datasets.map((ds, index) => (
+            <Line
+              key={datasetKeys[index]}
+              type="monotone"
+              dataKey={datasetKeys[index]}
+              stroke={`var(--color-${datasetKeys[index]})`}
+              strokeWidth={2.5}
+              dot={false}
+              activeDot={{ r: 6 }}
+            />
+          ))}
+        </LineChart>
+      </ResponsiveContainer>
+    </ChartContainer>
+  );
 };
 
 // Daily Spending Line Chart
@@ -725,79 +686,75 @@ type DailySpendingData = {
     { amount_usd?: number | string; amount_vnd?: number | string }
   >;
 };
+
+const dailySpendingChartConfig = {
+  spending: {
+    label: 'Daily Spending',
+    color: 'hsl(25, 95%, 53%)',
+  },
+};
+
 export const DailySpendingChart: React.FC<{
   data: DailySpendingData;
   currency?: Currency;
 }> = ({ data, currency = 'USD' }) => {
   if (!data?.by_day) return null;
 
-  const entries = Object.entries(data.by_day)
+  const chartData = Object.entries(data.by_day)
     .map(
       ([day, d]: [
         string,
         { amount_usd?: number | string; amount_vnd?: number | string },
-      ]) => ({ day, ...d })
+      ]) => ({
+        day,
+        spending: Math.abs(
+          parseFloat(
+            String(currency === 'USD' ? (d.amount_usd ?? 0) : (d.amount_vnd ?? 0))
+          )
+        ),
+      })
     )
     .sort((a, b) => (a.day < b.day ? -1 : 1));
 
-  const labels = entries.map((e) => e.day);
-  const values = entries.map((e) =>
-    Math.abs(
-      parseFloat(
-        String(currency === 'USD' ? (e.amount_usd ?? 0) : (e.amount_vnd ?? 0))
-      )
-    )
+  return (
+    <ChartContainer config={dailySpendingChartConfig} className="h-full w-full">
+      <ResponsiveContainer width="100%" height="100%">
+        <LineChart data={chartData} margin={{ top: 10, right: 10, left: 10, bottom: 0 }}>
+          <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+          <XAxis
+            dataKey="day"
+            tickLine={false}
+            axisLine={false}
+            tickMargin={8}
+            className="text-xs"
+          />
+          <YAxis
+            tickLine={false}
+            axisLine={false}
+            tickMargin={8}
+            className="text-xs"
+            tickFormatter={(value) => Math.abs(value).toLocaleString()}
+          />
+          <ChartTooltip
+            cursor={false}
+            content={
+              <ChartTooltipContent
+                formatter={(value) => `${Math.abs(Number(value)).toLocaleString()} ${currency}`}
+              />
+            }
+          />
+          <Line
+            type="monotone"
+            dataKey="spending"
+            stroke="var(--color-spending)"
+            strokeWidth={2}
+            dot={{ r: 2 }}
+            activeDot={{ r: 4 }}
+          />
+        </LineChart>
+      </ResponsiveContainer>
+    </ChartContainer>
   );
-
-  const chartData = {
-    labels,
-    datasets: [
-      {
-        label: `Daily Spending (${currency})`,
-        data: values,
-        borderColor: '#F97316',
-        backgroundColor: 'rgba(249, 115, 22, 0.2)',
-        fill: true,
-        tension: 0.3,
-        pointRadius: 2,
-      },
-    ],
-  };
-
-  const options = {
-    responsive: true,
-    maintainAspectRatio: false,
-    plugins: {
-      legend: { position: 'top' as const },
-      tooltip: {
-        callbacks: {
-          // @ts-expect-error - chartjs types - chartjs types
-          label: function (context: {
-            parsed: { y: number };
-            dataset: { label?: string };
-          }) {
-            const value = Math.abs(context.parsed.y);
-            return `${context.dataset.label ?? ''}: ${value.toLocaleString()} ${currency}`;
-          },
-        },
-      },
-    },
-    scales: {
-      y: {
-        beginAtZero: true,
-        ticks: {
-          // @ts-expect-error - chartjs types - chartjs types
-          callback: function (value: number | string) {
-            const n =
-              typeof value === 'number' ? value : parseFloat(String(value));
-            return Math.abs(n).toLocaleString();
-          },
-        },
-      },
-    },
-  };
-
-  return <Line data={chartData} options={options} />;
 };
 
 // Monthly Spending Trend Chart (Bar chart showing 12 months)
@@ -1022,9 +979,12 @@ export const SummaryStats: React.FC<{
   currency?: Currency;
 }> = ({ title, stats, currency = 'USD' }) => {
   return (
-    <div className="bg-white rounded-lg shadow p-6">
-      <h3 className="text-lg font-medium text-gray-900 mb-4">{title}</h3>
-      <div className="grid grid-cols-1 gap-4">
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-lg font-medium">{title}</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="grid grid-cols-1 gap-4">
         {stats.map((stat, index) => (
           <div key={index} className="flex justify-between items-center">
             <span className="text-sm text-gray-500">{stat.label}</span>
@@ -1040,6 +1000,7 @@ export const SummaryStats: React.FC<{
           </div>
         ))}
       </div>
-    </div>
+      </CardContent>
+    </Card>
   );
 };

@@ -10,30 +10,30 @@ import {
   IAdminRepository,
   IPendingActionsRepository,
   ISettingsRepository,
-} from '../repositories/repository.interface';
+} from "../repositories/repository.interface";
 import {
   TransactionRepositoryDb,
   TransactionRepositoryJson,
-} from '../repositories/transaction.repository';
+} from "../repositories/transaction.repository";
 import {
   VaultRepositoryDb,
   VaultRepositoryJson,
-} from '../repositories/vault.repository';
+} from "../repositories/vault.repository";
 import {
   LoanRepositoryDb,
   LoanRepositoryJson,
-} from '../repositories/loan.repository';
+} from "../repositories/loan.repository";
 import {
   AdminRepositoryDb,
   AdminRepositoryJson,
   PendingActionsRepositoryDb,
   PendingActionsRepositoryJson,
-} from '../repositories/admin.repository';
+} from "../repositories/admin.repository";
 import {
   SettingsRepositoryDb,
   SettingsRepositoryJson,
-} from '../repositories/settings.repository';
-import { config } from './config';
+} from "../repositories/settings.repository";
+import { config } from "./config";
 
 /**
  * Repository factory interface
@@ -47,7 +47,9 @@ interface RepositoryFactory<T> {
  * Create repository based on storage backend configuration
  */
 function createRepository<T>(factory: RepositoryFactory<T>): T {
-  return config.storageBackend === 'database' ? factory.createDb() : factory.createJson();
+  return config.storageBackend === "database"
+    ? factory.createDb()
+    : factory.createJson();
 }
 
 /**
@@ -55,11 +57,15 @@ function createRepository<T>(factory: RepositoryFactory<T>): T {
  */
 class DIContainer {
   // Lazy-loaded singletons
-  private _transactionRepository?: ReturnType<typeof createTransactionRepository>;
+  private _transactionRepository?: ReturnType<
+    typeof createTransactionRepository
+  >;
   private _vaultRepository?: ReturnType<typeof createVaultRepository>;
   private _loanRepository?: ReturnType<typeof createLoanRepository>;
   private _adminRepository?: ReturnType<typeof createAdminRepository>;
-  private _pendingActionsRepository?: ReturnType<typeof createPendingActionsRepository>;
+  private _pendingActionsRepository?: ReturnType<
+    typeof createPendingActionsRepository
+  >;
   private _settingsRepository?: ReturnType<typeof createSettingsRepository>;
 
   // Transaction repository
@@ -171,12 +177,24 @@ export const container = new DIContainer();
 
 // Export convenience accessors
 export const repositories = {
-  get transaction() { return container.transactionRepository; },
-  get vault() { return container.vaultRepository; },
-  get loan() { return container.loanRepository; },
-  get admin() { return container.adminRepository; },
-  get pendingActions() { return container.pendingActionsRepository; },
-  get settings() { return container.settingsRepository; },
+  get transaction() {
+    return container.transactionRepository;
+  },
+  get vault() {
+    return container.vaultRepository;
+  },
+  get loan() {
+    return container.loanRepository;
+  },
+  get admin() {
+    return container.adminRepository;
+  },
+  get pendingActions() {
+    return container.pendingActionsRepository;
+  },
+  get settings() {
+    return container.settingsRepository;
+  },
 };
 
 // Export for backward compatibility (will be deprecated)
@@ -191,22 +209,22 @@ export const settingsRepository = repositories.settings;
 export {
   TransactionRepositoryJson,
   TransactionRepositoryDb,
-} from '../repositories/transaction.repository';
+} from "../repositories/transaction.repository";
 export {
   VaultRepositoryJson,
   VaultRepositoryDb,
-} from '../repositories/vault.repository';
+} from "../repositories/vault.repository";
 export {
   LoanRepositoryJson,
   LoanRepositoryDb,
-} from '../repositories/loan.repository';
+} from "../repositories/loan.repository";
 export {
   AdminRepositoryJson,
   AdminRepositoryDb,
   PendingActionsRepositoryJson,
   PendingActionsRepositoryDb,
-} from '../repositories/admin.repository';
+} from "../repositories/admin.repository";
 export {
   SettingsRepositoryJson,
   SettingsRepositoryDb,
-} from '../repositories/settings.repository';
+} from "../repositories/settings.repository";
