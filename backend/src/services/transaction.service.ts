@@ -1,5 +1,11 @@
 import { v4 as uuidv4 } from "uuid";
-import { Asset, Transaction, PortfolioReport, PortfolioReportItem, assetKey } from "../types";
+import {
+  Asset,
+  Transaction,
+  PortfolioReport,
+  PortfolioReportItem,
+  assetKey,
+} from "../types";
 import { transactionRepository } from "../repositories";
 import { vaultRepository } from "../repositories";
 import { settingsRepository } from "../repositories";
@@ -20,18 +26,21 @@ export class TransactionService {
     amount: number,
     at?: string,
     account?: string,
-    transactionType?: string
+    transactionType?: string,
   ): Promise<TransactionBase> {
     const rate = await priceService.getRateUSD(asset, at);
-    const acc = account && String(account).trim().length
-      ? String(account).trim()
-      : settingsRepository.getDefaultSpendingVaultName();
+    const acc =
+      account && String(account).trim().length
+        ? String(account).trim()
+        : settingsRepository.getDefaultSpendingVaultName();
 
     // WARNING: Expenses should come from Spend vault
-    if (transactionType === 'EXPENSE' && acc.toLowerCase() !== 'spend') {
-      console.error(`[MIGRATION] Creating expense with non-Spend account (${acc}). After migration, this will be enforced.`);
+    if (transactionType === "EXPENSE" && acc.toLowerCase() !== "spend") {
+      console.error(
+        `[MIGRATION] Creating expense with non-Spend account (${acc}). After migration, this will be enforced.`,
+      );
       // TODO: After migration complete, throw error instead of warning
-      throw new Error('All expenses must be from Spend vault');
+      throw new Error("All expenses must be from Spend vault");
     }
 
     return {
@@ -44,13 +53,15 @@ export class TransactionService {
     };
   }
 
-  async createInitialTransactions(items: Array<{
-    asset: Asset;
-    amount: number;
-    at?: string;
-    account?: string;
-    note?: string;
-  }>): Promise<Transaction[]> {
+  async createInitialTransactions(
+    items: Array<{
+      asset: Asset;
+      amount: number;
+      at?: string;
+      account?: string;
+      note?: string;
+    }>,
+  ): Promise<Transaction[]> {
     const results: Transaction[] = [];
 
     for (const item of items) {
@@ -58,7 +69,7 @@ export class TransactionService {
         item.asset,
         item.amount,
         item.at,
-        item.account
+        item.account,
       );
 
       const tx: Transaction = {
@@ -92,7 +103,7 @@ export class TransactionService {
       params.amount,
       params.at,
       params.account,
-      'INCOME'
+      "INCOME",
     );
 
     const tx: Transaction = {
@@ -128,7 +139,7 @@ export class TransactionService {
       params.amount,
       params.at,
       params.account,
-      'EXPENSE'
+      "EXPENSE",
     );
 
     const tx: Transaction = {
@@ -140,30 +151,30 @@ export class TransactionService {
       counterparty: params.counterparty,
       dueDate: params.dueDate,
       sourceRef: params.sourceRef,
-      ...(params.category ? { tag: params.category } : {} as any),
+      ...(params.category ? { tag: params.category } : ({} as any)),
       ...base,
     } as Transaction;
 
     transactionRepository.create(tx);
 
     // Auto-create vault WITHDRAW entry for Spend vault
-    const isSpendVault = base.account.toLowerCase() === 'spend';
+    const isSpendVault = base.account.toLowerCase() === "spend";
     if (isSpendVault) {
-      const { vaultService } = require('./vault.service');
+      const { vaultService } = require("./vault.service");
 
       // Ensure Spend vault exists
-      vaultService.ensureVault('Spend');
+      vaultService.ensureVault("Spend");
 
       // Create WITHDRAW entry
       const vaultEntry = {
-        vault: 'Spend',
-        type: 'WITHDRAW' as const,
+        vault: "Spend",
+        type: "WITHDRAW" as const,
         asset: params.asset,
         amount: params.amount,
         usdValue: tx.usdAmount,
         at: base.createdAt,
         account: base.account,
-        note: params.note ? `Expense: ${params.note}` : 'Expense'
+        note: params.note ? `Expense: ${params.note}` : "Expense",
       };
 
       vaultService.addVaultEntry(vaultEntry);
@@ -184,7 +195,7 @@ export class TransactionService {
       params.asset,
       params.amount,
       params.at,
-      params.account
+      params.account,
     );
 
     const tx: Transaction = {
@@ -211,7 +222,7 @@ export class TransactionService {
       params.asset,
       params.amount,
       params.at,
-      params.account
+      params.account,
     );
 
     const tx: Transaction = {
@@ -239,7 +250,7 @@ export class TransactionService {
       params.asset,
       params.amount,
       params.at,
-      params.account
+      params.account,
     );
 
     const tx: Transaction = {
@@ -270,7 +281,10 @@ export class TransactionService {
   // Generate portfolio report
   async generateReport(): Promise<PortfolioReport> {
     const vaultEntries = vaultRepository.findAll();
-    const balances = new Map<string, { asset: Asset; account?: string; units: number }>();
+    const balances = new Map<
+      string,
+      { asset: Asset; account?: string; units: number }
+    >();
 
     // Get all vault entries across all vaults
     for (const vault of vaultEntries) {
@@ -279,7 +293,7 @@ export class TransactionService {
         const account = e.vault;
         const k = `${assetKey(e.asset)}|${account}`;
         const cur = balances.get(k) || { asset: e.asset, account, units: 0 };
-        cur.units += e.type === 'DEPOSIT' ? e.amount : -e.amount;
+        cur.units += e.type === "DEPOSIT" ? e.amount : -e.amount;
         balances.set(k, cur);
       }
     }
@@ -292,7 +306,7 @@ export class TransactionService {
           account: v.account,
           balance: v.units,
           rateUSD: 0,
-          valueUSD: 0
+          valueUSD: 0,
         });
       }
     }

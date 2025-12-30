@@ -1,11 +1,6 @@
 import fs from "fs";
 import path from "path";
-import {
-  Transaction,
-  Vault,
-  VaultEntry,
-  LoanAgreement,
-} from "../types";
+import { Transaction, Vault, VaultEntry, LoanAgreement } from "../types";
 
 const DATA_DIR = path.resolve(__dirname, "..", "..", "data");
 const STORE_FILE = path.join(DATA_DIR, "store.json");
@@ -44,8 +39,11 @@ export interface AdminTag {
   created_at: string;
 }
 
-export type PendingSource = 'telegram_text' | 'telegram_image' | 'bank_statement_excel';
-export type PendingStatus = 'pending' | 'accepted' | 'rejected';
+export type PendingSource =
+  | "telegram_text"
+  | "telegram_image"
+  | "bank_statement_excel";
+export type PendingStatus = "pending" | "accepted" | "rejected";
 
 export interface PendingAction {
   id: string;
@@ -115,11 +113,16 @@ export function readStore(): StoreShape {
       vaults: Array.isArray(data.vaults) ? data.vaults : [],
       vaultEntries: Array.isArray(data.vaultEntries) ? data.vaultEntries : [],
       adminTypes: Array.isArray(data.adminTypes) ? data.adminTypes : [],
-      adminAccounts: Array.isArray(data.adminAccounts) ? data.adminAccounts : [],
+      adminAccounts: Array.isArray(data.adminAccounts)
+        ? data.adminAccounts
+        : [],
       adminAssets: Array.isArray(data.adminAssets) ? data.adminAssets : [],
       adminTags: Array.isArray(data.adminTags) ? data.adminTags : [],
-      pendingActions: Array.isArray(data.pendingActions) ? data.pendingActions : [],
-      settings: typeof data.settings === 'object' && data.settings ? data.settings : {},
+      pendingActions: Array.isArray(data.pendingActions)
+        ? data.pendingActions
+        : [],
+      settings:
+        typeof data.settings === "object" && data.settings ? data.settings : {},
     } as StoreShape;
   } catch {
     return {
@@ -132,7 +135,7 @@ export function readStore(): StoreShape {
       adminAssets: [],
       adminTags: [],
       pendingActions: [],
-      settings: {}
+      settings: {},
     } as StoreShape;
   }
 }

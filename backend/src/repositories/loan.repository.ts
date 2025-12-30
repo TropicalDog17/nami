@@ -10,15 +10,15 @@ export class LoanRepositoryJson implements ILoanRepository {
   }
 
   findById(id: string): LoanAgreement | undefined {
-    return readStore().loans.find(l => l.id === id);
+    return readStore().loans.find((l) => l.id === id);
   }
 
   findByCounterparty(counterparty: string): LoanAgreement[] {
-    return readStore().loans.filter(l => l.counterparty === counterparty);
+    return readStore().loans.filter((l) => l.counterparty === counterparty);
   }
 
   findByStatus(status: string): LoanAgreement[] {
-    return readStore().loans.filter(l => l.status === status);
+    return readStore().loans.filter((l) => l.status === status);
   }
 
   create(loan: LoanAgreement): LoanAgreement {
@@ -28,9 +28,12 @@ export class LoanRepositoryJson implements ILoanRepository {
     return loan;
   }
 
-  update(id: string, updates: Partial<LoanAgreement>): LoanAgreement | undefined {
+  update(
+    id: string,
+    updates: Partial<LoanAgreement>,
+  ): LoanAgreement | undefined {
     const store = readStore();
-    const index = store.loans.findIndex(l => l.id === id);
+    const index = store.loans.findIndex((l) => l.id === id);
     if (index === -1) return undefined;
 
     store.loans[index] = { ...store.loans[index], ...updates };
@@ -41,43 +44,42 @@ export class LoanRepositoryJson implements ILoanRepository {
   delete(id: string): boolean {
     const store = readStore();
     const initialLength = store.loans.length;
-    store.loans = store.loans.filter(l => l.id !== id);
+    store.loans = store.loans.filter((l) => l.id !== id);
     writeStore(store);
     return store.loans.length < initialLength;
   }
 }
 
 // Database-based implementation
-export class LoanRepositoryDb extends BaseDbRepository implements ILoanRepository {
+export class LoanRepositoryDb
+  extends BaseDbRepository
+  implements ILoanRepository
+{
   findAll(): LoanAgreement[] {
     return this.findMany(
-      'SELECT * FROM loans ORDER BY created_at DESC',
+      "SELECT * FROM loans ORDER BY created_at DESC",
       [],
-      rowToLoan
+      rowToLoan,
     );
   }
 
   findById(id: string): LoanAgreement | undefined {
-    return this.findOne(
-      'SELECT * FROM loans WHERE id = ?',
-      [id],
-      rowToLoan
-    );
+    return this.findOne("SELECT * FROM loans WHERE id = ?", [id], rowToLoan);
   }
 
   findByCounterparty(counterparty: string): LoanAgreement[] {
     return this.findMany(
-      'SELECT * FROM loans WHERE counterparty = ? ORDER BY created_at DESC',
+      "SELECT * FROM loans WHERE counterparty = ? ORDER BY created_at DESC",
       [counterparty],
-      rowToLoan
+      rowToLoan,
     );
   }
 
   findByStatus(status: string): LoanAgreement[] {
     return this.findMany(
-      'SELECT * FROM loans WHERE status = ? ORDER BY created_at DESC',
+      "SELECT * FROM loans WHERE status = ? ORDER BY created_at DESC",
       [status],
-      rowToLoan
+      rowToLoan,
     );
   }
 
@@ -89,28 +91,53 @@ export class LoanRepositoryDb extends BaseDbRepository implements ILoanRepositor
         period, start_at, maturity_at, note, account, status, created_at
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
-        row.id, row.counterparty, row.asset_type, row.asset_symbol, row.principal,
-        row.interest_rate, row.period, row.start_at, row.maturity_at,
-        row.note, row.account, row.status, row.created_at
-      ]
+        row.id,
+        row.counterparty,
+        row.asset_type,
+        row.asset_symbol,
+        row.principal,
+        row.interest_rate,
+        row.period,
+        row.start_at,
+        row.maturity_at,
+        row.note,
+        row.account,
+        row.status,
+        row.created_at,
+      ],
     );
     return loan;
   }
 
-  update(id: string, updates: Partial<LoanAgreement>): LoanAgreement | undefined {
+  update(
+    id: string,
+    updates: Partial<LoanAgreement>,
+  ): LoanAgreement | undefined {
     const fields: string[] = [];
     const values: any[] = [];
 
     const updateFields: (keyof LoanAgreement)[] = [
-      'counterparty', 'principal', 'interestRate', 'period',
-      'startAt', 'maturityAt', 'note', 'account', 'status'
+      "counterparty",
+      "principal",
+      "interestRate",
+      "period",
+      "startAt",
+      "maturityAt",
+      "note",
+      "account",
+      "status",
     ];
 
     for (const field of updateFields) {
       if (field in updates) {
-        const dbField = field === 'interestRate' ? 'interest_rate' :
-                        field === 'startAt' ? 'start_at' :
-                        field === 'maturityAt' ? 'maturity_at' : field;
+        const dbField =
+          field === "interestRate"
+            ? "interest_rate"
+            : field === "startAt"
+              ? "start_at"
+              : field === "maturityAt"
+                ? "maturity_at"
+                : field;
         fields.push(`${dbField} = ?`);
         values.push(updates[field]);
       }
@@ -119,15 +146,12 @@ export class LoanRepositoryDb extends BaseDbRepository implements ILoanRepositor
     if (fields.length === 0) return this.findById(id);
 
     values.push(id);
-    this.execute(
-      `UPDATE loans SET ${fields.join(', ')} WHERE id = ?`,
-      values
-    );
+    this.execute(`UPDATE loans SET ${fields.join(", ")} WHERE id = ?`, values);
     return this.findById(id);
   }
 
   delete(id: string): boolean {
-    const result = this.execute('DELETE FROM loans WHERE id = ?', [id]);
+    const result = this.execute("DELETE FROM loans WHERE id = ?", [id]);
     return result.changes > 0;
   }
 }

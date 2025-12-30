@@ -17,8 +17,8 @@ export class VaultService {
 
     const vault: Vault = {
       name,
-      status: 'ACTIVE',
-      createdAt: new Date().toISOString()
+      status: "ACTIVE",
+      createdAt: new Date().toISOString(),
     };
 
     vaultRepository.create(vault);
@@ -37,7 +37,7 @@ export class VaultService {
     const vault = vaultRepository.findByName(name);
     if (!vault) return false;
 
-    vaultRepository.update(name, { status: 'CLOSED' });
+    vaultRepository.update(name, { status: "CLOSED" });
     return true;
   }
 
@@ -65,31 +65,31 @@ export class VaultService {
     let netFlowSinceValUSD = 0;
 
     for (const e of entries) {
-      if (e.type === 'DEPOSIT') {
+      if (e.type === "DEPOSIT") {
         const usd = Number(e.usdValue || 0);
         deposited += usd;
         const k = assetKey(e.asset);
         const cur = positions.get(k) || { asset: e.asset, units: 0 };
         cur.units += e.amount;
         positions.set(k, cur);
-        if (typeof lastValuationUSD === 'number') netFlowSinceValUSD += usd;
-      } else if (e.type === 'WITHDRAW') {
+        if (typeof lastValuationUSD === "number") netFlowSinceValUSD += usd;
+      } else if (e.type === "WITHDRAW") {
         const usd = Number(e.usdValue || 0);
         withdrawn += usd;
         const k = assetKey(e.asset);
         const cur = positions.get(k) || { asset: e.asset, units: 0 };
         cur.units -= e.amount;
         positions.set(k, cur);
-        if (typeof lastValuationUSD === 'number') netFlowSinceValUSD -= usd;
-      } else if (e.type === 'VALUATION') {
-        if (typeof e.usdValue === 'number') lastValuationUSD = e.usdValue;
+        if (typeof lastValuationUSD === "number") netFlowSinceValUSD -= usd;
+      } else if (e.type === "VALUATION") {
+        if (typeof e.usdValue === "number") lastValuationUSD = e.usdValue;
         netFlowSinceValUSD = 0;
       }
     }
 
     // Compute AUM
     let aum = 0;
-    if (typeof lastValuationUSD === 'number') {
+    if (typeof lastValuationUSD === "number") {
       aum = lastValuationUSD + netFlowSinceValUSD;
     } else {
       for (const v of positions.values()) {
@@ -102,7 +102,7 @@ export class VaultService {
     return {
       totalDepositedUSD: deposited,
       totalWithdrawnUSD: withdrawn,
-      aumUSD: aum
+      aumUSD: aum,
     };
   }
 
@@ -116,13 +116,14 @@ export class VaultService {
     const { asset, amount, at, account, note } = params;
     const createdAt = at ?? new Date().toISOString();
     const rate = await priceService.getRateUSD(asset, at);
-    const acc = account?.trim() || settingsRepository.getDefaultSpendingVaultName();
+    const acc =
+      account?.trim() || settingsRepository.getDefaultSpendingVaultName();
 
     if (acc) this.ensureVault(acc);
 
     const tx: any = {
-      id: require('uuid').v4(),
-      type: 'INCOME',
+      id: require("uuid").v4(),
+      type: "INCOME",
       asset,
       amount,
       createdAt,

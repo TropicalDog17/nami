@@ -2,8 +2,8 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 import { AggregatedPnLChart } from '../components/reports/AggregatedPnLChart';
-import { TimeSeriesLineChart } from '../components/reports/Charts';
 import AUMChart from '../components/reports/AUMChart';
+import { TimeSeriesLineChart } from '../components/reports/Charts';
 import CreateTokenizedVaultForm from '../components/tokenized/CreateTokenizedVaultForm';
 import DataTable, { TableColumn } from '../components/ui/DataTable';
 import { useToast } from '../components/ui/Toast';
@@ -278,7 +278,7 @@ const VaultsPage: React.FC = () => {
 
           // Filter series to start from the earliest vault inception
           const filteredSeries = earliestInception
-            ? series.filter(point => new Date(point.date) >= earliestInception!)
+            ? series.filter(point => new Date(point.date) >= earliestInception)
             : series;
 
           const aggregated = filteredSeries

@@ -21,7 +21,9 @@ export interface LoanView {
 }
 
 export class LoanService {
-  async createLoan(data: LoanCreateRequest): Promise<{ loan: LoanAgreement; tx: Transaction }> {
+  async createLoan(
+    data: LoanCreateRequest,
+  ): Promise<{ loan: LoanAgreement; tx: Transaction }> {
     const id = uuidv4();
     const startAt = data.startAt ?? new Date().toISOString();
     const createdAt = new Date().toISOString();
@@ -90,17 +92,19 @@ export class LoanService {
     const related = transactionRepository.findByLoanId(id);
 
     const principalIssued = related
-      .filter(t => t.type === "LOAN")
+      .filter((t) => t.type === "LOAN")
       .reduce((sum, t) => sum + t.amount, 0);
 
     const principalRepaid = related
-      .filter(t => t.type === "REPAY" && (t as any).direction === "LOAN")
+      .filter((t) => t.type === "REPAY" && (t as any).direction === "LOAN")
       .reduce((sum, t) => sum + t.amount, 0);
 
     const principalOutstanding = Math.max(0, principalIssued - principalRepaid);
 
     const interestTxs = related.filter(
-      t => t.type === "INCOME" && (t.category === "INTEREST_INCOME" || /interest/i.test(t.note || ""))
+      (t) =>
+        t.type === "INCOME" &&
+        (t.category === "INTEREST_INCOME" || /interest/i.test(t.note || "")),
     );
 
     const interestReceived = interestTxs.reduce((sum, t) => sum + t.amount, 0);
@@ -123,7 +127,7 @@ export class LoanService {
 
   async recordPrincipalRepayment(
     loanId: string,
-    input: { amount: number; at?: string; account?: string; note?: string }
+    input: { amount: number; at?: string; account?: string; note?: string },
   ): Promise<Transaction | undefined> {
     const loan = loanRepository.findById(loanId);
     if (!loan) return undefined;
@@ -152,7 +156,7 @@ export class LoanService {
 
   async recordInterestIncome(
     loanId: string,
-    input: { amount: number; at?: string; account?: string; note?: string }
+    input: { amount: number; at?: string; account?: string; note?: string },
   ): Promise<Transaction | undefined> {
     const loan = loanRepository.findById(loanId);
     if (!loan) return undefined;

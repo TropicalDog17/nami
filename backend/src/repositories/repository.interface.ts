@@ -1,4 +1,4 @@
-import { Transaction, Vault, VaultEntry, LoanAgreement } from '../types';
+import { Transaction, Vault, VaultEntry, LoanAgreement } from "../types";
 import {
   AdminType,
   AdminAccount,
@@ -6,7 +6,7 @@ import {
   AdminTag,
   PendingAction,
   StoreShape,
-} from './base.repository';
+} from "./base.repository";
 
 // Transaction repository interface
 export interface ITransactionRepository {
@@ -39,7 +39,11 @@ export interface IVaultRepository {
   findAllEntries(vaultName: string): VaultEntry[];
   createEntry(entry: VaultEntry): VaultEntry;
   findEntriesByType(vaultName: string, type: string): VaultEntry[];
-  findEntriesByDateRange(vaultName: string, startDate: string, endDate: string): VaultEntry[];
+  findEntriesByDateRange(
+    vaultName: string,
+    startDate: string,
+    endDate: string,
+  ): VaultEntry[];
 }
 
 // Loan repository interface
@@ -49,7 +53,10 @@ export interface ILoanRepository {
   findByCounterparty(counterparty: string): LoanAgreement[];
   findByStatus(status: string): LoanAgreement[];
   create(loan: LoanAgreement): LoanAgreement;
-  update(id: string, updates: Partial<LoanAgreement>): LoanAgreement | undefined;
+  update(
+    id: string,
+    updates: Partial<LoanAgreement>,
+  ): LoanAgreement | undefined;
   delete(id: string): boolean;
 }
 
@@ -58,35 +65,38 @@ export interface IAdminRepository {
   // Admin types
   findAllTypes(): AdminType[];
   findTypeById(id: number): AdminType | undefined;
-  createType(type: Omit<AdminType, 'id' | 'created_at'>): AdminType;
+  createType(type: Omit<AdminType, "id" | "created_at">): AdminType;
   updateType(id: number, updates: Partial<AdminType>): AdminType | undefined;
   deleteType(id: number): boolean;
 
   // Admin accounts
   findAllAccounts(): AdminAccount[];
   findAccountById(id: number): AdminAccount | undefined;
-  createAccount(account: Omit<AdminAccount, 'id' | 'created_at'>): AdminAccount;
-  updateAccount(id: number, updates: Partial<AdminAccount>): AdminAccount | undefined;
+  createAccount(account: Omit<AdminAccount, "id" | "created_at">): AdminAccount;
+  updateAccount(
+    id: number,
+    updates: Partial<AdminAccount>,
+  ): AdminAccount | undefined;
   deleteAccount(id: number): boolean;
 
   // Admin assets
   findAllAssets(): AdminAsset[];
   findAssetById(id: number): AdminAsset | undefined;
-  createAsset(asset: Omit<AdminAsset, 'id' | 'created_at'>): AdminAsset;
+  createAsset(asset: Omit<AdminAsset, "id" | "created_at">): AdminAsset;
   updateAsset(id: number, updates: Partial<AdminAsset>): AdminAsset | undefined;
   deleteAsset(id: number): boolean;
 
   // Admin tags
   findAllTags(): AdminTag[];
   findTagById(id: number): AdminTag | undefined;
-  createTag(tag: Omit<AdminTag, 'id' | 'created_at'>): AdminTag;
+  createTag(tag: Omit<AdminTag, "id" | "created_at">): AdminTag;
   updateTag(id: number, updates: Partial<AdminTag>): AdminTag | undefined;
   deleteTag(id: number): boolean;
 }
 
 // Settings repository interface
 export interface ISettingsRepository {
-  getSettings(): StoreShape['settings'];
+  getSettings(): StoreShape["settings"];
   getSetting(key: string): string | undefined;
   setSetting(key: string, value: string): void;
   deleteSetting(key: string): void;
@@ -99,6 +109,9 @@ export interface IPendingActionsRepository {
   findByStatus(status: string): PendingAction[];
   findByBatchId(batchId: string): PendingAction[];
   create(action: PendingAction): PendingAction;
-  update(id: string, updates: Partial<PendingAction>): PendingAction | undefined;
+  update(
+    id: string,
+    updates: Partial<PendingAction>,
+  ): PendingAction | undefined;
   delete(id: string): boolean;
 }

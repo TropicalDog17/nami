@@ -35,7 +35,10 @@ loansRouter.post("/loans", async (req: Request, res: Response) => {
 
     if (Array.isArray(body.items)) {
       const parsed: LoanCreateBatchRequest = LoanCreateBatchSchema.parse(body);
-      const created = [] as Array<{ loan: LoanAgreement; transactionId: string }>;
+      const created = [] as Array<{
+        loan: LoanAgreement;
+        transactionId: string;
+      }>;
 
       for (const item of parsed.items) {
         const result = await loanService.createLoan(item);
@@ -45,16 +48,20 @@ loansRouter.post("/loans", async (req: Request, res: Response) => {
       return res.status(201).json({
         ok: true,
         created: created.length,
-        loans: created.map(c => c.loan),
-        transactions: created.map(c => c.transactionId)
+        loans: created.map((c) => c.loan),
+        transactions: created.map((c) => c.transactionId),
       });
     } else {
       const parsed: LoanCreateRequest = LoanCreateSchema.parse(body);
       const result = await loanService.createLoan(parsed);
-      return res.status(201).json({ ok: true, loan: result.loan, transaction: result.tx });
+      return res
+        .status(201)
+        .json({ ok: true, loan: result.loan, transaction: result.tx });
     }
   } catch (e: any) {
-    return res.status(400).json({ error: e?.message || "Invalid loan request" });
+    return res
+      .status(400)
+      .json({ error: e?.message || "Invalid loan request" });
   }
 });
 
@@ -63,7 +70,9 @@ loansRouter.get("/loans", async (_req: Request, res: Response) => {
     const list = await loanService.listLoansView();
     return res.json(list);
   } catch (e: any) {
-    return res.status(500).json({ error: e?.message || "Failed to list loans" });
+    return res
+      .status(500)
+      .json({ error: e?.message || "Failed to list loans" });
   }
 });
 
@@ -86,7 +95,9 @@ loansRouter.post("/loans/:id/repay", async (req: Request, res: Response) => {
     if (!transaction) return res.status(404).json({ error: "Loan not found" });
     return res.status(201).json({ ok: true, transaction });
   } catch (e: any) {
-    return res.status(400).json({ error: e?.message || "Invalid repay payload" });
+    return res
+      .status(400)
+      .json({ error: e?.message || "Invalid repay payload" });
   }
 });
 
@@ -98,6 +109,8 @@ loansRouter.post("/loans/:id/interest", async (req: Request, res: Response) => {
     if (!transaction) return res.status(404).json({ error: "Loan not found" });
     return res.status(201).json({ ok: true, transaction });
   } catch (e: any) {
-    return res.status(400).json({ error: e?.message || "Invalid interest payload" });
+    return res
+      .status(400)
+      .json({ error: e?.message || "Invalid interest payload" });
   }
 });

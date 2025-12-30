@@ -1,22 +1,26 @@
 import { Transaction } from "../types";
 import { readStore, writeStore } from "./base.repository";
 import { ITransactionRepository } from "./repository.interface";
-import { BaseDbRepository, rowToTransaction, transactionToRow } from "./base-db.repository";
+import {
+  BaseDbRepository,
+  rowToTransaction,
+  transactionToRow,
+} from "./base-db.repository";
 
 // JSON-based implementation
 export class TransactionRepositoryJson implements ITransactionRepository {
   findAll(): Transaction[] {
     return readStore().transactions.sort((a, b) =>
-      b.createdAt.localeCompare(a.createdAt)
+      b.createdAt.localeCompare(a.createdAt),
     );
   }
 
   findById(id: string): Transaction | undefined {
-    return readStore().transactions.find(t => t.id === id);
+    return readStore().transactions.find((t) => t.id === id);
   }
 
   findByLoanId(loanId: string): Transaction[] {
-    return readStore().transactions.filter(t => t.loanId === loanId);
+    return readStore().transactions.filter((t) => t.loanId === loanId);
   }
 
   create(transaction: Transaction): Transaction {
@@ -29,27 +33,27 @@ export class TransactionRepositoryJson implements ITransactionRepository {
   delete(id: string): boolean {
     const store = readStore();
     const initialLength = store.transactions.length;
-    store.transactions = store.transactions.filter(t => t.id !== id);
+    store.transactions = store.transactions.filter((t) => t.id !== id);
     writeStore(store);
     return store.transactions.length < initialLength;
   }
 
   findByAccount(account: string): Transaction[] {
-    return readStore().transactions.filter(t => t.account === account);
+    return readStore().transactions.filter((t) => t.account === account);
   }
 
   findByType(type: string): Transaction[] {
-    return readStore().transactions.filter(t => t.type === type);
+    return readStore().transactions.filter((t) => t.type === type);
   }
 
   findByDateRange(startDate: string, endDate: string): Transaction[] {
     return readStore().transactions.filter(
-      t => t.createdAt >= startDate && t.createdAt <= endDate
+      (t) => t.createdAt >= startDate && t.createdAt <= endDate,
     );
   }
 
   findBySourceRef(sourceRef: string): Transaction | undefined {
-    return readStore().transactions.find(t => t.sourceRef === sourceRef);
+    return readStore().transactions.find((t) => t.sourceRef === sourceRef);
   }
 
   findExisting(params: {
@@ -70,13 +74,17 @@ export class TransactionRepositoryJson implements ITransactionRepository {
     }
 
     // Second try: match by date, amount, type, and optional account
-    const dateStr = date.startsWith('T') ? date.split('T')[0] : date;
-    const candidates = readStore().transactions.filter(t => {
-      const txDate = t.createdAt.startsWith('T') ? t.createdAt.split('T')[0] : t.createdAt;
-      return txDate === dateStr &&
-             Math.abs(t.amount - amount) < 0.01 &&
-             t.type === type &&
-             (!account || t.account === account);
+    const dateStr = date.startsWith("T") ? date.split("T")[0] : date;
+    const candidates = readStore().transactions.filter((t) => {
+      const txDate = t.createdAt.startsWith("T")
+        ? t.createdAt.split("T")[0]
+        : t.createdAt;
+      return (
+        txDate === dateStr &&
+        Math.abs(t.amount - amount) < 0.01 &&
+        t.type === type &&
+        (!account || t.account === account)
+      );
     });
 
     // If exact match found, return it
@@ -89,28 +97,31 @@ export class TransactionRepositoryJson implements ITransactionRepository {
 }
 
 // Database-based implementation
-export class TransactionRepositoryDb extends BaseDbRepository implements ITransactionRepository {
+export class TransactionRepositoryDb
+  extends BaseDbRepository
+  implements ITransactionRepository
+{
   findAll(): Transaction[] {
     return this.findMany(
-      'SELECT * FROM transactions ORDER BY created_at DESC',
+      "SELECT * FROM transactions ORDER BY created_at DESC",
       [],
-      rowToTransaction
+      rowToTransaction,
     );
   }
 
   findById(id: string): Transaction | undefined {
     return this.findOne(
-      'SELECT * FROM transactions WHERE id = ?',
+      "SELECT * FROM transactions WHERE id = ?",
       [id],
-      rowToTransaction
+      rowToTransaction,
     );
   }
 
   findByLoanId(loanId: string): Transaction[] {
     return this.findMany(
-      'SELECT * FROM transactions WHERE loan_id = ? ORDER BY created_at DESC',
+      "SELECT * FROM transactions WHERE loan_id = ? ORDER BY created_at DESC",
       [loanId],
-      rowToTransaction
+      rowToTransaction,
     );
   }
 
@@ -123,33 +134,47 @@ export class TransactionRepositoryDb extends BaseDbRepository implements ITransa
         loan_id, source_ref, repay_direction, rate, usd_amount
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
-        row.id, row.type, row.asset_type, row.asset_symbol, row.amount,
-        row.created_at, row.account, row.note, row.category, row.tags,
-        row.counterparty, row.due_date, row.transfer_id, row.loan_id,
-        row.source_ref, row.repay_direction, row.rate, row.usd_amount
-      ]
+        row.id,
+        row.type,
+        row.asset_type,
+        row.asset_symbol,
+        row.amount,
+        row.created_at,
+        row.account,
+        row.note,
+        row.category,
+        row.tags,
+        row.counterparty,
+        row.due_date,
+        row.transfer_id,
+        row.loan_id,
+        row.source_ref,
+        row.repay_direction,
+        row.rate,
+        row.usd_amount,
+      ],
     );
     return transaction;
   }
 
   delete(id: string): boolean {
-    const result = this.execute('DELETE FROM transactions WHERE id = ?', [id]);
+    const result = this.execute("DELETE FROM transactions WHERE id = ?", [id]);
     return result.changes > 0;
   }
 
   findByAccount(account: string): Transaction[] {
     return this.findMany(
-      'SELECT * FROM transactions WHERE account = ? ORDER BY created_at DESC',
+      "SELECT * FROM transactions WHERE account = ? ORDER BY created_at DESC",
       [account],
-      rowToTransaction
+      rowToTransaction,
     );
   }
 
   findByType(type: string): Transaction[] {
     return this.findMany(
-      'SELECT * FROM transactions WHERE type = ? ORDER BY created_at DESC',
+      "SELECT * FROM transactions WHERE type = ? ORDER BY created_at DESC",
       [type],
-      rowToTransaction
+      rowToTransaction,
     );
   }
 
@@ -159,15 +184,15 @@ export class TransactionRepositoryDb extends BaseDbRepository implements ITransa
        WHERE created_at >= ? AND created_at <= ?
        ORDER BY created_at DESC`,
       [startDate, endDate],
-      rowToTransaction
+      rowToTransaction,
     );
   }
 
   findBySourceRef(sourceRef: string): Transaction | undefined {
     return this.findOne(
-      'SELECT * FROM transactions WHERE source_ref = ?',
+      "SELECT * FROM transactions WHERE source_ref = ?",
       [sourceRef],
-      rowToTransaction
+      rowToTransaction,
     );
   }
 
@@ -186,7 +211,7 @@ export class TransactionRepositoryDb extends BaseDbRepository implements ITransa
     }
 
     // Second try: match by date, amount, type, and optional account
-    const dateStr = date.startsWith('T') ? date.split('T')[0] : date;
+    const dateStr = date.startsWith("T") ? date.split("T")[0] : date;
     const startDate = `${dateStr}T00:00:00Z`;
     const endDate = `${dateStr}T23:59:59Z`;
 
@@ -202,11 +227,13 @@ export class TransactionRepositoryDb extends BaseDbRepository implements ITransa
 
     const candidates = this.findMany(
       sql,
-      account ? [startDate, endDate, type, account] : [startDate, endDate, type],
-      rowToTransaction
+      account
+        ? [startDate, endDate, type, account]
+        : [startDate, endDate, type],
+      rowToTransaction,
     );
 
     // Filter by amount in memory (close match)
-    return candidates.find(t => Math.abs(t.amount - amount) < 0.01);
+    return candidates.find((t) => Math.abs(t.amount - amount) < 0.01);
   }
 }

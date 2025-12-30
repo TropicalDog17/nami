@@ -10,17 +10,22 @@
   - Handles errors and provides rollback instructions
 */
 
-import fs from 'fs';
-import path from 'path';
-import { initializeDatabase, getConnection, closeConnection, resetConnection } from '../database/connection';
-import { readStore, writeStore } from '../repositories/base.repository';
+import fs from "fs";
+import path from "path";
+import {
+  initializeDatabase,
+  getConnection,
+  closeConnection,
+  resetConnection,
+} from "../database/connection";
+import { readStore, writeStore } from "../repositories/base.repository";
 
-const DATA_DIR = path.resolve(__dirname, '..', '..', 'data');
-const STORE_FILE = path.join(DATA_DIR, 'store.json');
-const DB_PATH = path.join(DATA_DIR, 'nami.db');
+const DATA_DIR = path.resolve(__dirname, "..", "..", "data");
+const STORE_FILE = path.join(DATA_DIR, "store.json");
+const DB_PATH = path.join(DATA_DIR, "nami.db");
 
 function backupFile(src: string): string {
-  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
   const dest = `${src}.bak-${timestamp}`;
   fs.copyFileSync(src, dest);
   return dest;
@@ -60,10 +65,10 @@ async function migrateTransactions(store: any): Promise<void> {
           tx.sourceRef || null,
           (tx as any).direction || null,
           JSON.stringify(tx.rate),
-          tx.usdAmount
+          tx.usdAmount,
         );
       } catch (err: any) {
-        if (err.code !== 'SQLITE_CONSTRAINT') {
+        if (err.code !== "SQLITE_CONSTRAINT") {
           throw err;
         }
         console.warn(`  Skipping duplicate transaction: ${tx.id}`);
@@ -72,7 +77,7 @@ async function migrateTransactions(store: any): Promise<void> {
   });
 
   insertMany(store.transactions);
-  console.log('  Transactions migrated successfully');
+  console.log("  Transactions migrated successfully");
 }
 
 async function migrateVaults(store: any): Promise<void> {
@@ -92,7 +97,7 @@ async function migrateVaults(store: any): Promise<void> {
   });
 
   insertMany(store.vaults);
-  console.log('  Vaults migrated successfully');
+  console.log("  Vaults migrated successfully");
 }
 
 async function migrateVaultEntries(store: any): Promise<void> {
@@ -116,13 +121,13 @@ async function migrateVaultEntries(store: any): Promise<void> {
         e.usdValue,
         e.at,
         e.account || null,
-        e.note || null
+        e.note || null,
       );
     }
   });
 
   insertMany(store.vaultEntries);
-  console.log('  Vault entries migrated successfully');
+  console.log("  Vault entries migrated successfully");
 }
 
 async function migrateLoans(store: any): Promise<void> {
@@ -150,61 +155,94 @@ async function migrateLoans(store: any): Promise<void> {
         loan.note || null,
         loan.account || null,
         loan.status,
-        loan.createdAt
+        loan.createdAt,
       );
     }
   });
 
   insertMany(store.loans);
-  console.log('  Loans migrated successfully');
+  console.log("  Loans migrated successfully");
 }
 
 async function migrateAdminData(store: any): Promise<void> {
-  console.log('Migrating admin data...');
+  console.log("Migrating admin data...");
 
   const db = getConnection();
 
   // Types
-  const typeStmt = db.prepare('INSERT INTO admin_types (id, name, description, is_active, created_at) VALUES (?, ?, ?, ?, ?)');
+  const typeStmt = db.prepare(
+    "INSERT INTO admin_types (id, name, description, is_active, created_at) VALUES (?, ?, ?, ?, ?)",
+  );
   for (const t of store.adminTypes || []) {
     try {
-      typeStmt.run(t.id, t.name, t.description || null, t.is_active ? 1 : 0, t.created_at);
+      typeStmt.run(
+        t.id,
+        t.name,
+        t.description || null,
+        t.is_active ? 1 : 0,
+        t.created_at,
+      );
     } catch (err: any) {
-      if (err.code !== 'SQLITE_CONSTRAINT') throw err;
+      if (err.code !== "SQLITE_CONSTRAINT") throw err;
     }
   }
 
   // Accounts
-  const acctStmt = db.prepare('INSERT INTO admin_accounts (id, name, type, is_active, created_at) VALUES (?, ?, ?, ?, ?)');
+  const acctStmt = db.prepare(
+    "INSERT INTO admin_accounts (id, name, type, is_active, created_at) VALUES (?, ?, ?, ?, ?)",
+  );
   for (const a of store.adminAccounts || []) {
     try {
-      acctStmt.run(a.id, a.name, a.type || null, a.is_active ? 1 : 0, a.created_at);
+      acctStmt.run(
+        a.id,
+        a.name,
+        a.type || null,
+        a.is_active ? 1 : 0,
+        a.created_at,
+      );
     } catch (err: any) {
-      if (err.code !== 'SQLITE_CONSTRAINT') throw err;
+      if (err.code !== "SQLITE_CONSTRAINT") throw err;
     }
   }
 
   // Assets
-  const assetStmt = db.prepare('INSERT INTO admin_assets (id, symbol, name, decimals, is_active, created_at) VALUES (?, ?, ?, ?, ?, ?)');
+  const assetStmt = db.prepare(
+    "INSERT INTO admin_assets (id, symbol, name, decimals, is_active, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+  );
   for (const a of store.adminAssets || []) {
     try {
-      assetStmt.run(a.id, a.symbol, a.name || null, a.decimals, a.is_active ? 1 : 0, a.created_at);
+      assetStmt.run(
+        a.id,
+        a.symbol,
+        a.name || null,
+        a.decimals,
+        a.is_active ? 1 : 0,
+        a.created_at,
+      );
     } catch (err: any) {
-      if (err.code !== 'SQLITE_CONSTRAINT') throw err;
+      if (err.code !== "SQLITE_CONSTRAINT") throw err;
     }
   }
 
   // Tags
-  const tagStmt = db.prepare('INSERT INTO admin_tags (id, name, category, is_active, created_at) VALUES (?, ?, ?, ?, ?)');
+  const tagStmt = db.prepare(
+    "INSERT INTO admin_tags (id, name, category, is_active, created_at) VALUES (?, ?, ?, ?, ?)",
+  );
   for (const t of store.adminTags || []) {
     try {
-      tagStmt.run(t.id, t.name, t.category || null, t.is_active ? 1 : 0, t.created_at);
+      tagStmt.run(
+        t.id,
+        t.name,
+        t.category || null,
+        t.is_active ? 1 : 0,
+        t.created_at,
+      );
     } catch (err: any) {
-      if (err.code !== 'SQLITE_CONSTRAINT') throw err;
+      if (err.code !== "SQLITE_CONSTRAINT") throw err;
     }
   }
 
-  console.log('  Admin data migrated successfully');
+  console.log("  Admin data migrated successfully");
 }
 
 async function migratePendingActions(store: any): Promise<void> {
@@ -232,51 +270,53 @@ async function migratePendingActions(store: any): Promise<void> {
         a.created_tx_ids ? JSON.stringify(a.created_tx_ids) : null,
         a.error || null,
         a.created_at,
-        a.updated_at
+        a.updated_at,
       );
     }
   });
 
   insertMany(store.pendingActions);
-  console.log('  Pending actions migrated successfully');
+  console.log("  Pending actions migrated successfully");
 }
 
 async function migrateSettings(store: any): Promise<void> {
-  console.log('Migrating settings...');
+  console.log("Migrating settings...");
 
   const db = getConnection();
 
-  const stmt = db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)');
+  const stmt = db.prepare(
+    "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
+  );
 
   for (const [key, value] of Object.entries(store.settings || {})) {
-    if (typeof value !== 'object') {
+    if (typeof value !== "object") {
       stmt.run(key, String(value));
     }
   }
 
-  console.log('  Settings migrated successfully');
+  console.log("  Settings migrated successfully");
 }
 
 async function run(): Promise<void> {
-  console.log('Starting migration to database...\n');
+  console.log("Starting migration to database...\n");
 
   // Validate store.json exists
   if (!fs.existsSync(STORE_FILE)) {
-    console.error('Error: store.json not found at', STORE_FILE);
+    console.error("Error: store.json not found at", STORE_FILE);
     process.exit(1);
   }
 
   // Remove existing database if it exists
   if (fs.existsSync(DB_PATH)) {
-    console.warn('Warning: Existing database file will be replaced:', DB_PATH);
+    console.warn("Warning: Existing database file will be replaced:", DB_PATH);
     fs.unlinkSync(DB_PATH);
     resetConnection();
   }
 
   // Backup current store
   const backupPath = backupFile(STORE_FILE);
-  console.log('Backed up current store to:', backupPath);
-  console.log('');
+  console.log("Backed up current store to:", backupPath);
+  console.log("");
 
   // Read current data
   const store = readStore();
@@ -285,8 +325,8 @@ async function run(): Promise<void> {
   // Initialize database
   initializeDatabase();
   const db = getConnection();
-  console.log('Database initialized at:', DB_PATH);
-  console.log('');
+  console.log("Database initialized at:", DB_PATH);
+  console.log("");
 
   try {
     // Migrate all data
@@ -298,18 +338,17 @@ async function run(): Promise<void> {
     await migratePendingActions(store);
     await migrateSettings(store);
 
-    console.log('\n✅ Migration completed successfully!');
-    console.log('\nNext steps:');
-    console.log('  1. Start application with database mode:');
-    console.log('     STORAGE_BACKEND=database npm run dev');
-    console.log('  2. Test the application with database mode');
-    console.log('  3. If issues occur, you can switch back to JSON mode:');
-    console.log('     STORAGE_BACKEND=json npm run dev');
+    console.log("\n✅ Migration completed successfully!");
+    console.log("\nNext steps:");
+    console.log("  1. Start application with database mode:");
+    console.log("     STORAGE_BACKEND=database npm run dev");
+    console.log("  2. Test the application with database mode");
+    console.log("  3. If issues occur, you can switch back to JSON mode:");
+    console.log("     STORAGE_BACKEND=json npm run dev");
     console.log(`  4. Your JSON backup is at: ${backupPath}`);
-
   } catch (err: any) {
-    console.error('\n❌ Migration failed:', err.message);
-    console.error('\nTo restore from backup:');
+    console.error("\n❌ Migration failed:", err.message);
+    console.error("\nTo restore from backup:");
     console.error(`  cp ${backupPath} ${STORE_FILE}`);
     process.exit(1);
   } finally {

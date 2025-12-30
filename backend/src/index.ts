@@ -35,21 +35,22 @@ app.use("/api", aiRouter);
 // OpenAPI/Swagger
 app.get("/api/openapi.json", (_req, res) => res.json(openapiSpec));
 app.use(
-    "/api/docs",
-    swaggerUi.serve,
-    swaggerUi.setup(openapiSpec, { explorer: true })
+  "/api/docs",
+  swaggerUi.serve,
+  swaggerUi.setup(openapiSpec, { explorer: true }),
 );
 
 async function bootstrap() {
   try {
     // Initialize database if using database backend
-    if (process.env.STORAGE_BACKEND === 'database') {
+    if (process.env.STORAGE_BACKEND === "database") {
       initializeDatabase();
-      console.log('Database initialized');
+      console.log("Database initialized");
     }
 
     // Ensure default vaults exist at startup
-    const defaultSpendingVault = settingsRepository.getDefaultSpendingVaultName();
+    const defaultSpendingVault =
+      settingsRepository.getDefaultSpendingVaultName();
     const defaultIncomeVault = settingsRepository.getDefaultIncomeVaultName();
     vaultService.ensureVault(defaultSpendingVault);
     vaultService.ensureVault(defaultIncomeVault);
@@ -57,12 +58,12 @@ async function bootstrap() {
     // Initialize borrowing settings
     settingsRepository.getBorrowingSettings();
 
-    console.log('Initialization complete.');
+    console.log("Initialization complete.");
     console.log(`Default spending vault: ${defaultSpendingVault}`);
     console.log(`Default income vault: ${defaultIncomeVault}`);
   } catch (e) {
     const msg = (e as { message?: string } | null)?.message ?? String(e);
-    console.error('Bootstrap failed:', msg);
+    console.error("Bootstrap failed:", msg);
   }
 }
 
@@ -75,8 +76,8 @@ bootstrap().finally(() => {
 });
 
 // Graceful shutdown
-process.on('SIGINT', () => {
-  console.log('\nShutting down gracefully...');
+process.on("SIGINT", () => {
+  console.log("\nShutting down gracefully...");
   closeConnection();
   process.exit(0);
 });

@@ -1,7 +1,13 @@
 import { Vault, VaultEntry } from "../types";
 import { readStore, writeStore } from "./base.repository";
 import { IVaultRepository } from "./repository.interface";
-import { BaseDbRepository, rowToVault, vaultToRow, rowToVaultEntry, vaultEntryToRow } from "./base-db.repository";
+import {
+  BaseDbRepository,
+  rowToVault,
+  vaultToRow,
+  rowToVaultEntry,
+  vaultEntryToRow,
+} from "./base-db.repository";
 
 // JSON-based implementation
 export class VaultRepositoryJson implements IVaultRepository {
@@ -10,11 +16,11 @@ export class VaultRepositoryJson implements IVaultRepository {
   }
 
   findByName(name: string): Vault | undefined {
-    return readStore().vaults.find(v => v.name === name);
+    return readStore().vaults.find((v) => v.name === name);
   }
 
   findByStatus(status: string): Vault[] {
-    return readStore().vaults.filter(v => v.status === status);
+    return readStore().vaults.filter((v) => v.status === status);
   }
 
   create(vault: Vault): Vault {
@@ -26,7 +32,7 @@ export class VaultRepositoryJson implements IVaultRepository {
 
   update(name: string, updates: Partial<Vault>): Vault | undefined {
     const store = readStore();
-    const index = store.vaults.findIndex(v => v.name === name);
+    const index = store.vaults.findIndex((v) => v.name === name);
     if (index === -1) return undefined;
 
     store.vaults[index] = { ...store.vaults[index], ...updates };
@@ -37,17 +43,17 @@ export class VaultRepositoryJson implements IVaultRepository {
   delete(name: string): boolean {
     const store = readStore();
     const initialLength = store.vaults.length;
-    store.vaults = store.vaults.filter(v => v.name !== name);
+    store.vaults = store.vaults.filter((v) => v.name !== name);
     // Also delete associated vault entries
-    store.vaultEntries = store.vaultEntries.filter(e => e.vault !== name);
+    store.vaultEntries = store.vaultEntries.filter((e) => e.vault !== name);
     writeStore(store);
     return store.vaults.length < initialLength;
   }
 
   // Vault Entry methods
   findAllEntries(vaultName: string): VaultEntry[] {
-    return readStore().vaultEntries
-      .filter(e => e.vault === vaultName)
+    return readStore()
+      .vaultEntries.filter((e) => e.vault === vaultName)
       .sort((a, b) => String(a.at).localeCompare(String(b.at)));
   }
 
@@ -60,48 +66,55 @@ export class VaultRepositoryJson implements IVaultRepository {
 
   findEntriesByType(vaultName: string, type: string): VaultEntry[] {
     return readStore().vaultEntries.filter(
-      e => e.vault === vaultName && e.type === type
+      (e) => e.vault === vaultName && e.type === type,
     );
   }
 
-  findEntriesByDateRange(vaultName: string, startDate: string, endDate: string): VaultEntry[] {
+  findEntriesByDateRange(
+    vaultName: string,
+    startDate: string,
+    endDate: string,
+  ): VaultEntry[] {
     return readStore().vaultEntries.filter(
-      e => e.vault === vaultName && e.at >= startDate && e.at <= endDate
+      (e) => e.vault === vaultName && e.at >= startDate && e.at <= endDate,
     );
   }
 }
 
 // Database-based implementation
-export class VaultRepositoryDb extends BaseDbRepository implements IVaultRepository {
+export class VaultRepositoryDb
+  extends BaseDbRepository
+  implements IVaultRepository
+{
   findAll(): Vault[] {
     return this.findMany(
-      'SELECT * FROM vaults ORDER BY created_at DESC',
+      "SELECT * FROM vaults ORDER BY created_at DESC",
       [],
-      rowToVault
+      rowToVault,
     );
   }
 
   findByName(name: string): Vault | undefined {
     return this.findOne(
-      'SELECT * FROM vaults WHERE name = ?',
+      "SELECT * FROM vaults WHERE name = ?",
       [name],
-      rowToVault
+      rowToVault,
     );
   }
 
   findByStatus(status: string): Vault[] {
     return this.findMany(
-      'SELECT * FROM vaults WHERE status = ?',
+      "SELECT * FROM vaults WHERE status = ?",
       [status],
-      rowToVault
+      rowToVault,
     );
   }
 
   create(vault: Vault): Vault {
     const row = vaultToRow(vault);
     this.execute(
-      'INSERT INTO vaults (name, status, created_at) VALUES (?, ?, ?) ON CONFLICT(name) DO UPDATE SET status = excluded.status',
-      [row.name, row.status, row.created_at]
+      "INSERT INTO vaults (name, status, created_at) VALUES (?, ?, ?) ON CONFLICT(name) DO UPDATE SET status = excluded.status",
+      [row.name, row.status, row.created_at],
     );
     return vault;
   }
@@ -111,7 +124,7 @@ export class VaultRepositoryDb extends BaseDbRepository implements IVaultReposit
     const values: any[] = [];
 
     if (updates.status !== undefined) {
-      fields.push('status = ?');
+      fields.push("status = ?");
       values.push(updates.status);
     }
 
@@ -119,14 +132,14 @@ export class VaultRepositoryDb extends BaseDbRepository implements IVaultReposit
 
     values.push(name);
     this.execute(
-      `UPDATE vaults SET ${fields.join(', ')} WHERE name = ?`,
-      values
+      `UPDATE vaults SET ${fields.join(", ")} WHERE name = ?`,
+      values,
     );
     return this.findByName(name);
   }
 
   delete(name: string): boolean {
-    const result = this.execute('DELETE FROM vaults WHERE name = ?', [name]);
+    const result = this.execute("DELETE FROM vaults WHERE name = ?", [name]);
     return result.changes > 0;
   }
 
@@ -135,7 +148,7 @@ export class VaultRepositoryDb extends BaseDbRepository implements IVaultReposit
     return this.findMany(
       `SELECT * FROM vault_entries WHERE vault = ? ORDER BY at ASC`,
       [vaultName],
-      rowToVaultEntry
+      rowToVaultEntry,
     );
   }
 
@@ -144,7 +157,17 @@ export class VaultRepositoryDb extends BaseDbRepository implements IVaultReposit
     this.execute(
       `INSERT INTO vault_entries (vault, type, asset_type, asset_symbol, amount, usd_value, at, account, note)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [row.vault, row.type, row.asset_type, row.asset_symbol, row.amount, row.usd_value, row.at, row.account, row.note]
+      [
+        row.vault,
+        row.type,
+        row.asset_type,
+        row.asset_symbol,
+        row.amount,
+        row.usd_value,
+        row.at,
+        row.account,
+        row.note,
+      ],
     );
     return entry;
   }
@@ -153,15 +176,19 @@ export class VaultRepositoryDb extends BaseDbRepository implements IVaultReposit
     return this.findMany(
       `SELECT * FROM vault_entries WHERE vault = ? AND type = ? ORDER BY at DESC`,
       [vaultName, type],
-      rowToVaultEntry
+      rowToVaultEntry,
     );
   }
 
-  findEntriesByDateRange(vaultName: string, startDate: string, endDate: string): VaultEntry[] {
+  findEntriesByDateRange(
+    vaultName: string,
+    startDate: string,
+    endDate: string,
+  ): VaultEntry[] {
     return this.findMany(
       `SELECT * FROM vault_entries WHERE vault = ? AND at >= ? AND at <= ? ORDER BY at ASC`,
       [vaultName, startDate, endDate],
-      rowToVaultEntry
+      rowToVaultEntry,
     );
   }
 }

@@ -1,9 +1,9 @@
-import { Router } from 'express';
-import { v4 as uuidv4 } from 'uuid';
-import { vaultService } from '../services/vault.service';
-import { transactionRepository } from '../repositories';
-import { Transaction, Asset } from '../types';
-import { priceService } from '../services/price.service';
+import { Router } from "express";
+import { v4 as uuidv4 } from "uuid";
+import { vaultService } from "../services/vault.service";
+import { transactionRepository } from "../repositories";
+import { Transaction, Asset } from "../types";
+import { priceService } from "../services/price.service";
 
 export const consVaultsRouter = Router();
 
@@ -11,7 +11,11 @@ async function getRate(asset: Asset, at?: string) {
   return priceService.getRateUSD(asset, at);
 }
 
-function toTokenizedShape(v: { name: string; status: 'ACTIVE' | 'CLOSED'; createdAt: string }) {
+function toTokenizedShape(v: {
+  name: string;
+  status: "ACTIVE" | "CLOSED";
+  createdAt: string;
+}) {
   const now = new Date().toISOString();
   return vaultService.vaultStats(v.name).then((stats) => {
     const aum = stats.aumUSD;
@@ -19,7 +23,10 @@ function toTokenizedShape(v: { name: string; status: 'ACTIVE' | 'CLOSED'; create
     const withdrawnUSD = stats.totalWithdrawnUSD;
     // ROI = (Current Value + Withdrawn - Invested) / Invested
     // If Invested (depositUSD) is 0, ROI is 0.
-    const perfPct = depositUSD > 0 ? ((aum + withdrawnUSD - depositUSD) / depositUSD) * 100 : 0;
+    const perfPct =
+      depositUSD > 0
+        ? ((aum + withdrawnUSD - depositUSD) / depositUSD) * 100
+        : 0;
     // Shares issued = net contributed (deposits - withdrawals at $1/share initial price)
     const netContributed = depositUSD - withdrawnUSD;
     const supply = netContributed > 0 ? netContributed : 0;
@@ -28,28 +35,28 @@ function toTokenizedShape(v: { name: string; status: 'ACTIVE' | 'CLOSED'; create
     return {
       id: v.name,
       name: v.name,
-      description: '',
-      type: 'user_defined',
-      status: v.status === 'ACTIVE' ? 'active' : 'closed',
+      description: "",
+      type: "user_defined",
+      status: v.status === "ACTIVE" ? "active" : "closed",
       token_symbol: v.name.slice(0, 8).toUpperCase(),
       token_decimals: 2,
       total_supply: String(supply),
       total_assets_under_management: String(aum),
       current_share_price: String(price.toFixed(4)),
-      initial_share_price: '1',
+      initial_share_price: "1",
       is_user_defined_price: true,
       manual_price_per_share: String(price.toFixed(4)),
-      price_last_updated_by: 'system',
+      price_last_updated_by: "system",
       price_last_updated_at: now,
-      price_update_notes: '',
+      price_update_notes: "",
       is_deposit_allowed: true,
       is_withdrawal_allowed: true,
-      min_deposit_amount: '0',
-      min_withdrawal_amount: '0',
+      min_deposit_amount: "0",
+      min_withdrawal_amount: "0",
       inception_date: v.createdAt,
       last_updated: now,
       performance_since_inception: String(perfPct),
-      created_by: 'local',
+      created_by: "local",
       created_at: v.createdAt,
       updated_at: now,
     };
@@ -57,111 +64,137 @@ function toTokenizedShape(v: { name: string; status: 'ACTIVE' | 'CLOSED'; create
 }
 
 // List
-consVaultsRouter.get('/cons-vaults', async (_req, res) => {
+consVaultsRouter.get("/cons-vaults", async (_req, res) => {
   try {
     const vs = vaultService.listVaults();
     const shaped = await Promise.all(vs.map(toTokenizedShape));
     res.json(shaped);
   } catch (e: any) {
-    res.status(500).json({ error: e?.message || 'Failed to list vaults' });
+    res.status(500).json({ error: e?.message || "Failed to list vaults" });
   }
 });
 
 // Get one
-consVaultsRouter.get('/cons-vaults/:id', async (req, res) => {
+consVaultsRouter.get("/cons-vaults/:id", async (req, res) => {
   const id = String(req.params.id);
   const v = vaultService.getVault(id);
-  if (!v) return res.status(404).json({ error: 'not found' });
+  if (!v) return res.status(404).json({ error: "not found" });
   const shaped = await toTokenizedShape(v);
   res.json(shaped);
 });
 
 // Create
-consVaultsRouter.post('/cons-vaults', (req, res) => {
-  const name = String(req.body?.name || '').trim() || String(req.body?.token_symbol || '').trim();
-  if (!name) return res.status(400).json({ error: 'name is required' });
+consVaultsRouter.post("/cons-vaults", (req, res) => {
+  const name =
+    String(req.body?.name || "").trim() ||
+    String(req.body?.token_symbol || "").trim();
+  if (!name) return res.status(400).json({ error: "name is required" });
   vaultService.ensureVault(name);
   res.status(201).json({ id: name });
 });
 
 // Update (no-op minimal)
-consVaultsRouter.put('/cons-vaults/:id', (_req, res) => {
+consVaultsRouter.put("/cons-vaults/:id", (_req, res) => {
   res.json({ ok: true });
 });
 
 // Delete
-consVaultsRouter.delete('/cons-vaults/:id', (req, res) => {
+consVaultsRouter.delete("/cons-vaults/:id", (req, res) => {
   const id = String(req.params.id);
   const ok = vaultService.deleteVault(id);
-  if (!ok) return res.status(404).json({ error: 'not found' });
+  if (!ok) return res.status(404).json({ error: "not found" });
   res.json({ ok: true });
 });
 
 // Close
-consVaultsRouter.post('/cons-vaults/:id/close', (req, res) => {
+consVaultsRouter.post("/cons-vaults/:id/close", (req, res) => {
   const id = String(req.params.id);
   const ok = vaultService.endVault(id);
-  if (!ok) return res.status(404).json({ error: 'not found' });
+  if (!ok) return res.status(404).json({ error: "not found" });
   res.json({ ok: true });
 });
 
 // Enable/disable manual pricing (no-op)
-consVaultsRouter.post('/cons-vaults/:id/enable-manual-pricing', (_req, res) => {
+consVaultsRouter.post("/cons-vaults/:id/enable-manual-pricing", (_req, res) => {
   res.json({ ok: true });
 });
-consVaultsRouter.post('/cons-vaults/:id/disable-manual-pricing', (_req, res) => {
-  res.json({ ok: true });
-});
+consVaultsRouter.post(
+  "/cons-vaults/:id/disable-manual-pricing",
+  (_req, res) => {
+    res.json({ ok: true });
+  },
+);
 
 // Update price (no-op returns current computed)
-consVaultsRouter.post('/cons-vaults/:id/update-price', async (req, res) => {
+consVaultsRouter.post("/cons-vaults/:id/update-price", async (req, res) => {
   const id = String(req.params.id);
   const v = vaultService.getVault(id);
-  if (!v) return res.status(404).json({ error: 'not found' });
+  if (!v) return res.status(404).json({ error: "not found" });
   const shaped = await toTokenizedShape(v);
-  res.json({ current_share_price: shaped.current_share_price, total_assets_under_management: shaped.total_assets_under_management });
+  res.json({
+    current_share_price: shaped.current_share_price,
+    total_assets_under_management: shaped.total_assets_under_management,
+  });
 });
 
 // Update total value
-consVaultsRouter.post('/cons-vaults/:id/update-total-value', async (req, res) => {
-  const id = String(req.params.id);
-  const v = vaultService.getVault(id);
-  if (!v) return res.status(404).json({ error: 'not found' });
-  const totalValue = Number(req.body?.total_value || 0) || 0;
-  const notes = req.body?.notes ? String(req.body.notes) : undefined;
-  const at = new Date().toISOString();
-  const asset: Asset = { type: 'FIAT', symbol: 'USD' };
+consVaultsRouter.post(
+  "/cons-vaults/:id/update-total-value",
+  async (req, res) => {
+    const id = String(req.params.id);
+    const v = vaultService.getVault(id);
+    if (!v) return res.status(404).json({ error: "not found" });
+    const totalValue = Number(req.body?.total_value || 0) || 0;
+    const notes = req.body?.notes ? String(req.body.notes) : undefined;
+    const at = new Date().toISOString();
+    const asset: Asset = { type: "FIAT", symbol: "USD" };
 
-  // Record a valuation entry so reporting/ROI uses this point-in-time total value
-  vaultService.addVaultEntry({
-    vault: id,
-    type: 'VALUATION',
-    asset,
-    amount: 0, // informational entry
-    usdValue: totalValue,
-    at,
-    note: notes ? `Valuation: ${notes}` : 'Valuation',
-  });
+    // Record a valuation entry so reporting/ROI uses this point-in-time total value
+    vaultService.addVaultEntry({
+      vault: id,
+      type: "VALUATION",
+      asset,
+      amount: 0, // informational entry
+      usdValue: totalValue,
+      at,
+      note: notes ? `Valuation: ${notes}` : "Valuation",
+    });
 
-  // Return updated price based on new AUM
-  const shaped = await toTokenizedShape(v);
-  res.json({ current_share_price: shaped.current_share_price, total_assets_under_management: String(totalValue) });
-});
+    // Return updated price based on new AUM
+    const shaped = await toTokenizedShape(v);
+    res.json({
+      current_share_price: shaped.current_share_price,
+      total_assets_under_management: String(totalValue),
+    });
+  },
+);
 
 // Deposits and withdrawals
-consVaultsRouter.post('/cons-vaults/:id/deposit', async (req, res) => {
+consVaultsRouter.post("/cons-vaults/:id/deposit", async (req, res) => {
   const id = String(req.params.id);
   if (!vaultService.getVault(id)) vaultService.ensureVault(id);
   const amount = Number(req.body?.amount || 0) || 0;
   const notes = req.body?.notes ? String(req.body.notes) : undefined;
-  const source = req.body?.source_account ? String(req.body.source_account) : undefined;
+  const source = req.body?.source_account
+    ? String(req.body.source_account)
+    : undefined;
 
-  if (!(amount > 0)) return res.status(400).json({ error: 'amount>0 required' });
+  if (!(amount > 0))
+    return res.status(400).json({ error: "amount>0 required" });
 
   const at = new Date().toISOString();
-  const asset: Asset = { type: 'FIAT', symbol: 'USD' }; // Hardcoded to USD
+  const asset: Asset = { type: "FIAT", symbol: "USD" }; // Hardcoded to USD
 
-  vaultService.addVaultEntry({ vault: id, type: 'DEPOSIT', asset, amount, usdValue: amount, at, account: source, note: notes });
+  vaultService.addVaultEntry({
+    vault: id,
+    type: "DEPOSIT",
+    asset,
+    amount,
+    usdValue: amount,
+    at,
+    account: source,
+    note: notes,
+  });
 
   // Create Transaction
   const rate = await getRate(asset, at);
@@ -178,7 +211,7 @@ consVaultsRouter.post('/cons-vaults/:id/deposit', async (req, res) => {
       note: `Deposit to ${id}` + (notes ? `: ${notes}` : ""),
       transferId,
       rate,
-      usdAmount: amount * rate.rateUSD
+      usdAmount: amount * rate.rateUSD,
     } as Transaction;
 
     const txIn: Transaction = {
@@ -191,7 +224,7 @@ consVaultsRouter.post('/cons-vaults/:id/deposit', async (req, res) => {
       note: `Deposit from ${source}` + (notes ? `: ${notes}` : ""),
       transferId,
       rate,
-      usdAmount: amount * rate.rateUSD
+      usdAmount: amount * rate.rateUSD,
     } as Transaction;
 
     transactionRepository.create(txOut);
@@ -207,7 +240,7 @@ consVaultsRouter.post('/cons-vaults/:id/deposit', async (req, res) => {
       account: id,
       note: `Deposit` + (notes ? `: ${notes}` : ""),
       rate,
-      usdAmount: amount * rate.rateUSD
+      usdAmount: amount * rate.rateUSD,
     } as Transaction;
     transactionRepository.create(tx);
   }
@@ -215,17 +248,26 @@ consVaultsRouter.post('/cons-vaults/:id/deposit', async (req, res) => {
   res.status(201).json({ ok: true });
 });
 
-consVaultsRouter.post('/cons-vaults/:id/withdraw', async (req, res) => {
+consVaultsRouter.post("/cons-vaults/:id/withdraw", async (req, res) => {
   const id = String(req.params.id);
   if (!vaultService.getVault(id)) vaultService.ensureVault(id);
   const amount = Number(req.body?.amount || 0) || 0;
   const notes = req.body?.notes ? String(req.body.notes) : undefined;
-  if (!(amount > 0)) return res.status(400).json({ error: 'amount>0 required' });
+  if (!(amount > 0))
+    return res.status(400).json({ error: "amount>0 required" });
 
   const at = new Date().toISOString();
-  const asset: Asset = { type: 'FIAT', symbol: 'USD' };
+  const asset: Asset = { type: "FIAT", symbol: "USD" };
 
-  vaultService.addVaultEntry({ vault: id, type: 'WITHDRAW', asset, amount, usdValue: amount, at, note: notes });
+  vaultService.addVaultEntry({
+    vault: id,
+    type: "WITHDRAW",
+    asset,
+    amount,
+    usdValue: amount,
+    at,
+    note: notes,
+  });
 
   const rate = await getRate(asset, at);
   // Treated as Expense (Outflow) from Vault
@@ -238,7 +280,7 @@ consVaultsRouter.post('/cons-vaults/:id/withdraw', async (req, res) => {
     account: id,
     note: `Withdraw` + (notes ? `: ${notes}` : ""),
     rate,
-    usdAmount: amount * rate.rateUSD
+    usdAmount: amount * rate.rateUSD,
   } as Transaction;
 
   transactionRepository.create(tx);

@@ -1,5 +1,5 @@
-import { getConnection } from '../database/connection';
-import { Transaction, Vault, VaultEntry, LoanAgreement } from '../types';
+import { getConnection } from "../database/connection";
+import { Transaction, Vault, VaultEntry, LoanAgreement } from "../types";
 
 // Helper to convert SQLite row to Transaction
 export function rowToTransaction(row: any): Transaction {
@@ -8,7 +8,7 @@ export function rowToTransaction(row: any): Transaction {
     type: row.type,
     asset: {
       type: row.asset_type,
-      symbol: row.asset_symbol
+      symbol: row.asset_symbol,
     },
     amount: row.amount,
     createdAt: row.created_at,
@@ -155,24 +155,38 @@ export function loanToRow(loan: LoanAgreement): any {
 export class BaseDbRepository {
   protected db = getConnection();
 
-  protected findMany(sql: string, params: any[] = [], rowMapper: (row: any) => any): any[] {
+  protected findMany(
+    sql: string,
+    params: any[] = [],
+    rowMapper: (row: any) => any,
+  ): any[] {
     const stmt = this.db.prepare(sql);
     const rows = stmt.all(...params);
     return rows.map(rowMapper);
   }
 
-  protected findOne(sql: string, params: any[] = [], rowMapper: (row: any) => any): any | undefined {
+  protected findOne(
+    sql: string,
+    params: any[] = [],
+    rowMapper: (row: any) => any,
+  ): any | undefined {
     const stmt = this.db.prepare(sql);
     const row = stmt.get(...params);
     return row ? rowMapper(row) : undefined;
   }
 
-  protected execute(sql: string, params: any[]): { changes: number; lastInsertRowid: number } {
+  protected execute(
+    sql: string,
+    params: any[],
+  ): { changes: number; lastInsertRowid: number } {
     const stmt = this.db.prepare(sql);
     const result = stmt.run(...params);
     return {
       changes: result.changes,
-      lastInsertRowid: typeof result.lastInsertRowid === 'bigint' ? Number(result.lastInsertRowid) : result.lastInsertRowid
+      lastInsertRowid:
+        typeof result.lastInsertRowid === "bigint"
+          ? Number(result.lastInsertRowid)
+          : result.lastInsertRowid,
     };
   }
 }
