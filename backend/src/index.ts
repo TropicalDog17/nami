@@ -4,7 +4,11 @@ import swaggerUi from "swagger-ui-express";
 
 import { config } from "./core/config";
 import { logger } from "./core/logger";
-import { errorHandler, requestLogger, notFoundHandler } from "./core/middleware";
+import {
+    errorHandler,
+    requestLogger,
+    notFoundHandler,
+} from "./core/middleware";
 
 import { transactionsRouter } from "./handlers/transaction.handler";
 import { reportsRouter } from "./handlers/reports.handler";
@@ -28,7 +32,7 @@ app.use(express.json());
 
 // Request logging (in development)
 if (config.isDevelopment) {
-  app.use(requestLogger);
+    app.use(requestLogger);
 }
 
 // Health check
@@ -48,9 +52,9 @@ app.use("/api", aiRouter);
 // OpenAPI/Swagger
 app.get("/api/openapi.json", (_req, res) => res.json(openapiSpec));
 app.use(
-  "/api/docs",
-  swaggerUi.serve,
-  swaggerUi.setup(openapiSpec, { explorer: true }),
+    "/api/docs",
+    swaggerUi.serve,
+    swaggerUi.setup(openapiSpec, { explorer: true })
 );
 
 // 404 handler - must be after all routes
@@ -60,44 +64,52 @@ app.use(notFoundHandler);
 app.use(errorHandler);
 
 async function bootstrap() {
-  try {
-    // Initialize database if using database backend
-    if (config.storageBackend === 'database') {
-      initializeDatabase();
-      logger.info('Database initialized');
+    try {
+        // Initialize database if using database backend
+        if (config.storageBackend === "database") {
+            initializeDatabase();
+            logger.info("Database initialized");
+        }
+
+        // Ensure default vaults exist at startup
+        const defaultSpendingVault =
+            settingsRepository.getDefaultSpendingVaultName();
+        const defaultIncomeVault =
+            settingsRepository.getDefaultIncomeVaultName();
+        vaultService.ensureVault(defaultSpendingVault);
+        vaultService.ensureVault(defaultIncomeVault);
+
+        // Initialize borrowing settings
+        settingsRepository.getBorrowingSettings();
+
+        logger.info("Initialization complete.", {
+            spendingVault: defaultSpendingVault,
+            incomeVault: defaultIncomeVault,
+            storageBackend: config.storageBackend,
+        });
+    } catch (e) {
+        const msg = (e as { message?: string } | null)?.message ?? String(e);
+        logger.error("Bootstrap failed", e instanceof Error ? e : undefined, {
+            message: msg,
+        });
     }
-
-    // Ensure default vaults exist at startup
-    const defaultSpendingVault = settingsRepository.getDefaultSpendingVaultName();
-    const defaultIncomeVault = settingsRepository.getDefaultIncomeVaultName();
-    vaultService.ensureVault(defaultSpendingVault);
-    vaultService.ensureVault(defaultIncomeVault);
-
-    // Initialize borrowing settings
-    settingsRepository.getBorrowingSettings();
-
-    logger.info('Initialization complete.', {
-      spendingVault: defaultSpendingVault,
-      incomeVault: defaultIncomeVault,
-      storageBackend: config.storageBackend,
-    });
-  } catch (e) {
-    const msg = (e as { message?: string } | null)?.message ?? String(e);
-    logger.error('Bootstrap failed', e instanceof Error ? e : undefined, { message: msg });
-  }
 }
 
 const PORT = config.port;
 bootstrap().finally(() => {
-  app.listen(PORT, () => {
-    logger.info(`Portfolio backend listening`, { url: `http://localhost:${PORT}` });
-    logger.info(`Swagger UI available`, { url: `http://localhost:${PORT}/api/docs` });
-  });
+    app.listen(PORT, () => {
+        logger.info(`Portfolio backend listening`, {
+            url: `http://localhost:${PORT}`,
+        });
+        logger.info(`Swagger UI available`, {
+            url: `http://localhost:${PORT}/api/docs`,
+        });
+    });
 });
 
 // Graceful shutdown
-process.on('SIGINT', () => {
-  logger.info('Shutting down gracefully...');
-  closeConnection();
-  process.exit(0);
+process.on("SIGINT", () => {
+    logger.info("Shutting down gracefully...");
+    closeConnection();
+    process.exit(0);
 });
