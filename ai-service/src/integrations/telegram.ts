@@ -7,7 +7,7 @@ import { LLMClient } from './llm.js'
 import { AppConfig } from '../utils/config.js'
 import { logger, createCorrelationLogger } from '../utils/logger.js'
 import { createPendingAction, redact } from '../api/backendClient.js'
-import { parseExpenseText } from '../core/parser.js'
+import { parseExpenseText, parseTopicMessages } from '../core/parser.js'
 import { parseBankScreenshot } from './vision.js'
 import { PendingActionCreate } from '../core/schemas.js'
 import { handleAndLogError, ErrorCategory } from '../utils/errors.js'
@@ -422,6 +422,95 @@ export function buildBot(cfg: AppConfig, openai: OpenAI) {
         undefined,
         userMessage
       )
+    }
+  })
+
+  // Handle channel posts and forum topic messages
+  bot.on('channel_post', async (ctx) => {
+    const chatId = ctx.chat?.id
+    if (!chatId) return
+
+    // Only process text messages in channels/topics
+    if (!ctx.channelPost || !('text' in ctx.channelPost)) {
+      return
+    }
+
+    const text = ctx.channelPost.text || ''
+    const correlationId = `topic-${chatId}-${Date.now()}`
+    const correlationLogger = createCorrelationLogger(correlationId)
+
+    // Check if this is from an allowed topic/channel
+    const topicId = ctx.channelPost.message_id?.toString()
+    const isAllowedTopic = topicId && cfg.allowedTopicIds.has(topicId)
+
+    if (!isAllowedTopic) {
+      correlationLogger.debug({
+        chatId,
+        topicId,
+        allowedTopicIds: Array.from(cfg.allowedTopicIds)
+      }, 'Ignoring message from non-allowed topic')
+      return
+    }
+
+    correlationLogger.info({
+      chatId,
+      topicId,
+      textLength: text.length,
+      textPreview: text.substring(0, 100)
+    }, 'Processing topic message')
+
+    try {
+      const llmClient = new LLMClient(
+        {
+          provider: cfg.MODEL_PROVIDER,
+          timeout: 30000,
+        },
+        correlationId
+      )
+
+      // Parse the topic message as an expense
+      const parsed = await parseExpenseText(llmClient, text, correlationId)
+
+      const payload: PendingActionCreate = {
+        source: 'telegram_topic',
+        raw_input: text,
+        toon_text: parsed.toon,
+        action_json: parsed.action || undefined,
+        confidence: parsed.confidence,
+        meta: {
+          topic_id: topicId,
+          chat_id: String(chatId),
+          message_id: ctx.channelPost.message_id
+        }
+      }
+
+      const res = await createPendingAction(cfg, payload, correlationId)
+
+      correlationLogger.info(
+        {
+          pendingId: res.id,
+          hasAction: !!parsed.action,
+          actionType: parsed.action?.action,
+          account: parsed.action?.params.account,
+        },
+        'Successfully processed topic message'
+      )
+    } catch (e: any) {
+      const categorizedError = handleAndLogError(
+        e,
+        {
+          chatId,
+          topicId,
+          textLength: text.length,
+          textPreview: text.substring(0, 100),
+        },
+        'parseTopicMessage'
+      )
+
+      correlationLogger.error({
+        error: categorizedError.message,
+        category: categorizedError.category
+      }, 'Failed to process topic message')
     }
   })
 

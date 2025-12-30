@@ -35,7 +35,7 @@ export type IncomeParams = TransactionParams
 export type CardPaymentParams = TransactionParams
 export type ActionRequest = z.infer<typeof ActionRequestSchema>
 
-export type PendingSource = 'telegram_text' | 'telegram_image' | 'bank_statement_excel'
+export type PendingSource = 'telegram_text' | 'telegram_image' | 'bank_statement_excel' | 'telegram_topic'
 
 export interface PendingActionCreate {
   source: PendingSource

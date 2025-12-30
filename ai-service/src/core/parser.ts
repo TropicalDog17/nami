@@ -9,6 +9,14 @@ export interface ParseTextResult {
   confidence?: number
 }
 
+export interface ParseTopicMessageResult {
+  messages: Array<{
+    text: string
+    action?: ActionRequest
+    confidence?: number
+  }>
+}
+
 export async function parseExpenseText(
   llmClient: LLMClient,
   message: string,
@@ -99,6 +107,56 @@ export async function parseExpenseText(
 function extractCodeBlock(text: string): string | null {
   const m = text.match(/```(?:toon|json)\n([\s\S]*?)```/)
   return m ? m[1].trim() : null
+}
+
+/**
+ * Parse multiple expense messages from a topic feed.
+ * This is useful when processing messages from a Telegram topic/channel where
+ * multiple users might post expenses in a single batch.
+ */
+export async function parseTopicMessages(
+  llmClient: LLMClient,
+  messages: string[],
+  correlationId?: string
+): Promise<ParseTopicMessageResult> {
+  const correlationLogger = createCorrelationLogger(correlationId)
+
+  correlationLogger.debug({
+    messageCount: messages.length,
+    provider: llmClient.getProvider()
+  }, 'Starting topic messages parsing')
+
+  const results = await Promise.all(
+    messages.map(async (message) => {
+      try {
+        const parsed = await parseExpenseText(llmClient, message, correlationId)
+        return {
+          text: message,
+          action: parsed.action,
+          confidence: parsed.confidence
+        }
+      } catch (e: any) {
+        correlationLogger.warn({
+          error: e.message,
+          messagePreview: message.substring(0, 100)
+        }, 'Failed to parse individual topic message')
+        return {
+          text: message,
+          action: undefined,
+          confidence: undefined
+        }
+      }
+    })
+  )
+
+  const successCount = results.filter(r => r.action).length
+  correlationLogger.info({
+    total: results.length,
+    success: successCount,
+    failed: results.length - successCount
+  }, 'Completed topic messages parsing')
+
+  return { messages: results }
 }
 
 

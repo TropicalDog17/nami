@@ -14,6 +14,7 @@ const envSchema = z.object({
     SERVICE_BASE_URL: z.string().url(),
     PORT: z.coerce.number().default(8088),
     ALLOWED_CHAT_IDS: z.string().default(""),
+    ALLOWED_TOPIC_IDS: z.string().default(""),
     DEFAULT_TIMEZONE: z.string().default("Asia/Ho_Chi_Minh"),
 
     MODEL_PROVIDER: z.enum(["openai", "anthropic", "zai"]).default("openai"),
@@ -21,6 +22,7 @@ const envSchema = z.object({
 
 export type AppConfig = z.infer<typeof envSchema> & {
     allowedChatIds: Set<string>;
+    allowedTopicIds: Set<string>;
 };
 
 export function loadConfig(): AppConfig {
@@ -30,5 +32,10 @@ export function loadConfig(): AppConfig {
             .map((s) => s.trim())
             .filter(Boolean)
     );
-    return { ...parsed, allowedChatIds };
+    const allowedTopicIds = new Set(
+        parsed.ALLOWED_TOPIC_IDS.split(",")
+            .map((s) => s.trim())
+            .filter(Boolean)
+    );
+    return { ...parsed, allowedChatIds, allowedTopicIds };
 }
