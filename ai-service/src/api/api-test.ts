@@ -73,8 +73,6 @@ router.post('/text-parse', async (req, res) => {
     const result = await parseExpenseText(
       llmClient,
       validated.message,
-      accounts,
-      tags,
       correlationId
     )
 
