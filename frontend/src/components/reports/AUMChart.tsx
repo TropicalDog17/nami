@@ -41,55 +41,44 @@ export const AUMChart: React.FC<AUMChartProps> = ({
   timeRange: externalTimeRange,
   onTimeRangeChange,
 }) => {
-  const [internalTimeRange, setInternalTimeRange] = useState<TimeRange>('30d');
+  const [internalTimeRange, _setInternalTimeRange] = useState<TimeRange>('30d');
   const [seriesDataFull, setSeriesDataFull] = useState<SeriesData[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const timeRange = externalTimeRange ?? internalTimeRange;
 
+  // _setInternalTimeRange is unused because we always use the prop if provided
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const setTimeRange = (range: TimeRange) => {
     if (onTimeRangeChange) {
       onTimeRangeChange(range);
     } else {
-      setInternalTimeRange(range);
+      _setInternalTimeRange(range);
     }
   };
 
-  // Calculate date range based on selection
-  const getDateRange = () => {
-    const now = new Date();
-    const endDate = now.toISOString().split('T')[0];
-    let startDate: string;
+  // Filter data to show only from max(first data date, T-7d/T-30d)
+  const filterDataByTimeRange = useCallback((data: SeriesData[]): SeriesData[] => {
+    if (data.length === 0) return data;
 
+    // Calculate date range inline
+    const now = new Date();
+    let startDate: string;
     switch (timeRange) {
       case '7d':
-        startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
-          .toISOString()
-          .split('T')[0];
+        startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
         break;
       case '30d':
-        startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
-          .toISOString()
-          .split('T')[0];
+        startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
         break;
       case 'all':
         startDate = '';
         break;
       default:
-        startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
-          .toISOString()
-          .split('T')[0];
+        startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
     }
-
-    return { start: startDate, end: endDate };
-  };
-
-  // Filter data to show only from max(first data date, T-7d/T-30d)
-  const filterDataByTimeRange = (data: SeriesData[]): SeriesData[] => {
-    if (data.length === 0) return data;
-
-    const { start } = getDateRange();
+    const start = startDate;
 
     // Find the first date with actual AUM data (> 0)
     let firstDataDate: string | undefined;
@@ -112,10 +101,10 @@ export const AUMChart: React.FC<AUMChartProps> = ({
     const effectiveStartDate = firstDataDate > start ? firstDataDate : start;
 
     return data.filter(d => d.date >= effectiveStartDate);
-  };
+  }, [timeRange]);
 
   // Computed filtered data
-  const seriesData = useMemo(() => filterDataByTimeRange(seriesDataFull), [seriesDataFull, timeRange]);
+  const seriesData: SeriesData[] = useMemo(() => filterDataByTimeRange(seriesDataFull), [seriesDataFull, filterDataByTimeRange]);
 
   // Fetch AUM series data (fetch all data, filter on frontend)
   const fetchData = async () => {
@@ -152,12 +141,13 @@ export const AUMChart: React.FC<AUMChartProps> = ({
   }, [timeRange]);
 
   // Prepare chart data
-  const labels = seriesData.map((d) => {
+  const labels = seriesData.map((d): string => {
+    if (typeof d.date !== 'string' || !d.date) return '';
     const date = new Date(d.date);
     return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
   });
 
-  const aumUsdData = seriesData.map((d) => d.aum_usd);
+  const aumUsdData = seriesData.map((d): number => d.aum_usd);
 
   // Create gradient for portfolio-like look
   const createGradient = (ctx: CanvasRenderingContext2D, chartArea: { bottom: number; top: number; left: number; right: number }) => {
@@ -262,7 +252,7 @@ export const AUMChart: React.FC<AUMChartProps> = ({
   };
 
   // Calculate summary stats
-  const totalAUMUSD =
+  const _totalAUMUSD =
     aumUsdData.length > 0 ? aumUsdData[aumUsdData.length - 1] : 0;
 
   return (

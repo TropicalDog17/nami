@@ -1,12 +1,10 @@
 import React, {
   useState,
   useEffect,
-  useMemo,
   useRef,
   useCallback,
 } from 'react';
 
-import { toISODateTime, getTodayDate } from '../utils/dateUtils';
 
 import TransactionForm from '../components/forms/TransactionForm';
 import QuickBorrowLoanModal from '../components/modals/QuickBorrowLoanModal';
@@ -28,9 +26,8 @@ import DateInput from '../components/ui/DateInput';
 import { useToast } from '../components/ui/Toast';
 import { useApp } from '../context/AppContext';
 import { useBackendStatus } from '../context/BackendStatusContext';
-import { useQuickCreate } from '../hooks/useQuickCreate';
 import { useModalManager } from '../hooks/useModalManager';
-import type { ModalType } from '../types';
+import { useQuickCreate } from '../hooks/useQuickCreate';
 import {
   transactionApi,
   adminApi,
@@ -41,6 +38,7 @@ import {
   ApiError,
 } from '../services/api';
 import { fxService } from '../services/fxService';
+import { toISODateTime, getTodayDate } from '../utils/dateUtils';
 
 type IdType = string | number;
 type Transaction = TableRowBase & Record<string, unknown>;
@@ -172,9 +170,10 @@ const TransactionPage: React.FC = () => {
           const assetObj = rawRecord?.asset;
           const assetSym = typeof assetObj === 'string'
             ? assetObj
-            : ((assetObj as Record<string, unknown> | null)?.symbol ?? String(assetObj ?? ''));
-          const type = String(rawRecord?.type ?? '').toLowerCase();
-          const created = String(rawRecord?.createdAt ?? rawRecord?.date ?? '') || undefined;
+            : ((assetObj as Record<string, unknown> | null)?.symbol ?? '');
+          const type = (typeof rawRecord?.type === 'string' ? rawRecord.type : '')?.toLowerCase() ?? '';
+          const createdRaw = rawRecord?.createdAt ?? rawRecord?.date;
+          const created = createdRaw != null && typeof createdRaw === 'string' ? createdRaw : undefined;
           // normalize date to a full ISO string to ensure Safari/Chrome parsing
           let dateISO: string | undefined = undefined;
           if (created) {
@@ -187,7 +186,7 @@ const TransactionPage: React.FC = () => {
           if (type === 'income' || type === 'transfer_in') cashflow = qty;
           else if (type === 'expense' || type === 'transfer_out') cashflow = -qty;
           else if (type === 'repay') {
-            const dir = String(rawRecord?.direction ?? '').toLowerCase();
+            const dir = (typeof rawRecord?.direction === 'string' ? rawRecord.direction : '').toLowerCase();
             cashflow = dir === 'loan' ? qty : dir === 'borrow' ? -qty : 0;
           } else cashflow = 0; // initial/borrow/loan treated neutral
 
@@ -300,17 +299,18 @@ const TransactionPage: React.FC = () => {
   const handleQuickVaultSubmit = async (data: unknown): Promise<void> => {
     const vaultData = data as Record<string, unknown>;
     try {
-      const name = String(vaultData.name || '').trim();
+      const name = typeof vaultData.name === 'string' ? vaultData.name.trim() : '';
       if (!name) throw new Error('Name is required');
 
       // 1) Create/ensure vault
       await vaultApi.createVault({ name });
 
       // 2) Optional initial deposit
-      const asset = String(vaultData.asset || 'USD');
-      const depositCostNum = Number(vaultData.depositCost || 0) || 0;
-      const depositQtyNum = Number(vaultData.depositQty || 0) || 0;
-      const dateStr = String(vaultData.date || '') || undefined;
+      const asset = typeof vaultData.asset === 'string' ? vaultData.asset : 'USD';
+      const depositCostNum = Number(vaultData.depositCost ?? 0) ?? 0;
+      const depositQtyNum = Number(vaultData.depositQty ?? 0) ?? 0;
+      const dateRaw = vaultData.date;
+      const dateStr = dateRaw != null && typeof dateRaw === 'string' ? dateRaw : undefined;
       if (depositCostNum > 0) {
         if (asset.toUpperCase() === 'USD') {
           await vaultApi.depositToVault(name, { amount: depositCostNum, date: dateStr });
@@ -973,7 +973,7 @@ const TransactionPage: React.FC = () => {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mt-3">
           <ComboBox
             options={masterData.tag as Array<{ value: string; label: string }>}
-            value={qa.tag || ''}
+            value={qa.tag ?? ''}
             onChange={(v) => setQa((s) => ({ ...s, tag: v }))}
             placeholder="Tag (optional)"
             allowCreate
@@ -987,7 +987,7 @@ const TransactionPage: React.FC = () => {
               setMasterData((prev) => ({
                 ...prev,
                 tag: (
-                  (tags as Array<{ name: string; category: string }>) || []
+                  (tags as Array<{ name: string; category: string }>) ?? []
                 ).map((t) => ({
                   value: t.name,
                   label: `${t.name} (${t.category})`,
@@ -1327,8 +1327,8 @@ const TransactionPage: React.FC = () => {
       editType: 'date',
       render: (_value, _column, row) => {
         const raw = (row as Record<string, unknown>)?.date ?? (row as Record<string, unknown>)?.createdAt ?? (row as Record<string, unknown>)?.at;
-        if (!raw) return '-';
-        const d = new Date(String(raw));
+        if (!raw || typeof raw !== 'string') return '-';
+        const d = new Date(raw);
         if (Number.isNaN(d.getTime())) return '-';
         return d.toLocaleDateString();
       },
@@ -1411,12 +1411,16 @@ const TransactionPage: React.FC = () => {
         if (typeof value === 'string') return value;
         try {
           const v = value as Record<string, unknown>;
-          if (v?.symbol) return String(v.symbol);
+          if (v?.symbol && typeof v.symbol === 'string') return v.symbol;
         } catch {
           // Fall through to default handling
         }
-        // Fallback
-        return typeof value === 'object' ? JSON.stringify(value) : String(value);
+        // Fallback - handle objects safely
+        if (typeof value === 'object' && value !== null) {
+          return JSON.stringify(value);
+        }
+        if (typeof value === 'string') return value;
+        return '-';
       },
     },
     {
@@ -1441,19 +1445,20 @@ const TransactionPage: React.FC = () => {
       render: (_value, _column, row) => {
         const numberFormatter = new Intl.NumberFormat('en-US', {
           style: 'currency',
-          currency: currency,
+          currency: currency === 'USD' || currency === 'VND' ? currency : 'USD',
         });
 
-        const type = String(
-          (row as Record<string, unknown>)?.type ?? ''
-        ).toLowerCase();
+        const _type = (row as Record<string, unknown>).type;
+        const type = typeof _type === 'string' ? _type.toLowerCase() : '';
         const isNeutral = ['deposit', 'withdraw', 'borrow'].includes(type);
 
         // Use synchronous conversion with stored FX rates
         const {
-          amount: convertedAmount,
-          cashflow: convertedCashflow,
+          amount: _convertedAmount,
+          cashflow: _convertedCashflow,
         } = convertAmountSync(row, currency as 'USD' | 'VND');
+        const convertedAmount = typeof _convertedAmount === 'number' ? _convertedAmount : 0;
+        const convertedCashflow = typeof _convertedCashflow === 'number' ? _convertedCashflow : 0;
 
         // For zero amounts, return dash
         if (convertedAmount === 0 && convertedCashflow === 0) {
@@ -1519,12 +1524,12 @@ const TransactionPage: React.FC = () => {
         </div>
 
         <TransactionForm
-          transaction={editingTransaction as any}
-          onSubmit={
-            editingTransaction
-              ? handleUpdateTransaction
-              : handleCreateTransaction
-          }
+          transaction={editingTransaction as Transaction}
+          onSubmit={(e) => {
+            void (editingTransaction
+              ? handleUpdateTransaction(e)
+              : handleCreateTransaction(e));
+          }}
           onCancel={handleFormCancel}
         />
       </div>
@@ -1728,7 +1733,7 @@ const TransactionPage: React.FC = () => {
               New Transaction
             </button>
             <button
-              onClick={handleDeleteSelected}
+              onClick={() => void handleDeleteSelected()}
               className={`inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white ${selectedIds.size > 0 ? 'bg-red-600 hover:bg-red-700' : 'bg-gray-400 cursor-not-allowed'}`}
               disabled={selectedIds.size === 0}
               title={
@@ -1753,17 +1758,19 @@ const TransactionPage: React.FC = () => {
               Delete Selected
             </button>
             <button
-              onClick={async () => {
-                try {
-                  setBulkRefreshing(true);
-                  await adminApi.recalcFX(false);
-                  await loadTransactions();
-                  showSuccessToast('Refreshed derived fields (missing only)');
-                } catch {
-                  showErrorToast('Refresh failed');
-                } finally {
-                  setBulkRefreshing(false);
-                }
+              onClick={() => {
+                void (async () => {
+                  try {
+                    setBulkRefreshing(true);
+                    await adminApi.recalcFX(false);
+                    await loadTransactions();
+                    showSuccessToast('Refreshed derived fields (missing only)');
+                  } catch {
+                    showErrorToast('Refresh failed');
+                  } finally {
+                    setBulkRefreshing(false);
+                  }
+                })();
               }}
               className={`inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${bulkRefreshing ? 'opacity-70 cursor-not-allowed' : ''}`}
               disabled={bulkRefreshing}
@@ -1925,65 +1932,69 @@ const TransactionPage: React.FC = () => {
       <QuickIncomeModal
         isOpen={isModalOpen('income')}
         onClose={closeQuickModal}
-        onSubmit={handleQuickIncomeSubmit}
+        onSubmit={(d) => void handleQuickIncomeSubmit(d)}
       />
       <QuickVaultModal
         isOpen={isModalOpen('vault')}
         onClose={closeQuickModal}
-        onSubmit={handleQuickVaultSubmit}
+        onSubmit={(d) => void handleQuickVaultSubmit(d)}
       />
       <QuickInvestmentModal
         isOpen={isModalOpen('investment')}
         onClose={closeQuickModal}
-        onSubmit={handleQuickInvestmentSubmit}
+        onSubmit={(d) => void handleQuickInvestmentSubmit(d)}
       />
       <QuickInitBalanceModal
         isOpen={isModalOpen('initBalance')}
         onClose={closeQuickModal}
-        onSubmit={handleQuickInitSubmit}
+        onSubmit={(d) => void handleQuickInitSubmit(d)}
       />
       <QuickTransferModal
         isOpen={isModalOpen('transfer')}
         onClose={closeQuickModal}
-        onSubmit={handleQuickTransferSubmit}
+        onSubmit={(d) => void handleQuickTransferSubmit(d)}
       />
       <QuickBuyModal
         isOpen={isModalOpen('buy')}
         onClose={closeQuickModal}
-        onSubmitted={async () => {
-          await loadTransactions();
-          showSuccessToast('Buy recorded');
+        onSubmitted={() => {
+          void (async () => {
+            await loadTransactions();
+            showSuccessToast('Buy recorded');
+          })();
         }}
       />
       <QuickSellModal
         isOpen={isModalOpen('sell')}
         onClose={closeQuickModal}
-        onSubmitted={async () => {
-          await loadTransactions();
-          showSuccessToast('Sell recorded');
+        onSubmitted={() => {
+          void (async () => {
+            await loadTransactions();
+            showSuccessToast('Sell recorded');
+          })();
         }}
       />
       <QuickBorrowLoanModal
         isOpen={isModalOpen('borrowLoan')}
         mode="borrow"
         onClose={closeQuickModal}
-        onSubmit={async (d) => {
-          await handleQuickBorrowSubmit(d);
+        onSubmit={(d) => {
+          void handleQuickBorrowSubmit(d);
         }}
       />
       <QuickBorrowLoanModal
         isOpen={isModalOpen('loan')}
         mode="loan"
         onClose={closeQuickModal}
-        onSubmit={async (d) => {
-          await handleQuickLoanSubmit(d);
+        onSubmit={(d) => {
+          void handleQuickLoanSubmit(d);
         }}
       />
       <QuickRepayModal
         isOpen={isModalOpen('repay')}
         onClose={closeQuickModal}
-        onSubmit={async (d) => {
-          await handleQuickRepaySubmit(d);
+        onSubmit={(d) => {
+          void handleQuickRepaySubmit(d);
         }}
       />
       {quickError && (

@@ -18,6 +18,11 @@ interface AssetWithPrice extends Asset {
   price_loading?: boolean;
 }
 
+interface AssetData {
+  asset: Partial<Asset>;
+  mapping?: Record<string, unknown>;
+}
+
 export const AdminAssetsTab: React.FC = () => {
   const { actions } = useApp();
   const [assets, setAssets] = useState<AssetWithPrice[]>([]);
@@ -92,8 +97,8 @@ export const AdminAssetsTab: React.FC = () => {
       const payload =
         data && typeof data === 'object' && 'asset' in (data as Record<string, unknown>)
           ? {
-              ...(data as any).asset,
-              ...(((data as any).mapping) ? { mapping: (data as any).mapping } : {}),
+              ...(data as AssetData).asset,
+              ...(((data as AssetData).mapping) ? { mapping: (data as AssetData).mapping } : {}),
             }
           : data;
 

@@ -4,6 +4,7 @@
  */
 
 import { useCallback, useReducer, useState } from 'react';
+
 import type { ModalType } from '../types';
 
 /**

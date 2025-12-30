@@ -25,8 +25,8 @@ const QuickExpenseModal: React.FC<QuickExpenseModalProps> = ({
   const { assets, tags, actions } = useApp();
   const today = getTodayDate();
 
-  const [vaults, setVaults] = useState<SimpleVault[]>([]);
-  const [isLoadingVaults, setIsLoadingVaults] = useState<boolean>(false);
+  const [_vaults, _setVaults] = useState<SimpleVault[]>([]);
+  const _isLoadingVaults = useState<boolean>(false)[0];
   const [vaultsError, setVaultsError] = useState<string | null>(null);
 
   const [formData, setFormData] = useState({
@@ -56,11 +56,11 @@ const QuickExpenseModal: React.FC<QuickExpenseModalProps> = ({
 
     const loadVaults = async () => {
       try {
-        setIsLoadingVaults(true);
+        _isLoadingVaults = true;
         setVaultsError(null);
         // Prefer active vaults only
         const list = await vaultApi.getActiveVaults<SimpleVault[]>({ is_open: true });
-        let arr = (list ?? []).map(v => ({ name: (v.name ?? (v as any).id) as string, id: (v as any).id ?? v.name, status: v.status }))
+        let arr = (list ?? []).map(v => ({ name: (v.name ?? (v as { id?: string }).id) as string, id: (v as { id?: string }).id ?? v.name, status: v.status }))
           .filter(v => !!v.name);
 
         // Ensure the defaultAccount (if provided) is present in the list so it shows in the dropdown
@@ -68,12 +68,12 @@ const QuickExpenseModal: React.FC<QuickExpenseModalProps> = ({
           arr = [{ name: defaultAccount, id: defaultAccount, status: 'active' }, ...arr];
         }
 
-        setVaults(arr);
+        _setVaults(arr);
       } catch (e) {
         const msg = (e as { message?: string } | null)?.message ?? 'Failed to load vaults';
         setVaultsError(msg);
       } finally {
-        setIsLoadingVaults(false);
+        _isLoadingVaults = false;
       }
     };
     void loadVaults();
@@ -146,10 +146,10 @@ const QuickExpenseModal: React.FC<QuickExpenseModalProps> = ({
     }
   };
 
-  const onNewCategoryKey = async (ev: KeyboardEvent<HTMLInputElement>) => {
+  const onNewCategoryKey = (ev: KeyboardEvent<HTMLInputElement>) => {
     if (ev.key === 'Enter') {
       ev.preventDefault();
-      await saveNewCategory();
+      void saveNewCategory();
     } else if (ev.key === 'Escape') {
       setIsAddingCategory(false);
       setNewCategory('');
@@ -171,7 +171,7 @@ const QuickExpenseModal: React.FC<QuickExpenseModalProps> = ({
           </button>
         </div>
 
-        <form onSubmit={(e) => void handleSubmit(e)} className="space-y-4">
+        <form onSubmit={(e) => { void handleSubmit(e); }} className="space-y-4">
           <div className="grid grid-cols-1 gap-3">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Date</label>

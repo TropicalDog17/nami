@@ -2,6 +2,17 @@ import React, { useState } from 'react';
 
 import { useApp } from '../../context/AppContext';
 
+interface Account {
+  name: string;
+  is_active: boolean;
+}
+
+interface Asset {
+  symbol: string;
+  name: string;
+  is_active: boolean;
+}
+
 interface QuickRepayModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -48,7 +59,7 @@ const QuickRepayModal: React.FC<QuickRepayModalProps> = ({ isOpen, onClose, onSu
         direction: form.direction,
       });
       onClose();
-    } catch (err) {
+    } catch (_err) {
       // parent handles toast
     } finally {
       setSubmitting(false);
@@ -63,7 +74,7 @@ const QuickRepayModal: React.FC<QuickRepayModalProps> = ({ isOpen, onClose, onSu
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600">×</button>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={(e) => void handleSubmit(e)} className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Date</label>
             <input
@@ -108,7 +119,7 @@ const QuickRepayModal: React.FC<QuickRepayModalProps> = ({ isOpen, onClose, onSu
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               <option value="">Select account</option>
-              {(accounts ?? []).filter((a: any) => a.is_active).map((a: any) => (
+              {(accounts ?? []).filter((a: Account) => a.is_active).map((a: Account) => (
                 <option key={a.name} value={a.name}>{a.name}</option>
               ))}
             </select>
@@ -121,7 +132,7 @@ const QuickRepayModal: React.FC<QuickRepayModalProps> = ({ isOpen, onClose, onSu
               onChange={(e) => setForm((s) => ({ ...s, asset: e.target.value }))}
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
-              {(assets ?? []).filter((as: any) => as.is_active).map((as: any) => (
+              {(assets ?? []).filter((as: Asset) => as.is_active).map((as: Asset) => (
                 <option key={as.symbol} value={as.symbol}>{as.symbol}{as.name ? ` - ${as.name}` : ''}</option>
               ))}
             </select>

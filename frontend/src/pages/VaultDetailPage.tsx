@@ -4,7 +4,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 
 import QuickBorrowLoanModal from '../components/modals/QuickBorrowLoanModal';
 import QuickRepayModal from '../components/modals/QuickRepayModal';
-import { HoldingsChart, TimeSeriesLineChart } from '../components/reports/Charts';
+import { TimeSeriesLineChart } from '../components/reports/Charts';
 import ManualPricingControl from '../components/tokenized/ManualPricingControl';
 import ComboBox from '../components/ui/ComboBox';
 import DataTable, { TableColumn } from '../components/ui/DataTable';
@@ -124,17 +124,27 @@ const VaultDetailPage: React.FC = () => {
   const [vault, setVault] = useState<Vault | null>(null);
   const [tokenizedVaultDetails, setTokenizedVaultDetails] = useState<TokenizedVaultDetails | null>(null);
   const [ledgerHoldings, setLedgerHoldings] = useState<null | { total_shares?: string | number; total_aum?: string | number; share_price?: string | number; transaction_count?: number; last_transaction_at?: string }>(null);
-  const [ledgerTransactions, setLedgerTransactions] = useState<any[]>([]);
-  
+
+  type LedgerTransaction = {
+    timestamp?: unknown;
+    type?: unknown;
+    amount_usd?: number;
+    shares?: number;
+  };
+
+  const [ledgerTransactions, setLedgerTransactions] = useState<LedgerTransaction[]>([]);
+
   // Rolling AUM: last valuation AUM + net flows after that valuation
   const rollingAUM = useMemo(() => {
     try {
       if (!Array.isArray(ledgerTransactions) || ledgerTransactions.length === 0) return undefined;
-      const txs = [...ledgerTransactions].filter(t => t?.timestamp).sort((a, b) => new Date(String(a.timestamp)).getTime() - new Date(String(b.timestamp)).getTime());
+      const txs = [...ledgerTransactions].filter(t => t?.timestamp).sort((a, b) => new Date(typeof a.timestamp === 'string' ? a.timestamp : String(a.timestamp)).getTime() - new Date(typeof b.timestamp === 'string' ? b.timestamp : String(b.timestamp)).getTime());
       let lastValIdx = -1;
       for (let i = txs.length - 1; i >= 0; i--) {
         const t = txs[i];
-        if (String(t.type || '').toUpperCase() === 'VALUATION') { lastValIdx = i; break; }
+        const typeRaw = t.type;
+        const type = typeof typeRaw === 'string' ? typeRaw : '';
+        if (type.toUpperCase() === 'VALUATION') { lastValIdx = i; break; }
       }
       if (lastValIdx === -1) return undefined;
       const base = Number(txs[lastValIdx]?.amount_usd ?? NaN);
@@ -142,10 +152,11 @@ const VaultDetailPage: React.FC = () => {
       let net = 0;
       for (let i = lastValIdx + 1; i < txs.length; i++) {
         const t = txs[i];
-        const type = String(t?.type || '').toUpperCase();
+        const typeRaw = t.type;
+        const type = typeof typeRaw === 'string' ? typeRaw : '';
         const amt = Number(t?.amount_usd ?? 0) || 0;
-        if (type === 'DEPOSIT') net += amt;
-        else if (type === 'WITHDRAW' || type === 'WITHDRAWAL') net -= amt;
+        if (type.toUpperCase() === 'DEPOSIT') net += amt;
+        else if (type.toUpperCase() === 'WITHDRAW' || type.toUpperCase() === 'WITHDRAWAL') net -= amt;
       }
       return base + net;
     } catch {
@@ -157,10 +168,12 @@ const VaultDetailPage: React.FC = () => {
   const impliedPriceFromLedger = useMemo(() => {
     try {
       if (!Array.isArray(ledgerTransactions) || ledgerTransactions.length === 0) return undefined;
-      const txs = [...ledgerTransactions].filter(t => t?.timestamp).sort((a, b) => new Date(String(a.timestamp)).getTime() - new Date(String(b.timestamp)).getTime());
+      const txs = [...ledgerTransactions].filter(t => t?.timestamp).sort((a, b) => new Date(typeof a.timestamp === 'string' ? a.timestamp : String(a.timestamp)).getTime() - new Date(typeof b.timestamp === 'string' ? b.timestamp : String(b.timestamp)).getTime());
       let lastValIdx = -1;
       for (let i = txs.length - 1; i >= 0; i--) {
-        if (String(txs[i].type || '').toUpperCase() === 'VALUATION') { lastValIdx = i; break; }
+        const typeRaw = txs[i].type;
+        const type = typeof typeRaw === 'string' ? typeRaw : '';
+        if (type.toUpperCase() === 'VALUATION') { lastValIdx = i; break; }
       }
       if (lastValIdx === -1) return undefined;
       const baseUSD = Number(txs[lastValIdx]?.amount_usd ?? NaN);
@@ -169,11 +182,12 @@ const VaultDetailPage: React.FC = () => {
       let flowShares = 0;
       for (let i = lastValIdx + 1; i < txs.length; i++) {
         const t = txs[i];
-        const type = String(t?.type || '').toUpperCase();
+        const typeRaw = t?.type;
+        const type = typeof typeRaw === 'string' ? typeRaw : '';
         const usd = Number(t?.amount_usd ?? 0) || 0;
         const sh = Number(t?.shares ?? 0) || 0;
-        if (type === 'DEPOSIT') { netUSD += usd; flowShares += sh; }
-        else if (type === 'WITHDRAW' || type === 'WITHDRAWAL') { netUSD -= usd; flowShares -= sh; }
+        if (type.toUpperCase() === 'DEPOSIT') { netUSD += usd; flowShares += sh; }
+        else if (type.toUpperCase() === 'WITHDRAW' || type.toUpperCase() === 'WITHDRAWAL') { netUSD -= usd; flowShares -= sh; }
       }
       const totalSharesNow = (() => {
         const v = ledgerHoldings?.total_shares as unknown as string | number | undefined;
@@ -208,7 +222,7 @@ const VaultDetailPage: React.FC = () => {
 
   // Time-series for tokenized vault (AUM, PnL, ROI, APR)
   const [vaultSeries, setVaultSeries] = useState<Array<{ date: string; aum_usd: number; pnl_usd: number; roi_percent: number; apr_percent: number }>>([]);
-  const [loadingSeries, setLoadingSeries] = useState<boolean>(false);
+  const _loadingSeries = useState<boolean>(false)[0];
 
   // Load per-vault series when viewing a tokenized vault
   useEffect(() => {
@@ -218,14 +232,11 @@ const VaultDetailPage: React.FC = () => {
         return;
       }
       try {
-        setLoadingSeries(true);
         const res = await reportsApi.vaultSeries<{ vault: string; series: Array<{ date: string; aum_usd: number; pnl_usd: number; roi_percent: number; apr_percent: number }> }>(tokenizedVaultDetails.id);
-        const s = (res as any)?.series ?? [];
+        const s = (res as { series?: unknown })?.series ?? [];
         setVaultSeries(Array.isArray(s) ? s : []);
       } catch {
         setVaultSeries([]);
-      } finally {
-        setLoadingSeries(false);
       }
     };
     void fetchSeries();
@@ -240,7 +251,7 @@ const VaultDetailPage: React.FC = () => {
       }
       try {
         const m = await reportsApi.vaultHeader<VaultHeaderMetrics>(tokenizedVaultDetails.id);
-        setHeaderMetrics(m as any);
+        setHeaderMetrics(m);
       } catch {
         setHeaderMetrics(null);
       }
@@ -315,35 +326,46 @@ const VaultDetailPage: React.FC = () => {
         // Load ledger data for tokenized vaults
         try {
           const [h, tx] = await Promise.all([
-            vaultLedgerApi.holdings<any>(vaultId),
-            vaultLedgerApi.transactions<any[]>(vaultId, { limit: 100 }),
+            vaultLedgerApi.holdings<Record<string, unknown>>(vaultId),
+            vaultLedgerApi.transactions<Array<Record<string, unknown>>>(vaultId, { limit: 100 }),
           ]);
           setLedgerHoldings(h ?? null);
           const ppsRaw = (h)?.share_price;
           const pps = typeof ppsRaw === 'string' ? parseFloat(ppsRaw) : (ppsRaw ?? 1);
-          const mapped = (Array.isArray(tx) ? tx : []).map((e: any) => {
+          const mapped = (Array.isArray(tx) ? tx : []).map((e: Record<string, unknown>) => {
             const usd = typeof e?.usdValue === 'string' ? parseFloat(e.usdValue) : Number(e?.usdValue ?? 0);
             const qty = typeof e?.amount === 'string' ? parseFloat(e.amount) : Number(e?.amount ?? 0);
             const price = Number(pps) || 1;
+            const typeRaw = e?.type;
+            const type = typeof typeRaw === 'string' ? typeRaw : '';
+            const assetRaw = e?.asset;
+            let asset = '';
+            if (typeof assetRaw === 'string') {
+              asset = assetRaw;
+            } else if (typeof assetRaw === 'object' && assetRaw !== null) {
+              const symbolRaw = (assetRaw as Record<string, unknown>).symbol;
+              asset = typeof symbolRaw === 'string' ? symbolRaw : '';
+            }
             return {
               timestamp: e?.at ?? e?.timestamp ?? null,
-              type: String(e?.type ?? '').toUpperCase(),
-              status: e?.status ?? '-',
+              type: type.toUpperCase(),
+              status: typeof e?.status === 'string' ? e.status : '-',
               amount_usd: isNaN(usd) ? 0 : usd,
               shares: isNaN(usd) ? 0 : usd / price,
               price_per_share: price,
-              asset: typeof e?.asset === 'object' && e?.asset ? String(e.asset.symbol || '') : String(e?.asset ?? ''),
-              account: e?.account ?? null,
+              asset,
+              account: (e?.account ?? null) as string | null,
               asset_quantity: isNaN(qty) ? 0 : qty,
             };
           });
           setLedgerTransactions(mapped.sort((a, b) => {
-            const ta = a?.timestamp ? new Date(String(a.timestamp)).getTime() : 0;
-            const tb = b?.timestamp ? new Date(String(b.timestamp)).getTime() : 0;
+            const ta = a?.timestamp && typeof a.timestamp === 'string' ? new Date(a.timestamp).getTime() : 0;
+            const tb = b?.timestamp && typeof b.timestamp === 'string' ? new Date(b.timestamp).getTime() : 0;
             return tb - ta; // latest first
           }));
-        } catch (e) {
-          console.warn('Failed to load ledger data', e);
+        } catch (_e) {
+          // ignore
+          console.warn('Failed to load ledger data');
           setLedgerHoldings(null);
           setLedgerTransactions([]);
         }
@@ -591,23 +613,35 @@ const VaultDetailPage: React.FC = () => {
     const fetchBorrowings = async () => {
       try {
         const isBorrowings = isTokenizedVault
-          ? String(tokenizedVaultDetails?.name || '').toLowerCase() === 'borrowings'
-          : String(vault?.account || vaultId || '').toLowerCase() === 'borrowings';
+          ? String(tokenizedVaultDetails?.name ?? '').toLowerCase() === 'borrowings'
+          : String(vault?.account ?? vaultId ?? '').toLowerCase() === 'borrowings';
         if (!isBorrowings) {
           setBorrowingsSummary(null);
           return;
         }
-        const r = await portfolioApi.report<any>();
+        const r = await portfolioApi.report<Record<string, unknown>>();
         const liabs = Array.isArray(r?.liabilities) ? r.liabilities : [];
-        const mapped = liabs.map((o: any) => ({
-          counterparty: String(o?.counterparty ?? ''),
-          asset: typeof o?.asset === 'object' && o?.asset ? String(o.asset.symbol || '') : String(o?.asset ?? ''),
-          amount: Number(o?.amount ?? 0),
-          valueUSD: Number(o?.valueUSD ?? 0),
-        }));
-        const outstandingUSD = mapped.reduce((s: number, x: any) => s + (Number(x.valueUSD) || 0), 0);
+        const mapped = liabs.map((o: Record<string, unknown>) => {
+          const counterpartyRaw = o?.counterparty;
+          const counterparty = typeof counterpartyRaw === 'string' ? counterpartyRaw : '';
+          const assetRaw = o?.asset;
+          let asset = '';
+          if (typeof assetRaw === 'string') {
+            asset = assetRaw;
+          } else if (typeof assetRaw === 'object' && assetRaw !== null) {
+            const symbolRaw = (assetRaw as Record<string, unknown>).symbol;
+            asset = typeof symbolRaw === 'string' ? symbolRaw : '';
+          }
+          return {
+            counterparty,
+            asset,
+            amount: Number(o?.amount ?? 0),
+            valueUSD: Number(o?.valueUSD ?? 0),
+          };
+        });
+        const outstandingUSD = mapped.reduce((s: number, x: { valueUSD?: number }) => s + (Number(x.valueUSD) || 0), 0);
         setBorrowingsSummary({ outstandingUSD, liabilities: mapped });
-      } catch (e) {
+      } catch (_e) {
         setBorrowingsSummary(null);
       }
     };
@@ -748,13 +782,13 @@ const VaultDetailPage: React.FC = () => {
   };
 
   const handleDistributeReward = async (): Promise<void> => {
-    const amt = parseFloat(rewardAmount || '');
+    const amt = parseFloat(rewardAmount ?? '');
     if (!(amt > 0)) {
       showErrorToast('Enter a valid reward amount');
       return;
     }
     try {
-      const targetName = isTokenizedVault ? (tokenizedVaultDetails?.id || vaultId) : vaultId;
+      const targetName = isTokenizedVault ? (tokenizedVaultDetails?.id ?? vaultId) : vaultId;
       await vaultApi.distributeReward(targetName, {
         amount: amt,
         destination: rewardDestination || 'Spend',
@@ -799,7 +833,7 @@ const VaultDetailPage: React.FC = () => {
       decimals: 8,
       render: (value, _column, row) => {
         const qty = typeof value === 'string' && value !== '' ? parseFloat(value) : 0;
-        const decimals = getDecimalPlaces(row.asset || 'USD');
+        const decimals = getDecimalPlaces(row.asset ?? 'USD');
         return formatVaultNumber(qty, decimals);
       },
     },
@@ -817,7 +851,7 @@ const VaultDetailPage: React.FC = () => {
       decimals: 8,
       render: (value, _column, row) => {
         const qty = typeof value === 'string' && value !== '' ? parseFloat(value) : 0;
-        const decimals = getDecimalPlaces(row.asset || 'USD');
+        const decimals = getDecimalPlaces(row.asset ?? 'USD');
         return formatVaultNumber(qty, decimals);
       },
     },
@@ -969,17 +1003,17 @@ const VaultDetailPage: React.FC = () => {
   // Whether the current vault represents the special Borrowings view
   const isBorrowings = useMemo(() => {
     if (isTokenizedVault) {
-      return String(tokenizedVaultDetails?.name || '').toLowerCase() === 'borrowings';
+      return String(tokenizedVaultDetails?.name ?? '').toLowerCase() === 'borrowings';
     }
-    return String(vault?.account || vaultId || '').toLowerCase() === 'borrowings';
+    return String(vault?.account ?? vaultId ?? '').toLowerCase() === 'borrowings';
   }, [isTokenizedVault, tokenizedVaultDetails, vault, vaultId]);
 
   // Whether the current vault represents the special Spend view
   const isSpend = useMemo(() => {
     if (isTokenizedVault) {
-      return String(tokenizedVaultDetails?.name || '').toLowerCase() === 'spend';
+      return String(tokenizedVaultDetails?.name ?? '').toLowerCase() === 'spend';
     }
-    return String(vault?.account || vaultId || '').toLowerCase() === 'spend';
+    return String(vault?.account ?? vaultId ?? '').toLowerCase() === 'spend';
   }, [isTokenizedVault, tokenizedVaultDetails, vault, vaultId]);
 
   useEffect(() => {
@@ -1005,51 +1039,65 @@ const VaultDetailPage: React.FC = () => {
     symbol: symbol.toUpperCase(),
   });
 
-  const refreshBorrowings = useCallback(async () => {
+  const _refreshBorrowingsExternal = useCallback(async () => {
     try {
-      const r = await portfolioApi.report<any>();
+      const r = await portfolioApi.report<Record<string, unknown>>();
       const liabs = Array.isArray(r?.liabilities) ? r.liabilities : [];
-      const mapped = liabs.map((o: any) => ({
-        counterparty: String(o?.counterparty ?? ''),
-        asset: typeof o?.asset === 'object' && o?.asset ? String(o.asset.symbol || '') : String(o?.asset ?? ''),
-        amount: Number(o?.amount ?? 0),
-        valueUSD: Number(o?.valueUSD ?? 0),
-      }));
-      const outstandingUSD = mapped.reduce((s: number, x: any) => s + (Number(x.valueUSD) || 0), 0);
+      const mapped = liabs.map((o: Record<string, unknown>) => {
+        const counterpartyRaw = o?.counterparty;
+        const counterparty = typeof counterpartyRaw === 'string' ? counterpartyRaw : '';
+        const assetRaw = o?.asset;
+        let asset = '';
+        if (typeof assetRaw === 'string') {
+          asset = assetRaw;
+        } else if (typeof assetRaw === 'object' && assetRaw !== null) {
+          const symbolRaw = (assetRaw as Record<string, unknown>).symbol;
+          asset = typeof symbolRaw === 'string' ? symbolRaw : '';
+        }
+        return {
+          counterparty,
+          asset,
+          amount: Number(o?.amount ?? 0),
+          valueUSD: Number(o?.valueUSD ?? 0),
+        };
+      });
+      const outstandingUSD = mapped.reduce((s: number, x: { valueUSD?: number }) => s + (Number(x.valueUSD) || 0), 0);
       setBorrowingsSummary({ outstandingUSD, liabilities: mapped });
-    } catch {}
+    } catch {
+      // ignore
+    }
   }, []);
 
   const handleBorrowSubmit = useCallback(async (d: { date: string; amount: number; account?: string; asset: string; counterparty?: string; note?: string; }) => {
     await transactionApi.borrow({
       asset: toAssetObj(d.asset),
       amount: Number(d.amount),
-      account: d.account || undefined,
-      counterparty: d.counterparty || 'general',
-      note: d.note || undefined,
+      account: d.account ?? undefined,
+      counterparty: d.counterparty ?? 'general',
+      note: d.note ?? undefined,
       at: d.date,
-    } as any);
+    } as { asset: { symbol?: string }; amount: number; account?: string; counterparty: string; note?: string; at: string });
     await loadVault();
     await loadVaultTransactions();
-    await refreshBorrowings();
+    await _refreshBorrowings();
     setShowBorrowModal(false);
-  }, [loadVault, loadVaultTransactions, refreshBorrowings]);
+  }, [loadVault, loadVaultTransactions]);
 
   const handleRepaySubmit = useCallback(async (d: { date: string; amount: number; account?: string; asset: string; counterparty?: string; note?: string; direction: 'BORROW' | 'LOAN' }) => {
     await transactionApi.repay({
       asset: toAssetObj(d.asset),
       amount: Number(d.amount),
-      account: d.account || undefined,
-      counterparty: d.counterparty || 'general',
-      note: d.note || undefined,
+      account: d.account ?? undefined,
+      counterparty: d.counterparty ?? 'general',
+      note: d.note ?? undefined,
       direction: 'BORROW',
       at: d.date,
-    } as any);
+    } as { asset: { symbol?: string }; amount: number; account?: string; counterparty: string; note?: string; direction: string; at: string });
     await loadVault();
     await loadVaultTransactions();
-    await refreshBorrowings();
+    await _refreshBorrowings();
     setShowRepayModal(false);
-  }, [loadVault, loadVaultTransactions, refreshBorrowings]);
+  }, [loadVault, loadVaultTransactions]);
 
   console.log('VaultDetailPage render:', {
     loading,
@@ -1149,55 +1197,69 @@ const VaultDetailPage: React.FC = () => {
       liquidating: { label: 'Liquidating', className: 'bg-red-100 text-red-800' },
     };
     const statusBadge = statusConfig[status] ?? { label: status, className: 'bg-gray-100 text-gray-800' };
-    const isBorrowings = (tokenizedVaultDetails.name || '').toLowerCase() === 'borrowings';
+    const isBorrowings = (tokenizedVaultDetails.name ?? '').toLowerCase() === 'borrowings';
 
     const canDeposit = tokenizedVaultDetails.status === 'active' && tokenizedVaultDetails.is_deposit_allowed;
     const canWithdraw = tokenizedVaultDetails.status === 'active' && tokenizedVaultDetails.is_withdrawal_allowed;
 
     const toAssetObj = (symbol: string) => ({ type: (symbol.toUpperCase() === 'USD' || symbol.length === 3) ? 'FIAT' as const : 'CRYPTO' as const, symbol: symbol.toUpperCase() });
-    const refreshBorrowings = async () => {
+    const _refreshBorrowings = async () => {
       try {
-        const r = await portfolioApi.report<any>();
+        const r = await portfolioApi.report<Record<string, unknown>>();
         const liabs = Array.isArray(r?.liabilities) ? r.liabilities : [];
-        const mapped = liabs.map((o: any) => ({
-          counterparty: String(o?.counterparty ?? ''),
-          asset: typeof o?.asset === 'object' && o?.asset ? String(o.asset.symbol || '') : String(o?.asset ?? ''),
-          amount: Number(o?.amount ?? 0),
-          valueUSD: Number(o?.valueUSD ?? 0),
-        }));
-        const outstandingUSD = mapped.reduce((s: number, x: any) => s + (Number(x.valueUSD) || 0), 0);
+        const mapped = liabs.map((o: Record<string, unknown>) => {
+          const counterpartyRaw = o?.counterparty;
+          const counterparty = typeof counterpartyRaw === 'string' ? counterpartyRaw : '';
+          const assetRaw = o?.asset;
+          let asset = '';
+          if (typeof assetRaw === 'string') {
+            asset = assetRaw;
+          } else if (typeof assetRaw === 'object' && assetRaw !== null) {
+            const symbolRaw = (assetRaw as Record<string, unknown>).symbol;
+            asset = typeof symbolRaw === 'string' ? symbolRaw : '';
+          }
+          return {
+            counterparty,
+            asset,
+            amount: Number(o?.amount ?? 0),
+            valueUSD: Number(o?.valueUSD ?? 0),
+          };
+        });
+        const outstandingUSD = mapped.reduce((s: number, x: { valueUSD?: number }) => s + (Number(x.valueUSD) || 0), 0);
         setBorrowingsSummary({ outstandingUSD, liabilities: mapped });
-      } catch {}
+      } catch {
+        // ignore
+      }
     };
 
-    const handleBorrowSubmit = async (d: { date: string; amount: number; account?: string; asset: string; counterparty?: string; note?: string; }) => {
+    const _handleBorrowSubmit = async (d: { date: string; amount: number; account?: string; asset: string; counterparty?: string; note?: string; }) => {
       await transactionApi.borrow({
         asset: toAssetObj(d.asset),
         amount: Number(d.amount),
-        account: d.account || undefined,
-        counterparty: d.counterparty || 'general',
-        note: d.note || undefined,
+        account: d.account ?? undefined,
+        counterparty: d.counterparty ?? 'general',
+        note: d.note ?? undefined,
         at: d.date,
-      } as any);
+      } as { asset: { symbol?: string }; amount: number; account?: string; counterparty: string; note?: string; at: string });
       await loadVault();
       await loadVaultTransactions();
-      await refreshBorrowings();
+      await _refreshBorrowings();
       setShowBorrowModal(false);
     };
 
-    const handleRepaySubmit = async (d: { date: string; amount: number; account?: string; asset: string; counterparty?: string; note?: string; direction: 'BORROW' | 'LOAN' }) => {
+    const _handleRepaySubmit = async (d: { date: string; amount: number; account?: string; asset: string; counterparty?: string; note?: string; direction: 'BORROW' | 'LOAN' }) => {
       await transactionApi.repay({
         asset: toAssetObj(d.asset),
         amount: Number(d.amount),
-        account: d.account || undefined,
-        counterparty: d.counterparty || 'general',
-        note: d.note || undefined,
+        account: d.account ?? undefined,
+        counterparty: d.counterparty ?? 'general',
+        note: d.note ?? undefined,
         direction: 'BORROW',
         at: d.date,
-      } as any);
+      } as { asset: { symbol?: string }; amount: number; account?: string; counterparty: string; note?: string; direction: string; at: string });
       await loadVault();
       await loadVaultTransactions();
-      await refreshBorrowings();
+      await _refreshBorrowings();
       setShowRepayModal(false);
     };
 
@@ -1318,7 +1380,7 @@ const VaultDetailPage: React.FC = () => {
                 <strong>Simple Balance Tracking:</strong> Income - Expenses = Current Balance
               </p>
               <p className="text-xs text-blue-600 mt-1">
-                No P&L or ROI calculations for this account (it's cash, not an investment)
+                No P&amp;L or ROI calculations for this account (it&apos;s cash, not an investment)
               </p>
             </div>
           </div>
@@ -1737,10 +1799,10 @@ const VaultDetailPage: React.FC = () => {
           </div>
           <div className="bg-white p-4 rounded-lg border border-gray-200 lg:col-span-2">
             <h2 className="text-lg font-semibold mb-3">Ledger Transactions</h2>
-            <DataTable<any>
+            <DataTable<Record<string, unknown>>
               data={ledgerTransactions}
               columns={[
-                { key: 'timestamp', title: 'Time', render: (v) => (v ? format(new Date(String(v)), 'MMM d, yyyy HH:mm') : '—') },
+                { key: 'timestamp', title: 'Time', render: (v) => (v && typeof v === 'string' ? format(new Date(v), 'MMM d, yyyy HH:mm') : '—') },
                 { key: 'type', title: 'Type' },
                 { key: 'status', title: 'Status' },
                 { key: 'amount_usd', title: 'Amount (USD)', render: (v) => formatCurrency(typeof v === 'string' ? parseFloat(v) : Number(v ?? 0)) },
@@ -2027,7 +2089,7 @@ const VaultDetailPage: React.FC = () => {
       )}
 
       {/* Vault Details Table */}
-      {(manualMetrics || liveMetrics) && (
+      {(manualMetrics ?? liveMetrics) && (
         <div className="bg-white p-4 rounded-lg border border-gray-200 mb-6">
           <h3 className="text-lg font-semibold mb-2">{liveMetrics ? 'Live Metrics' : 'Manual Update'}</h3>
           <div className="text-sm text-gray-700 mb-2">

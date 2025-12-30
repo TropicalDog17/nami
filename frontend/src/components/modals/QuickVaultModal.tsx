@@ -2,7 +2,6 @@ import React, { useEffect, useMemo, useState } from 'react';
 
 import { adminApi } from '../../services/api';
 import { getTodayDate } from '../../utils/dateUtils';
-
 import ComboBox from '../ui/ComboBox';
 import DateInput from '../ui/DateInput';
 
@@ -32,10 +31,10 @@ const QuickVaultModal: React.FC<QuickVaultModalProps> = ({ isOpen, onClose, onSu
     const load = async () => {
       try {
         const assetsData = await adminApi.listAssets();
-        setAssets(((assetsData ?? [])).map((a: unknown) => {
-          const asset = a as { symbol?: string; name?: string };
-          const symbol = String(asset.symbol ?? '');
-          const name = String(asset.name ?? symbol);
+        const assetList = (assetsData ?? []) as Array<{ symbol?: string; name?: string }>;
+        setAssets(assetList.map((a) => {
+          const symbol = String(a.symbol ?? '');
+          const name = String(a.name ?? symbol);
           return { value: symbol, label: `${symbol} - ${name}` };
         }));
       } catch (_e) {

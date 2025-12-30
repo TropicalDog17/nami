@@ -62,7 +62,7 @@ const QuickInvestmentModal: React.FC<QuickInvestmentModalProps> = ({ isOpen, onC
     return formData.vaultId ? vaultIdToInfo[formData.vaultId] : null;
   }, [formData.vaultId, vaultIdToInfo]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
     try {

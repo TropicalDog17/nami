@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 
-import { AggregatedPnLChart } from '../components/reports/AggregatedPnLChart';
+// eslint-disable-next-line import/no-named-as-default
 import AUMChart from '../components/reports/AUMChart';
 import { TimeSeriesLineChart } from '../components/reports/Charts';
 import CreateTokenizedVaultForm from '../components/tokenized/CreateTokenizedVaultForm';
@@ -102,7 +102,7 @@ const VaultsPage: React.FC = () => {
   }, [filter, loadVaults]);
 
   // Helper function to calculate date range based on time range
-  const getDateRange = (timeRange: TimeRange) => {
+  const getDateRange = useCallback((timeRange: TimeRange) => {
     const now = new Date();
     const endDate = now.toISOString().split('T')[0];
     let startDate: string;
@@ -128,10 +128,10 @@ const VaultsPage: React.FC = () => {
     }
 
     return { start: startDate, end: endDate };
-  };
+  }, []);
 
   // Filter data to show only from max(first data date, T-7d/T-30d)
-  const filterDataByTimeRange = <T extends { date: string }>(
+  const filterDataByTimeRange = useCallback(<T extends { date: string }>(
     data: T[],
     timeRange: TimeRange
   ): T[] => {
@@ -151,16 +151,16 @@ const VaultsPage: React.FC = () => {
     const effectiveStartDate = firstDataDate > start ? firstDataDate : start;
 
     return data.filter((d) => d.date >= effectiveStartDate);
-  };
+  }, [getDateRange]);
 
   // Computed filtered data based on time range
   const pnlSeries = useMemo(
     () => filterDataByTimeRange(pnlSeriesFull, timeRange),
-    [pnlSeriesFull, timeRange]
+    [pnlSeriesFull, timeRange, filterDataByTimeRange]
   );
   const aprSeries = useMemo(
     () => filterDataByTimeRange(aprSeriesFull, timeRange),
-    [aprSeriesFull, timeRange]
+    [aprSeriesFull, timeRange, filterDataByTimeRange]
   );
 
   // Load PNL time series for all active vaults (fetch all data, filter on frontend)

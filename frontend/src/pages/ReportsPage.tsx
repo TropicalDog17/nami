@@ -7,7 +7,7 @@ import { PnLChart, SpendingChart, DailySpendingChart, MonthlySpendingTrendChart 
 import DataTable, { TableColumn, TableRowBase } from '../components/ui/DataTable';
 import DateInput from '../components/ui/DateInput';
 import { useBackendStatus } from '../context/BackendStatusContext';
-import { reportsApi, investmentsApi, vaultApi, tokenizedVaultApi } from '../services/api';
+import { reportsApi, tokenizedVaultApi } from '../services/api';
 
 
 const ReportsPage = () => {
@@ -66,7 +66,7 @@ const ReportsPage = () => {
         case 'allocation':
           // Vault-based allocation: only show tokenized vaults, exclude individual assets and USDT
           try {
-            const tokenized: Array<any> | null = await tokenizedVaultApi.list();
+            const tokenized: Array<{ status?: string; total_assets_under_management?: number | string; name?: string; token_symbol?: string }> | null = await tokenizedVaultApi.list();
             const usdToVnd = await (async () => {
               try {
                 const dt = new Date(filters.asOf);
@@ -755,17 +755,17 @@ const ReportsPage = () => {
     ];
 
     // Extract spending metrics
-    const currentMonthUsd = parseFloat(String(spending.current_month_usd ?? 0));
-    const currentMonthVnd = parseFloat(String(spending.current_month_vnd ?? 0));
-    const lastMonthUsd = parseFloat(String(spending.last_month_usd ?? 0));
-    const lastMonthVnd = parseFloat(String(spending.last_month_vnd ?? 0));
-    const momChangePercent = parseFloat(String(spending.mom_change_percent ?? 0));
-    const avgDailyUsd = parseFloat(String(spending.avg_daily_usd ?? 0));
-    const avgDailyVnd = parseFloat(String(spending.avg_daily_vnd ?? 0));
-    const availableBalanceUsd = parseFloat(String(spending.available_balance_usd ?? 0));
-    const availableBalanceVnd = parseFloat(String(spending.available_balance_vnd ?? 0));
-    const totalUsd = parseFloat(String(spending.total_usd ?? 0));
-    const totalVnd = parseFloat(String(spending.total_vnd ?? 0));
+    const currentMonthUsd = Number(spending.current_month_usd ?? 0);
+    const currentMonthVnd = Number(spending.current_month_vnd ?? 0);
+    const lastMonthUsd = Number(spending.last_month_usd ?? 0);
+    const lastMonthVnd = Number(spending.last_month_vnd ?? 0);
+    const momChangePercent = Number(spending.mom_change_percent ?? 0);
+    const avgDailyUsd = Number(spending.avg_daily_usd ?? 0);
+    const avgDailyVnd = Number(spending.avg_daily_vnd ?? 0);
+    const availableBalanceUsd = Number(spending.available_balance_usd ?? 0);
+    const availableBalanceVnd = Number(spending.available_balance_vnd ?? 0);
+    const totalUsd = Number(spending.total_usd ?? 0);
+    const totalVnd = Number(spending.total_vnd ?? 0);
 
     const currentMonth = currency === 'USD' ? currentMonthUsd : currentMonthVnd;
     const lastMonth = currency === 'USD' ? lastMonthUsd : lastMonthVnd;
@@ -927,7 +927,7 @@ const ReportsPage = () => {
     );
   };
 
-  const renderPnLTable = () => {
+  const _renderPnLTable = () => {
     const rawPnl = data.pnl as Record<string, unknown> ?? {};
     const pnl = typeof rawPnl === 'object' ? rawPnl : {};
     const realizedPnL = parseFloat(String(currency === 'USD' ? ((pnl).realized_pnl_usd as number ?? 0) : ((pnl).realized_pnl_vnd as number ?? 0)));

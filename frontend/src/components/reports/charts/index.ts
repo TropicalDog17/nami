@@ -6,11 +6,11 @@
  */
 
 // Export chart configuration
-export * from './chartConfig';
+export * from '../chartConfig';
 
 // Export refactored individual charts
-export { HoldingsChart } from './HoldingsChart';
-export type { HoldingsData } from './HoldingsChart';
+export { HoldingsChart } from '../HoldingsChart';
+export type { HoldingsData } from '../HoldingsChart';
 
 // Re-export all charts from the main Charts file for now
 export {
@@ -24,4 +24,4 @@ export {
   DailySpendingChart,
   MonthlySpendingTrendChart,
   SpendingComparisonChart,
-} from './Charts';
+} from '../Charts';

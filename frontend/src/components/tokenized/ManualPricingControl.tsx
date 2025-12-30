@@ -133,7 +133,7 @@ const ManualPricingControl: React.FC<ManualPricingControlProps> = ({
 
         {!isManualPricing ? (
           <button
-            onClick={handleEnableManualPricing}
+            onClick={() => void handleEnableManualPricing()}
             disabled={loading}
             className="px-3 py-1.5 bg-purple-600 text-white text-sm rounded-md hover:bg-purple-700 disabled:opacity-50"
           >
@@ -149,7 +149,7 @@ const ManualPricingControl: React.FC<ManualPricingControlProps> = ({
               Update Total Value
             </button>
             <button
-              onClick={handleDisableManualPricing}
+              onClick={() => void handleDisableManualPricing()}
               disabled={loading}
               className="px-3 py-1.5 bg-gray-600 text-white text-sm rounded-md hover:bg-gray-700 disabled:opacity-50"
             >
@@ -160,7 +160,7 @@ const ManualPricingControl: React.FC<ManualPricingControlProps> = ({
       </div>
 
       {showUpdateForm && (
-        <form onSubmit={handleUpdateTotalValue} className="space-y-3">
+        <form onSubmit={(e) => void handleUpdateTotalValue(e)} className="space-y-3">
           <div>
             <label className="block text-xs font-medium text-gray-700 mb-1">
               New Total Vault Value (USD)

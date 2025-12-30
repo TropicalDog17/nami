@@ -57,44 +57,36 @@ export const AggregatedPnLChart: React.FC<AggregatedPnLChartProps> = ({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Calculate date range based on selection
-  const getDateRange = () => {
-    const endDate = new Date().toISOString().split('T')[0];
-    let startDate: string;
-
-    switch (timeRange) {
-      case '7d':
-        startDate = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
-          .toISOString()
-          .split('T')[0];
-        break;
-      case '30d':
-        startDate = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
-          .toISOString()
-          .split('T')[0];
-        break;
-      case 'custom':
-        startDate = customStart;
-        break;
-      default:
-        startDate = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
-          .toISOString()
-          .split('T')[0];
-    }
-
-    return { start: startDate, end: timeRange === 'custom' ? customEnd : endDate };
-  };
-
   // Fetch aggregated PnL series data
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     setLoading(true);
     setError(null);
 
     try {
-      const { start, end } = getDateRange();
+      // Calculate date range inline
+      const now = new Date();
+      const endDate = timeRange === 'custom' ? customEnd : now.toISOString().split('T')[0];
+      let startDate: string;
+      switch (timeRange) {
+        case '7d':
+          startDate = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+          break;
+        case '30d':
+          startDate = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+          break;
+        case 'custom':
+          startDate = customStart;
+          break;
+        case 'all':
+          startDate = '';
+          break;
+        default:
+          startDate = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+      }
+
       const result = await reportsApi.series<{ account: string; series: SeriesData[] }>({
-        start,
-        end,
+        start: startDate,
+        end: endDate,
       });
 
       if (result?.series) {
@@ -109,11 +101,11 @@ export const AggregatedPnLChart: React.FC<AggregatedPnLChartProps> = ({
     } finally {
       setLoading(false);
     }
-  };
+  }, [timeRange, customStart, customEnd]);
 
   useEffect(() => {
     void fetchData();
-  }, [timeRange, customStart, customEnd]);
+  }, [fetchData]);
 
   // Prepare chart data
   const labels = seriesData.map((d) => {
