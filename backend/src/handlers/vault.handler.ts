@@ -103,31 +103,33 @@ vaultsRouter.get("/vaults", async (req: Request, res: Response) => {
 
   if (!enrich) return res.json(list);
 
-  const enriched = await Promise.all(
-    list.map(async (v) => {
-      const stats = await vaultService.vaultStats(v.name);
-      const depositUSD = stats.totalDepositedUSD;
-      const withdrawnUSD = stats.totalWithdrawnUSD;
-      const aumUSD = stats.aumUSD;
-      const roi =
-        depositUSD > 0
-          ? ((aumUSD + withdrawnUSD - depositUSD) / depositUSD) * 100
-          : 0;
+      const enriched = await Promise.all(
+        list.map(async (v) => {
+          const stats = await vaultService.vaultStats(v.name);
+          const depositUSD = stats.totalDepositedUSD;
+          const withdrawnUSD = stats.totalWithdrawnUSD;
+          const aumUSD = stats.aumUSD;
+          const roi =
+            depositUSD > 0
+              ? ((aumUSD + withdrawnUSD - depositUSD) / depositUSD) * 100
+              : 0;
 
-      return {
-        id: v.name,
-        name: v.name,
-        status: v.status.toLowerCase() === "active" ? "active" : "closed",
-        inception_date: v.createdAt,
-        total_contributed_usd: depositUSD,
-        total_withdrawn_usd: withdrawnUSD,
-        total_assets_under_management: aumUSD,
-        current_share_price: 0,
-        total_supply: 0,
-        roi_realtime_percent: roi,
-      };
-    }),
-  );
+          return {
+            id: v.name,
+            name: v.name,
+            status: v.status.toLowerCase() === "active" ? "active" : "closed",
+            inception_date: v.createdAt,
+            total_contributed_usd: depositUSD,
+            total_withdrawn_usd: withdrawnUSD,
+            total_assets_under_management: aumUSD,
+            total_usd_manual: stats.aumUSDManual,
+            total_usd_market: stats.aumUSDMarket,
+            current_share_price: 0,
+            total_supply: 0,
+            roi_realtime_percent: roi,
+          };
+        }),
+      );
 
   res.json(enriched);
 });
@@ -168,6 +170,8 @@ vaultsRouter.get("/vaults/:name", async (req: Request, res: Response) => {
     is_open: vault.status === "ACTIVE",
     realized_pnl: String(withdrawnUSD - depositUSD),
     remaining_qty: String(aumUSD),
+    total_usd_manual: stats.aumUSDManual,
+    total_usd_market: stats.aumUSDMarket,
     created_at: vault.createdAt,
     updated_at: new Date().toISOString(),
   });
@@ -207,6 +211,8 @@ vaultsRouter.get(
     res.json({
       total_shares,
       total_aum,
+      total_usd_manual: stats.aumUSDManual,
+      total_usd_market: stats.aumUSDMarket,
       share_price: price_per_share,
       transaction_count,
       last_transaction_at,
@@ -298,7 +304,7 @@ vaultsRouter.post(
 
     const stats = await vaultService.vaultStats(name);
     const current_value_usd =
-      Number(req.body?.current_value_usd ?? stats.aumUSD) || 0;
+      Number(req.body?.current_value_usd ?? stats.aumUSDManual) || 0;
     const persist =
       String(req.body?.persist || "").toLowerCase() === "true" ||
       req.body?.persist === true;
@@ -317,9 +323,10 @@ vaultsRouter.post(
       });
     }
 
+    const total_aum = current_value_usd + stats.aumUSDMarket;
     const roi_realtime_percent =
       stats.totalDepositedUSD > 0
-        ? ((current_value_usd +
+        ? ((total_aum +
             stats.totalWithdrawnUSD -
             stats.totalDepositedUSD) /
             stats.totalDepositedUSD) *
@@ -329,6 +336,8 @@ vaultsRouter.post(
     const resp = {
       as_of: new Date().toISOString(),
       current_value_usd,
+      current_value_market: stats.aumUSDMarket,
+      total_aum,
       roi_realtime_percent,
       apr_percent: roi_realtime_percent,
     };
@@ -461,7 +470,7 @@ vaultsRouter.post(
       if (shouldMark) {
         const stats = await vaultService.vaultStats(name);
         const intended =
-          Number(req.body?.new_total_usd ?? 0) || stats.aumUSD + amount;
+          Number(req.body?.new_total_usd ?? 0) || stats.aumUSDManual + amount;
         const asset = { type: "FIAT", symbol: "USD" } as const;
         vaultService.addVaultEntry({
           vault: name,

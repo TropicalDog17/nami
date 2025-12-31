@@ -8,6 +8,8 @@ export interface VaultStats {
   totalDepositedUSD: number;
   totalWithdrawnUSD: number;
   aumUSD: number;
+  aumUSDManual: number;
+  aumUSDMarket: number;
 }
 
 export class VaultService {
@@ -59,10 +61,11 @@ export class VaultService {
     let deposited = 0;
     let withdrawn = 0;
 
-    // Track positions and support rolling AUM
+    // Track positions separately for USD and other assets
     const positions = new Map<string, { asset: Asset; units: number }>();
     let lastValuationUSD: number | undefined = undefined;
     let netFlowSinceValUSD = 0;
+    let netFlowSinceValNonUSD = 0;
 
     for (const e of entries) {
       if (e.type === "DEPOSIT") {
@@ -72,7 +75,12 @@ export class VaultService {
         const cur = positions.get(k) || { asset: e.asset, units: 0 };
         cur.units += e.amount;
         positions.set(k, cur);
-        if (typeof lastValuationUSD === "number") netFlowSinceValUSD += usd;
+        
+        if (e.asset.symbol === "USD") {
+          if (typeof lastValuationUSD === "number") netFlowSinceValUSD += usd;
+        } else {
+          if (typeof lastValuationUSD === "number") netFlowSinceValNonUSD += usd;
+        }
       } else if (e.type === "WITHDRAW") {
         const usd = Number(e.usdValue || 0);
         withdrawn += usd;
@@ -80,29 +88,45 @@ export class VaultService {
         const cur = positions.get(k) || { asset: e.asset, units: 0 };
         cur.units -= e.amount;
         positions.set(k, cur);
-        if (typeof lastValuationUSD === "number") netFlowSinceValUSD -= usd;
+        
+        if (e.asset.symbol === "USD") {
+          if (typeof lastValuationUSD === "number") netFlowSinceValUSD -= usd;
+        } else {
+          if (typeof lastValuationUSD === "number") netFlowSinceValNonUSD -= usd;
+        }
       } else if (e.type === "VALUATION") {
         if (typeof e.usdValue === "number") lastValuationUSD = e.usdValue;
         netFlowSinceValUSD = 0;
+        netFlowSinceValNonUSD = 0;
       }
     }
 
     // Compute AUM
-    let aum = 0;
+    let aumManual = 0;
+    let aumMarket = 0;
+
     if (typeof lastValuationUSD === "number") {
-      aum = lastValuationUSD + netFlowSinceValUSD;
+      aumManual = lastValuationUSD + netFlowSinceValUSD;
     } else {
-      for (const v of positions.values()) {
-        if (Math.abs(v.units) < 1e-12) continue;
-        const rate = await priceService.getRateUSD(v.asset);
-        aum += v.units * rate.rateUSD;
+      const usdPosition = positions.get("FIAT:USD");
+      if (usdPosition) {
+        aumManual = usdPosition.units;
       }
+    }
+
+    for (const v of positions.values()) {
+      if (Math.abs(v.units) < 1e-12) continue;
+      if (v.asset.symbol === "USD") continue;
+      const rate = await priceService.getRateUSD(v.asset);
+      aumMarket += v.units * rate.rateUSD;
     }
 
     return {
       totalDepositedUSD: deposited,
       totalWithdrawnUSD: withdrawn,
-      aumUSD: aum,
+      aumUSD: aumManual + aumMarket,
+      aumUSDManual: aumManual,
+      aumUSDMarket: aumMarket,
     };
   }
 

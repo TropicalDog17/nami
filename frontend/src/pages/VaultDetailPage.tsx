@@ -11,7 +11,7 @@ import DataTable, { TableColumn } from '../components/ui/DataTable';
 import { useToast } from '../components/ui/Toast';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { vaultApi, transactionApi, tokenizedVaultApi, vaultLedgerApi, portfolioApi, reportsApi, ApiError } from '../services/api';
+import { vaultApi, transactionApi, tokenizedVaultApi, vaultLedgerApi, portfolioApi, reportsApi, adminApi, ApiError } from '../services/api';
 import { formatCurrency, formatPercentage, formatPnL, getDecimalPlaces } from '../utils/currencyFormatter';
 
 type Vault = {
@@ -214,6 +214,7 @@ const VaultDetailPage: React.FC = () => {
   const [showDepositForm, setShowDepositForm] = useState<boolean>(false);
   const [showWithdrawForm, setShowWithdrawForm] = useState<boolean>(false);
   const [allVaults, setAllVaults] = useState<Option[]>([]);
+  const [accounts, setAccounts] = useState<Option[]>([]);
   const [manualMetrics, setManualMetrics] = useState<ManualMetrics | null>(null);
   const [liveMetrics, setLiveMetrics] = useState<ManualMetrics | null>(null);
   
@@ -287,14 +288,29 @@ const VaultDetailPage: React.FC = () => {
   const [rewardCreateIncome, setRewardCreateIncome] = useState<boolean>(false);
   const [rewardDate, setRewardDate] = useState<string>(new Date().toISOString().split('T')[0]);
 
+  const assetOptions: Array<{ value: string; label: string }> = [
+    { value: 'USD', label: 'USD' },
+    { value: 'BTC', label: 'BTC' },
+    { value: 'ETH', label: 'ETH' },
+    { value: 'USDT', label: 'USDT' },
+    { value: 'USDC', label: 'USDC' },
+    { value: 'BNB', label: 'BNB' },
+    { value: 'SOL', label: 'SOL' },
+    { value: 'ADA', label: 'ADA' },
+    { value: 'XRP', label: 'XRP' },
+    { value: 'DOGE', label: 'DOGE' },
+  ];
+
   // Form states (legacy vault)
   const [depositForm, setDepositForm] = useState({
+    asset: 'USD',
     quantity: '',
     cost: '',
     sourceAccount: '',
   });
 
   const [withdrawForm, setWithdrawForm] = useState({
+    asset: 'USD',
     quantity: '',
     value: '',
     targetAccount: '',
@@ -469,14 +485,37 @@ const VaultDetailPage: React.FC = () => {
 
   const loadVaults = async (): Promise<void> => {
     try {
-      const vaults = await vaultApi.getActiveVaults<Array<{ name: string; status: string }>>();
-      // Filter out current vault and closed vaults
-      const vaultOptions: Option[] = vaults
+      // Load both legacy vaults and tokenized vaults
+      const [legacyVaults, tokenizedVaultsList] = await Promise.all([
+        vaultApi.getActiveVaults<Array<{ name: string; status: string }>>(),
+        tokenizedVaultApi.list<Array<{ id: string; name: string; status: string }>>(),
+      ]);
+
+      // Combine and filter out current vault and closed vaults
+      const legacyOptions: Option[] = (legacyVaults ?? [])
         .filter((v: { name: string; status: string }) => v.name !== vaultId && v.status === 'active')
-        .map((v: { name: string }) => ({ value: v.name, label: v.name }));
-      setAllVaults(vaultOptions);
+        .map((v: { name: string }) => ({ value: v.name, label: `${v.name} (Legacy)` }));
+
+      const tokenizedOptions: Option[] = (tokenizedVaultsList ?? [])
+        .filter((v: { id: string; name: string; status: string }) => v.id !== vaultId && v.status === 'active')
+        .map((v: { id: string; name: string }) => ({ value: v.id, label: `${v.name} (Tokenized)` }));
+
+      setAllVaults([...legacyOptions, ...tokenizedOptions]);
     } catch {
       setAllVaults([]);
+    }
+  };
+
+  const loadAccounts = async (): Promise<void> => {
+    try {
+      const accountList = await adminApi.listAccounts<Array<{ name: string; type: string }>>();
+      const accountOptions: Option[] = (accountList ?? []).map((a: { name: string; type: string }) => ({
+        value: a.name,
+        label: `${a.name} (${a.type})`,
+      }));
+      setAccounts(accountOptions);
+    } catch {
+      setAccounts([]);
     }
   };
 
@@ -609,6 +648,7 @@ const VaultDetailPage: React.FC = () => {
       void loadVault();
       void loadVaultTransactions();
       void loadVaults();
+      void loadAccounts();
     }
   }, [vaultId, loadVault, loadVaultTransactions, showLiveMetrics]);
 
@@ -653,15 +693,24 @@ const VaultDetailPage: React.FC = () => {
   }, [isTokenizedVault, tokenizedVaultDetails, vault, vaultId]);
 
   const handleDeposit = async (): Promise<void> => {
-    if (!depositForm.quantity || !depositForm.cost) {
-      showErrorToast('Please enter quantity and cost');
+    if (depositForm.asset === 'USD' && (!depositForm.cost || parseFloat(depositForm.cost) <= 0)) {
+      showErrorToast('Please enter a valid amount');
+      return;
+    }
+    if (depositForm.asset !== 'USD' && (!depositForm.quantity || parseFloat(depositForm.quantity) <= 0)) {
+      showErrorToast('Please enter a valid quantity');
+      return;
+    }
+    if (depositForm.asset !== 'USD' && (!depositForm.cost || parseFloat(depositForm.cost) <= 0)) {
+      showErrorToast('Please enter a valid cost');
       return;
     }
 
     try {
       if (!vaultId) return;
       await vaultApi.depositToVault(vaultId, {
-        quantity: parseFloat(depositForm.quantity),
+        asset: depositForm.asset,
+        quantity: depositForm.asset === 'USD' ? 1 : parseFloat(depositForm.quantity),
         cost: parseFloat(depositForm.cost),
         ...(depositForm.sourceAccount ? { sourceAccount: depositForm.sourceAccount } : {}),
       });
@@ -671,7 +720,7 @@ const VaultDetailPage: React.FC = () => {
         await transactionApi.create({
           date: new Date().toISOString(),
           type: 'deposit',
-          asset: 'USD',
+          asset: depositForm.asset,
           account: depositForm.sourceAccount,
           quantity: parseFloat(depositForm.cost),
           price_local: 1,
@@ -684,7 +733,7 @@ const VaultDetailPage: React.FC = () => {
 
       showSuccessToast('Deposit successful!');
       setShowDepositForm(false);
-      setDepositForm({ quantity: '', cost: '', sourceAccount: '' });
+      setDepositForm({ asset: 'USD', quantity: '', cost: '', sourceAccount: '' });
 
       // Reload vault data and transactions
       await loadVault();
@@ -696,8 +745,16 @@ const VaultDetailPage: React.FC = () => {
   };
 
   const handleWithdraw = async (): Promise<void> => {
-    if (!withdrawForm.quantity || !withdrawForm.value) {
-      showErrorToast('Please enter quantity and value');
+    if (withdrawForm.asset === 'USD' && (!withdrawForm.value || parseFloat(withdrawForm.value) <= 0)) {
+      showErrorToast('Please enter a valid amount');
+      return;
+    }
+    if (withdrawForm.asset !== 'USD' && (!withdrawForm.quantity || parseFloat(withdrawForm.quantity) <= 0)) {
+      showErrorToast('Please enter a valid quantity');
+      return;
+    }
+    if (withdrawForm.asset !== 'USD' && (!withdrawForm.value || parseFloat(withdrawForm.value) <= 0)) {
+      showErrorToast('Please enter a valid value');
       return;
     }
 
@@ -710,21 +767,23 @@ const VaultDetailPage: React.FC = () => {
         // Transfer between vaults
         await vaultApi.transferBetweenVaults(vaultId, {
           to: targetVault,
-          quantity: parseFloat(withdrawForm.quantity),
+          asset: withdrawForm.asset,
+          quantity: withdrawForm.asset === 'USD' ? parseFloat(withdrawForm.value) : parseFloat(withdrawForm.quantity),
           value: parseFloat(withdrawForm.value),
         });
         showSuccessToast(`Transfer to ${targetVault} successful!`);
       } else {
         // Regular withdrawal
         await vaultApi.withdrawFromVault(vaultId, {
-          quantity: parseFloat(withdrawForm.quantity),
+          asset: withdrawForm.asset,
+          quantity: withdrawForm.asset === 'USD' ? parseFloat(withdrawForm.value) : parseFloat(withdrawForm.quantity),
           value: parseFloat(withdrawForm.value),
         });
         showSuccessToast('Withdrawal successful!');
       }
 
       setShowWithdrawForm(false);
-      setWithdrawForm({ quantity: '', value: '', targetAccount: '' });
+      setWithdrawForm({ asset: 'USD', quantity: '', value: '', targetAccount: '' });
 
       // Reload vault data and transactions
       await loadVault();
@@ -797,6 +856,8 @@ const VaultDetailPage: React.FC = () => {
     const timePart = new Date().toISOString().split('T')[1];
     return `${s}T${timePart}`;
   };
+
+  const isValidDate = (d: Date) => d instanceof Date && !isNaN(d.getTime()) && d.getFullYear() > 1900;
 
   const handleDistributeReward = async (): Promise<void> => {
     const amt = parseFloat(rewardAmount ?? '');
@@ -1034,11 +1095,11 @@ const VaultDetailPage: React.FC = () => {
   }, [isTokenizedVault, tokenizedVaultDetails, vault, vaultId]);
 
   useEffect(() => {
-    // When opening deposit form for USD vault, default qty to 1
-    if (isUsdOnlyVault && showDepositForm) {
-      setDepositForm((s) => ({ ...s, quantity: s.quantity ?? '1' }));
+    // When opening deposit form for USD asset, default qty to 1
+    if (depositForm.asset === 'USD' && showDepositForm) {
+      setDepositForm((s) => ({ ...s, quantity: '1' }));
     }
-  }, [isUsdOnlyVault, showDepositForm]);
+  }, [depositForm.asset, showDepositForm]);
 
   const onChangeWithdrawPercent = (val: string) => {
     setWithdrawPercent(val);
@@ -1096,9 +1157,9 @@ const VaultDetailPage: React.FC = () => {
     } as { asset: { symbol?: string }; amount: number; account?: string; counterparty: string; note?: string; at: string });
     await loadVault();
     await loadVaultTransactions();
-    await _refreshBorrowings();
+    await _refreshBorrowingsExternal();
     setShowBorrowModal(false);
-  }, [loadVault, loadVaultTransactions]);
+  }, [loadVault, loadVaultTransactions, _refreshBorrowingsExternal]);
 
   const handleRepaySubmit = useCallback(async (d: { date: string; amount: number; account?: string; asset: string; counterparty?: string; note?: string; direction: 'BORROW' | 'LOAN' }) => {
     await transactionApi.repay({
@@ -1112,9 +1173,9 @@ const VaultDetailPage: React.FC = () => {
     } as { asset: { symbol?: string }; amount: number; account?: string; counterparty: string; note?: string; direction: string; at: string });
     await loadVault();
     await loadVaultTransactions();
-    await _refreshBorrowings();
+    await _refreshBorrowingsExternal();
     setShowRepayModal(false);
-  }, [loadVault, loadVaultTransactions]);
+  }, [loadVault, loadVaultTransactions, _refreshBorrowingsExternal]);
 
   console.log('VaultDetailPage render:', {
     loading,
@@ -1189,7 +1250,6 @@ const VaultDetailPage: React.FC = () => {
     const inceptionDate = new Date(tokenizedVaultDetails.inception_date);
     const asOfDate = tokenizedVaultDetails.as_of ? new Date(tokenizedVaultDetails.as_of) : new Date();
     // Check for invalid dates (e.g., SQL minimum date "0001-01-01")
-    const isValidDate = (d: Date) => d instanceof Date && !isNaN(d.getTime()) && d.getFullYear() > 1900;
     const safeInceptionDate = isValidDate(inceptionDate) ? inceptionDate : new Date();
     const safeAsOfDate = isValidDate(asOfDate) ? asOfDate : new Date();
     const daysSinceInception = Math.max(1, differenceInDays(safeAsOfDate, safeInceptionDate));
@@ -1656,12 +1716,12 @@ const VaultDetailPage: React.FC = () => {
                 </div>
               ) : (
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Target Account (optional)</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Target Vault (optional)</label>
                   <ComboBox
-                    options={accounts}
+                    options={allVaults}
                     value={tokenizedTargetAccount}
                     onChange={(v) => setTokenizedTargetAccount(String(v))}
-                    placeholder="Choose account to increase"
+                    placeholder="Choose vault to transfer to"
                   />
                 </div>
               )}
@@ -1971,6 +2031,34 @@ const VaultDetailPage: React.FC = () => {
           </CardContent>
         </Card>
 
+        {vault.total_usd_manual !== undefined && vault.total_usd_market !== undefined && (
+          <Card>
+            <CardContent className="p-4">
+              <h3 className="text-sm font-medium text-gray-500 mb-3">Value Breakdown</h3>
+              <div className="space-y-2">
+                <div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-600">USD (Manual)</span>
+                    <span className="font-medium">{formatCurrency(vault.total_usd_manual)}</span>
+                  </div>
+                </div>
+                <div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-600">Other Assets (Market)</span>
+                    <span className="font-medium">{formatCurrency(vault.total_usd_market)}</span>
+                  </div>
+                </div>
+                <div className="pt-2 border-t">
+                  <div className="flex justify-between text-sm font-semibold">
+                    <span className="text-gray-900">Total</span>
+                    <span>{formatCurrency((vault.total_usd_manual ?? 0) + (vault.total_usd_market ?? 0))}</span>
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         <Card>
           <CardContent className="p-4">
             <h3 className="text-sm font-medium text-gray-500 mb-2">Vault Status</h3>
@@ -2037,8 +2125,14 @@ const VaultDetailPage: React.FC = () => {
             <h3 className="text-lg font-semibold mb-4">Deposit to Vault</h3>
           </CardHeader>
           <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-            {isUsdOnlyVault ? (
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
+            <ComboBox
+              options={assetOptions}
+              value={depositForm.asset}
+              onChange={(value) => setDepositForm({ ...depositForm, asset: value })}
+              placeholder="Asset"
+            />
+            {depositForm.asset === 'USD' ? (
               <div className="px-3 py-2 border rounded-md bg-gray-50 text-gray-700 flex items-center">Quantity fixed to 1</div>
             ) : (
               <input
@@ -2053,7 +2147,7 @@ const VaultDetailPage: React.FC = () => {
             <input
               type="number"
               step="any"
-              placeholder="Cost (USD)"
+              placeholder={depositForm.asset === 'USD' ? 'Amount (USD)' : 'Cost (USD)'}
               value={depositForm.cost}
               onChange={(e) => setDepositForm({ ...depositForm, cost: e.target.value })}
               className="px-3 py-2 border rounded-md"
@@ -2065,6 +2159,12 @@ const VaultDetailPage: React.FC = () => {
               placeholder="Source Account (optional)"
             />
           </div>
+          {depositForm.asset !== 'USD' && (
+            <p className="text-sm text-gray-500 mb-4">
+              For non-USD assets, enter the quantity and the USD cost at time of deposit.
+              The vault value will be updated based on current market prices.
+            </p>
+          )}
           <div className="flex space-x-3">
             <Button
               onClick={() => { void handleDeposit(); }}
@@ -2089,26 +2189,15 @@ const VaultDetailPage: React.FC = () => {
             <h3 className="text-lg font-semibold mb-4">Withdraw from Vault</h3>
           </CardHeader>
           <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-            {isUsdOnlyVault ? (
-              <>
-                <input
-                  type="number"
-                  step="any"
-                  placeholder="Withdraw % of remaining"
-                  value={withdrawPercent}
-                  onChange={(e) => onChangeWithdrawPercent(e.target.value)}
-                  className="px-3 py-2 border rounded-md"
-                />
-                <input
-                  type="number"
-                  step="any"
-                  placeholder="Quantity (auto)"
-                  value={withdrawForm.quantity}
-                  readOnly
-                  className="px-3 py-2 border rounded-md bg-gray-50"
-                />
-              </>
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
+            <ComboBox
+              options={assetOptions}
+              value={withdrawForm.asset}
+              onChange={(value) => setWithdrawForm({ ...withdrawForm, asset: value })}
+              placeholder="Asset"
+            />
+            {withdrawForm.asset === 'USD' ? (
+              <div className="px-3 py-2 border rounded-md bg-gray-50 text-gray-700 flex items-center">Quantity fixed to 1</div>
             ) : (
               <input
                 type="number"
@@ -2134,6 +2223,11 @@ const VaultDetailPage: React.FC = () => {
               placeholder="Destination Vault (optional)"
             />
           </div>
+          {withdrawForm.asset !== 'USD' && (
+            <p className="text-sm text-gray-500 mb-4">
+              For non-USD assets, enter the quantity to withdraw and the current USD value.
+            </p>
+          )}
           <div className="flex space-x-3">
             <Button
               onClick={() => { void handleWithdraw(); }}

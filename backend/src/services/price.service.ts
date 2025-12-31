@@ -72,6 +72,70 @@ export class PriceService {
     return null;
   }
 
+  private async fetchHistoricalCryptoPrice(id: string, at: Date): Promise<number | null> {
+    try {
+      const now = new Date();
+      const daysDiff = (now.getTime() - at.getTime()) / (1000 * 60 * 60 * 24);
+
+      if (daysDiff < 0) {
+        return null;
+      }
+
+      let interval: string;
+      let days: number;
+
+      if (daysDiff <= 1) {
+        interval = "hourly";
+        days = 1;
+      } else if (daysDiff <= 90) {
+        interval = "daily";
+        days = Math.ceil(daysDiff);
+      } else if (daysDiff <= 365) {
+        interval = "daily";
+        days = 365;
+      } else {
+        return null;
+      }
+
+      const url = `https://api.coingecko.com/api/v3/coins/${encodeURIComponent(id)}/market_chart?vs_currency=usd&days=${days}&interval=${interval}`;
+      const res = await axios.get(url, { timeout: 10000 });
+      const prices = res.data?.prices;
+
+      if (!Array.isArray(prices) || prices.length === 0) {
+        return null;
+      }
+
+      const targetTime = at.getTime();
+      let closestPrice = prices[0][1];
+      let minDiff = Math.abs(prices[0][0] - targetTime);
+
+      for (const [timestamp, price] of prices) {
+        const diff = Math.abs(timestamp - targetTime);
+        if (diff < minDiff) {
+          minDiff = diff;
+          closestPrice = price;
+        }
+      }
+
+      return typeof closestPrice === "number" && isFinite(closestPrice) && closestPrice > 0 ? closestPrice : null;
+    } catch {
+      return null;
+    }
+  }
+
+  private async fetchHistoricalFiatPrice(symbol: string, at: Date): Promise<{ rate: number; source: Rate["source"] } | null> {
+    try {
+      const dateStr = at.toISOString().split("T")[0];
+      const url = `https://api.frankfurter.app/${encodeURIComponent(dateStr)}?from=${encodeURIComponent(symbol)}&to=USD`;
+      const res = await axios.get(url, { timeout: 8000 });
+      const v = res.data?.rates?.USD;
+      if (typeof v === "number" && isFinite(v) && v > 0) {
+        return { rate: v, source: "FRANKFURTER" as Rate["source"] };
+      }
+    } catch {}
+    return null;
+  }
+
   async getRateUSD(asset: Asset, atISO?: string): Promise<Rate> {
     const useFixed = config.noExternalRates;
     const at = atISO ? new Date(atISO) : new Date();
@@ -83,39 +147,59 @@ export class PriceService {
     let source: Rate["source"] = "FIXED";
 
     if (!useFixed) {
+      const isHistorical = atISO && new Date(atISO) < new Date();
+
       if (asset.type === "FIAT") {
-        // For FIAT, we want how many USD is 1 unit of FIAT -> base=FIAT symbols=USD
         if (asset.symbol.toUpperCase() === "USD") {
           rateUSD = 1;
           source = "FIXED";
         } else {
           const sym = asset.symbol.toUpperCase();
           const fallback = FIAT_FALLBACK_RATE_USD[sym];
-          const live = await this.fetchFiatUsdRate(sym);
-          if (live && typeof live.rate === "number") {
-            rateUSD = live.rate;
-            source = live.source;
-          } else if (typeof fallback === "number") {
-            rateUSD = fallback;
-            source = "FALLBACK";
+          
+          if (isHistorical) {
+            const historical = await this.fetchHistoricalFiatPrice(sym, at);
+            if (historical) {
+              rateUSD = historical.rate;
+              source = historical.source;
+            } else if (typeof fallback === "number") {
+              rateUSD = fallback;
+              source = "FALLBACK";
+            }
+          } else {
+            const live = await this.fetchFiatUsdRate(sym);
+            if (live && typeof live.rate === "number") {
+              rateUSD = live.rate;
+              source = live.source;
+            } else if (typeof fallback === "number") {
+              rateUSD = fallback;
+              source = "FALLBACK";
+            }
           }
         }
       } else {
         const id = cryptoIdForSymbol(asset.symbol);
-        try {
-          const url = `https://api.coingecko.com/api/v3/simple/price?ids=${encodeURIComponent(id)}&vs_currencies=usd`;
-          const res = await axios.get(url, { timeout: 8000 });
-          const v = res.data?.[id]?.usd;
-          if (typeof v === "number" && isFinite(v) && v > 0) {
-            rateUSD = v;
+        
+        if (isHistorical) {
+          const historical = await this.fetchHistoricalCryptoPrice(id, at);
+          if (historical !== null) {
+            rateUSD = historical;
             source = "COINGECKO";
           }
-        } catch {
-          // leave default of 1 for unknown crypto if provider fails
+        } else {
+          try {
+            const url = `https://api.coingecko.com/api/v3/simple/price?ids=${encodeURIComponent(id)}&vs_currencies=usd`;
+            const res = await axios.get(url, { timeout: 8000 });
+            const v = res.data?.[id]?.usd;
+            if (typeof v === "number" && isFinite(v) && v > 0) {
+              rateUSD = v;
+              source = "COINGECKO";
+            }
+          } catch {
+          }
         }
       }
     } else {
-      // NO_EXTERNAL_RATES mode: prefer curated fallbacks for FIAT
       if (asset.type === "FIAT") {
         if (asset.symbol.toUpperCase() === "USD") {
           rateUSD = 1;

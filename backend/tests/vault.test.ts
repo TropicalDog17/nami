@@ -70,7 +70,7 @@ describe('Vault Handler', () => {
       priceService: {
         getRateUSD: async (asset: Asset) => {
           const symbol = asset.symbol.toUpperCase();
-          const rateUSD = symbol === 'USD' ? 1 : symbol === 'BTC' ? 50000 : 1;
+          const rateUSD = symbol === 'USD' ? 1 : symbol === 'BTC' ? 50000 : symbol === 'ETH' ? 3000 : 1;
           return { asset, rateUSD, timestamp: new Date().toISOString(), source: 'MOCK' };
         },
       },
@@ -347,6 +347,198 @@ describe('Vault Handler', () => {
       const res = await request(app).get('/api/vaults/NonExistent/transactions').expect(404);
 
       expect(res.body.error).toBe('not found');
+    });
+  });
+
+  describe('Multi-Asset Vault Calculations', () => {
+    it('should calculate USD and non-USD AUM separately without manual valuation', async () => {
+      mockVaults = [
+        { name: 'MultiAssetVault', status: 'ACTIVE', createdAt: '2025-01-01T00:00:00Z' },
+      ];
+      mockEntries = [
+        {
+          vault: 'MultiAssetVault',
+          type: 'DEPOSIT',
+          asset: { type: 'FIAT', symbol: 'USD' },
+          amount: 1000,
+          usdValue: 1000,
+          at: '2025-01-01T00:00:00Z',
+        },
+        {
+          vault: 'MultiAssetVault',
+          type: 'DEPOSIT',
+          asset: { type: 'CRYPTO', symbol: 'BTC' },
+          amount: 0.1,
+          usdValue: 5000,
+          at: '2025-01-02T00:00:00Z',
+        },
+      ];
+
+      const app = await createApp();
+      const res = await request(app).get('/api/vaults/MultiAssetVault').expect(200);
+
+      expect(res.body.remaining_qty).toBe('6000');
+      expect(res.body.total_usd_manual).toBe(1000);
+      expect(res.body.total_usd_market).toBe(5000);
+    });
+
+    it('should use manual valuation for USD and market prices for other assets', async () => {
+      mockVaults = [
+        { name: 'ManualValVault', status: 'ACTIVE', createdAt: '2025-01-01T00:00:00Z' },
+      ];
+      mockEntries = [
+        {
+          vault: 'ManualValVault',
+          type: 'DEPOSIT',
+          asset: { type: 'FIAT', symbol: 'USD' },
+          amount: 1000,
+          usdValue: 1000,
+          at: '2025-01-01T00:00:00Z',
+        },
+        {
+          vault: 'ManualValVault',
+          type: 'DEPOSIT',
+          asset: { type: 'CRYPTO', symbol: 'BTC' },
+          amount: 0.1,
+          usdValue: 5000,
+          at: '2025-01-02T00:00:00Z',
+        },
+        {
+          vault: 'ManualValVault',
+          type: 'VALUATION',
+          asset: { type: 'FIAT', symbol: 'USD' },
+          amount: 0,
+          usdValue: 1500,
+          at: '2025-01-03T00:00:00Z',
+          note: 'Manual valuation update',
+        },
+      ];
+
+      const app = await createApp();
+      const res = await request(app).get('/api/vaults/ManualValVault').expect(200);
+
+      expect(res.body.remaining_qty).toBe('6500');
+      expect(res.body.total_usd_manual).toBe(1500);
+      expect(res.body.total_usd_market).toBe(5000);
+    });
+
+    it('should handle deposits and withdrawals for mixed assets after manual valuation', async () => {
+      mockVaults = [
+        { name: 'MixedVault', status: 'ACTIVE', createdAt: '2025-01-01T00:00:00Z' },
+      ];
+      mockEntries = [
+        {
+          vault: 'MixedVault',
+          type: 'DEPOSIT',
+          asset: { type: 'FIAT', symbol: 'USD' },
+          amount: 1000,
+          usdValue: 1000,
+          at: '2025-01-01T00:00:00Z',
+        },
+        {
+          vault: 'MixedVault',
+          type: 'DEPOSIT',
+          asset: { type: 'CRYPTO', symbol: 'BTC' },
+          amount: 0.1,
+          usdValue: 5000,
+          at: '2025-01-02T00:00:00Z',
+        },
+        {
+          vault: 'MixedVault',
+          type: 'VALUATION',
+          asset: { type: 'FIAT', symbol: 'USD' },
+          amount: 0,
+          usdValue: 1200,
+          at: '2025-01-03T00:00:00Z',
+          note: 'Manual valuation update',
+        },
+        {
+          vault: 'MixedVault',
+          type: 'WITHDRAW',
+          asset: { type: 'FIAT', symbol: 'USD' },
+          amount: 200,
+          usdValue: 200,
+          at: '2025-01-04T00:00:00Z',
+        },
+        {
+          vault: 'MixedVault',
+          type: 'DEPOSIT',
+          asset: { type: 'CRYPTO', symbol: 'ETH' },
+          amount: 1,
+          usdValue: 3000,
+          at: '2025-01-05T00:00:00Z',
+        },
+      ];
+
+      const app = await createApp();
+      const res = await request(app).get('/api/vaults/MixedVault').expect(200);
+
+      expect(res.body.remaining_qty).toBe('9000');
+      expect(res.body.total_usd_manual).toBe(1000);
+      expect(res.body.total_usd_market).toBe(8000);
+    });
+
+    it('should show breakdown in enriched vault list', async () => {
+      mockVaults = [
+        { name: 'EnrichedVault', status: 'ACTIVE', createdAt: '2025-01-01T00:00:00Z' },
+      ];
+      mockEntries = [
+        {
+          vault: 'EnrichedVault',
+          type: 'DEPOSIT',
+          asset: { type: 'FIAT', symbol: 'USD' },
+          amount: 1000,
+          usdValue: 1000,
+          at: '2025-01-01T00:00:00Z',
+        },
+        {
+          vault: 'EnrichedVault',
+          type: 'DEPOSIT',
+          asset: { type: 'CRYPTO', symbol: 'BTC' },
+          amount: 0.1,
+          usdValue: 5000,
+          at: '2025-01-02T00:00:00Z',
+        },
+      ];
+
+      const app = await createApp();
+      const res = await request(app).get('/api/vaults?enrich=true').expect(200);
+
+      expect(res.body).toHaveLength(1);
+      expect(res.body[0].total_assets_under_management).toBe(6000);
+      expect(res.body[0].total_usd_manual).toBe(1000);
+      expect(res.body[0].total_usd_market).toBe(5000);
+    });
+
+    it('should show breakdown in holdings endpoint', async () => {
+      mockVaults = [
+        { name: 'HoldingsVault', status: 'ACTIVE', createdAt: '2025-01-01T00:00:00Z' },
+      ];
+      mockEntries = [
+        {
+          vault: 'HoldingsVault',
+          type: 'DEPOSIT',
+          asset: { type: 'FIAT', symbol: 'USD' },
+          amount: 1000,
+          usdValue: 1000,
+          at: '2025-01-01T00:00:00Z',
+        },
+        {
+          vault: 'HoldingsVault',
+          type: 'DEPOSIT',
+          asset: { type: 'CRYPTO', symbol: 'BTC' },
+          amount: 0.1,
+          usdValue: 5000,
+          at: '2025-01-02T00:00:00Z',
+        },
+      ];
+
+      const app = await createApp();
+      const res = await request(app).get('/api/vaults/HoldingsVault/holdings').expect(200);
+
+      expect(res.body.total_aum).toBe(6000);
+      expect(res.body.total_usd_manual).toBe(1000);
+      expect(res.body.total_usd_market).toBe(5000);
     });
   });
 });
