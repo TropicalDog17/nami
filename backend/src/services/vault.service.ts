@@ -140,6 +140,59 @@ export class VaultService {
   getDefaultSpendingVaultName(): string {
     return settingsRepository.getDefaultSpendingVaultName();
   }
+
+  /**
+   * Transfer between vaults - creates a WITHDRAW from source and DEPOSIT to destination
+   */
+  async transferBetweenVaults(params: {
+    fromVault: string;
+    toVault: string;
+    asset: Asset;
+    amount: number;
+    usdValue: number;
+    at?: string;
+    note?: string;
+  }): Promise<{ withdrawEntry: VaultEntry; depositEntry: VaultEntry }> {
+    const { fromVault, toVault, asset, amount, usdValue, note } = params;
+    const at = params.at ?? new Date().toISOString();
+
+    // Ensure both vaults exist
+    this.ensureVault(fromVault);
+    this.ensureVault(toVault);
+
+    // Create WITHDRAW entry from source vault
+    const withdrawEntry: VaultEntry = {
+      vault: fromVault,
+      type: "WITHDRAW",
+      asset,
+      amount,
+      usdValue,
+      at,
+      account: toVault, // destination vault as account reference
+      note: note ?? `Transfer to ${toVault}`,
+    };
+
+    // Create DEPOSIT entry to destination vault
+    const depositEntry: VaultEntry = {
+      vault: toVault,
+      type: "DEPOSIT",
+      asset,
+      amount,
+      usdValue,
+      at,
+      account: fromVault, // source vault as account reference
+      note: note ?? `Transfer from ${fromVault}`,
+    };
+
+    // Add both entries
+    const createdWithdraw = this.addVaultEntry(withdrawEntry);
+    const createdDeposit = this.addVaultEntry(depositEntry);
+
+    return {
+      withdrawEntry: createdWithdraw,
+      depositEntry: createdDeposit,
+    };
+  }
 }
 
 export const vaultService = new VaultService();

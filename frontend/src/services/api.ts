@@ -328,6 +328,23 @@ export const vaultApi = {
     api.post<T>(`/api/vaults/${encodeURIComponent(name)}/deposit`, deposit),
   withdrawFromVault: <T = unknown>(name: string, withdrawal: unknown) =>
     api.post<T>(`/api/vaults/${encodeURIComponent(name)}/withdraw`, withdrawal),
+  transferBetweenVaults: <T = unknown>(
+    fromVault: string,
+    data: {
+      to: string;
+      amount?: number;
+      quantity?: number;
+      value?: number;
+      asset?: string | { type: string; symbol: string };
+      at?: string;
+      date?: string;
+      note?: string;
+    }
+  ) =>
+    api.post<T>(
+      `/api/vaults/${encodeURIComponent(fromVault)}/transfer`,
+      data
+    ),
   distributeReward: <T = unknown>(
     name: string,
     data: {

@@ -337,6 +337,93 @@ vaultsRouter.post(
   },
 );
 
+// Transfer between vaults
+vaultsRouter.post(
+  "/vaults/:name/transfer",
+  async (req: Request, res: Response) => {
+    try {
+      const fromVault = String(req.params.name);
+      const toVault = String(
+        req.body?.to ?? req.body?.destination ?? req.body?.target ?? ""
+      ).trim();
+
+      if (!toVault) {
+        return res
+          .status(400)
+          .json({ error: "destination vault (to) is required" });
+      }
+
+      if (fromVault === toVault) {
+        return res
+          .status(400)
+          .json({ error: "cannot transfer to the same vault" });
+      }
+
+      // Parse asset and amount similar to deposit/withdraw
+      const assetSym = (req.body?.asset?.symbol || req.body?.asset || "USD")
+        .toString()
+        .toUpperCase();
+      const assetType = assetSym.length === 3 ? "FIAT" : "CRYPTO";
+      const asset: Asset = { type: assetType as any, symbol: assetSym };
+
+      const quantity = Number(
+        req.body?.quantity ?? req.body?.amount ?? 0
+      ) || 0;
+      const value = Number(
+        req.body?.value ?? req.body?.usdValue ?? req.body?.cost ?? 0
+      ) || 0;
+
+      let amount: number;
+      let usdValue: number;
+
+      if (asset.symbol === "USD") {
+        amount = value > 0 ? value : quantity;
+        usdValue = amount;
+      } else {
+        if (!(quantity > 0) || !(value > 0)) {
+          return res.status(400).json({
+            error: "quantity and value required for non-USD transfer",
+          });
+        }
+        amount = quantity;
+        usdValue = value;
+      }
+
+      if (!(amount > 0)) {
+        return res.status(400).json({ error: "amount must be positive" });
+      }
+
+      const at: string | undefined =
+        req.body?.at ||
+        (typeof req.body?.date === "string" ? req.body.date : undefined);
+      const note: string | undefined = req.body?.note || undefined;
+
+      const result = await vaultService.transferBetweenVaults({
+        fromVault,
+        toVault,
+        asset,
+        amount,
+        usdValue,
+        at,
+        note,
+      });
+
+      res.status(201).json({
+        ok: true,
+        from: fromVault,
+        to: toVault,
+        asset,
+        amount,
+        usdValue,
+        withdrawEntry: result.withdrawEntry,
+        depositEntry: result.depositEntry,
+      });
+    } catch (e: any) {
+      res.status(400).json({ error: e?.message || "transfer failed" });
+    }
+  }
+);
+
 // Distribute reward
 vaultsRouter.post(
   "/vaults/:name/distribute-reward",

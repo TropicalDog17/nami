@@ -18,6 +18,24 @@ type Transaction = import('../src/types').Transaction;
 type Vault = import('../src/types').Vault;
 type VaultEntry = import('../src/types').VaultEntry;
 
+// Create mock functions at module level for vi.mock hoisting
+const mockGetVaultEntries = vi.fn();
+const mockListVaults = vi.fn(() => []);
+const mockEnsureVault = vi.fn();
+const mockAddVaultEntry = vi.fn();
+const mockGetVault = vi.fn();
+
+// Mock vault service module
+vi.mock('../src/services/vault.service', () => ({
+  vaultService: {
+    ensureVault: mockEnsureVault,
+    addVaultEntry: mockAddVaultEntry,
+    getVault: mockGetVault,
+    getVaultEntries: mockGetVaultEntries,
+    listVaults: mockListVaults,
+  },
+}));
+
 describe('Transaction Handler', () => {
   let mockTransactions: Transaction[] = [];
   let mockVaults: Vault[] = [];
@@ -28,6 +46,12 @@ describe('Transaction Handler', () => {
     mockTransactions = [];
     mockVaults = [];
     mockEntries = [];
+
+    // Update the mock implementation to return current mockEntries
+    mockGetVaultEntries.mockImplementation((vaultName: string) =>
+      mockEntries.filter((e) => e.vault === vaultName)
+    );
+    mockListVaults.mockReturnValue(mockVaults);
 
     // Mock all repositories from index
     vi.doMock('../src/repositories', () => ({
@@ -150,6 +174,7 @@ describe('Transaction Handler', () => {
           amount: 50,
           note: 'Groceries',
           category: 'food',
+          account: 'Spend',  // Explicitly set account to 'Spend' to pass validation
         })
         .expect(201);
 
@@ -267,6 +292,7 @@ describe('Transaction Handler', () => {
           quantity: 100,
           note: 'Dinner',
           category: 'food',
+          account: 'Spend',  // Explicitly set account to 'Spend' to pass validation
         })
         .expect(201);
 

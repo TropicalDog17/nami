@@ -10,6 +10,7 @@ import { transactionRepository } from "../repositories";
 import { vaultRepository } from "../repositories";
 import { settingsRepository } from "../repositories";
 import { priceService } from "./price.service";
+import { vaultService } from "./vault.service";
 
 export interface TransactionBase {
   asset: Asset;
@@ -160,8 +161,6 @@ export class TransactionService {
     // Auto-create vault WITHDRAW entry for Spend vault
     const isSpendVault = base.account.toLowerCase() === "spend";
     if (isSpendVault) {
-      const { vaultService } = require("./vault.service");
-
       // Ensure Spend vault exists
       vaultService.ensureVault("Spend");
 
