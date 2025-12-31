@@ -7,6 +7,7 @@ import {
   errorHandler,
   requestLogger,
   notFoundHandler,
+  basicAuth,
 } from "./core/middleware";
 
 import { transactionsRouter } from "./handlers/transaction.handler";
@@ -35,6 +36,9 @@ setMetrics(metrics);
 
 app.use(cors());
 app.use(express.json());
+
+// Basic auth middleware (applied before routes, after CORS)
+app.use(basicAuth);
 
 app.get("/health", (_req, res) =>
   res.json({

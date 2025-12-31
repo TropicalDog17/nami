@@ -18,11 +18,17 @@ const envSchema = z.object({
     DEFAULT_TIMEZONE: z.string().default("Asia/Ho_Chi_Minh"),
 
     MODEL_PROVIDER: z.enum(["openai", "anthropic", "zai"]).default("openai"),
+
+    // Basic Auth
+    BASIC_AUTH_ENABLED: z.string().optional(),
+    BASIC_AUTH_USERNAME: z.string().optional(),
+    BASIC_AUTH_PASSWORD: z.string().optional(),
 });
 
 export type AppConfig = z.infer<typeof envSchema> & {
     allowedChatIds: Set<string>;
     allowedTopicIds: Set<string>;
+    basicAuthEnabled: boolean;
 };
 
 export function loadConfig(): AppConfig {
@@ -37,5 +43,6 @@ export function loadConfig(): AppConfig {
             .map((s) => s.trim())
             .filter(Boolean)
     );
-    return { ...parsed, allowedChatIds, allowedTopicIds };
+    const basicAuthEnabled = parsed.BASIC_AUTH_ENABLED === 'true' || parsed.BASIC_AUTH_ENABLED === '1';
+    return { ...parsed, allowedChatIds, allowedTopicIds, basicAuthEnabled };
 }

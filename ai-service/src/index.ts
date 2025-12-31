@@ -7,6 +7,7 @@ import { HealthChecker } from './api/health.js'
 import { apiTestRouter } from './api/api-test.js'
 import { handleAndLogError, ErrorCategory, ErrorSeverity } from './utils/errors.js'
 import { setupMonitoring, setMetrics } from './monitoring/index.js'
+import { createBasicAuthMiddleware } from './api/basic-auth.js'
 
 function validateConfig(cfg: any): void {
   const correlationLogger = createCorrelationLogger('startup')
@@ -87,6 +88,9 @@ async function main() {
     setMetrics(metrics)
 
     app.use(express.json({ limit: '2mb' }))
+
+    // Basic auth middleware (applied before routes)
+    app.use(createBasicAuthMiddleware(cfg))
 
     // Initialize health checker
     const healthChecker = new HealthChecker(cfg)

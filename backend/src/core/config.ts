@@ -14,6 +14,11 @@ interface Config {
   // AI/Security
   backendSigningSecret?: string;
 
+  // Basic Auth
+  basicAuthEnabled: boolean;
+  basicAuthUsername?: string;
+  basicAuthPassword?: string;
+
   // Feature flags
   noExternalRates: boolean;
 }
@@ -61,6 +66,9 @@ function loadConfig(): Config {
     storageBackend:
       getEnv("STORAGE_BACKEND", "json") === "database" ? "database" : "json",
     backendSigningSecret: process.env.BACKEND_SIGNING_SECRET,
+    basicAuthEnabled: getBool("BASIC_AUTH_ENABLED", false),
+    basicAuthUsername: process.env.BASIC_AUTH_USERNAME,
+    basicAuthPassword: process.env.BASIC_AUTH_PASSWORD,
     noExternalRates: getBool("NO_EXTERNAL_RATES", false),
   };
 }
@@ -98,6 +106,15 @@ export const config = {
   },
   get backendSigningSecret(): string | undefined {
     return getConfig().backendSigningSecret;
+  },
+  get basicAuthEnabled(): boolean {
+    return getConfig().basicAuthEnabled;
+  },
+  get basicAuthUsername(): string | undefined {
+    return getConfig().basicAuthUsername;
+  },
+  get basicAuthPassword(): string | undefined {
+    return getConfig().basicAuthPassword;
   },
   get noExternalRates(): boolean {
     return getConfig().noExternalRates;
