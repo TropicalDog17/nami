@@ -213,7 +213,7 @@ const VaultDetailPage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [showDepositForm, setShowDepositForm] = useState<boolean>(false);
   const [showWithdrawForm, setShowWithdrawForm] = useState<boolean>(false);
-  const [accounts, setAccounts] = useState<Option[]>([]);
+  const [allVaults, setAllVaults] = useState<Option[]>([]);
   const [manualMetrics, setManualMetrics] = useState<ManualMetrics | null>(null);
   const [liveMetrics, setLiveMetrics] = useState<ManualMetrics | null>(null);
   
@@ -467,15 +467,17 @@ const VaultDetailPage: React.FC = () => {
     }
   }, [vaultId, isTokenizedVault]);
 
-  const loadAccounts = (): void => {
-    // This would come from admin API in a real implementation
-    const mockAccounts: Option[] = [
-      { value: 'Cash - VND', label: 'Cash - VND (bank)' },
-      { value: 'Cash - USD', label: 'Cash - USD (bank)' },
-      { value: 'Binance', label: 'Binance (exchange)' },
-      { value: 'Coinbase', label: 'Coinbase (exchange)' },
-    ];
-    setAccounts(mockAccounts);
+  const loadVaults = async (): Promise<void> => {
+    try {
+      const vaults = await vaultApi.getActiveVaults<Array<{ name: string; status: string }>>();
+      // Filter out current vault and closed vaults
+      const vaultOptions: Option[] = vaults
+        .filter((v: { name: string; status: string }) => v.name !== vaultId && v.status === 'active')
+        .map((v: { name: string }) => ({ value: v.name, label: v.name }));
+      setAllVaults(vaultOptions);
+    } catch {
+      setAllVaults([]);
+    }
   };
 
   const handleTokenizedDelete = async (): Promise<void> => {
@@ -606,7 +608,7 @@ const VaultDetailPage: React.FC = () => {
     if (vaultId) {
       void loadVault();
       void loadVaultTransactions();
-      loadAccounts();
+      void loadVaults();
     }
   }, [vaultId, loadVault, loadVaultTransactions, showLiveMetrics]);
 
@@ -701,13 +703,26 @@ const VaultDetailPage: React.FC = () => {
 
     try {
       if (!vaultId) return;
-      await vaultApi.withdrawFromVault(vaultId, {
-        quantity: parseFloat(withdrawForm.quantity),
-        value: parseFloat(withdrawForm.value),
-        ...(withdrawForm.targetAccount ? { targetAccount: withdrawForm.targetAccount } : {}),
-      });
 
-      showSuccessToast('Withdrawal successful!');
+      const targetVault = withdrawForm.targetAccount;
+
+      if (targetVault) {
+        // Transfer between vaults
+        await vaultApi.transferBetweenVaults(vaultId, {
+          to: targetVault,
+          quantity: parseFloat(withdrawForm.quantity),
+          value: parseFloat(withdrawForm.value),
+        });
+        showSuccessToast(`Transfer to ${targetVault} successful!`);
+      } else {
+        // Regular withdrawal
+        await vaultApi.withdrawFromVault(vaultId, {
+          quantity: parseFloat(withdrawForm.quantity),
+          value: parseFloat(withdrawForm.value),
+        });
+        showSuccessToast('Withdrawal successful!');
+      }
+
       setShowWithdrawForm(false);
       setWithdrawForm({ quantity: '', value: '', targetAccount: '' });
 
@@ -2113,10 +2128,10 @@ const VaultDetailPage: React.FC = () => {
               className="px-3 py-2 border rounded-md"
             />
             <ComboBox
-              options={accounts}
+              options={allVaults}
               value={withdrawForm.targetAccount}
               onChange={(value) => setWithdrawForm({ ...withdrawForm, targetAccount: value })}
-              placeholder="Target Account (optional)"
+              placeholder="Destination Vault (optional)"
             />
           </div>
           <div className="flex space-x-3">
