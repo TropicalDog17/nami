@@ -1,101 +1,114 @@
-import { defineConfig } from 'vite'
-import react from '@vitejs/plugin-react'
-import path from 'path'
-import { timingSafeEqual } from 'crypto'
-
+import { defineConfig, loadEnv } from 'vite';
+import react from '@vitejs/plugin-react';
+import path from 'path';
+import { timingSafeEqual } from 'crypto';
 /**
  * Timing-safe string comparison to prevent timing attacks
  */
 function safeCompare(a, b) {
-  if (a.length !== b.length) {
-    return false
-  }
-  return timingSafeEqual(Buffer.from(a), Buffer.from(b))
+  if (typeof a !== 'string' || typeof b !== 'string') return false;
+  if (a.length !== b.length) return false;
+
+  return timingSafeEqual(Buffer.from(a, 'utf8'), Buffer.from(b, 'utf8'));
 }
 
 /**
- * Basic auth plugin for Vite dev server
+ * Basic Auth plugin for Vite dev server
  */
-function basicAuthPlugin() {
-  const enabled = process.env.BASIC_AUTH_ENABLED === 'true' || process.env.BASIC_AUTH_ENABLED === '1'
-  const username = process.env.BASIC_AUTH_USERNAME
-  const password = process.env.BASIC_AUTH_PASSWORD
+export function basicAuthPlugin({ enabled, username, password }) {
+  const isEnabled = enabled === 'true' || enabled === '1';
 
   return {
     name: 'basic-auth',
+
     configureServer(server) {
       server.middlewares.use((req, res, next) => {
-        if (!enabled) {
-          return next()
+        // Auth disabled → allow all requests
+        if (!isEnabled) {
+          return next();
         }
 
+        // Misconfiguration protection
         if (!username || !password) {
-          console.warn('Basic auth enabled but credentials not configured')
-          res.statusCode = 500
-          res.end('Authentication not configured')
-          return
+          console.warn('[basic-auth] Missing credentials');
+          res.statusCode = 500;
+          res.end('Authentication not configured');
+          return;
         }
 
-        const authHeader = req.headers.authorization
+        const authHeader = req.headers.authorization;
 
+        // No auth header → prompt browser
         if (!authHeader || !authHeader.startsWith('Basic ')) {
-          res.setHeader('WWW-Authenticate', 'Basic realm="Nami"')
-          res.statusCode = 401
-          res.end('Authentication required')
-          return
+          res.setHeader('WWW-Authenticate', 'Basic realm="Vite Dev Server"');
+          res.statusCode = 401;
+          res.end('Authentication required');
+          return;
         }
 
         try {
-          const base64Credentials = authHeader.slice(6)
-          const credentials = Buffer.from(base64Credentials, 'base64').toString('utf-8')
-          const [providedUsername, providedPassword] = credentials.split(':')
+          // Decode credentials
+          const base64Credentials = authHeader.slice(6);
+          const decoded = Buffer.from(base64Credentials, 'base64').toString(
+            'utf8'
+          );
 
-          if (!providedUsername || !providedPassword) {
-            res.setHeader('WWW-Authenticate', 'Basic realm="Nami"')
-            res.statusCode = 401
-            res.end('Invalid credentials format')
-            return
+          const separatorIndex = decoded.indexOf(':');
+          if (separatorIndex === -1) {
+            throw new Error('Invalid credential format');
           }
 
-          const usernameValid = safeCompare(providedUsername, username)
-          const passwordValid = safeCompare(providedPassword, password)
+          const providedUsername = decoded.slice(0, separatorIndex);
+          const providedPassword = decoded.slice(separatorIndex + 1);
+
+          const usernameValid = safeCompare(providedUsername, username);
+          const passwordValid = safeCompare(providedPassword, password);
 
           if (usernameValid && passwordValid) {
-            next()
-          } else {
-            res.setHeader('WWW-Authenticate', 'Basic realm="Nami"')
-            res.statusCode = 401
-            res.end('Invalid credentials')
+            return next();
           }
-        } catch {
-          res.setHeader('WWW-Authenticate', 'Basic realm="Nami"')
-          res.statusCode = 401
-          res.end('Invalid authorization header')
+
+          // Invalid credentials
+          res.setHeader('WWW-Authenticate', 'Basic realm="Vite Dev Server"');
+          res.statusCode = 401;
+          res.end('Invalid credentials');
+        } catch (err) {
+          // Malformed header / base64
+          res.setHeader('WWW-Authenticate', 'Basic realm="Vite Dev Server"');
+          res.statusCode = 401;
+          res.end('Invalid authorization header');
         }
-      })
-    }
-  }
+      });
+    },
+  };
 }
 
-// https://vitejs.dev/config/
-export default defineConfig({
-  plugins: [basicAuthPlugin(), react()],
-  resolve: {
-    alias: {
-      '@': path.resolve(__dirname, './src'),
+export default defineConfig(({ mode }) => {
+  // Load env files for the current mode
+  const env = loadEnv(mode, process.cwd(), '');
+
+  return {
+    plugins: [
+      basicAuthPlugin({
+        enabled: env.BASIC_AUTH_ENABLED,
+        username: env.BASIC_AUTH_USERNAME,
+        password: env.BASIC_AUTH_PASSWORD,
+      }),
+      react(),
+    ],
+    resolve: {
+      alias: {
+        '@': path.resolve(__dirname, './src'),
+      },
     },
-  },
-  server: {
-    port: process.env.PORT || 3000,
-    proxy: {
-      '/api': {
-        target: process.env.VITE_API_BASE_URL || 'http://localhost:8080',
-        changeOrigin: true
-      }
-    }
-  },
-  build: {
-    outDir: 'dist',
-    sourcemap: true
-  }
-})
+    server: {
+      port: Number(env.PORT) || 3000,
+      proxy: {
+        '/api': {
+          target: env.VITE_API_BASE_URL || 'http://localhost:8080',
+          changeOrigin: true,
+        },
+      },
+    },
+  };
+});
