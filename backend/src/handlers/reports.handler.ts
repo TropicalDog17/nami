@@ -6,9 +6,9 @@ import { transactionService } from "../services/transaction.service";
 import { priceService } from "../services/price.service";
 import { Asset, VaultEntry, PortfolioReportItem } from "../types";
 
-// Persistent price cache shared across all requests to avoid repeated API calls
-// Key: "assetType:assetSymbol", Value: rateUSD
-const persistentPriceCache = new Map<string, number>();
+// Price cache keyed by "assetType:assetSymbol:date" to ensure accurate per-day prices
+// This is critical for timeseries calculations where historical prices vary by day
+const priceCache = new Map<string, number>();
 
 export const reportsRouter = Router();
 
@@ -177,23 +177,27 @@ function calculateIRRBasedAPR(
 async function computeMarkToMarketUSD(
   positions: Map<string, { asset: Asset; units: number }>,
   at?: string,
-  priceCache?: Map<string, number>,
+  cache?: Map<string, number>,
 ): Promise<number> {
   let aum = 0;
+  // Extract date portion for cache key (YYYY-MM-DD) to ensure per-day price accuracy
+  const dateKey = at ? at.slice(0, 10) : new Date().toISOString().slice(0, 10);
+
   for (const p of positions.values()) {
     if (Math.abs(p.units) < 1e-12) continue;
 
     let rateUSD = 1;
-    const assetKey = `${p.asset.type}:${p.asset.symbol}`;
+    // Include date in cache key to ensure accurate historical prices per day
+    const cacheKey = `${p.asset.type}:${p.asset.symbol}:${dateKey}`;
 
     // Check cache first
-    if (priceCache?.has(assetKey)) {
-      rateUSD = priceCache.get(assetKey)!;
+    if (cache?.has(cacheKey)) {
+      rateUSD = cache.get(cacheKey)!;
     } else {
       const rate = await priceService.getRateUSD(p.asset, at);
       rateUSD = rate.rateUSD;
-      // Cache the rate for this asset (prices are time-invariant in current implementation)
-      priceCache?.set(assetKey, rateUSD);
+      // Cache the rate for this asset+date combination
+      cache?.set(cacheKey, rateUSD);
     }
 
     aum += p.units * rateUSD;
@@ -320,7 +324,7 @@ async function buildVaultDailySeries(
       aum = await computeMarkToMarketUSD(
         positions,
         day + "T23:59:59Z",
-        persistentPriceCache,
+        priceCache,
       );
     }
 
@@ -883,7 +887,7 @@ async function buildVaultHeaderMetrics(vaultName: string) {
     aum = await computeMarkToMarketUSD(
       positions,
       undefined,
-      persistentPriceCache,
+      priceCache,
     );
   }
 
