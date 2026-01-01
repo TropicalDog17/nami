@@ -6,6 +6,5 @@ Quick action modal dialogs for streamlined transaction entry.
 
 - **`QuickExpenseModal.tsx`** - Quick expense entry
 - **`QuickIncomeModal.tsx`** - Quick income entry
-- **`QuickInvestmentModal.tsx`** - Quick investment entry
 - **`QuickVaultModal.tsx`** - Quick vault operation
 - **`QuickInitBalanceModal.tsx`** - Initial balance setup

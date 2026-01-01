@@ -3,6 +3,7 @@ import { v4 as uuidv4 } from "uuid";
 import { priceService } from "../services/price.service";
 import { Asset, Transaction } from "../types";
 import { transactionRepository } from "../repositories";
+import { createAssetFromSymbol } from "../utils/asset.util";
 
 export const actionsRouter = Router();
 
@@ -56,14 +57,8 @@ actionsRouter.post("/actions", async (req, res) => {
         let priceQuote = params?.price_quote ? Number(params.price_quote) : NaN;
         const atISO = toISODate(params?.date);
 
-        const baseAsset: Asset = {
-          type: base === "USD" || base.length === 3 ? "FIAT" : "CRYPTO",
-          symbol: base,
-        };
-        const quoteAsset: Asset = {
-          type: quote === "USD" || quote.length === 3 ? "FIAT" : "CRYPTO",
-          symbol: quote,
-        };
+        const baseAsset: Asset = createAssetFromSymbol(base);
+        const quoteAsset: Asset = createAssetFromSymbol(quote);
 
         if (!isFinite(priceQuote) || priceQuote <= 0) {
           // derive from USD rates: price_quote = (base/USD) / (quote/USD) in quote units
@@ -136,10 +131,7 @@ actionsRouter.post("/actions", async (req, res) => {
           ? String(params.note)
           : undefined;
 
-        const asset: Asset = {
-          type: symbol === "USD" || symbol.length === 3 ? "FIAT" : "CRYPTO",
-          symbol,
-        };
+        const asset: Asset = createAssetFromSymbol(symbol);
 
         let rateUSD: number | undefined = undefined;
         if (params?.price_local && Number(params.price_local) > 0) {

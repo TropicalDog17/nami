@@ -352,16 +352,131 @@ async function buildVaultDailySeries(
 
     series.push({
       date: day,
-      aum_usd: aum,
-      deposits_cum_usd: depositedCum,
-      withdrawals_cum_usd: withdrawnCum,
-      pnl_usd: pnl,
-      roi_percent: roi,
-      apr_percent: apr,
+      aum_usd: Number.isFinite(aum) ? aum : 0,
+      deposits_cum_usd: Number.isFinite(depositedCum) ? depositedCum : 0,
+      withdrawals_cum_usd: Number.isFinite(withdrawnCum) ? withdrawnCum : 0,
+      pnl_usd: Number.isFinite(pnl) ? pnl : 0,
+      roi_percent: Number.isFinite(roi) ? roi : 0,
+      apr_percent: Number.isFinite(apr) ? apr : 0,
     });
   }
 
   return series;
+}
+
+/**
+ * Optimized function to compute only the latest vault metrics without building entire time series.
+ * This is much faster for summary endpoints that only need current values.
+ */
+async function buildLatestVaultMetrics(vaultName: string) {
+  const entries = vaultRepository
+    .findAllEntries(vaultName)
+    .sort((a, b) => String(a.at).localeCompare(String(b.at)));
+
+  if (entries.length === 0) return null;
+
+  let depositedCum = 0;
+  let withdrawnCum = 0;
+  const positions = new Map<string, { asset: Asset; units: number }>();
+  let lastValuationUSD: number | undefined = undefined;
+  let netFlowSinceValUSD = 0;
+  let firstDepositDate: string | undefined = undefined;
+  let firstDepositDateObj: Date | undefined = undefined;
+
+  const cashFlows: Array<{
+    amount: number;
+    daysFromStart: number;
+    date: string;
+  }> = [];
+
+  // Process all entries
+  for (const e of entries as VaultEntry[]) {
+    if (e.type === "DEPOSIT") {
+      const usd = e.usdValue || 0;
+      depositedCum += usd;
+      const entryDate = String(e.at).slice(0, 10);
+      if (!firstDepositDate) {
+        firstDepositDate = entryDate;
+        firstDepositDateObj = new Date(firstDepositDate);
+      }
+      const daysFromStart = dateDiffInDays(
+        firstDepositDateObj!,
+        new Date(entryDate),
+      );
+      cashFlows.push({ amount: -usd, daysFromStart, date: entryDate });
+
+      const k = `${e.asset.type}:${e.asset.symbol.toUpperCase()}`;
+      const cur = positions.get(k) || { asset: e.asset, units: 0 };
+      cur.units += e.amount;
+      positions.set(k, cur);
+      if (typeof lastValuationUSD === "number") {
+        netFlowSinceValUSD += usd;
+      }
+    } else if (e.type === "WITHDRAW") {
+      const usd = e.usdValue || 0;
+      withdrawnCum += usd;
+      const entryDate = String(e.at).slice(0, 10);
+      if (firstDepositDateObj) {
+        const daysFromStart = dateDiffInDays(
+          firstDepositDateObj,
+          new Date(entryDate),
+        );
+        cashFlows.push({ amount: usd, daysFromStart, date: entryDate });
+      }
+
+      const k = `${e.asset.type}:${e.asset.symbol.toUpperCase()}`;
+      const cur = positions.get(k) || { asset: e.asset, units: 0 };
+      cur.units -= e.amount;
+      positions.set(k, cur);
+      if (typeof lastValuationUSD === "number") {
+        netFlowSinceValUSD -= usd;
+      }
+    } else if (e.type === "VALUATION") {
+      lastValuationUSD =
+        typeof e.usdValue === "number" ? e.usdValue : lastValuationUSD;
+      netFlowSinceValUSD = 0;
+    }
+  }
+
+  // Calculate current AUM
+  let aum = 0;
+  const now = new Date().toISOString();
+  if (typeof lastValuationUSD === "number") {
+    aum = lastValuationUSD + netFlowSinceValUSD;
+  } else {
+    aum = await computeMarkToMarketUSD(positions, now, priceCache);
+  }
+
+  const pnl = aum + withdrawnCum - depositedCum;
+  const netContributed = depositedCum - withdrawnCum;
+  const roi = netContributed > 1e-8 ? (pnl / netContributed) * 100 : 0;
+
+  let apr = 0;
+  if (firstDepositDateObj) {
+    const daysElapsed = Math.max(
+      1,
+      dateDiffInDays(firstDepositDateObj, new Date()) + 1,
+    );
+
+    // Add terminal value
+    const cashFlowsForCalculation = cashFlows.map((cf) => ({
+      amount: cf.amount,
+      daysFromStart: cf.daysFromStart,
+    }));
+    cashFlowsForCalculation.push({
+      amount: aum,
+      daysFromStart: daysElapsed - 1,
+    });
+
+    apr = calculateIRRBasedAPR(cashFlowsForCalculation, daysElapsed, roi / 100);
+  }
+
+  return {
+    aum_usd: Number.isFinite(aum) ? aum : 0,
+    pnl_usd: Number.isFinite(pnl) ? pnl : 0,
+    roi_percent: Number.isFinite(roi) ? roi : 0,
+    apr_percent: Number.isFinite(apr) ? apr : 0,
+  };
 }
 
 reportsRouter.get("/reports/holdings", async (_req, res) => {
@@ -913,15 +1028,15 @@ async function buildVaultHeaderMetrics(vaultName: string) {
 
   return {
     vault: vaultName,
-    aum_usd: aum,
-    pnl_usd: pnl,
-    roi_percent: roi,
-    apr_percent: apr,
+    aum_usd: Number.isFinite(aum) ? aum : 0,
+    pnl_usd: Number.isFinite(pnl) ? pnl : 0,
+    roi_percent: Number.isFinite(roi) ? roi : 0,
+    apr_percent: Number.isFinite(apr) ? apr : 0,
     last_valuation_usd:
-      typeof lastValuationUSD === "number" ? lastValuationUSD : 0,
-    net_flow_since_valuation_usd: netFlowSinceValUSD,
-    deposits_cum_usd: depositedCum,
-    withdrawals_cum_usd: withdrawnCum,
+      typeof lastValuationUSD === "number" && Number.isFinite(lastValuationUSD) ? lastValuationUSD : 0,
+    net_flow_since_valuation_usd: Number.isFinite(netFlowSinceValUSD) ? netFlowSinceValUSD : 0,
+    deposits_cum_usd: Number.isFinite(depositedCum) ? depositedCum : 0,
+    withdrawals_cum_usd: Number.isFinite(withdrawnCum) ? withdrawnCum : 0,
     as_of: new Date().toISOString(),
   };
 }
@@ -966,25 +1081,22 @@ reportsRouter.get("/reports/vaults/:name/series", async (req, res) => {
 // --- New: Summary of latest metrics for each vault ---
 reportsRouter.get("/reports/vaults/summary", async (req, res) => {
   try {
-    const start = req.query.start ? String(req.query.start) : undefined;
-    const end = req.query.end ? String(req.query.end) : undefined;
     const names = vaultRepository.findAll().map((v) => v.name);
     const vndRate = await usdToVnd();
 
-    // Process vaults in parallel for better performance
+    // Use optimized function that only computes latest metrics, not entire time series
     const vaultMetrics = await Promise.all(
       names.map(async (name) => {
-        const s = await buildVaultDailySeries(name, start, end);
-        const last = s[s.length - 1];
-        if (!last) return null;
+        const metrics = await buildLatestVaultMetrics(name);
+        if (!metrics) return null;
         return {
           vault: name,
-          aum_usd: last.aum_usd,
-          aum_vnd: last.aum_usd * vndRate,
-          pnl_usd: last.pnl_usd,
-          pnl_vnd: last.pnl_usd * vndRate,
-          roi_percent: last.roi_percent,
-          apr_percent: last.apr_percent,
+          aum_usd: metrics.aum_usd,
+          aum_vnd: metrics.aum_usd * vndRate,
+          pnl_usd: metrics.pnl_usd,
+          pnl_vnd: metrics.pnl_usd * vndRate,
+          roi_percent: metrics.roi_percent,
+          apr_percent: metrics.apr_percent,
         };
       }),
     );
@@ -995,10 +1107,10 @@ reportsRouter.get("/reports/vaults/summary", async (req, res) => {
 
     const totals = rows.reduce(
       (acc, r) => {
-        acc.aum_usd += r.aum_usd;
-        acc.aum_vnd += r.aum_vnd;
-        acc.pnl_usd += r.pnl_usd;
-        acc.pnl_vnd += r.pnl_vnd;
+        acc.aum_usd += r.aum_usd || 0;
+        acc.aum_vnd += r.aum_vnd || 0;
+        acc.pnl_usd += r.pnl_usd || 0;
+        acc.pnl_vnd += r.pnl_vnd || 0;
         return acc;
       },
       { aum_usd: 0, aum_vnd: 0, pnl_usd: 0, pnl_vnd: 0 },
@@ -1136,12 +1248,12 @@ reportsRouter.get("/reports/series", async (req, res) => {
 
       rows.push({
         date,
-        aum_usd: aum,
-        deposits_cum_usd: dep,
-        withdrawals_cum_usd: wdr,
-        pnl_usd: pnl,
-        roi_percent: roi,
-        apr_percent: apr,
+        aum_usd: Number.isFinite(aum) ? aum : 0,
+        deposits_cum_usd: Number.isFinite(dep) ? dep : 0,
+        withdrawals_cum_usd: Number.isFinite(wdr) ? wdr : 0,
+        pnl_usd: Number.isFinite(pnl) ? pnl : 0,
+        roi_percent: Number.isFinite(roi) ? roi : 0,
+        apr_percent: Number.isFinite(apr) ? apr : 0,
       });
     }
 

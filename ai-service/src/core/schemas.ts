@@ -3,7 +3,7 @@ import { z } from 'zod'
 // Common params schema for all transaction actions
 // All fields that might be needed are included as optional
 export const TransactionParamsSchema = z.object({
-  account: z.string().min(1),
+  account: z.string().min(0), // Allow empty string for backend vault default assignment
   vnd_amount: z.number().positive(),
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   // Optional string fields – allow nulls from LLM output as well as omission

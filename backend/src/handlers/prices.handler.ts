@@ -1,29 +1,10 @@
 import { Router } from "express";
 import { priceService } from "../services/price.service";
+import { createAssetFromSymbol } from "../utils/asset.util";
 
 export const pricesRouter = Router();
 
 // Helpers
-const CRYPTO_SET = new Set([
-  "BTC",
-  "ETH",
-  "SOL",
-  "USDT",
-  "USDC",
-  "BNB",
-  "XRP",
-  "ADA",
-  "DOGE",
-  "TRX",
-  "DOT",
-  "MATIC",
-  "AVAX",
-]);
-function asAsset(symbolInput: string) {
-  const symbol = String(symbolInput || "").toUpperCase();
-  const isCrypto = CRYPTO_SET.has(symbol) || symbol.length > 3;
-  return { type: isCrypto ? ("CRYPTO" as const) : ("FIAT" as const), symbol };
-}
 function dateOnly(d: Date) {
   return d.toISOString().split("T")[0];
 }
@@ -45,8 +26,8 @@ pricesRouter.get("/prices/daily", async (req, res) => {
     const currency = String(req.query.currency || "USD").toUpperCase();
     if (!symbol) return res.status(400).json({ error: "symbol required" });
 
-    const asset = asAsset(symbol);
-    const currencyAsset = asAsset(currency);
+    const asset = createAssetFromSymbol(symbol);
+    const currencyAsset = createAssetFromSymbol(currency);
 
     const aRate = await priceService.getRateUSD(asset);
     const cRate = await priceService.getRateUSD(currencyAsset);
@@ -72,8 +53,8 @@ pricesRouter.get("/fx/today", async (req, res) => {
     const from = String(req.query.from || "USD").toUpperCase();
     const to = String(req.query.to || "USD").toUpperCase();
 
-    const fromAsset = asAsset(from);
-    const toAsset = asAsset(to);
+    const fromAsset = createAssetFromSymbol(from);
+    const toAsset = createAssetFromSymbol(to);
 
     // Same currency => rate 1
     if (fromAsset.symbol === toAsset.symbol) {
@@ -98,8 +79,8 @@ pricesRouter.get("/fx/history", async (req, res) => {
     const startStr = String(req.query.start || "") || dateOnly(new Date());
     const endStr = String(req.query.end || "") || startStr;
 
-    const fromAsset = asAsset(from);
-    const toAsset = asAsset(to);
+    const fromAsset = createAssetFromSymbol(from);
+    const toAsset = createAssetFromSymbol(to);
 
     const start = new Date(startStr);
     const end = new Date(endStr);

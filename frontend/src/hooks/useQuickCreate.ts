@@ -1,6 +1,6 @@
 import { useState } from 'react';
 
-import { transactionApi, vaultApi, investmentsApi } from '../services/api';
+import { transactionApi, vaultApi } from '../services/api';
 
 export const useQuickCreate = () => {
   const [isLoading, setIsLoading] = useState(false);
@@ -21,12 +21,5 @@ export const useQuickCreate = () => {
     try { return await vaultApi.createVault(data); } catch (e: unknown) { const msg = (e as { message?: string } | null)?.message ?? 'Failed'; setError(msg); throw e; } finally { setIsLoading(false); }
   };
 
-  const createInvestment = async (data: Record<string, unknown>) => {
-    setIsLoading(true); setError(null);
-    try { return await investmentsApi.stake(data); } catch (e: unknown) { const msg = (e as { message?: string } | null)?.message ?? 'Failed'; setError(msg); throw e; } finally { setIsLoading(false); }
-  };
-
-  return { isLoading, error, createExpense, createIncome, createVault, createInvestment };
+  return { isLoading, error, createExpense, createIncome, createVault };
 };
-
-

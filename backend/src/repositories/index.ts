@@ -55,3 +55,6 @@ export {
 // Export other repository types
 export * from "./base.repository";
 export * from "./repository.interface";
+
+// Export price cache repository
+export { priceCacheRepository, PriceCacheRepository } from "./price-cache.repository";

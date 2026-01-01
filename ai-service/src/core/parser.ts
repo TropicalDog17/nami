@@ -38,7 +38,8 @@ export async function parseExpenseText(
     '- params: account (can be empty string ""), vnd_amount (number), date (YYYY-MM-DD), counterparty?, tag?, note?',
     '- account should be left as empty string "" - backend will assign via vault defaults',
     '- tag can be any relevant category (e.g., food, transport, shopping)',
-    '- If date missing, assume today in configured timezone',
+    '- If date is explicitly mentioned in the message, use that date',
+    '- If date is NOT mentioned, use today\'s date (format: YYYY-MM-DD)',
     '- Use unformatted numbers (no commas); Vietnamese k = thousand may appear',
     '',
     'Message:',
@@ -78,6 +79,23 @@ export async function parseExpenseText(
   try {
     const decoded = JSON.parse(toon) as any
     action = ActionRequestSchema.parse(decoded)
+
+    // Hardcode date to today if not explicitly provided in the message
+    const today = new Date().toISOString().split('T')[0]
+    const lowerMessage = message.toLowerCase()
+
+    // Check if message explicitly mentions a date
+    const hasDateKeyword = /yesterday|tomorrow|today|\d{1,2}[-/]\d{1,2}(-\d{2,4})?|last\s+\w+|next\s+\w+/i.test(lowerMessage)
+
+    // If no date keyword mentioned and we have a parsed action, override with today
+    if (action && !hasDateKeyword) {
+      correlationLogger.info({
+        originalDate: action.params.date,
+        hardcodedDate: today,
+        reason: 'no explicit date in message'
+      }, 'Hardcoding date to today')
+      action.params.date = today
+    }
 
     // Additional validation - account can be empty string for vault-based assignment
     if (!action.params.vnd_amount || !action.params.date) {

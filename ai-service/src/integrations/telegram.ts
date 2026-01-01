@@ -23,6 +23,11 @@ type Ctx = Context & { state: Record<string, unknown> }
 
 interface SessionState {
   awaitingAccountForBatch?: string
+  pendingReview?: {
+    payload: PendingActionCreate
+    correlationId: string
+    parsedAction: any
+  }
 }
 
 const sessionStore = new Map<number, SessionState>()

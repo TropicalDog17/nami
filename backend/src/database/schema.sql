@@ -142,6 +142,20 @@ CREATE TABLE IF NOT EXISTS settings (
   value TEXT NOT NULL
 );
 
+-- Price cache (persistent cache for historical prices)
+CREATE TABLE IF NOT EXISTS price_cache (
+  cache_key TEXT PRIMARY KEY,
+  asset_type TEXT NOT NULL CHECK(asset_type IN ('CRYPTO', 'FIAT')),
+  asset_symbol TEXT NOT NULL,
+  rate_usd REAL NOT NULL,
+  timestamp TEXT NOT NULL,
+  source TEXT NOT NULL CHECK(source IN ('COINGECKO', 'EXCHANGE_RATE_HOST', 'FRANKFURTER', 'ER_API', 'EXCHANGE_RATE_API', 'FALLBACK', 'FIXED')),
+  created_at TEXT NOT NULL
+);
+
+-- Index for quick lookups by asset and timestamp
+CREATE INDEX IF NOT EXISTS idx_price_cache_asset_timestamp ON price_cache(asset_type, asset_symbol, timestamp DESC);
+
 -- Insert default settings
 INSERT OR IGNORE INTO settings (key, value) VALUES
   ('borrowingVaultName', 'Borrowings'),

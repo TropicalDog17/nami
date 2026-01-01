@@ -95,7 +95,7 @@ run-dev: ## Run both backend and frontend simultaneously (requires database)
 	@echo "Press Ctrl+C to stop all services"
 	@echo ""
 	@mkdir -p logs
-	@(cd backend && pnpm run dev) > logs/backend.log 2>&1 & \
+	@(cd backend && STORAGE_BACKEND=database pnpm run dev) > logs/backend.log 2>&1 & \
 	(cd frontend && pnpm run dev) > logs/frontend.log 2>&1 & \
 	(cd ai-service && pnpm run dev) > logs/ai-service.log 2>&1 & \
 	wait; \

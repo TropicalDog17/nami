@@ -341,10 +341,7 @@ export const vaultApi = {
       note?: string;
     }
   ) =>
-    api.post<T>(
-      `/api/vaults/${encodeURIComponent(fromVault)}/transfer`,
-      data
-    ),
+    api.post<T>(`/api/vaults/${encodeURIComponent(fromVault)}/transfer`, data),
   distributeReward: <T = unknown>(
     name: string,
     data: {
@@ -476,21 +473,33 @@ export const tokenizedVaultApi = {
   // Deposits and withdrawals (consolidated endpoints)
   deposit: <T = unknown>(
     id: string,
-    data: { amount: number; notes?: string; source_account?: string }
+    data: {
+      amount: number;
+      notes?: string;
+      source_account?: string;
+      asset?: string;
+    }
   ) =>
     api.post<T>(`/api/cons-vaults/${id}/deposit`, {
       amount: data.amount,
       ...(data.notes ? { notes: data.notes } : {}),
       ...(data.source_account ? { source_account: data.source_account } : {}),
+      ...(data.asset ? { asset: data.asset } : {}),
     }),
   withdraw: <T = unknown>(
     id: string,
-    data: { amount: number; notes?: string; target_account?: string }
+    data: {
+      amount: number;
+      notes?: string;
+      target_account?: string;
+      asset?: string;
+    }
   ) =>
     api.post<T>(`/api/cons-vaults/${id}/withdraw`, {
       amount: data.amount,
       ...(data.notes ? { notes: data.notes } : {}),
       ...(data.target_account ? { target_account: data.target_account } : {}),
+      ...(data.asset ? { asset: data.asset } : {}),
     }),
 
   // Vault management (deprecated)
@@ -498,24 +507,3 @@ export const tokenizedVaultApi = {
     api.post<T>(`/api/cons-vaults/${id}/close`, {}),
 };
 
-// Investments API
-export const investmentsApi = {
-  list: <T = unknown>(filters: Record<string, unknown> = {}) =>
-    api.get<T>('/api/investments', filters),
-  get: <T = unknown>(id: string) => api.get<T>(`/api/investments/${id}`),
-  create: <T = unknown>(investment: unknown) =>
-    api.post<T>('/api/investments', investment),
-  update: <T = unknown>(id: string, investment: unknown) =>
-    api.put<T>(`/api/investments/${id}`, investment),
-  delete: <T = unknown>(id: string) => api.delete<T>(`/api/investments/${id}`),
-  summary: <T = unknown>(filters: Record<string, unknown> = {}) =>
-    api.get<T>('/api/investments/summary', filters),
-
-  // Stake-specific endpoints
-  stake: <T = unknown>(stakeData: unknown) =>
-    api.post<T>('/api/investments/stake', stakeData),
-  unstake: <T = unknown>(unstakeData: unknown) =>
-    api.post<T>('/api/investments/unstake', unstakeData),
-  available: <T = unknown>(asset: string, account: string, horizon?: string) =>
-    api.get<T>('/api/investments/available', { asset, account, horizon }),
-};

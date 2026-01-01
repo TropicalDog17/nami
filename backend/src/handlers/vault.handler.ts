@@ -1,9 +1,69 @@
 import { Router, Request, Response } from "express";
-import { Asset, VaultEntry } from "../types";
+import { v4 as uuidv4 } from "uuid";
+import { Asset, VaultEntry, Transaction } from "../types";
 import { vaultService } from "../services/vault.service";
 import { priceService } from "../services/price.service";
+import { transactionRepository } from "../repositories";
+import { createAssetFromSymbol } from "../utils/asset.util";
 
 export const vaultsRouter = Router();
+
+// Helper to get rate for cons-vaults deposit/withdraw
+async function getRate(asset: Asset, at?: string) {
+  return priceService.getRateUSD(asset, at);
+}
+
+// Helper to create tokenized vault shape (for cons-vaults compatibility)
+function toTokenizedShape(v: {
+  name: string;
+  status: "ACTIVE" | "CLOSED";
+  createdAt: string;
+}) {
+  const now = new Date().toISOString();
+  return vaultService.vaultStats(v.name).then((stats) => {
+    const aum = stats.aumUSD;
+    const depositUSD = stats.totalDepositedUSD;
+    const withdrawnUSD = stats.totalWithdrawnUSD;
+    // ROI = (Current Value + Withdrawn - Invested) / Invested
+    const perfPct =
+      depositUSD > 0
+        ? ((aum + withdrawnUSD - depositUSD) / depositUSD) * 100
+        : 0;
+    // Shares issued = net contributed (deposits - withdrawals at $1/share initial price)
+    const netContributed = depositUSD - withdrawnUSD;
+    const supply = netContributed > 0 ? netContributed : 0;
+    // Price = AUM / supply (how much each share is worth now)
+    const price = supply > 0 ? aum / supply : 1;
+    return {
+      id: v.name,
+      name: v.name,
+      description: "",
+      type: "user_defined",
+      status: v.status === "ACTIVE" ? "active" : "closed",
+      token_symbol: v.name.slice(0, 8).toUpperCase(),
+      token_decimals: 2,
+      total_supply: String(supply),
+      total_assets_under_management: String(aum),
+      current_share_price: String(price.toFixed(4)),
+      initial_share_price: "1",
+      is_user_defined_price: true,
+      manual_price_per_share: String(price.toFixed(4)),
+      price_last_updated_by: "system",
+      price_last_updated_at: now,
+      price_update_notes: "",
+      is_deposit_allowed: true,
+      is_withdrawal_allowed: true,
+      min_deposit_amount: "0",
+      min_withdrawal_amount: "0",
+      inception_date: v.createdAt,
+      last_updated: now,
+      performance_since_inception: String(perfPct),
+      created_by: "local",
+      created_at: v.createdAt,
+      updated_at: now,
+    };
+  });
+}
 
 // Helpers
 async function computeUSD(
@@ -32,8 +92,7 @@ function parseDepositPayload(body: any): {
   const assetSym = (body.asset?.symbol || body.asset || "USD")
     .toString()
     .toUpperCase();
-  const assetType = assetSym.length === 3 ? "FIAT" : "CRYPTO";
-  const asset: Asset = { type: assetType as any, symbol: assetSym };
+  const asset: Asset = createAssetFromSymbol(assetSym);
   const quantity = Number(body.quantity ?? body.amount ?? 0) || 0;
   const cost = Number(body.cost ?? body.value ?? body.usdValue ?? 0) || 0;
 
@@ -66,8 +125,7 @@ function parseWithdrawPayload(body: any): {
   const assetSym = (body.asset?.symbol || body.asset || "USD")
     .toString()
     .toUpperCase();
-  const assetType = assetSym.length === 3 ? "FIAT" : "CRYPTO";
-  const asset: Asset = { type: assetType as any, symbol: assetSym };
+  const asset: Asset = createAssetFromSymbol(assetSym);
   const quantity = Number(body.quantity ?? body.amount ?? 0) || 0;
   const value = Number(body.value ?? body.usdValue ?? 0) || 0;
 
@@ -372,8 +430,7 @@ vaultsRouter.post(
       const assetSym = (req.body?.asset?.symbol || req.body?.asset || "USD")
         .toString()
         .toUpperCase();
-      const assetType = assetSym.length === 3 ? "FIAT" : "CRYPTO";
-      const asset: Asset = { type: assetType as any, symbol: assetSym };
+      const asset: Asset = createAssetFromSymbol(assetSym);
 
       const quantity = Number(
         req.body?.quantity ?? req.body?.amount ?? 0
@@ -535,3 +592,236 @@ vaultsRouter.post(
     }
   },
 );
+
+// ============================================================================
+// Consolidated Vaults (cons-vaults) endpoints - Tokenized vault shape
+// ============================================================================
+
+// List all vaults (tokenized shape)
+vaultsRouter.get("/cons-vaults", async (_req, res) => {
+  try {
+    const vs = vaultService.listVaults();
+    const shaped = await Promise.all(vs.map(toTokenizedShape));
+    res.json(shaped);
+  } catch (e: any) {
+    res.status(500).json({ error: e?.message || "Failed to list vaults" });
+  }
+});
+
+// Get single vault (tokenized shape)
+vaultsRouter.get("/cons-vaults/:id", async (req, res) => {
+  const id = String(req.params.id);
+  const v = vaultService.getVault(id);
+  if (!v) return res.status(404).json({ error: "not found" });
+  const shaped = await toTokenizedShape(v);
+  res.json(shaped);
+});
+
+// Create vault
+vaultsRouter.post("/cons-vaults", (req, res) => {
+  const name =
+    String(req.body?.name || "").trim() ||
+    String(req.body?.token_symbol || "").trim();
+  if (!name) return res.status(400).json({ error: "name is required" });
+  vaultService.ensureVault(name);
+  res.status(201).json({ id: name });
+});
+
+// Update vault (no-op minimal)
+vaultsRouter.put("/cons-vaults/:id", (_req, res) => {
+  res.json({ ok: true });
+});
+
+// Delete vault
+vaultsRouter.delete("/cons-vaults/:id", (req, res) => {
+  const id = String(req.params.id);
+  const ok = vaultService.deleteVault(id);
+  if (!ok) return res.status(404).json({ error: "not found" });
+  res.json({ ok: true });
+});
+
+// Close vault
+vaultsRouter.post("/cons-vaults/:id/close", (req, res) => {
+  const id = String(req.params.id);
+  const ok = vaultService.endVault(id);
+  if (!ok) return res.status(404).json({ error: "not found" });
+  res.json({ ok: true });
+});
+
+// Enable/disable manual pricing (no-op)
+vaultsRouter.post("/cons-vaults/:id/enable-manual-pricing", (_req, res) => {
+  res.json({ ok: true });
+});
+vaultsRouter.post("/cons-vaults/:id/disable-manual-pricing", (_req, res) => {
+  res.json({ ok: true });
+});
+
+// Update price (no-op returns current computed)
+vaultsRouter.post("/cons-vaults/:id/update-price", async (req, res) => {
+  const id = String(req.params.id);
+  const v = vaultService.getVault(id);
+  if (!v) return res.status(404).json({ error: "not found" });
+  const shaped = await toTokenizedShape(v);
+  res.json({
+    current_share_price: shaped.current_share_price,
+    total_assets_under_management: shaped.total_assets_under_management,
+  });
+});
+
+// Update total value
+vaultsRouter.post("/cons-vaults/:id/update-total-value", async (req, res) => {
+  const id = String(req.params.id);
+  const v = vaultService.getVault(id);
+  if (!v) return res.status(404).json({ error: "not found" });
+  const totalValue = Number(req.body?.total_value || 0) || 0;
+  const notes = req.body?.notes ? String(req.body.notes) : undefined;
+  const at = new Date().toISOString();
+  const asset: Asset = { type: "FIAT", symbol: "USD" };
+
+  // Record a valuation entry so reporting/ROI uses this point-in-time total value
+  vaultService.addVaultEntry({
+    vault: id,
+    type: "VALUATION",
+    asset,
+    amount: 0, // informational entry
+    usdValue: totalValue,
+    at,
+    note: notes ? `Valuation: ${notes}` : "Valuation",
+  });
+
+  // Return updated price based on new AUM
+  const shaped = await toTokenizedShape(v);
+  res.json({
+    current_share_price: shaped.current_share_price,
+    total_assets_under_management: String(totalValue),
+  });
+});
+
+// Deposit (cons-vaults style with source_account transfer support)
+vaultsRouter.post("/cons-vaults/:id/deposit", async (req, res) => {
+  const id = String(req.params.id);
+  if (!vaultService.getVault(id)) vaultService.ensureVault(id);
+  const amount = Number(req.body?.amount || 0) || 0;
+  const notes = req.body?.notes ? String(req.body.notes) : undefined;
+  const source = req.body?.source_account
+    ? String(req.body.source_account)
+    : undefined;
+
+  if (!(amount > 0))
+    return res.status(400).json({ error: "amount>0 required" });
+
+  const at = new Date().toISOString();
+  const assetSym = (req.body?.asset?.symbol || req.body?.asset || "USD")
+    .toString()
+    .toUpperCase();
+  const asset: Asset = createAssetFromSymbol(assetSym);
+
+  // Get rate first to compute USD value correctly
+  const rate = await getRate(asset, at);
+  const usdValue = amount * rate.rateUSD;
+
+  vaultService.addVaultEntry({
+    vault: id,
+    type: "DEPOSIT",
+    asset,
+    amount,
+    usdValue,
+    at,
+    account: source,
+    note: notes,
+  });
+  if (source) {
+    // Transfer Source -> Vault
+    const transferId = uuidv4();
+    const txOut: Transaction = {
+      id: uuidv4(),
+      type: "TRANSFER_OUT",
+      asset,
+      amount,
+      createdAt: at,
+      account: source,
+      note: `Deposit to ${id}` + (notes ? `: ${notes}` : ""),
+      transferId,
+      rate,
+      usdAmount: amount * rate.rateUSD,
+    } as Transaction;
+
+    const txIn: Transaction = {
+      id: uuidv4(),
+      type: "TRANSFER_IN",
+      asset,
+      amount,
+      createdAt: at,
+      account: id, // Vault Name is the Account
+      note: `Deposit from ${source}` + (notes ? `: ${notes}` : ""),
+      transferId,
+      rate,
+      usdAmount: amount * rate.rateUSD,
+    } as Transaction;
+
+    transactionRepository.create(txOut);
+    transactionRepository.create(txIn);
+  } else {
+    // Income (Injection) to Vault
+    const tx: Transaction = {
+      id: uuidv4(),
+      type: "INCOME",
+      asset,
+      amount,
+      createdAt: at,
+      account: id,
+      note: `Deposit` + (notes ? `: ${notes}` : ""),
+      rate,
+      usdAmount: amount * rate.rateUSD,
+    } as Transaction;
+    transactionRepository.create(tx);
+  }
+
+  res.status(201).json({ ok: true });
+});
+
+// Withdraw (cons-vaults style)
+vaultsRouter.post("/cons-vaults/:id/withdraw", async (req, res) => {
+  const id = String(req.params.id);
+  if (!vaultService.getVault(id)) vaultService.ensureVault(id);
+  const amount = Number(req.body?.amount || 0) || 0;
+  const notes = req.body?.notes ? String(req.body.notes) : undefined;
+  if (!(amount > 0))
+    return res.status(400).json({ error: "amount>0 required" });
+
+  const at = new Date().toISOString();
+  const assetSym = (req.body?.asset?.symbol || req.body?.asset || "USD")
+    .toString()
+    .toUpperCase();
+  const asset: Asset = createAssetFromSymbol(assetSym);
+
+  // Get rate first to compute USD value correctly
+  const rate = await getRate(asset, at);
+  const usdValue = amount * rate.rateUSD;
+
+  vaultService.addVaultEntry({
+    vault: id,
+    type: "WITHDRAW",
+    asset,
+    amount,
+    usdValue,
+    at,
+    note: notes,
+  });
+  // Treated as Expense (Outflow) from Vault
+  const tx: Transaction = {
+    id: uuidv4(),
+    type: "EXPENSE",
+    asset,
+    amount,
+    createdAt: at,
+    account: id,
+    note: `Withdraw` + (notes ? `: ${notes}` : ""),
+    rate,
+    usdAmount: amount * rate.rateUSD,
+  } as Transaction;
+
+  transactionRepository.create(tx);
+
+  res.status(201).json({ ok: true });
+});

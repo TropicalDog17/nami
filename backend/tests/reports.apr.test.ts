@@ -45,7 +45,7 @@ describe('APR calculations using IRR (Money-Weighted Return)', () => {
         priceService: {
           getRateUSD: async (asset: Asset) => {
             const symbol = asset.symbol.toUpperCase();
-            const rateUSD = symbol === 'USD' ? 1 : symbol === 'VND' ? 1 / 24000 : 1;
+            const rateUSD = symbol === 'USD' ? 1 : symbol === 'VND' ? 1 / 26315 : 1;
             return { asset, rateUSD, timestamp: new Date().toISOString(), source: rateUSD === 1 ? 'FIXED' : 'FALLBACK' } as any;
           },
         },

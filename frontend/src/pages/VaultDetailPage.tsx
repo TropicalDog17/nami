@@ -11,60 +11,17 @@ import DataTable, { TableColumn } from '../components/ui/DataTable';
 import { useToast } from '../components/ui/Toast';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { vaultApi, transactionApi, tokenizedVaultApi, vaultLedgerApi, portfolioApi, reportsApi, adminApi, ApiError } from '../services/api';
-import { formatCurrency, formatPercentage, formatPnL, getDecimalPlaces } from '../utils/currencyFormatter';
-
-type Vault = {
-  id: string;
-  is_vault: boolean;
-  vault_name?: string;
-  vault_status?: string;
-  vault_ended_at?: string;
-  asset: string;
-  account: string;
-  horizon?: string;
-  deposit_date: string;
-  deposit_qty: string;
-  deposit_cost: string;
-  deposit_unit_cost: string;
-  withdrawal_qty: string;
-  withdrawal_value: string;
-  withdrawal_unit_price: string;
-  pnl: string;
-  pnl_percent: string;
-  is_open: boolean;
-  realized_pnl: string;
-  remaining_qty: string;
-  created_at: string;
-  updated_at: string;
-};
-
-type Transaction = {
-  id: string;
-  date: string;
-  type: string;
-  asset: string;
-  account: string;
-  quantity: string;
-  amount_usd: number;
-  amount_vnd: number;
-  counterparty?: string;
-  tag?: string;
-  note?: string;
-  investment_id?: string;
-};
-
-type Option = { value: string; label: string };
-
-type ManualMetrics = {
-  as_of?: string;
-  current_value_usd?: number;
-  roi_realtime_percent?: number;
-  apr_percent?: number;
-  benchmark_asset?: string;
-  benchmark_roi_percent?: number;
-  benchmark_apr_percent?: number;
-};
+import {
+  vaultApi,
+  transactionApi,
+  tokenizedVaultApi,
+  vaultLedgerApi,
+  portfolioApi,
+  reportsApi,
+  adminApi,
+  ApiError,
+} from '../services/api';
+import { formatCurrency, formatPercentage } from '../utils/currencyFormatter';
 
 type TokenizedVaultAsset = {
   asset: string;
@@ -118,14 +75,24 @@ type TokenizedVaultDetails = {
 const MAX_RETRIES = 3;
 
 const VaultDetailPage: React.FC = () => {
-  const { vaultId: _vaultId, vaultName: _vaultName } = useParams<{ vaultId?: string; vaultName?: string }>();
+  const { vaultId: _vaultId, vaultName: _vaultName } = useParams<{
+    vaultId?: string;
+    vaultName?: string;
+  }>();
   const vaultId = _vaultId ?? _vaultName ?? '';
   const navigate = useNavigate();
   const { error: showErrorToast, success: showSuccessToast } = useToast();
 
-  const [vault, setVault] = useState<Vault | null>(null);
-  const [tokenizedVaultDetails, setTokenizedVaultDetails] = useState<TokenizedVaultDetails | null>(null);
-  const [ledgerHoldings, setLedgerHoldings] = useState<null | { total_shares?: string | number; total_aum?: string | number; share_price?: string | number; transaction_count?: number; last_transaction_at?: string }>(null);
+  const [tokenizedVaultDetails, setTokenizedVaultDetails] =
+    useState<TokenizedVaultDetails | null>(null);
+  const [showLiveMetrics, setShowLiveMetrics] = useState<boolean>(false);
+  const [ledgerHoldings, setLedgerHoldings] = useState<null | {
+    total_shares?: string | number;
+    total_aum?: string | number;
+    share_price?: string | number;
+    transaction_count?: number;
+    last_transaction_at?: string;
+  }>(null);
 
   type LedgerTransaction = {
     timestamp?: unknown;
@@ -134,19 +101,39 @@ const VaultDetailPage: React.FC = () => {
     shares?: number;
   };
 
-  const [ledgerTransactions, setLedgerTransactions] = useState<LedgerTransaction[]>([]);
+  const [ledgerTransactions, setLedgerTransactions] = useState<
+    LedgerTransaction[]
+  >([]);
 
   // Rolling AUM: last valuation AUM + net flows after that valuation
   const rollingAUM = useMemo(() => {
     try {
-      if (!Array.isArray(ledgerTransactions) || ledgerTransactions.length === 0) return undefined;
-      const txs = [...ledgerTransactions].filter(t => t?.timestamp).sort((a, b) => new Date(typeof a.timestamp === 'string' ? a.timestamp : String(a.timestamp)).getTime() - new Date(typeof b.timestamp === 'string' ? b.timestamp : String(b.timestamp)).getTime());
+      if (!Array.isArray(ledgerTransactions) || ledgerTransactions.length === 0)
+        return undefined;
+      const txs = [...ledgerTransactions]
+        .filter((t) => t?.timestamp)
+        .sort(
+          (a, b) =>
+            new Date(
+              typeof a.timestamp === 'string'
+                ? a.timestamp
+                : String(a.timestamp)
+            ).getTime() -
+            new Date(
+              typeof b.timestamp === 'string'
+                ? b.timestamp
+                : String(b.timestamp)
+            ).getTime()
+        );
       let lastValIdx = -1;
       for (let i = txs.length - 1; i >= 0; i--) {
         const t = txs[i];
         const typeRaw = t.type;
         const type = typeof typeRaw === 'string' ? typeRaw : '';
-        if (type.toUpperCase() === 'VALUATION') { lastValIdx = i; break; }
+        if (type.toUpperCase() === 'VALUATION') {
+          lastValIdx = i;
+          break;
+        }
       }
       if (lastValIdx === -1) return undefined;
       const base = Number(txs[lastValIdx]?.amount_usd ?? NaN);
@@ -158,7 +145,11 @@ const VaultDetailPage: React.FC = () => {
         const type = typeof typeRaw === 'string' ? typeRaw : '';
         const amt = Number(t?.amount_usd ?? 0) || 0;
         if (type.toUpperCase() === 'DEPOSIT') net += amt;
-        else if (type.toUpperCase() === 'WITHDRAW' || type.toUpperCase() === 'WITHDRAWAL') net -= amt;
+        else if (
+          type.toUpperCase() === 'WITHDRAW' ||
+          type.toUpperCase() === 'WITHDRAWAL'
+        )
+          net -= amt;
       }
       return base + net;
     } catch {
@@ -169,13 +160,31 @@ const VaultDetailPage: React.FC = () => {
   // Implied share price from valuation + net flows and share issuance since that valuation (flow-neutral)
   const impliedPriceFromLedger = useMemo(() => {
     try {
-      if (!Array.isArray(ledgerTransactions) || ledgerTransactions.length === 0) return undefined;
-      const txs = [...ledgerTransactions].filter(t => t?.timestamp).sort((a, b) => new Date(typeof a.timestamp === 'string' ? a.timestamp : String(a.timestamp)).getTime() - new Date(typeof b.timestamp === 'string' ? b.timestamp : String(b.timestamp)).getTime());
+      if (!Array.isArray(ledgerTransactions) || ledgerTransactions.length === 0)
+        return undefined;
+      const txs = [...ledgerTransactions]
+        .filter((t) => t?.timestamp)
+        .sort(
+          (a, b) =>
+            new Date(
+              typeof a.timestamp === 'string'
+                ? a.timestamp
+                : String(a.timestamp)
+            ).getTime() -
+            new Date(
+              typeof b.timestamp === 'string'
+                ? b.timestamp
+                : String(b.timestamp)
+            ).getTime()
+        );
       let lastValIdx = -1;
       for (let i = txs.length - 1; i >= 0; i--) {
         const typeRaw = txs[i].type;
         const type = typeof typeRaw === 'string' ? typeRaw : '';
-        if (type.toUpperCase() === 'VALUATION') { lastValIdx = i; break; }
+        if (type.toUpperCase() === 'VALUATION') {
+          lastValIdx = i;
+          break;
+        }
       }
       if (lastValIdx === -1) return undefined;
       const baseUSD = Number(txs[lastValIdx]?.amount_usd ?? NaN);
@@ -188,11 +197,22 @@ const VaultDetailPage: React.FC = () => {
         const type = typeof typeRaw === 'string' ? typeRaw : '';
         const usd = Number(t?.amount_usd ?? 0) || 0;
         const sh = Number(t?.shares ?? 0) || 0;
-        if (type.toUpperCase() === 'DEPOSIT') { netUSD += usd; flowShares += sh; }
-        else if (type.toUpperCase() === 'WITHDRAW' || type.toUpperCase() === 'WITHDRAWAL') { netUSD -= usd; flowShares -= sh; }
+        if (type.toUpperCase() === 'DEPOSIT') {
+          netUSD += usd;
+          flowShares += sh;
+        } else if (
+          type.toUpperCase() === 'WITHDRAW' ||
+          type.toUpperCase() === 'WITHDRAWAL'
+        ) {
+          netUSD -= usd;
+          flowShares -= sh;
+        }
       }
       const totalSharesNow = (() => {
-        const v = ledgerHoldings?.total_shares as unknown as string | number | undefined;
+        const v = ledgerHoldings?.total_shares as unknown as
+          | string
+          | number
+          | undefined;
         const n = typeof v === 'string' ? parseFloat(v) : (v ?? 0);
         return isNaN(Number(n)) ? undefined : Number(n);
       })();
@@ -208,23 +228,35 @@ const VaultDetailPage: React.FC = () => {
     }
   }, [ledgerTransactions, ledgerHoldings]);
   const [isTokenizedVault, setIsTokenizedVault] = useState<boolean>(false);
-  const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
-  const [showDepositForm, setShowDepositForm] = useState<boolean>(false);
-  const [showWithdrawForm, setShowWithdrawForm] = useState<boolean>(false);
-  const [allVaults, setAllVaults] = useState<Option[]>([]);
-  const [accounts, setAccounts] = useState<Option[]>([]);
-  const [manualMetrics, setManualMetrics] = useState<ManualMetrics | null>(null);
-  const [liveMetrics, setLiveMetrics] = useState<ManualMetrics | null>(null);
-  
-  type VaultHeaderMetrics = { aum_usd: number; pnl_usd: number; roi_percent: number; apr_percent: number; last_valuation_usd: number; net_flow_since_valuation_usd: number; deposits_cum_usd: number; withdrawals_cum_usd: number; as_of: string };
-  const [headerMetrics, setHeaderMetrics] = useState<VaultHeaderMetrics | null>(null);
-  const [showLiveMetrics, setShowLiveMetrics] = useState<boolean>(false);
+
+  type VaultHeaderMetrics = {
+    aum_usd: number;
+    pnl_usd: number;
+    roi_percent: number;
+    apr_percent: number;
+    last_valuation_usd: number;
+    net_flow_since_valuation_usd: number;
+    deposits_cum_usd: number;
+    withdrawals_cum_usd: number;
+    as_of: string;
+  };
+  const [headerMetrics, setHeaderMetrics] = useState<VaultHeaderMetrics | null>(
+    null
+  );
   const [retryCount, setRetryCount] = useState(0);
 
   // Time-series for tokenized vault (AUM, PnL, ROI, APR)
-  const [vaultSeries, setVaultSeries] = useState<Array<{ date: string; aum_usd: number; pnl_usd: number; roi_percent: number; apr_percent: number }>>([]);
+  const [vaultSeries, setVaultSeries] = useState<
+    Array<{
+      date: string;
+      aum_usd: number;
+      pnl_usd: number;
+      roi_percent: number;
+      apr_percent: number;
+    }>
+  >([]);
   const _loadingSeries = useState<boolean>(false)[0];
 
   // Load per-vault series when viewing a tokenized vault
@@ -235,7 +267,16 @@ const VaultDetailPage: React.FC = () => {
         return;
       }
       try {
-        const res = await reportsApi.vaultSeries<{ vault: string; series: Array<{ date: string; aum_usd: number; pnl_usd: number; roi_percent: number; apr_percent: number }> }>(tokenizedVaultDetails.id);
+        const res = await reportsApi.vaultSeries<{
+          vault: string;
+          series: Array<{
+            date: string;
+            aum_usd: number;
+            pnl_usd: number;
+            roi_percent: number;
+            apr_percent: number;
+          }>;
+        }>(tokenizedVaultDetails.id);
         const s = (res as { series?: unknown })?.series ?? [];
         setVaultSeries(Array.isArray(s) ? s : []);
       } catch {
@@ -253,7 +294,9 @@ const VaultDetailPage: React.FC = () => {
         return;
       }
       try {
-        const m = await reportsApi.vaultHeader<VaultHeaderMetrics>(tokenizedVaultDetails.id);
+        const m = await reportsApi.vaultHeader<VaultHeaderMetrics>(
+          tokenizedVaultDetails.id
+        );
         setHeaderMetrics(m);
       } catch {
         setHeaderMetrics(null);
@@ -265,19 +308,34 @@ const VaultDetailPage: React.FC = () => {
   // Borrowings special UI state
   const [borrowingsSummary, setBorrowingsSummary] = useState<null | {
     outstandingUSD: number;
-    liabilities: Array<{ counterparty: string; asset: string; amount: number; valueUSD: number }>;
+    liabilities: Array<{
+      counterparty: string;
+      asset: string;
+      amount: number;
+      valueUSD: number;
+    }>;
   }>(null);
   const [showBorrowModal, setShowBorrowModal] = useState(false);
   const [showRepayModal, setShowRepayModal] = useState(false);
 
   // Tokenized vault deposit/withdraw UI state
-  const [showTokenizedDepositForm, setShowTokenizedDepositForm] = useState<boolean>(false);
-  const [showTokenizedWithdrawForm, setShowTokenizedWithdrawForm] = useState<boolean>(false);
-  const [tokenizedDepositAmount, setTokenizedDepositAmount] = useState<string>('');
-  const [tokenizedWithdrawAmount, setTokenizedWithdrawAmount] = useState<string>('');
+  const [showTokenizedDepositForm, setShowTokenizedDepositForm] =
+    useState<boolean>(false);
+  const [showTokenizedWithdrawForm, setShowTokenizedWithdrawForm] =
+    useState<boolean>(false);
+  const [tokenizedDepositAmount, setTokenizedDepositAmount] =
+    useState<string>('');
+  const [tokenizedWithdrawAmount, setTokenizedWithdrawAmount] =
+    useState<string>('');
   const [tokenizedNotes, setTokenizedNotes] = useState<string>('');
-  const [tokenizedSourceAccount, setTokenizedSourceAccount] = useState<string>('');
-  const [tokenizedTargetAccount, setTokenizedTargetAccount] = useState<string>('');
+  const [tokenizedSourceAccount, setTokenizedSourceAccount] =
+    useState<string>('');
+  const [tokenizedTargetAccount, setTokenizedTargetAccount] =
+    useState<string>('');
+  const [tokenizedDepositAsset, setTokenizedDepositAsset] =
+    useState<string>('USD');
+  const [tokenizedWithdrawAsset, setTokenizedWithdrawAsset] =
+    useState<string>('USD');
 
   // Reward payout UI state (mark gain, then distribute to cash)
   const [showRewardForm, setShowRewardForm] = useState<boolean>(false);
@@ -286,36 +344,21 @@ const VaultDetailPage: React.FC = () => {
   const [rewardNote, setRewardNote] = useState<string>('');
   const [rewardMark, setRewardMark] = useState<boolean>(true);
   const [rewardCreateIncome, setRewardCreateIncome] = useState<boolean>(false);
-  const [rewardDate, setRewardDate] = useState<string>(new Date().toISOString().split('T')[0]);
-
-  const assetOptions: Array<{ value: string; label: string }> = [
+  const [rewardDate, setRewardDate] = useState<string>(
+    new Date().toISOString().split('T')[0]
+  );
+  const [assetOptions, setAssetOptions] = useState<
+    Array<{ value: string; label: string }>
+  >([
     { value: 'USD', label: 'USD' },
     { value: 'BTC', label: 'BTC' },
     { value: 'ETH', label: 'ETH' },
     { value: 'USDT', label: 'USDT' },
     { value: 'USDC', label: 'USDC' },
-    { value: 'BNB', label: 'BNB' },
-    { value: 'SOL', label: 'SOL' },
-    { value: 'ADA', label: 'ADA' },
-    { value: 'XRP', label: 'XRP' },
-    { value: 'DOGE', label: 'DOGE' },
-  ];
+  ]);
 
-  // Form states (legacy vault)
-  const [depositForm, setDepositForm] = useState({
-    asset: 'USD',
-    quantity: '',
-    cost: '',
-    sourceAccount: '',
-  });
-
-  const [withdrawForm, setWithdrawForm] = useState({
-    asset: 'USD',
-    quantity: '',
-    value: '',
-    targetAccount: '',
-  });
-  const [withdrawPercent, setWithdrawPercent] = useState<string>('');
+  // All vaults for transfer dropdown
+  const [allVaults, setAllVaults] = useState<Array<{ value: string; label: string }>>([]);
 
   const loadVault = useCallback(async (): Promise<void> => {
     if (!vaultId) {
@@ -332,55 +375,71 @@ const VaultDetailPage: React.FC = () => {
 
     // First: try tokenized vault API
     try {
-      const params = showLiveMetrics ? { enrich: true } : {};
-      const tokenizedData = await tokenizedVaultApi.get<TokenizedVaultDetails>(vaultId, params);
+      const tokenizedData =
+        await tokenizedVaultApi.get<TokenizedVaultDetails>(vaultId);
       if (tokenizedData) {
         setTokenizedVaultDetails(tokenizedData);
         setIsTokenizedVault(true);
-        setVault(null);
-        setManualMetrics(null);
-        setLiveMetrics(null);
-        setTransactions([]);
         // Load ledger data for tokenized vaults
         try {
           const [h, tx] = await Promise.all([
             vaultLedgerApi.holdings<Record<string, unknown>>(vaultId),
-            vaultLedgerApi.transactions<Array<Record<string, unknown>>>(vaultId, { limit: 100 }),
+            vaultLedgerApi.transactions<Array<Record<string, unknown>>>(
+              vaultId,
+              { limit: 100 }
+            ),
           ]);
           setLedgerHoldings(h ?? null);
-          const ppsRaw = (h)?.share_price;
-          const pps = typeof ppsRaw === 'string' ? parseFloat(ppsRaw) : (ppsRaw ?? 1);
-          const mapped = (Array.isArray(tx) ? tx : []).map((e: Record<string, unknown>) => {
-            const usd = typeof e?.usdValue === 'string' ? parseFloat(e.usdValue) : Number(e?.usdValue ?? 0);
-            const qty = typeof e?.amount === 'string' ? parseFloat(e.amount) : Number(e?.amount ?? 0);
-            const price = Number(pps) || 1;
-            const typeRaw = e?.type;
-            const type = typeof typeRaw === 'string' ? typeRaw : '';
-            const assetRaw = e?.asset;
-            let asset = '';
-            if (typeof assetRaw === 'string') {
-              asset = assetRaw;
-            } else if (typeof assetRaw === 'object' && assetRaw !== null) {
-              const symbolRaw = (assetRaw as Record<string, unknown>).symbol;
-              asset = typeof symbolRaw === 'string' ? symbolRaw : '';
+          const ppsRaw = h?.share_price;
+          const pps =
+            typeof ppsRaw === 'string' ? parseFloat(ppsRaw) : (ppsRaw ?? 1);
+          const mapped = (Array.isArray(tx) ? tx : []).map(
+            (e: Record<string, unknown>) => {
+              const usd =
+                typeof e?.usdValue === 'string'
+                  ? parseFloat(e.usdValue)
+                  : Number(e?.usdValue ?? 0);
+              const qty =
+                typeof e?.amount === 'string'
+                  ? parseFloat(e.amount)
+                  : Number(e?.amount ?? 0);
+              const price = Number(pps) || 1;
+              const typeRaw = e?.type;
+              const type = typeof typeRaw === 'string' ? typeRaw : '';
+              const assetRaw = e?.asset;
+              let asset = '';
+              if (typeof assetRaw === 'string') {
+                asset = assetRaw;
+              } else if (typeof assetRaw === 'object' && assetRaw !== null) {
+                const symbolRaw = (assetRaw as Record<string, unknown>).symbol;
+                asset = typeof symbolRaw === 'string' ? symbolRaw : '';
+              }
+              return {
+                timestamp: e?.at ?? e?.timestamp ?? null,
+                type: type.toUpperCase(),
+                status: typeof e?.status === 'string' ? e.status : '-',
+                amount_usd: isNaN(usd) ? 0 : usd,
+                shares: isNaN(usd) ? 0 : usd / price,
+                price_per_share: price,
+                asset,
+                account: (e?.account ?? null) as string | null,
+                asset_quantity: isNaN(qty) ? 0 : qty,
+              };
             }
-            return {
-              timestamp: e?.at ?? e?.timestamp ?? null,
-              type: type.toUpperCase(),
-              status: typeof e?.status === 'string' ? e.status : '-',
-              amount_usd: isNaN(usd) ? 0 : usd,
-              shares: isNaN(usd) ? 0 : usd / price,
-              price_per_share: price,
-              asset,
-              account: (e?.account ?? null) as string | null,
-              asset_quantity: isNaN(qty) ? 0 : qty,
-            };
-          });
-          setLedgerTransactions(mapped.sort((a, b) => {
-            const ta = a?.timestamp && typeof a.timestamp === 'string' ? new Date(a.timestamp).getTime() : 0;
-            const tb = b?.timestamp && typeof b.timestamp === 'string' ? new Date(b.timestamp).getTime() : 0;
-            return tb - ta; // latest first
-          }));
+          );
+          setLedgerTransactions(
+            mapped.sort((a, b) => {
+              const ta =
+                a?.timestamp && typeof a.timestamp === 'string'
+                  ? new Date(a.timestamp).getTime()
+                  : 0;
+              const tb =
+                b?.timestamp && typeof b.timestamp === 'string'
+                  ? new Date(b.timestamp).getTime()
+                  : 0;
+              return tb - ta; // latest first
+            })
+          );
         } catch (_e) {
           // ignore
           console.warn('Failed to load ledger data');
@@ -393,7 +452,11 @@ const VaultDetailPage: React.FC = () => {
     } catch (err) {
       const apiErr = err as ApiError;
       // If route param looks like a tokenized ID and backend says 404, stop here with a clear error
-      if (apiErr instanceof ApiError && apiErr.status === 404 && isTokenizedId) {
+      if (
+        apiErr instanceof ApiError &&
+        apiErr.status === 404 &&
+        isTokenizedId
+      ) {
         setError('Tokenized vault not found');
         setLoading(false);
         return;
@@ -401,9 +464,13 @@ const VaultDetailPage: React.FC = () => {
       // For other errors, retry a few times then surface error
       if (!(apiErr instanceof ApiError && apiErr.status === 404)) {
         if (retryCount < MAX_RETRIES) {
-          setTimeout(() => setRetryCount(retryCount + 1), 1000 * (retryCount + 1));
+          setTimeout(
+            () => setRetryCount(retryCount + 1),
+            1000 * (retryCount + 1)
+          );
         } else {
-          const message = apiErr instanceof Error ? apiErr.message : 'Failed to load vault';
+          const message =
+            apiErr instanceof Error ? apiErr.message : 'Failed to load vault';
           setError(message);
           showErrorToast('Failed to load vault details after multiple retries');
           setLoading(false);
@@ -417,111 +484,43 @@ const VaultDetailPage: React.FC = () => {
       return;
     }
 
-    // Fallback only for legacy investment vault IDs (not prefixed with vault_)
-    if (isTokenizedId) {
-      setError('Tokenized vault not found');
-      setLoading(false);
-      return;
-    }
+    // Only tokenized vaults are supported
+    setError('Tokenized vault not found');
+    setLoading(false);
+  }, [vaultId, showErrorToast, retryCount]);
 
+  const loadAssets = async (): Promise<void> => {
     try {
-      const endpoint = showLiveMetrics
-        ? `/api/vaults/${encodeURIComponent(vaultId)}?enrich=true`
-        : `/api/vaults/${encodeURIComponent(vaultId)}`;
-      const vaultData = await fetch(`${(import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8080')}${endpoint}`).then(
-        async (r) => {
-          const t = await r.text();
-          return t ? (JSON.parse(t) as Vault) : null;
-        }
-      );
-      setVault(vaultData ?? null);
-      setIsTokenizedVault(false);
-      setTokenizedVaultDetails(null);
-      setLedgerHoldings(null);
-      setLedgerTransactions([]);
-      if (vaultData && showLiveMetrics) {
-        const lm: ManualMetrics = {
-          as_of: (vaultData as unknown as { as_of?: string }).as_of,
-          current_value_usd: (vaultData as unknown as { current_value_usd?: number }).current_value_usd,
-          roi_realtime_percent: (vaultData as unknown as { roi_realtime_percent?: number }).roi_realtime_percent,
-          apr_percent: (vaultData as unknown as { apr_percent?: number }).apr_percent,
-          benchmark_asset: (vaultData as unknown as { benchmark_asset?: string }).benchmark_asset,
-          benchmark_roi_percent: (vaultData as unknown as { benchmark_roi_percent?: number }).benchmark_roi_percent,
-          benchmark_apr_percent: (vaultData as unknown as { benchmark_apr_percent?: number }).benchmark_apr_percent,
-        };
-        setLiveMetrics(lm);
-      } else {
-        setLiveMetrics(null);
-      }
-      setRetryCount(0);
-    } catch (err: unknown) {
-      if (retryCount < MAX_RETRIES) {
-        setTimeout(() => setRetryCount(retryCount + 1), 1000 * (retryCount + 1));
-      } else {
-        const message = err instanceof Error ? err.message : 'Failed to load vault';
-        setError(message);
-        showErrorToast('Failed to load vault details after multiple retries');
-      }
-    } finally {
-      setLoading(false);
-    }
-  }, [vaultId, showErrorToast, showLiveMetrics, retryCount]);
-
-  const loadVaultTransactions = useCallback(async (): Promise<void> => {
-    try {
-      if (!vaultId || isTokenizedVault) {
-        if (isTokenizedVault) {
-          setTransactions([]);
-        }
-        return;
-      }
-      const txs = await transactionApi.list<Transaction[]>({ investment_id: vaultId });
-      setTransactions(Array.isArray(txs) ? txs : []);
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : String(err);
-      console.error('Failed to load vault transactions:', message);
-    }
-  }, [vaultId, isTokenizedVault]);
-
-  const loadVaults = async (): Promise<void> => {
-    try {
-      // Load both legacy vaults and tokenized vaults
-      const [legacyVaults, tokenizedVaultsList] = await Promise.all([
-        vaultApi.getActiveVaults<Array<{ name: string; status: string }>>(),
-        tokenizedVaultApi.list<Array<{ id: string; name: string; status: string }>>(),
+      const assetsData = await adminApi.listAssets();
+      const assetList = (assetsData ?? []) as Array<{
+        symbol?: string;
+        name?: string;
+      }>;
+      const options = assetList.map((a) => {
+        const symbol = String(a.symbol ?? '');
+        const name = String(a.name ?? symbol);
+        return { value: symbol, label: `${symbol} - ${name}` };
+      });
+      setAssetOptions(options);
+    } catch {
+      // Keep default assets if loading fails
+      setAssetOptions([
+        { value: 'USD', label: 'USD - U.S. Dollar' },
+        { value: 'BTC', label: 'BTC - Bitcoin' },
+        { value: 'ETH', label: 'ETH - Ethereum' },
+        { value: 'USDT', label: 'USDT - Tether' },
+        { value: 'USDC', label: 'USDC - USD Coin' },
       ]);
-
-      // Combine and filter out current vault and closed vaults
-      const legacyOptions: Option[] = (legacyVaults ?? [])
-        .filter((v: { name: string; status: string }) => v.name !== vaultId && v.status === 'active')
-        .map((v: { name: string }) => ({ value: v.name, label: `${v.name} (Legacy)` }));
-
-      const tokenizedOptions: Option[] = (tokenizedVaultsList ?? [])
-        .filter((v: { id: string; name: string; status: string }) => v.id !== vaultId && v.status === 'active')
-        .map((v: { id: string; name: string }) => ({ value: v.id, label: `${v.name} (Tokenized)` }));
-
-      setAllVaults([...legacyOptions, ...tokenizedOptions]);
-    } catch {
-      setAllVaults([]);
-    }
-  };
-
-  const loadAccounts = async (): Promise<void> => {
-    try {
-      const accountList = await adminApi.listAccounts<Array<{ name: string; type: string }>>();
-      const accountOptions: Option[] = (accountList ?? []).map((a: { name: string; type: string }) => ({
-        value: a.name,
-        label: `${a.name} (${a.type})`,
-      }));
-      setAccounts(accountOptions);
-    } catch {
-      setAccounts([]);
     }
   };
 
   const handleTokenizedDelete = async (): Promise<void> => {
     if (!tokenizedVaultDetails) return;
-    if (!confirm('Delete this tokenized vault permanently? This action cannot be undone.')) {
+    if (
+      !confirm(
+        'Delete this tokenized vault permanently? This action cannot be undone.'
+      )
+    ) {
       return;
     }
     try {
@@ -529,14 +528,19 @@ const VaultDetailPage: React.FC = () => {
       showSuccessToast('Vault deleted successfully!');
       navigate('/vaults');
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Failed to delete vault';
+      const message =
+        err instanceof Error ? err.message : 'Failed to delete vault';
       showErrorToast(message);
     }
   };
 
   const handleTokenizedClose = async (): Promise<void> => {
     if (!tokenizedVaultDetails) return;
-    if (!confirm('Close this vault? This marks the vault as closed but keeps historical data.')) {
+    if (
+      !confirm(
+        'Close this vault? This marks the vault as closed but keeps historical data.'
+      )
+    ) {
       return;
     }
     try {
@@ -544,12 +548,16 @@ const VaultDetailPage: React.FC = () => {
       showSuccessToast('Vault closed successfully!');
       await loadVault();
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Failed to close vault';
+      const message =
+        err instanceof Error ? err.message : 'Failed to close vault';
       showErrorToast(message);
     }
   };
 
-  const handleTokenizedMetricsUpdate = (metrics: { price: number; totalValue: number }): void => {
+  const handleTokenizedMetricsUpdate = (metrics: {
+    price: number;
+    totalValue: number;
+  }): void => {
     setTokenizedVaultDetails((prev) =>
       prev
         ? {
@@ -579,7 +587,7 @@ const VaultDetailPage: React.FC = () => {
     if (!tokenizedVaultDetails) return;
     const amount = parseFloat(tokenizedDepositAmount ?? '');
     if (!amount || amount <= 0) {
-      showErrorToast('Enter a valid USD amount to deposit');
+      showErrorToast('Enter a valid amount to deposit');
       return;
     }
     const minDep = parseFloat(tokenizedVaultDetails.min_deposit_amount || '0');
@@ -588,16 +596,22 @@ const VaultDetailPage: React.FC = () => {
       return;
     }
     try {
-      await tokenizedVaultApi.deposit(tokenizedVaultDetails.id, { amount, notes: tokenizedNotes || undefined, source_account: tokenizedSourceAccount || undefined });
+      await tokenizedVaultApi.deposit(tokenizedVaultDetails.id, {
+        amount,
+        notes: tokenizedNotes || undefined,
+        source_account: tokenizedSourceAccount || undefined,
+        asset: tokenizedDepositAsset || 'USD',
+      });
       showSuccessToast('Deposit recorded');
       setShowTokenizedDepositForm(false);
       setTokenizedDepositAmount('');
       setTokenizedNotes('');
       setTokenizedSourceAccount('');
+      setTokenizedDepositAsset('USD');
       await loadVault();
-      await loadVaultTransactions();
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Failed to deposit to vault';
+      const message =
+        err instanceof Error ? err.message : 'Failed to deposit to vault';
       showErrorToast(message);
     }
   };
@@ -606,7 +620,7 @@ const VaultDetailPage: React.FC = () => {
     if (!tokenizedVaultDetails) return;
     const amount = parseFloat(tokenizedWithdrawAmount ?? '');
     if (!amount || amount <= 0) {
-      showErrorToast('Enter a valid USD amount to withdraw');
+      showErrorToast('Enter a valid amount to withdraw');
       return;
     }
     const minW = parseFloat(tokenizedVaultDetails.min_withdrawal_amount || '0');
@@ -615,13 +629,17 @@ const VaultDetailPage: React.FC = () => {
       return;
     }
     try {
-      await tokenizedVaultApi.withdraw(tokenizedVaultDetails.id, { amount, notes: tokenizedNotes || undefined });
+      await tokenizedVaultApi.withdraw(tokenizedVaultDetails.id, {
+        amount,
+        notes: tokenizedNotes || undefined,
+        asset: tokenizedWithdrawAsset || 'USD',
+      });
       // Also reflect on Transactions if a target account was provided
       if (tokenizedTargetAccount) {
         await transactionApi.create({
           date: new Date().toISOString(),
           type: 'withdraw',
-          asset: 'USD',
+          asset: tokenizedWithdrawAsset || 'USD',
           account: tokenizedTargetAccount,
           quantity: amount,
           price_local: 1,
@@ -635,10 +653,11 @@ const VaultDetailPage: React.FC = () => {
       setShowTokenizedWithdrawForm(false);
       setTokenizedWithdrawAmount('');
       setTokenizedNotes('');
+      setTokenizedWithdrawAsset('USD');
       await loadVault();
-      await loadVaultTransactions();
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Failed to withdraw from vault';
+      const message =
+        err instanceof Error ? err.message : 'Failed to withdraw from vault';
       showErrorToast(message);
     }
   };
@@ -646,19 +665,44 @@ const VaultDetailPage: React.FC = () => {
   useEffect(() => {
     if (vaultId) {
       void loadVault();
-      void loadVaultTransactions();
-      void loadVaults();
-      void loadAccounts();
+      void loadAssets();
     }
-  }, [vaultId, loadVault, loadVaultTransactions, showLiveMetrics]);
+  }, [vaultId, loadVault]);
+
+  // Load all vaults for the transfer dropdown
+  useEffect(() => {
+    const fetchAllVaults = async () => {
+      try {
+        const vaultsData = await tokenizedVaultApi.list<{
+          id: string;
+          name: string;
+          status: string;
+        }>();
+        const vaults = Array.isArray(vaultsData)
+          ? vaultsData
+              .filter((v) => v.status === 'active' && v.id !== vaultId)
+              .map((v) => ({
+                value: v.id,
+                label: v.name,
+              }))
+          : [];
+        setAllVaults(vaults);
+      } catch (err) {
+        console.error('Failed to load vaults list:', err);
+        setAllVaults([]);
+      }
+    };
+    void fetchAllVaults();
+  }, [vaultId]);
 
   // Load Borrowings summary when viewing the Borrowings vault
   useEffect(() => {
     const fetchBorrowings = async () => {
       try {
         const isBorrowings = isTokenizedVault
-          ? String(tokenizedVaultDetails?.name ?? '').toLowerCase() === 'borrowings'
-          : String(vault?.account ?? vaultId ?? '').toLowerCase() === 'borrowings';
+          ? String(tokenizedVaultDetails?.name ?? '').toLowerCase() ===
+            'borrowings'
+          : vaultId.toLowerCase() === 'borrowings';
         if (!isBorrowings) {
           setBorrowingsSummary(null);
           return;
@@ -667,7 +711,8 @@ const VaultDetailPage: React.FC = () => {
         const liabs = Array.isArray(r?.liabilities) ? r.liabilities : [];
         const mapped = liabs.map((o: Record<string, unknown>) => {
           const counterpartyRaw = o?.counterparty;
-          const counterparty = typeof counterpartyRaw === 'string' ? counterpartyRaw : '';
+          const counterparty =
+            typeof counterpartyRaw === 'string' ? counterpartyRaw : '';
           const assetRaw = o?.asset;
           let asset = '';
           if (typeof assetRaw === 'string') {
@@ -683,171 +728,18 @@ const VaultDetailPage: React.FC = () => {
             valueUSD: Number(o?.valueUSD ?? 0),
           };
         });
-        const outstandingUSD = mapped.reduce((s: number, x: { valueUSD?: number }) => s + (Number(x.valueUSD) || 0), 0);
+        const outstandingUSD = mapped.reduce(
+          (s: number, x: { valueUSD?: number }) =>
+            s + (Number(x.valueUSD) || 0),
+          0
+        );
         setBorrowingsSummary({ outstandingUSD, liabilities: mapped });
       } catch (_e) {
         setBorrowingsSummary(null);
       }
     };
     void fetchBorrowings();
-  }, [isTokenizedVault, tokenizedVaultDetails, vault, vaultId]);
-
-  const handleDeposit = async (): Promise<void> => {
-    if (depositForm.asset === 'USD' && (!depositForm.cost || parseFloat(depositForm.cost) <= 0)) {
-      showErrorToast('Please enter a valid amount');
-      return;
-    }
-    if (depositForm.asset !== 'USD' && (!depositForm.quantity || parseFloat(depositForm.quantity) <= 0)) {
-      showErrorToast('Please enter a valid quantity');
-      return;
-    }
-    if (depositForm.asset !== 'USD' && (!depositForm.cost || parseFloat(depositForm.cost) <= 0)) {
-      showErrorToast('Please enter a valid cost');
-      return;
-    }
-
-    try {
-      if (!vaultId) return;
-      await vaultApi.depositToVault(vaultId, {
-        asset: depositForm.asset,
-        quantity: depositForm.asset === 'USD' ? 1 : parseFloat(depositForm.quantity),
-        cost: parseFloat(depositForm.cost),
-        ...(depositForm.sourceAccount ? { sourceAccount: depositForm.sourceAccount } : {}),
-      });
-
-      // Reflect on Transactions if a source account is provided
-      if (depositForm.sourceAccount) {
-        await transactionApi.create({
-          date: new Date().toISOString(),
-          type: 'deposit',
-          asset: depositForm.asset,
-          account: depositForm.sourceAccount,
-          quantity: parseFloat(depositForm.cost),
-          price_local: 1,
-          counterparty: `Vault ${vaultId}`,
-          note: null,
-          fx_to_usd: 1,
-          fx_to_vnd: 0,
-        });
-      }
-
-      showSuccessToast('Deposit successful!');
-      setShowDepositForm(false);
-      setDepositForm({ asset: 'USD', quantity: '', cost: '', sourceAccount: '' });
-
-      // Reload vault data and transactions
-      await loadVault();
-      await loadVaultTransactions();
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Failed to process deposit';
-      showErrorToast(message);
-    }
-  };
-
-  const handleWithdraw = async (): Promise<void> => {
-    if (withdrawForm.asset === 'USD' && (!withdrawForm.value || parseFloat(withdrawForm.value) <= 0)) {
-      showErrorToast('Please enter a valid amount');
-      return;
-    }
-    if (withdrawForm.asset !== 'USD' && (!withdrawForm.quantity || parseFloat(withdrawForm.quantity) <= 0)) {
-      showErrorToast('Please enter a valid quantity');
-      return;
-    }
-    if (withdrawForm.asset !== 'USD' && (!withdrawForm.value || parseFloat(withdrawForm.value) <= 0)) {
-      showErrorToast('Please enter a valid value');
-      return;
-    }
-
-    try {
-      if (!vaultId) return;
-
-      const targetVault = withdrawForm.targetAccount;
-
-      if (targetVault) {
-        // Transfer between vaults
-        await vaultApi.transferBetweenVaults(vaultId, {
-          to: targetVault,
-          asset: withdrawForm.asset,
-          quantity: withdrawForm.asset === 'USD' ? parseFloat(withdrawForm.value) : parseFloat(withdrawForm.quantity),
-          value: parseFloat(withdrawForm.value),
-        });
-        showSuccessToast(`Transfer to ${targetVault} successful!`);
-      } else {
-        // Regular withdrawal
-        await vaultApi.withdrawFromVault(vaultId, {
-          asset: withdrawForm.asset,
-          quantity: withdrawForm.asset === 'USD' ? parseFloat(withdrawForm.value) : parseFloat(withdrawForm.quantity),
-          value: parseFloat(withdrawForm.value),
-        });
-        showSuccessToast('Withdrawal successful!');
-      }
-
-      setShowWithdrawForm(false);
-      setWithdrawForm({ asset: 'USD', quantity: '', value: '', targetAccount: '' });
-
-      // Reload vault data and transactions
-      await loadVault();
-      await loadVaultTransactions();
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Failed to process withdrawal';
-      showErrorToast(message);
-    }
-  };
-
-  const handleEndVault = async (): Promise<void> => {
-    if (!confirm('Are you sure you want to end this vault? This will mark it as closed.')) {
-      return;
-    }
-
-    try {
-      if (!vaultId) return;
-      await vaultApi.endVault(vaultId);
-      showSuccessToast('Vault ended successfully!');
-      await loadVault();
-      await loadVaultTransactions();
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Failed to end vault';
-      showErrorToast(message);
-    }
-  };
-
-  const handleDeleteVault = async (): Promise<void> => {
-    if (!confirm('Delete this vault permanently? This cannot be undone.')) {
-      return;
-    }
-    try {
-      if (!vaultId) return;
-      await vaultApi.deleteVault(vaultId);
-      showSuccessToast('Vault deleted successfully!');
-      navigate('/vaults');
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Failed to delete vault';
-      showErrorToast(message);
-    }
-  };
-
-  const handleManualUpdate = async (): Promise<void> => {
-    const input = window.prompt('Enter current value (USD) for manual update');
-    if (input === null) return; // cancelled
-    const value = parseFloat(input);
-    if (isNaN(value) || value <= 0) {
-      showErrorToast('Please enter a valid positive number');
-      return;
-    }
-    try {
-      if (!vaultId) return;
-      const data = await vaultApi.refresh<ManualMetrics>(vaultId, { current_value_usd: value, persist: true });
-      if (data) {
-        setManualMetrics(data);
-        showSuccessToast('Manual update calculated');
-        await loadVault();
-        await loadVaultTransactions();
-      }
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Failed to run manual update';
-      showErrorToast(message);
-    }
-  };
+  }, [isTokenizedVault, tokenizedVaultDetails, vaultId]);
 
   const toISODateTime = (value?: string): string => {
     if (!value) return new Date().toISOString();
@@ -857,7 +749,8 @@ const VaultDetailPage: React.FC = () => {
     return `${s}T${timePart}`;
   };
 
-  const isValidDate = (d: Date) => d instanceof Date && !isNaN(d.getTime()) && d.getFullYear() > 1900;
+  const isValidDate = (d: Date) =>
+    d instanceof Date && !isNaN(d.getTime()) && d.getFullYear() > 1900;
 
   const handleDistributeReward = async (): Promise<void> => {
     const amt = parseFloat(rewardAmount ?? '');
@@ -866,7 +759,9 @@ const VaultDetailPage: React.FC = () => {
       return;
     }
     try {
-      const targetName = isTokenizedVault ? (tokenizedVaultDetails?.id ?? vaultId) : vaultId;
+      const targetName = isTokenizedVault
+        ? (tokenizedVaultDetails?.id ?? vaultId)
+        : vaultId;
       await vaultApi.distributeReward(targetName, {
         amount: amt,
         destination: rewardDestination || 'Spend',
@@ -880,152 +775,24 @@ const VaultDetailPage: React.FC = () => {
       setRewardAmount('');
       setRewardNote('');
       await loadVault();
-      await loadVaultTransactions();
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Failed to distribute reward';
+      const message =
+        err instanceof Error ? err.message : 'Failed to distribute reward';
       showErrorToast(message);
     }
   };
 
-  const formatVaultNumber = (value: string | number, decimals: number = 2): string => {
+  const formatVaultNumber = (
+    value: string | number,
+    decimals: number = 2
+  ): string => {
     const num = typeof value === 'string' ? parseFloat(value) : value;
     if (isNaN(num)) return '0';
-    return num.toLocaleString(undefined, { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+    return num.toLocaleString(undefined, {
+      minimumFractionDigits: decimals,
+      maximumFractionDigits: decimals,
+    });
   };
-
-  const vaultColumns: TableColumn<Vault>[] = [
-    {
-      key: 'created_at',
-      title: 'Created',
-      type: 'date',
-    },
-    {
-      key: 'deposit_date',
-      title: 'First Deposit',
-      type: 'date',
-    },
-    {
-      key: 'deposit_qty',
-      title: 'Total Deposited',
-      type: 'number',
-      decimals: 8,
-      render: (value, _column, row) => {
-        const qty = typeof value === 'string' && value !== '' ? parseFloat(value) : 0;
-        const decimals = getDecimalPlaces(row.asset ?? 'USD');
-        return formatVaultNumber(qty, decimals);
-      },
-    },
-    {
-      key: 'deposit_cost',
-      title: 'Total Cost',
-      type: 'currency',
-      currency: 'USD',
-      render: (value) => formatCurrency(typeof value === 'string' && value !== '' ? parseFloat(value) : 0, 'USD'),
-    },
-    {
-      key: 'remaining_qty',
-      title: 'Remaining Balance',
-      type: 'number',
-      decimals: 8,
-      render: (value, _column, row) => {
-        const qty = typeof value === 'string' && value !== '' ? parseFloat(value) : 0;
-        const decimals = getDecimalPlaces(row.asset ?? 'USD');
-        return formatVaultNumber(qty, decimals);
-      },
-    },
-    {
-      key: 'pnl',
-      title: 'Realized P&L',
-      type: 'currency',
-      currency: 'USD',
-      render: (value) => {
-        const pnl = typeof value === 'string' && value !== '' ? parseFloat(value) : 0;
-        const formattedPnL = formatPnL(pnl, 'USD') as { colorClass: string; sign: string; value: string };
-        return <span className={formattedPnL.colorClass}>{formattedPnL.sign}{formattedPnL.value}</span>;
-      },
-    },
-    {
-      key: 'pnl_percent',
-      title: 'ROI %',
-      type: 'number',
-      decimals: 2,
-      render: (value) => {
-        const roi = typeof value === 'string' && value !== '' ? parseFloat(value) : 0;
-        const isPositive = roi > 0;
-        const className = isPositive ? 'text-green-700' : roi < 0 ? 'text-red-700' : 'text-gray-700';
-        return <span className={className}>{formatPercentage(roi / 100, 2)}</span>;
-      },
-    },
-    {
-      key: 'vault_status',
-      title: 'Status',
-      render: (value) => {
-        const status = (typeof value === 'string' ? value : String(value as string ?? '')).toLowerCase();
-        const statusConfig = {
-          active: { label: 'Active', class: 'bg-green-100 text-green-800' },
-          ended: { label: 'Ended', class: 'bg-red-100 text-red-800' },
-          closed: { label: 'Closed', class: 'bg-gray-100 text-gray-800' },
-        };
-        const config = statusConfig[status as keyof typeof statusConfig] || { label: status, class: 'bg-gray-100 text-gray-800' };
-        return (
-          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${config.class}`}>
-            {config.label}
-          </span>
-        );
-      },
-    },
-  ];
-
-  const transactionColumns: TableColumn<Transaction>[] = [
-    {
-      key: 'date',
-      title: 'Date',
-      type: 'date',
-    },
-    {
-      key: 'type',
-      title: 'Type',
-      render: (value: unknown) => {
-        const type = String(value as string ?? '').toLowerCase();
-        const typeConfig = {
-          deposit: { label: 'Deposit', class: 'bg-green-100 text-green-800' },
-          withdrawal: { label: 'Withdrawal', class: 'bg-red-100 text-red-800' },
-          stake: { label: 'Stake', class: 'bg-blue-100 text-blue-800' },
-          unstake: { label: 'Unstake', class: 'bg-purple-100 text-purple-800' },
-        };
-        const config = typeConfig[type as keyof typeof typeConfig] || { label: type, class: 'bg-gray-100 text-gray-800' };
-        return (
-          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${config.class}`}>
-            {config.label}
-          </span>
-        );
-      },
-    },
-    {
-      key: 'asset',
-      title: 'Asset',
-    },
-    {
-      key: 'quantity',
-      title: 'Quantity',
-      type: 'number',
-      decimals: 8,
-    },
-    {
-      key: 'amount_usd',
-      title: 'Amount (USD)',
-      type: 'currency',
-      currency: 'USD',
-    },
-    {
-      key: 'counterparty',
-      title: 'Source/Target',
-    },
-    {
-      key: 'note',
-      title: 'Note',
-    },
-  ];
 
   const tokenizedAssetColumns: TableColumn<TokenizedVaultAsset>[] = [
     {
@@ -1038,8 +805,11 @@ const VaultDetailPage: React.FC = () => {
       type: 'number',
       decimals: 6,
       render: (value) => {
-        const num = typeof value === 'string' ? parseFloat(value) : Number(value ?? 0);
-        return isNaN(num) ? '0' : num.toLocaleString(undefined, { maximumFractionDigits: 6 });
+        const num =
+          typeof value === 'string' ? parseFloat(value) : Number(value ?? 0);
+        return isNaN(num)
+          ? '0'
+          : num.toLocaleString(undefined, { maximumFractionDigits: 6 });
       },
     },
     {
@@ -1047,13 +817,17 @@ const VaultDetailPage: React.FC = () => {
       title: 'Market Value',
       type: 'currency',
       currency: 'USD',
-      render: (value) => formatCurrency(typeof value === 'string' ? parseFloat(value) : Number(value ?? 0)),
+      render: (value) =>
+        formatCurrency(
+          typeof value === 'string' ? parseFloat(value) : Number(value ?? 0)
+        ),
     },
     {
       key: 'allocation_percent',
       title: 'Allocation',
       render: (value) => {
-        const num = typeof value === 'string' ? parseFloat(value) : Number(value ?? 0);
+        const num =
+          typeof value === 'string' ? parseFloat(value) : Number(value ?? 0);
         return isNaN(num) ? '0.00%' : `${num.toFixed(2)}%`;
       },
     },
@@ -1062,58 +836,44 @@ const VaultDetailPage: React.FC = () => {
       title: 'Unrealized P&L',
       type: 'currency',
       currency: 'USD',
-      render: (value) => formatCurrency(typeof value === 'string' ? parseFloat(value) : Number(value ?? 0)),
+      render: (value) =>
+        formatCurrency(
+          typeof value === 'string' ? parseFloat(value) : Number(value ?? 0)
+        ),
     },
     {
       key: 'unrealized_pnl_percent',
       title: 'PnL %',
       render: (value) => {
-        const num = typeof value === 'string' ? parseFloat(value) : Number(value ?? 0);
+        const num =
+          typeof value === 'string' ? parseFloat(value) : Number(value ?? 0);
         return isNaN(num) ? '0.00%' : `${num.toFixed(2)}%`;
       },
     },
   ];
 
   const isUsdOnlyVault = useMemo(() => {
-    return (vault?.asset ?? '').toUpperCase() === 'USD';
-  }, [vault]);
+    return false; // This appears to be unused legacy code
+  }, []);
 
   // Whether the current vault represents the special Borrowings view
   const isBorrowings = useMemo(() => {
-    if (isTokenizedVault) {
-      return String(tokenizedVaultDetails?.name ?? '').toLowerCase() === 'borrowings';
-    }
-    return String(vault?.account ?? vaultId ?? '').toLowerCase() === 'borrowings';
-  }, [isTokenizedVault, tokenizedVaultDetails, vault, vaultId]);
+    return (
+      String(tokenizedVaultDetails?.name ?? '').toLowerCase() === 'borrowings'
+    );
+  }, [tokenizedVaultDetails]);
 
   // Whether the current vault represents the special Spend view
   const isSpend = useMemo(() => {
-    if (isTokenizedVault) {
-      return String(tokenizedVaultDetails?.name ?? '').toLowerCase() === 'spend';
-    }
-    return String(vault?.account ?? vaultId ?? '').toLowerCase() === 'spend';
-  }, [isTokenizedVault, tokenizedVaultDetails, vault, vaultId]);
-
-  useEffect(() => {
-    // When opening deposit form for USD asset, default qty to 1
-    if (depositForm.asset === 'USD' && showDepositForm) {
-      setDepositForm((s) => ({ ...s, quantity: '1' }));
-    }
-  }, [depositForm.asset, showDepositForm]);
-
-  const onChangeWithdrawPercent = (val: string) => {
-    setWithdrawPercent(val);
-    const pct = parseFloat(val ?? '');
-    const rem = parseFloat(String(vault?.remaining_qty ?? '0'));
-    if (!isNaN(pct) && !isNaN(rem)) {
-      const qty = Math.max(0, Math.min(100, pct)) / 100 * rem;
-      setWithdrawForm((s) => ({ ...s, quantity: String(qty) }));
-    }
-  };
+    return String(tokenizedVaultDetails?.name ?? '').toLowerCase() === 'spend';
+  }, [tokenizedVaultDetails]);
 
   // Helpers and handlers for Borrowings quick actions
   const toAssetObj = (symbol: string) => ({
-    type: (symbol.toUpperCase() === 'USD' || symbol.length === 3) ? 'FIAT' as const : 'CRYPTO' as const,
+    type:
+      symbol.toUpperCase() === 'USD' || symbol.length === 3
+        ? ('FIAT' as const)
+        : ('CRYPTO' as const),
     symbol: symbol.toUpperCase(),
   });
 
@@ -1123,7 +883,8 @@ const VaultDetailPage: React.FC = () => {
       const liabs = Array.isArray(r?.liabilities) ? r.liabilities : [];
       const mapped = liabs.map((o: Record<string, unknown>) => {
         const counterpartyRaw = o?.counterparty;
-        const counterparty = typeof counterpartyRaw === 'string' ? counterpartyRaw : '';
+        const counterparty =
+          typeof counterpartyRaw === 'string' ? counterpartyRaw : '';
         const assetRaw = o?.asset;
         let asset = '';
         if (typeof assetRaw === 'string') {
@@ -1139,53 +900,80 @@ const VaultDetailPage: React.FC = () => {
           valueUSD: Number(o?.valueUSD ?? 0),
         };
       });
-      const outstandingUSD = mapped.reduce((s: number, x: { valueUSD?: number }) => s + (Number(x.valueUSD) || 0), 0);
+      const outstandingUSD = mapped.reduce(
+        (s: number, x: { valueUSD?: number }) => s + (Number(x.valueUSD) || 0),
+        0
+      );
       setBorrowingsSummary({ outstandingUSD, liabilities: mapped });
     } catch {
       // ignore
     }
   }, []);
 
-  const handleBorrowSubmit = useCallback(async (d: { date: string; amount: number; account?: string; asset: string; counterparty?: string; note?: string; }) => {
-    await transactionApi.borrow({
-      asset: toAssetObj(d.asset),
-      amount: Number(d.amount),
-      account: d.account ?? undefined,
-      counterparty: d.counterparty ?? 'general',
-      note: d.note ?? undefined,
-      at: d.date,
-    } as { asset: { symbol?: string }; amount: number; account?: string; counterparty: string; note?: string; at: string });
-    await loadVault();
-    await loadVaultTransactions();
-    await _refreshBorrowingsExternal();
-    setShowBorrowModal(false);
-  }, [loadVault, loadVaultTransactions, _refreshBorrowingsExternal]);
+  const handleBorrowSubmit = useCallback(
+    async (d: {
+      date: string;
+      amount: number;
+      account?: string;
+      asset: string;
+      counterparty?: string;
+      note?: string;
+    }) => {
+      await transactionApi.borrow({
+        asset: toAssetObj(d.asset),
+        amount: Number(d.amount),
+        account: d.account ?? undefined,
+        counterparty: d.counterparty ?? 'general',
+        note: d.note ?? undefined,
+        at: d.date,
+      } as {
+        asset: { symbol?: string };
+        amount: number;
+        account?: string;
+        counterparty: string;
+        note?: string;
+        at: string;
+      });
+      await loadVault();
+      await _refreshBorrowingsExternal();
+      setShowBorrowModal(false);
+    },
+    [loadVault, _refreshBorrowingsExternal]
+  );
 
-  const handleRepaySubmit = useCallback(async (d: { date: string; amount: number; account?: string; asset: string; counterparty?: string; note?: string; direction: 'BORROW' | 'LOAN' }) => {
-    await transactionApi.repay({
-      asset: toAssetObj(d.asset),
-      amount: Number(d.amount),
-      account: d.account ?? undefined,
-      counterparty: d.counterparty ?? 'general',
-      note: d.note ?? undefined,
-      direction: 'BORROW',
-      at: d.date,
-    } as { asset: { symbol?: string }; amount: number; account?: string; counterparty: string; note?: string; direction: string; at: string });
-    await loadVault();
-    await loadVaultTransactions();
-    await _refreshBorrowingsExternal();
-    setShowRepayModal(false);
-  }, [loadVault, loadVaultTransactions, _refreshBorrowingsExternal]);
-
-  console.log('VaultDetailPage render:', {
-    loading,
-    error,
-    vault: vault ? 'present' : 'null',
-    tokenized: tokenizedVaultDetails ? 'present' : 'null',
-    isTokenizedVault,
-    vaultId,
-  });
-
+  const handleRepaySubmit = useCallback(
+    async (d: {
+      date: string;
+      amount: number;
+      account?: string;
+      asset: string;
+      counterparty?: string;
+      note?: string;
+      direction: 'BORROW' | 'LOAN';
+    }) => {
+      await transactionApi.repay({
+        asset: toAssetObj(d.asset),
+        amount: Number(d.amount),
+        account: d.account ?? undefined,
+        counterparty: d.counterparty ?? 'general',
+        note: d.note ?? undefined,
+        direction: 'BORROW',
+        at: d.date,
+      } as {
+        asset: { symbol?: string };
+        amount: number;
+        account?: string;
+        counterparty: string;
+        note?: string;
+        direction: string;
+        at: string;
+      });
+      await loadVault();
+      await _refreshBorrowingsExternal();
+      setShowRepayModal(false);
+    },
+    [loadVault, _refreshBorrowingsExternal]
+  );
   if (loading) {
     return (
       <div className="px-4 py-6 sm:px-0">
@@ -1200,12 +988,16 @@ const VaultDetailPage: React.FC = () => {
               isOpen={showBorrowModal}
               mode="borrow"
               onClose={() => setShowBorrowModal(false)}
-              onSubmit={async (d) => { await handleBorrowSubmit(d); }}
+              onSubmit={async (d) => {
+                await handleBorrowSubmit(d);
+              }}
             />
             <QuickRepayModal
               isOpen={showRepayModal}
               onClose={() => setShowRepayModal(false)}
-              onSubmit={async (d) => { await handleRepaySubmit(d); }}
+              onSubmit={async (d) => {
+                await handleRepaySubmit(d);
+              }}
             />
           </>
         )}
@@ -1217,77 +1009,130 @@ const VaultDetailPage: React.FC = () => {
     return (
       <div className="px-4 py-6 sm:px-0">
         <div className="text-center">
-          <h1 className="text-2xl font-bold text-red-600 mb-4">Vault Not Found</h1>
+          <h1 className="text-2xl font-bold text-red-600 mb-4">
+            Vault Not Found
+          </h1>
           <p className="text-gray-600 mb-4">{error}</p>
-          <Button onClick={() => navigate('/vaults')}>
-            Back to Vaults
-          </Button>
+          <Button onClick={() => navigate('/vaults')}>Back to Vaults</Button>
         </div>
       </div>
     );
   }
 
   if (isTokenizedVault && tokenizedVaultDetails) {
-    const tokenPrice = parseFloat(tokenizedVaultDetails.current_share_price ?? '0');
+    const tokenPrice = parseFloat(
+      tokenizedVaultDetails.current_share_price ?? '0'
+    );
     const totalSupply = parseFloat(tokenizedVaultDetails.total_supply ?? '0');
-    const totalValue = parseFloat(tokenizedVaultDetails.total_assets_under_management ?? '0');
+    const totalValue = parseFloat(
+      tokenizedVaultDetails.total_assets_under_management ?? '0'
+    );
 
     // Derive performance from price; when in manual pricing, prefer implied price from rolling AUM to avoid misleading negatives
-    const initialPrice = parseFloat(tokenizedVaultDetails.initial_share_price ?? '0');
-    const perfFromBackend = parseFloat(tokenizedVaultDetails.performance_since_inception ?? '');
+    const initialPrice = parseFloat(
+      tokenizedVaultDetails.initial_share_price ?? '0'
+    );
+    const perfFromBackend = parseFloat(
+      tokenizedVaultDetails.performance_since_inception ?? ''
+    );
 
     // Prefer implied price from valuation+flows so we reflect true gains (e.g., +$5) even if manual price is unchanged
     const priceForPerf = Number.isFinite(impliedPriceFromLedger as number)
       ? (impliedPriceFromLedger as number)
-      : (Number.isFinite(tokenPrice) ? tokenPrice : initialPrice);
+      : Number.isFinite(tokenPrice)
+        ? tokenPrice
+        : initialPrice;
 
-    const referencePrice = (isFinite(initialPrice) && initialPrice > 0) ? initialPrice : 1;
+    const referencePrice =
+      isFinite(initialPrice) && initialPrice > 0 ? initialPrice : 1;
 
-    const perfFromPrice = (isFinite(referencePrice) && referencePrice > 0 && isFinite(priceForPerf) && priceForPerf > 0)
-      ? ((priceForPerf / referencePrice) - 1) * 100
-      : NaN;
+    const perfFromPrice =
+      isFinite(referencePrice) &&
+      referencePrice > 0 &&
+      isFinite(priceForPerf) &&
+      priceForPerf > 0
+        ? (priceForPerf / referencePrice - 1) * 100
+        : NaN;
 
     const inceptionDate = new Date(tokenizedVaultDetails.inception_date);
-    const asOfDate = tokenizedVaultDetails.as_of ? new Date(tokenizedVaultDetails.as_of) : new Date();
+    const asOfDate = tokenizedVaultDetails.as_of
+      ? new Date(tokenizedVaultDetails.as_of)
+      : new Date();
     // Check for invalid dates (e.g., SQL minimum date "0001-01-01")
-    const safeInceptionDate = isValidDate(inceptionDate) ? inceptionDate : new Date();
+    const safeInceptionDate = isValidDate(inceptionDate)
+      ? inceptionDate
+      : new Date();
     const safeAsOfDate = isValidDate(asOfDate) ? asOfDate : new Date();
-    const daysSinceInception = Math.max(1, differenceInDays(safeAsOfDate, safeInceptionDate));
+    const daysSinceInception = Math.max(
+      1,
+      differenceInDays(safeAsOfDate, safeInceptionDate)
+    );
     const yearsSinceInception = daysSinceInception / 365.25;
 
     // Performance for header should be price-based to avoid flow artifacts (use implied price when available)
-    const perfRaw = Number.isFinite(perfFromPrice) ? perfFromPrice : (Number.isFinite(perfFromBackend) ? perfFromBackend : 0);
+    const perfRaw = Number.isFinite(perfFromPrice)
+      ? perfFromPrice
+      : Number.isFinite(perfFromBackend)
+        ? perfFromBackend
+        : 0;
     const EPS = 0.01; // ignore +/- 1bp noise
     const performance = Math.abs(perfRaw) < EPS ? 0 : perfRaw;
 
     // APR derived from price-based performance; avoid over-annualizing short histories (< 30 days)
     const roiDecimal = (performance || 0) / 100;
-    const aprSinceInception = daysSinceInception >= 30 && yearsSinceInception > 0
-      ? (Math.pow(1 + roiDecimal, 1 / yearsSinceInception) - 1) * 100
-      : performance;
-    const perfDisplay = (typeof headerMetrics?.roi_percent === 'number' && isFinite(headerMetrics.roi_percent)) ? headerMetrics.roi_percent : performance;
-    const aprDisplay = (typeof headerMetrics?.apr_percent === 'number' && isFinite(headerMetrics.apr_percent)) ? headerMetrics.apr_percent : aprSinceInception;
+    const aprSinceInception =
+      daysSinceInception >= 30 && yearsSinceInception > 0
+        ? (Math.pow(1 + roiDecimal, 1 / yearsSinceInception) - 1) * 100
+        : performance;
+    const perfDisplay =
+      typeof headerMetrics?.roi_percent === 'number' &&
+      isFinite(headerMetrics.roi_percent)
+        ? headerMetrics.roi_percent
+        : performance;
+    const aprDisplay =
+      typeof headerMetrics?.apr_percent === 'number' &&
+      isFinite(headerMetrics.apr_percent)
+        ? headerMetrics.apr_percent
+        : aprSinceInception;
     const status = tokenizedVaultDetails.status?.toLowerCase() ?? 'unknown';
     const statusConfig: Record<string, { label: string; className: string }> = {
       active: { label: 'Active', className: 'bg-green-100 text-green-800' },
       paused: { label: 'Paused', className: 'bg-yellow-100 text-yellow-800' },
       closed: { label: 'Closed', className: 'bg-gray-100 text-gray-800' },
-      liquidating: { label: 'Liquidating', className: 'bg-red-100 text-red-800' },
+      liquidating: {
+        label: 'Liquidating',
+        className: 'bg-red-100 text-red-800',
+      },
     };
-    const statusBadge = statusConfig[status] ?? { label: status, className: 'bg-gray-100 text-gray-800' };
-    const isBorrowings = (tokenizedVaultDetails.name ?? '').toLowerCase() === 'borrowings';
+    const statusBadge = statusConfig[status] ?? {
+      label: status,
+      className: 'bg-gray-100 text-gray-800',
+    };
+    const isBorrowings =
+      (tokenizedVaultDetails.name ?? '').toLowerCase() === 'borrowings';
 
-    const canDeposit = tokenizedVaultDetails.status === 'active' && tokenizedVaultDetails.is_deposit_allowed;
-    const canWithdraw = tokenizedVaultDetails.status === 'active' && tokenizedVaultDetails.is_withdrawal_allowed;
+    const canDeposit =
+      tokenizedVaultDetails.status === 'active' &&
+      tokenizedVaultDetails.is_deposit_allowed;
+    const canWithdraw =
+      tokenizedVaultDetails.status === 'active' &&
+      tokenizedVaultDetails.is_withdrawal_allowed;
 
-    const toAssetObj = (symbol: string) => ({ type: (symbol.toUpperCase() === 'USD' || symbol.length === 3) ? 'FIAT' as const : 'CRYPTO' as const, symbol: symbol.toUpperCase() });
+    const toAssetObj = (symbol: string) => ({
+      type:
+        symbol.toUpperCase() === 'USD' || symbol.length === 3
+          ? ('FIAT' as const)
+          : ('CRYPTO' as const),
+      symbol: symbol.toUpperCase(),
+    });
     const _refreshBorrowings = async () => {
       try {
         const r = await portfolioApi.report<Record<string, unknown>>();
         const liabs = Array.isArray(r?.liabilities) ? r.liabilities : [];
         const mapped = liabs.map((o: Record<string, unknown>) => {
           const counterpartyRaw = o?.counterparty;
-          const counterparty = typeof counterpartyRaw === 'string' ? counterpartyRaw : '';
+          const counterparty =
+            typeof counterpartyRaw === 'string' ? counterpartyRaw : '';
           const assetRaw = o?.asset;
           let asset = '';
           if (typeof assetRaw === 'string') {
@@ -1303,14 +1148,25 @@ const VaultDetailPage: React.FC = () => {
             valueUSD: Number(o?.valueUSD ?? 0),
           };
         });
-        const outstandingUSD = mapped.reduce((s: number, x: { valueUSD?: number }) => s + (Number(x.valueUSD) || 0), 0);
+        const outstandingUSD = mapped.reduce(
+          (s: number, x: { valueUSD?: number }) =>
+            s + (Number(x.valueUSD) || 0),
+          0
+        );
         setBorrowingsSummary({ outstandingUSD, liabilities: mapped });
       } catch {
         // ignore
       }
     };
 
-    const _handleBorrowSubmit = async (d: { date: string; amount: number; account?: string; asset: string; counterparty?: string; note?: string; }) => {
+    const _handleBorrowSubmit = async (d: {
+      date: string;
+      amount: number;
+      account?: string;
+      asset: string;
+      counterparty?: string;
+      note?: string;
+    }) => {
       await transactionApi.borrow({
         asset: toAssetObj(d.asset),
         amount: Number(d.amount),
@@ -1318,31 +1174,24 @@ const VaultDetailPage: React.FC = () => {
         counterparty: d.counterparty ?? 'general',
         note: d.note ?? undefined,
         at: d.date,
-      } as { asset: { symbol?: string }; amount: number; account?: string; counterparty: string; note?: string; at: string });
+      } as {
+        asset: { symbol?: string };
+        amount: number;
+        account?: string;
+        counterparty: string;
+        note?: string;
+        at: string;
+      });
       await loadVault();
-      await loadVaultTransactions();
       await _refreshBorrowings();
       setShowBorrowModal(false);
     };
 
-    const _handleRepaySubmit = async (d: { date: string; amount: number; account?: string; asset: string; counterparty?: string; note?: string; direction: 'BORROW' | 'LOAN' }) => {
-      await transactionApi.repay({
-        asset: toAssetObj(d.asset),
-        amount: Number(d.amount),
-        account: d.account ?? undefined,
-        counterparty: d.counterparty ?? 'general',
-        note: d.note ?? undefined,
-        direction: 'BORROW',
-        at: d.date,
-      } as { asset: { symbol?: string }; amount: number; account?: string; counterparty: string; note?: string; direction: string; at: string });
-      await loadVault();
-      await loadVaultTransactions();
-      await _refreshBorrowings();
-      setShowRepayModal(false);
-    };
-
     return (
-      <div className="px-4 py-6 sm:px-0" data-testid="tokenized-vault-detail-page">
+      <div
+        className="px-4 py-6 sm:px-0"
+        data-testid="tokenized-vault-detail-page"
+      >
         <div className="mb-6 flex items-center justify-between">
           <div>
             <Button
@@ -1353,11 +1202,16 @@ const VaultDetailPage: React.FC = () => {
               ← Back to Vaults
             </Button>
             <h1 className="text-3xl font-bold text-gray-900 mb-1">
-              {tokenizedVaultDetails.name} ({tokenizedVaultDetails.token_symbol})
+              {tokenizedVaultDetails.name} ({tokenizedVaultDetails.token_symbol}
+              )
             </h1>
-            <p className="text-gray-600">{tokenizedVaultDetails.description ?? 'Tokenized vault overview'}</p>
+            <p className="text-gray-600">
+              {tokenizedVaultDetails.description ?? 'Tokenized vault overview'}
+            </p>
           </div>
-          <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${statusBadge.className}`}>
+          <span
+            className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${statusBadge.className}`}
+          >
             {statusBadge.label}
           </span>
         </div>
@@ -1366,17 +1220,25 @@ const VaultDetailPage: React.FC = () => {
         {isBorrowings && (
           <Card className="mb-6">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
-              <CardTitle className="text-lg font-semibold">Borrowings Overview</CardTitle>
+              <CardTitle className="text-lg font-semibold">
+                Borrowings Overview
+              </CardTitle>
               <div className="flex gap-2">
                 <Button
-                  onClick={() => { setShowBorrowModal(true); setShowRepayModal(false); }}
+                  onClick={() => {
+                    setShowBorrowModal(true);
+                    setShowRepayModal(false);
+                  }}
                   variant="destructive"
                   size="sm"
                 >
                   Borrow
                 </Button>
                 <Button
-                  onClick={() => { setShowRepayModal(true); setShowBorrowModal(false); }}
+                  onClick={() => {
+                    setShowRepayModal(true);
+                    setShowBorrowModal(false);
+                  }}
                   size="sm"
                 >
                   Repay
@@ -1384,46 +1246,63 @@ const VaultDetailPage: React.FC = () => {
               </div>
             </CardHeader>
             <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div>
-                <div className="text-gray-500 text-sm">Outstanding Balance</div>
-                <div className="text-2xl font-bold text-red-700">{formatCurrency(Math.abs(borrowingsSummary?.outstandingUSD ?? 0))}</div>
-                <div className="text-xs text-gray-500">Liability</div>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <div className="text-gray-500 text-sm">
+                    Outstanding Balance
+                  </div>
+                  <div className="text-2xl font-bold text-red-700">
+                    {formatCurrency(
+                      Math.abs(borrowingsSummary?.outstandingUSD ?? 0)
+                    )}
+                  </div>
+                  <div className="text-xs text-gray-500">Liability</div>
+                </div>
+                <div>
+                  <div className="text-gray-500 text-sm">Entries</div>
+                  <div className="text-xl font-semibold">
+                    {borrowingsSummary?.liabilities?.length ?? 0}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-gray-500 text-sm">Updated</div>
+                  <div className="text-sm">{new Date().toLocaleString()}</div>
+                </div>
               </div>
-              <div>
-                <div className="text-gray-500 text-sm">Entries</div>
-                <div className="text-xl font-semibold">{borrowingsSummary?.liabilities?.length ?? 0}</div>
-              </div>
-              <div>
-                <div className="text-gray-500 text-sm">Updated</div>
-                <div className="text-sm">{new Date().toLocaleString()}</div>
-              </div>
-            </div>
-            {borrowingsSummary && borrowingsSummary.liabilities.length > 0 && (
-              <div className="mt-4 overflow-x-auto">
-                <table className="min-w-full text-sm">
-                  <thead>
-                    <tr className="text-left text-gray-600">
-                      <th className="py-2 pr-4">Counterparty</th>
-                      <th className="py-2 pr-4">Asset</th>
-                      <th className="py-2 pr-4">Amount</th>
-                      <th className="py-2 pr-4">Value (USD)</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {borrowingsSummary.liabilities.map((o, idx) => (
-                      <tr key={idx} className="border-t">
-                        <td className="py-2 pr-4">{o.counterparty || 'general'}</td>
-                        <td className="py-2 pr-4">{o.asset}</td>
-                        <td className="py-2 pr-4">{Number(o.amount).toLocaleString(undefined, { maximumFractionDigits: 6 })}</td>
-                        <td className="py-2 pr-4">{formatCurrency(o.valueUSD)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </CardContent>
+              {borrowingsSummary &&
+                borrowingsSummary.liabilities.length > 0 && (
+                  <div className="mt-4 overflow-x-auto">
+                    <table className="min-w-full text-sm">
+                      <thead>
+                        <tr className="text-left text-gray-600">
+                          <th className="py-2 pr-4">Counterparty</th>
+                          <th className="py-2 pr-4">Asset</th>
+                          <th className="py-2 pr-4">Amount</th>
+                          <th className="py-2 pr-4">Value (USD)</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {borrowingsSummary.liabilities.map((o, idx) => (
+                          <tr key={idx} className="border-t">
+                            <td className="py-2 pr-4">
+                              {o.counterparty || 'general'}
+                            </td>
+                            <td className="py-2 pr-4">{o.asset}</td>
+                            <td className="py-2 pr-4">
+                              {Number(o.amount).toLocaleString(undefined, {
+                                maximumFractionDigits: 6,
+                              })}
+                            </td>
+                            <td className="py-2 pr-4">
+                              {formatCurrency(o.valueUSD)}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+            </CardContent>
           </Card>
         )}
 
@@ -1431,132 +1310,201 @@ const VaultDetailPage: React.FC = () => {
         {isSpend && !isBorrowings && (
           <Card className="mb-6">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
-              <CardTitle className="text-lg font-semibold">💰 Spend Account Overview</CardTitle>
+              <CardTitle className="text-lg font-semibold">
+                💰 Spend Account Overview
+              </CardTitle>
               <span className="text-xs text-gray-500">Cash Tracking</span>
             </CardHeader>
             <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div>
-                <div className="text-gray-500 text-sm">Current Balance</div>
-                <div className="text-2xl font-bold text-green-700">
-                  {formatCurrency(headerMetrics?.aum_usd ?? 0)}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <div className="text-gray-500 text-sm">Current Balance</div>
+                  <div className="text-2xl font-bold text-green-700">
+                    {formatCurrency(headerMetrics?.aum_usd ?? 0)}
+                  </div>
+                  <div className="text-xs text-gray-500 mt-1">
+                    Available to spend
+                  </div>
                 </div>
-                <div className="text-xs text-gray-500 mt-1">Available to spend</div>
-              </div>
-              <div>
-                <div className="text-gray-500 text-sm">Total Income</div>
-                <div className="text-xl font-semibold">
-                  {formatCurrency(headerMetrics?.deposits_cum_usd ?? 0)}
+                <div>
+                  <div className="text-gray-500 text-sm">Total Income</div>
+                  <div className="text-xl font-semibold">
+                    {formatCurrency(headerMetrics?.deposits_cum_usd ?? 0)}
+                  </div>
+                  <div className="text-xs text-gray-500 mt-1">All deposits</div>
                 </div>
-                <div className="text-xs text-gray-500 mt-1">All deposits</div>
-              </div>
-              <div>
-                <div className="text-gray-500 text-sm">Total Spent</div>
-                <div className="text-xl font-semibold text-red-600">
-                  {formatCurrency(headerMetrics?.withdrawals_cum_usd ?? 0)}
+                <div>
+                  <div className="text-gray-500 text-sm">Total Spent</div>
+                  <div className="text-xl font-semibold text-red-600">
+                    {formatCurrency(headerMetrics?.withdrawals_cum_usd ?? 0)}
+                  </div>
+                  <div className="text-xs text-gray-500 mt-1">
+                    All withdrawals
+                  </div>
                 </div>
-                <div className="text-xs text-gray-500 mt-1">All withdrawals</div>
               </div>
-            </div>
-            <div className="mt-4 p-3 bg-blue-50 rounded-md">
-              <p className="text-sm text-blue-800">
-                <strong>Simple Balance Tracking:</strong> Income - Expenses = Current Balance
-              </p>
-              <p className="text-xs text-blue-600 mt-1">
-                No P&amp;L or ROI calculations for this account (it&apos;s cash, not an investment)
-              </p>
-            </div>
-          </CardContent>
+              <div className="mt-4 p-3 bg-blue-50 rounded-md">
+                <p className="text-sm text-blue-800">
+                  <strong>Simple Balance Tracking:</strong> Income - Expenses =
+                  Current Balance
+                </p>
+                <p className="text-xs text-blue-600 mt-1">
+                  No P&amp;L or ROI calculations for this account (it&apos;s
+                  cash, not an investment)
+                </p>
+              </div>
+            </CardContent>
           </Card>
         )}
 
         {!isBorrowings && !isSpend && (
-        <>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
-          <Card>
-            <CardContent className="p-4">
-              <h3 className="text-sm font-medium text-gray-500 mb-2">Token Price</h3>
-              <p className="text-2xl font-bold text-gray-900">${isNaN(tokenPrice) ? '0.0000' : tokenPrice.toFixed(4)}</p>
-              <p className="text-sm text-gray-600">{tokenizedVaultDetails.is_user_defined_price ? 'Manual price' : 'Live price'}</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4">
-              <h3 className="text-sm font-medium text-gray-500 mb-2">Total Supply</h3>
-              <p className="text-2xl font-bold text-gray-900">
-                {isNaN(totalSupply) ? '0' : totalSupply.toLocaleString(undefined, { maximumFractionDigits: 2 })}
-              </p>
-              <p className="text-sm text-gray-600">Tokens issued</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4">
-              <h3 className="text-sm font-medium text-gray-500 mb-2">Assets Under Management</h3>
-              <p className="text-2xl font-bold text-gray-900">{(() => {
-                const base = isNaN(totalValue) ? 0 : totalValue;
-                const roll = typeof rollingAUM === 'number' && isFinite(rollingAUM) ? rollingAUM : undefined;
-                const backend = typeof headerMetrics?.aum_usd === 'number' && isFinite(headerMetrics.aum_usd) ? headerMetrics.aum_usd : undefined;
-                return formatCurrency(backend ?? roll ?? base);
-              })()}</p>
-              <p className="text-sm text-gray-600">{(() => {
-                if (tokenizedVaultDetails.is_user_defined_price) return 'Manual pricing';
-                return (typeof headerMetrics?.aum_usd === 'number' && isFinite(headerMetrics.aum_usd))
-                  ? 'Backend rolling AUM'
-                  : (typeof rollingAUM === 'number' && isFinite(rollingAUM)) ? 'Rolling since last valuation' : 'Total vault value';
-              })()}</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4">
-              <h3 className="text-sm font-medium text-gray-500 mb-2">Performance Since Inception</h3>
-              <p className={`text-2xl font-bold ${perfDisplay >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                {formatPercentage((perfDisplay || 0) / 100, 2)}
-              </p>
-              <p className="text-sm text-gray-600">Relative to initial share price</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4">
-              <h3 className="text-sm font-medium text-gray-500 mb-2">APR Since Inception</h3>
-              <p className={`text-2xl font-bold ${aprDisplay >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                {formatPercentage((aprDisplay || 0) / 100, 2)}
-              </p>
-              <p className="text-sm text-gray-600">Annualized from inception</p>
-            </CardContent>
-          </Card>
-        </div>
+          <>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
+              <Card>
+                <CardContent className="p-4">
+                  <h3 className="text-sm font-medium text-gray-500 mb-2">
+                    Token Price
+                  </h3>
+                  <p className="text-2xl font-bold text-gray-900">
+                    ${isNaN(tokenPrice) ? '0.0000' : tokenPrice.toFixed(4)}
+                  </p>
+                  <p className="text-sm text-gray-600">
+                    {tokenizedVaultDetails.is_user_defined_price
+                      ? 'Manual price'
+                      : 'Live price'}
+                  </p>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="p-4">
+                  <h3 className="text-sm font-medium text-gray-500 mb-2">
+                    Total Supply
+                  </h3>
+                  <p className="text-2xl font-bold text-gray-900">
+                    {isNaN(totalSupply)
+                      ? '0'
+                      : totalSupply.toLocaleString(undefined, {
+                          maximumFractionDigits: 2,
+                        })}
+                  </p>
+                  <p className="text-sm text-gray-600">Tokens issued</p>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="p-4">
+                  <h3 className="text-sm font-medium text-gray-500 mb-2">
+                    Assets Under Management
+                  </h3>
+                  <p className="text-2xl font-bold text-gray-900">
+                    {(() => {
+                      const base = isNaN(totalValue) ? 0 : totalValue;
+                      const roll =
+                        typeof rollingAUM === 'number' && isFinite(rollingAUM)
+                          ? rollingAUM
+                          : undefined;
+                      const backend =
+                        typeof headerMetrics?.aum_usd === 'number' &&
+                        isFinite(headerMetrics.aum_usd)
+                          ? headerMetrics.aum_usd
+                          : undefined;
+                      return formatCurrency(backend ?? roll ?? base);
+                    })()}
+                  </p>
+                  <p className="text-sm text-gray-600">
+                    {(() => {
+                      if (tokenizedVaultDetails.is_user_defined_price)
+                        return 'Manual pricing';
+                      return typeof headerMetrics?.aum_usd === 'number' &&
+                        isFinite(headerMetrics.aum_usd)
+                        ? 'Backend rolling AUM'
+                        : typeof rollingAUM === 'number' && isFinite(rollingAUM)
+                          ? 'Rolling since last valuation'
+                          : 'Total vault value';
+                    })()}
+                  </p>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="p-4">
+                  <h3 className="text-sm font-medium text-gray-500 mb-2">
+                    Performance Since Inception
+                  </h3>
+                  <p
+                    className={`text-2xl font-bold ${perfDisplay >= 0 ? 'text-green-600' : 'text-red-600'}`}
+                  >
+                    {formatPercentage((perfDisplay || 0) / 100, 2)}
+                  </p>
+                  <p className="text-sm text-gray-600">
+                    Relative to initial share price
+                  </p>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="p-4">
+                  <h3 className="text-sm font-medium text-gray-500 mb-2">
+                    APR Since Inception
+                  </h3>
+                  <p
+                    className={`text-2xl font-bold ${aprDisplay >= 0 ? 'text-green-600' : 'text-red-600'}`}
+                  >
+                    {formatPercentage((aprDisplay || 0) / 100, 2)}
+                  </p>
+                  <p className="text-sm text-gray-600">
+                    Annualized from inception
+                  </p>
+                </CardContent>
+              </Card>
+            </div>
 
-        {/* Time Series: APR and PnL over time */}
-        {vaultSeries.length > 0 && (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
-            <Card>
-              <CardContent className="p-4">
-                <h3 className="text-sm font-medium text-gray-900 mb-3">PnL Over Time</h3>
-                <div style={{ height: 280 }}>
-                  <TimeSeriesLineChart
-                    labels={vaultSeries.map(p => p.date)}
-                    datasets={[{ label: 'PnL (USD)', data: vaultSeries.map(p => p.pnl_usd), color: '#059669', fill: true }]}
-                    yFormat="currency"
-                    currency="USD"
-                  />
-                </div>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="p-4">
-                <h3 className="text-sm font-medium text-gray-900 mb-3">APR Over Time</h3>
-                <div style={{ height: 280 }}>
-                  <TimeSeriesLineChart
-                    labels={vaultSeries.map(p => p.date)}
-                    datasets={[{ label: 'APR (%)', data: vaultSeries.map(p => p.apr_percent), color: '#2563EB', fill: true }]}
-                    yFormat="percent"
-                  />
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-        )}
-        </>
+            {/* Time Series: APR and PnL over time */}
+            {vaultSeries.length > 0 && (
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
+                <Card>
+                  <CardContent className="p-4">
+                    <h3 className="text-sm font-medium text-gray-900 mb-3">
+                      PnL Over Time
+                    </h3>
+                    <div style={{ height: 280 }}>
+                      <TimeSeriesLineChart
+                        labels={vaultSeries.map((p) => p.date)}
+                        datasets={[
+                          {
+                            label: 'PnL (USD)',
+                            data: vaultSeries.map((p) => p.pnl_usd),
+                            color: '#059669',
+                            fill: true,
+                          },
+                        ]}
+                        yFormat="currency"
+                        currency="USD"
+                      />
+                    </div>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="p-4">
+                    <h3 className="text-sm font-medium text-gray-900 mb-3">
+                      APR Over Time
+                    </h3>
+                    <div style={{ height: 280 }}>
+                      <TimeSeriesLineChart
+                        labels={vaultSeries.map((p) => p.date)}
+                        datasets={[
+                          {
+                            label: 'APR (%)',
+                            data: vaultSeries.map((p) => p.apr_percent),
+                            color: '#2563EB',
+                            fill: true,
+                          },
+                        ]}
+                        yFormat="percent"
+                      />
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+            )}
+          </>
         )}
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
@@ -1565,7 +1513,13 @@ const VaultDetailPage: React.FC = () => {
               <ManualPricingControl
                 vaultId={tokenizedVaultDetails.id}
                 currentPrice={isNaN(tokenPrice) ? 0 : tokenPrice}
-                currentTotalValue={(typeof rollingAUM === 'number' && isFinite(rollingAUM)) ? rollingAUM : (isNaN(totalValue) ? 0 : totalValue)}
+                currentTotalValue={
+                  typeof rollingAUM === 'number' && isFinite(rollingAUM)
+                    ? rollingAUM
+                    : isNaN(totalValue)
+                      ? 0
+                      : totalValue
+                }
                 totalSupply={isNaN(totalSupply) ? 0 : totalSupply}
                 isManualPricing={tokenizedVaultDetails.is_user_defined_price}
                 onMetricsUpdate={handleTokenizedMetricsUpdate}
@@ -1575,38 +1529,74 @@ const VaultDetailPage: React.FC = () => {
           </Card>
           <Card>
             <CardContent className="p-4">
-              <h3 className="text-sm font-medium text-gray-900 mb-3">Vault Configuration</h3>
-            <dl className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
-              <div>
-                <dt className="text-gray-500">Inception Date</dt>
-                <dd className="text-gray-900">{isValidDate(new Date(tokenizedVaultDetails.inception_date)) ? format(new Date(tokenizedVaultDetails.inception_date), 'MMM d, yyyy') : '—'}</dd>
-              </div>
-              <div>
-                <dt className="text-gray-500">Last Updated</dt>
-                <dd className="text-gray-900">{isValidDate(new Date(tokenizedVaultDetails.last_updated)) ? format(new Date(tokenizedVaultDetails.last_updated), 'MMM d, yyyy HH:mm') : '—'}</dd>
-              </div>
-              <div>
-                <dt className="text-gray-500">Created By</dt>
-                <dd className="text-gray-900">{tokenizedVaultDetails.created_by}</dd>
-              </div>
-              <div>
-                <dt className="text-gray-500">Price Last Updated</dt>
-                <dd className="text-gray-900">
-                  {tokenizedVaultDetails.price_last_updated_at && isValidDate(new Date(tokenizedVaultDetails.price_last_updated_at))
-                    ? format(new Date(tokenizedVaultDetails.price_last_updated_at), 'MMM d, yyyy HH:mm')
-                    : '—'}
-                </dd>
-              </div>
-              <div>
-                <dt className="text-gray-500">Min Deposit</dt>
-                <dd className="text-gray-900">{formatCurrency(parseFloat(tokenizedVaultDetails.min_deposit_amount ?? '0'))}</dd>
-              </div>
-              <div>
-                <dt className="text-gray-500">Min Withdrawal</dt>
-                <dd className="text-gray-900">{formatCurrency(parseFloat(tokenizedVaultDetails.min_withdrawal_amount ?? '0'))}</dd>
-              </div>
-            </dl>
-          </CardContent>
+              <h3 className="text-sm font-medium text-gray-900 mb-3">
+                Vault Configuration
+              </h3>
+              <dl className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+                <div>
+                  <dt className="text-gray-500">Inception Date</dt>
+                  <dd className="text-gray-900">
+                    {isValidDate(new Date(tokenizedVaultDetails.inception_date))
+                      ? format(
+                          new Date(tokenizedVaultDetails.inception_date),
+                          'MMM d, yyyy'
+                        )
+                      : '—'}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-gray-500">Last Updated</dt>
+                  <dd className="text-gray-900">
+                    {isValidDate(new Date(tokenizedVaultDetails.last_updated))
+                      ? format(
+                          new Date(tokenizedVaultDetails.last_updated),
+                          'MMM d, yyyy HH:mm'
+                        )
+                      : '—'}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-gray-500">Created By</dt>
+                  <dd className="text-gray-900">
+                    {tokenizedVaultDetails.created_by}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-gray-500">Price Last Updated</dt>
+                  <dd className="text-gray-900">
+                    {tokenizedVaultDetails.price_last_updated_at &&
+                    isValidDate(
+                      new Date(tokenizedVaultDetails.price_last_updated_at)
+                    )
+                      ? format(
+                          new Date(tokenizedVaultDetails.price_last_updated_at),
+                          'MMM d, yyyy HH:mm'
+                        )
+                      : '—'}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-gray-500">Min Deposit</dt>
+                  <dd className="text-gray-900">
+                    {formatCurrency(
+                      parseFloat(
+                        tokenizedVaultDetails.min_deposit_amount ?? '0'
+                      )
+                    )}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-gray-500">Min Withdrawal</dt>
+                  <dd className="text-gray-900">
+                    {formatCurrency(
+                      parseFloat(
+                        tokenizedVaultDetails.min_withdrawal_amount ?? '0'
+                      )
+                    )}
+                  </dd>
+                </div>
+              </dl>
+            </CardContent>
           </Card>
         </div>
 
@@ -1670,99 +1660,115 @@ const VaultDetailPage: React.FC = () => {
               setShowTokenizedWithdrawForm(false);
             }}
             variant="default"
-              className="bg-purple-600 hover:bg-purple-700"
-            >
-              Distribute Reward
-            </Button>
+            className="bg-purple-600 hover:bg-purple-700"
+          >
+            Distribute Reward
+          </Button>
         </div>
 
         {(showTokenizedDepositForm || showTokenizedWithdrawForm) && (
           <Card className="mb-6">
             <CardHeader>
               <h3 className="text-lg font-semibold mb-4">
-                {showTokenizedDepositForm ? 'Deposit to Vault' : 'Withdraw from Vault'}
+                {showTokenizedDepositForm
+                  ? 'Deposit to Vault'
+                  : 'Withdraw from Vault'}
               </h3>
             </CardHeader>
             <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Amount (USD)</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  value={showTokenizedDepositForm ? tokenizedDepositAmount : tokenizedWithdrawAmount}
-                  onChange={(e) =>
-                    showTokenizedDepositForm
-                      ? setTokenizedDepositAmount(e.target.value)
-                      : setTokenizedWithdrawAmount(e.target.value)
-                  }
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                  placeholder={showTokenizedDepositForm
-                    ? tokenizedVaultDetails.min_deposit_amount
-                    : tokenizedVaultDetails.min_withdrawal_amount}
-                />
-              </div>
-
-              {showTokenizedDepositForm ? (
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Source Account (optional)</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Asset
+                  </label>
                   <ComboBox
-                    options={accounts}
-                    value={tokenizedSourceAccount}
-                    onChange={(v) => setTokenizedSourceAccount(String(v))}
-                    placeholder="Choose account to deduct from"
+                    options={assetOptions}
+                    value={
+                      showTokenizedDepositForm
+                        ? tokenizedDepositAsset
+                        : tokenizedWithdrawAsset
+                    }
+                    onChange={(value) => {
+                      if (showTokenizedDepositForm) {
+                        setTokenizedDepositAsset(String(value));
+                      } else {
+                        setTokenizedWithdrawAsset(String(value));
+                      }
+                    }}
+                    placeholder="Asset"
                   />
                 </div>
-              ) : (
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Target Vault (optional)</label>
-                  <ComboBox
-                    options={allVaults}
-                    value={tokenizedTargetAccount}
-                    onChange={(v) => setTokenizedTargetAccount(String(v))}
-                    placeholder="Choose vault to transfer to"
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Amount (USD)
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={
+                      showTokenizedDepositForm
+                        ? tokenizedDepositAmount
+                        : tokenizedWithdrawAmount
+                    }
+                    onChange={(e) =>
+                      showTokenizedDepositForm
+                        ? setTokenizedDepositAmount(e.target.value)
+                        : setTokenizedWithdrawAmount(e.target.value)
+                    }
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                    placeholder={
+                      showTokenizedDepositForm
+                        ? tokenizedVaultDetails.min_deposit_amount
+                        : tokenizedVaultDetails.min_withdrawal_amount
+                    }
                   />
                 </div>
-              )}
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Notes (optional)</label>
-                <input
-                  type="text"
-                  value={tokenizedNotes}
-                  onChange={(e) => setTokenizedNotes(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                  placeholder="Reason or memo"
-                />
+                {!showTokenizedDepositForm && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Target Vault (optional)
+                    </label>
+                    <ComboBox
+                      options={allVaults}
+                      value={tokenizedTargetAccount}
+                      onChange={(v) => setTokenizedTargetAccount(String(v))}
+                      placeholder="Choose vault to transfer to"
+                    />
+                  </div>
+                )}
               </div>
-            </div>
-            <div className="flex space-x-3">
-              {showTokenizedDepositForm ? (
+              <div className="flex space-x-3">
+                {showTokenizedDepositForm ? (
+                  <Button
+                    onClick={() => {
+                      void handleTokenizedDeposit();
+                    }}
+                  >
+                    Deposit
+                  </Button>
+                ) : (
+                  <Button
+                    onClick={() => {
+                      void handleTokenizedWithdraw();
+                    }}
+                  >
+                    Withdraw
+                  </Button>
+                )}
                 <Button
-                  onClick={() => { void handleTokenizedDeposit(); }}
+                  onClick={() => {
+                    setShowTokenizedDepositForm(false);
+                    setShowTokenizedWithdrawForm(false);
+                    setTokenizedNotes('');
+                  }}
+                  variant="outline"
                 >
-                  Deposit
+                  Cancel
                 </Button>
-              ) : (
-                <Button
-                  onClick={() => { void handleTokenizedWithdraw(); }}
-                >
-                  Withdraw
-                </Button>
-              )}
-              <Button
-                onClick={() => {
-                  setShowTokenizedDepositForm(false);
-                  setShowTokenizedWithdrawForm(false);
-                  setTokenizedNotes('');
-                }}
-                variant="outline"
-              >
-                Cancel
-              </Button>
-            </div>
-          </CardContent>
+              </div>
+            </CardContent>
           </Card>
         )}
 
@@ -1772,547 +1778,295 @@ const VaultDetailPage: React.FC = () => {
               <h3 className="text-lg font-semibold mb-4">Distribute Reward</h3>
             </CardHeader>
             <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Reward (USD)</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  value={rewardAmount}
-                  onChange={(e) => setRewardAmount(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                  placeholder="0.00"
-                />
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Reward (USD)
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={rewardAmount}
+                    onChange={(e) => setRewardAmount(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                    placeholder="0.00"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Destination Vault
+                  </label>
+                  <input
+                    type="text"
+                    value={rewardDestination}
+                    onChange={(e) => setRewardDestination(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                    placeholder="Spend"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Date
+                  </label>
+                  <input
+                    type="date"
+                    value={rewardDate}
+                    onChange={(e) => setRewardDate(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Note (optional)
+                  </label>
+                  <input
+                    type="text"
+                    value={rewardNote}
+                    onChange={(e) => setRewardNote(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                    placeholder="e.g., Weekly rewards"
+                  />
+                </div>
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Destination Vault</label>
-                <input
-                  type="text"
-                  value={rewardDestination}
-                  onChange={(e) => setRewardDestination(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                  placeholder="Spend"
-                />
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                <label className="inline-flex items-center gap-2 text-sm text-gray-700">
+                  <input
+                    type="checkbox"
+                    checked={rewardMark}
+                    onChange={(e) => setRewardMark(e.target.checked)}
+                  />
+                  Mark valuation before payout
+                </label>
+                <label className="inline-flex items-center gap-2 text-sm text-gray-700">
+                  <input
+                    type="checkbox"
+                    checked={rewardCreateIncome}
+                    onChange={(e) => setRewardCreateIncome(e.target.checked)}
+                  />
+                  Also create INCOME entry in destination
+                </label>
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Date</label>
-                <input
-                  type="date"
-                  value={rewardDate}
-                  onChange={(e) => setRewardDate(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                />
+              <div className="flex space-x-3">
+                <Button
+                  onClick={() => {
+                    void handleDistributeReward();
+                  }}
+                  className="bg-purple-600 hover:bg-purple-700"
+                >
+                  Distribute
+                </Button>
+                <Button
+                  onClick={() => {
+                    setShowRewardForm(false);
+                    setRewardAmount('');
+                    setRewardNote('');
+                  }}
+                  variant="outline"
+                >
+                  Cancel
+                </Button>
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Note (optional)</label>
-                <input
-                  type="text"
-                  value={rewardNote}
-                  onChange={(e) => setRewardNote(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                  placeholder="e.g., Weekly rewards"
-                />
-              </div>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-              <label className="inline-flex items-center gap-2 text-sm text-gray-700">
-                <input type="checkbox" checked={rewardMark} onChange={(e) => setRewardMark(e.target.checked)} />
-                Mark valuation before payout
-              </label>
-              <label className="inline-flex items-center gap-2 text-sm text-gray-700">
-                <input type="checkbox" checked={rewardCreateIncome} onChange={(e) => setRewardCreateIncome(e.target.checked)} />
-                Also create INCOME entry in destination
-              </label>
-            </div>
-            <div className="flex space-x-3">
-              <Button
-                onClick={() => { void handleDistributeReward(); }}
-                className="bg-purple-600 hover:bg-purple-700"
-              >
-                Distribute
-              </Button>
-              <Button
-                onClick={() => { setShowRewardForm(false); setRewardAmount(''); setRewardNote(''); }}
-                variant="outline"
-              >
-                Cancel
-              </Button>
-            </div>
-          </CardContent>
+            </CardContent>
           </Card>
         )}
 
-        {tokenizedVaultDetails.asset_breakdown && tokenizedVaultDetails.asset_breakdown.length > 0 && (
-          <Card>
-            <CardContent className="p-4">
-              <h2 className="text-xl font-semibold mb-4">Asset Breakdown</h2>
-            <DataTable<TokenizedVaultAsset>
-              data={tokenizedVaultDetails.asset_breakdown}
-              columns={tokenizedAssetColumns}
-              loading={false}
-              error={null}
-              emptyMessage="No assets tracked for this vault"
-              editable={false}
-              selectableRows={false}
-              data-testid="tokenized-vault-assets-table"
-            />
-          </CardContent>
-          </Card>
-        )}
+        {tokenizedVaultDetails.asset_breakdown &&
+          tokenizedVaultDetails.asset_breakdown.length > 0 && (
+            <Card>
+              <CardContent className="p-4">
+                <h2 className="text-xl font-semibold mb-4">Asset Breakdown</h2>
+                <DataTable<TokenizedVaultAsset>
+                  data={tokenizedVaultDetails.asset_breakdown}
+                  columns={tokenizedAssetColumns}
+                  loading={false}
+                  error={null}
+                  emptyMessage="No assets tracked for this vault"
+                  editable={false}
+                  selectableRows={false}
+                  data-testid="tokenized-vault-assets-table"
+                />
+              </CardContent>
+            </Card>
+          )}
 
         {/* Ledger-derived holdings and transaction history */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mt-6">
           <Card className="lg:col-span-1">
             <CardContent className="p-4">
               <h2 className="text-lg font-semibold mb-3">Ledger Holdings</h2>
-            {ledgerHoldings ? (
-              <dl className="grid grid-cols-2 gap-3 text-sm">
-                <div>
-                  <dt className="text-gray-500">Total Shares</dt>
-                  <dd className="text-gray-900">{(() => {
-                    const v = ledgerHoldings.total_shares as unknown as string | number | undefined;
-                    const n = typeof v === 'string' ? parseFloat(v) : (v ?? 0);
-                    return isNaN(Number(n)) ? '0' : Number(n).toLocaleString(undefined, { maximumFractionDigits: 6 });
-                  })()}</dd>
+              {ledgerHoldings ? (
+                <dl className="grid grid-cols-2 gap-3 text-sm">
+                  <div>
+                    <dt className="text-gray-500">Total Shares</dt>
+                    <dd className="text-gray-900">
+                      {(() => {
+                        const v = ledgerHoldings.total_shares as unknown as
+                          | string
+                          | number
+                          | undefined;
+                        const n =
+                          typeof v === 'string' ? parseFloat(v) : (v ?? 0);
+                        return isNaN(Number(n))
+                          ? '0'
+                          : Number(n).toLocaleString(undefined, {
+                              maximumFractionDigits: 6,
+                            });
+                      })()}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-gray-500">Total AUM</dt>
+                    <dd className="text-gray-900">
+                      {(() => {
+                        const v = ledgerHoldings.total_aum as unknown as
+                          | string
+                          | number
+                          | undefined;
+                        const n =
+                          typeof v === 'string' ? parseFloat(v) : (v ?? 0);
+                        const base = isNaN(Number(n)) ? 0 : Number(n);
+                        const display =
+                          typeof rollingAUM === 'number' && isFinite(rollingAUM)
+                            ? rollingAUM
+                            : base;
+                        return formatCurrency(display);
+                      })()}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-gray-500">Share Price</dt>
+                    <dd className="text-gray-900">
+                      {(() => {
+                        const v = ledgerHoldings.share_price as unknown as
+                          | string
+                          | number
+                          | undefined;
+                        const n =
+                          typeof v === 'string' ? parseFloat(v) : (v ?? 0);
+                        return `${isNaN(Number(n)) ? '0.0000' : Number(n).toFixed(4)}`;
+                      })()}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-gray-500">Transactions</dt>
+                    <dd className="text-gray-900">
+                      {ledgerHoldings.transaction_count ?? 0}
+                    </dd>
+                  </div>
+                  <div className="col-span-2">
+                    <dt className="text-gray-500">Last Activity</dt>
+                    <dd className="text-gray-900">
+                      {ledgerHoldings.last_transaction_at &&
+                      isValidDate(
+                        new Date(String(ledgerHoldings.last_transaction_at))
+                      )
+                        ? format(
+                            new Date(
+                              String(ledgerHoldings.last_transaction_at)
+                            ),
+                            'MMM d, yyyy HH:mm'
+                          )
+                        : '—'}
+                    </dd>
+                  </div>
+                </dl>
+              ) : (
+                <div className="text-sm text-gray-600">
+                  No ledger holdings available.
                 </div>
-                <div>
-                  <dt className="text-gray-500">Total AUM</dt>
-                  <dd className="text-gray-900">{(() => {
-                    const v = ledgerHoldings.total_aum as unknown as string | number | undefined;
-                    const n = typeof v === 'string' ? parseFloat(v) : (v ?? 0);
-                    const base = isNaN(Number(n)) ? 0 : Number(n);
-                    const display = typeof rollingAUM === 'number' && isFinite(rollingAUM) ? rollingAUM : base;
-                    return formatCurrency(display);
-                  })()}</dd>
-                </div>
-                <div>
-                  <dt className="text-gray-500">Share Price</dt>
-                  <dd className="text-gray-900">{(() => {
-                    const v = ledgerHoldings.share_price as unknown as string | number | undefined;
-                    const n = typeof v === 'string' ? parseFloat(v) : (v ?? 0);
-                    return `${isNaN(Number(n)) ? '0.0000' : Number(n).toFixed(4)}`;
-                  })()}</dd>
-                </div>
-                <div>
-                  <dt className="text-gray-500">Transactions</dt>
-                  <dd className="text-gray-900">{ledgerHoldings.transaction_count ?? 0}</dd>
-                </div>
-                <div className="col-span-2">
-                  <dt className="text-gray-500">Last Activity</dt>
-                  <dd className="text-gray-900">{ledgerHoldings.last_transaction_at && isValidDate(new Date(String(ledgerHoldings.last_transaction_at))) ? format(new Date(String(ledgerHoldings.last_transaction_at)), 'MMM d, yyyy HH:mm') : '—'}</dd>
-                </div>
-              </dl>
-            ) : (
-              <div className="text-sm text-gray-600">No ledger holdings available.</div>
-            )}
-          </CardContent>
+              )}
+            </CardContent>
           </Card>
           <Card className="lg:col-span-2">
             <CardContent className="p-4">
-              <h2 className="text-lg font-semibold mb-3">Ledger Transactions</h2>
-            <DataTable<Record<string, unknown>>
-              data={ledgerTransactions}
-              columns={[
-                { key: 'timestamp', title: 'Time', render: (v) => (v && typeof v === 'string' && isValidDate(new Date(v)) ? format(new Date(v), 'MMM d, yyyy HH:mm') : '—') },
-                { key: 'type', title: 'Type' },
-                { key: 'status', title: 'Status' },
-                { key: 'amount_usd', title: 'Amount (USD)', render: (v) => formatCurrency(typeof v === 'string' ? parseFloat(v) : Number(v ?? 0)) },
-                { key: 'shares', title: 'Shares', render: (v) => {
-                  const n = typeof v === 'string' ? parseFloat(v) : Number(v ?? 0);
-                  return isNaN(n) ? '0' : n.toLocaleString(undefined, { maximumFractionDigits: 6 });
-                } },
-                { key: 'price_per_share', title: 'PPS', render: (v) => {
-                  const n = typeof v === 'string' ? parseFloat(v) : Number(v ?? 0);
-                  return isNaN(n) ? '—' : `${n.toFixed(4)}`;
-                } },
-                { key: 'asset', title: 'Asset' },
-                { key: 'account', title: 'Account' },
-                { key: 'asset_quantity', title: 'Qty', render: (v) => {
-                  const n = typeof v === 'string' ? parseFloat(v) : Number(v ?? 0);
-                  return isNaN(n) ? '—' : n.toLocaleString(undefined, { maximumFractionDigits: 6 });
-                } },
-              ]}
-              loading={false}
-              error={null}
-              emptyMessage="No ledger transactions"
-              editable={false}
-              selectableRows={false}
-              data-testid="tokenized-vault-ledger-table"
-            />
-          </CardContent>
-          </Card>
-        </div>
-      </div>
-    );
-  }
-
-  if (!vault) {
-    return (
-      <div className="px-4 py-6 sm:px-0">
-        <div className="text-center">
-          <h1 className="text-2xl font-bold text-red-600 mb-4">Vault Not Found</h1>
-          <p className="text-gray-600 mb-4">The requested vault could not be found.</p>
-          <Button onClick={() => navigate('/vaults')}>
-            Back to Vaults
-          </Button>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="px-4 py-6 sm:px-0" data-testid="vault-detail-page">
-      {/* Header */}
-      <div className="mb-6">
-        <Button
-          onClick={() => navigate('/vaults')}
-          variant="link"
-          className="mb-4 px-0"
-        >
-          ← Back to Vaults
-        </Button>
-        <h1 className="text-3xl font-bold text-gray-900 mb-2">
-          {`${vault.asset} @ ${vault.account}${vault.horizon ? ` [${vault.horizon}]` : ''}`}
-        </h1>
-        <p className="text-gray-600">
-          Vault Details - {vault.asset} @ {vault.account}
-          {vault.horizon && ` [${vault.horizon}]`}
-        </p>
-      </div>
-
-      {/* Vault Overview Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        <Card>
-          <CardContent className="p-4">
-            <h3 className="text-sm font-medium text-gray-500 mb-2">Total Deposited</h3>
-            <p className="text-2xl font-bold text-gray-900">
-              {(() => {
-                const isUSD = String(vault.asset ?? '').toUpperCase() === 'USD';
-                const decimals = getDecimalPlaces(vault.asset ?? 'USD');
-                const value = isUSD
-                  ? (typeof vault.deposit_cost === 'string' ? parseFloat(vault.deposit_cost) : (vault.deposit_cost as unknown as number))
-                  : (typeof vault.deposit_qty === 'string' ? parseFloat(vault.deposit_qty) : (vault.deposit_qty as unknown as number));
-                return `${formatVaultNumber(value ?? 0, isUSD ? 2 : decimals)} ${vault.asset}`;
-              })()}
-            </p>
-            <p className="text-sm text-gray-600">{formatCurrency(parseFloat(vault.deposit_cost ?? '0'))}</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-4">
-            <h3 className="text-sm font-medium text-gray-500 mb-2">Current Balance</h3>
-            <p className="text-2xl font-bold text-gray-900">
-              {(() => {
-                const isUSD = String(vault.asset ?? '').toUpperCase() === 'USD';
-                if (isUSD) {
-                  const deposit = typeof vault.deposit_cost === 'string' ? parseFloat(vault.deposit_cost) : (vault.deposit_cost as unknown as number);
-                  const withdrawn = typeof vault.withdrawal_value === 'string' ? parseFloat(vault.withdrawal_value) : (vault.withdrawal_value as unknown as number);
-                  const remainingUSD = (deposit ?? 0) - (withdrawn ?? 0);
-                  return `${formatVaultNumber(remainingUSD < 0 ? 0 : remainingUSD, 2)} USD`;
-                }
-                const decimals = getDecimalPlaces(vault.asset ?? 'USD');
-                const qty = typeof vault.remaining_qty === 'string' ? parseFloat(vault.remaining_qty) : (vault.remaining_qty as unknown as number);
-                return `${formatVaultNumber(qty ?? 0, decimals)} ${vault.asset}`;
-              })()}
-            </p>
-            <p className="text-sm text-gray-600">Remaining in vault</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-4">
-            <h3 className="text-sm font-medium text-gray-500 mb-2">Realized P&L</h3>
-            <p className={`text-2xl font-bold ${parseFloat(vault.pnl ?? '0') >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-              {formatCurrency(parseFloat(vault.pnl ?? '0'))}
-            </p>
-            <p className="text-sm text-gray-600">{formatVaultNumber(vault.pnl_percent, 2)}% ROI</p>
-          </CardContent>
-        </Card>
-
-        {vault.total_usd_manual !== undefined && vault.total_usd_market !== undefined && (
-          <Card>
-            <CardContent className="p-4">
-              <h3 className="text-sm font-medium text-gray-500 mb-3">Value Breakdown</h3>
-              <div className="space-y-2">
-                <div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-gray-600">USD (Manual)</span>
-                    <span className="font-medium">{formatCurrency(vault.total_usd_manual)}</span>
-                  </div>
-                </div>
-                <div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-gray-600">Other Assets (Market)</span>
-                    <span className="font-medium">{formatCurrency(vault.total_usd_market)}</span>
-                  </div>
-                </div>
-                <div className="pt-2 border-t">
-                  <div className="flex justify-between text-sm font-semibold">
-                    <span className="text-gray-900">Total</span>
-                    <span>{formatCurrency((vault.total_usd_manual ?? 0) + (vault.total_usd_market ?? 0))}</span>
-                  </div>
-                </div>
-              </div>
+              <h2 className="text-lg font-semibold mb-3">
+                Ledger Transactions
+              </h2>
+              <DataTable<Record<string, unknown>>
+                data={ledgerTransactions}
+                columns={[
+                  {
+                    key: 'timestamp',
+                    title: 'Time',
+                    render: (v) =>
+                      v && typeof v === 'string' && isValidDate(new Date(v))
+                        ? format(new Date(v), 'MMM d, yyyy HH:mm')
+                        : '—',
+                  },
+                  { key: 'type', title: 'Type' },
+                  { key: 'status', title: 'Status' },
+                  {
+                    key: 'amount_usd',
+                    title: 'Amount (USD)',
+                    render: (v) =>
+                      formatCurrency(
+                        typeof v === 'string' ? parseFloat(v) : Number(v ?? 0)
+                      ),
+                  },
+                  {
+                    key: 'shares',
+                    title: 'Shares',
+                    render: (v) => {
+                      const n =
+                        typeof v === 'string' ? parseFloat(v) : Number(v ?? 0);
+                      return isNaN(n)
+                        ? '0'
+                        : n.toLocaleString(undefined, {
+                            maximumFractionDigits: 6,
+                          });
+                    },
+                  },
+                  {
+                    key: 'price_per_share',
+                    title: 'PPS',
+                    render: (v) => {
+                      const n =
+                        typeof v === 'string' ? parseFloat(v) : Number(v ?? 0);
+                      return isNaN(n) ? '—' : `${n.toFixed(4)}`;
+                    },
+                  },
+                  { key: 'asset', title: 'Asset' },
+                  { key: 'account', title: 'Account' },
+                  {
+                    key: 'asset_quantity',
+                    title: 'Qty',
+                    render: (v) => {
+                      const n =
+                        typeof v === 'string' ? parseFloat(v) : Number(v ?? 0);
+                      return isNaN(n)
+                        ? '—'
+                        : n.toLocaleString(undefined, {
+                            maximumFractionDigits: 6,
+                          });
+                    },
+                  },
+                ]}
+                loading={false}
+                error={null}
+                emptyMessage="No ledger transactions"
+                editable={false}
+                selectableRows={false}
+                data-testid="tokenized-vault-ledger-table"
+              />
             </CardContent>
           </Card>
-        )}
-
-        <Card>
-          <CardContent className="p-4">
-            <h3 className="text-sm font-medium text-gray-500 mb-2">Vault Status</h3>
-            <p className="text-lg font-medium text-gray-900 capitalize">{vault.vault_status ?? 'Unknown'}</p>
-            <p className="text-sm text-gray-600">
-              Created: {isValidDate(new Date(vault.created_at)) ? format(new Date(vault.created_at), 'MMM d, yyyy') : '—'}
-            </p>
-          </CardContent>
-        </Card>
+        </div>
       </div>
+    );
+  }
 
-      {/* Action Buttons */}
-      <div className="flex space-x-3 mb-6">
-        <Button
-          onClick={() => setShowDepositForm(!showDepositForm)}
-          disabled={!vault.is_open}
-        >
-          Deposit to Vault
-        </Button>
-        <Button
-          onClick={() => setShowWithdrawForm(!showWithdrawForm)}
-          disabled={!vault.is_open}
-        >
-          Withdraw from Vault
-        </Button>
-        {vault.is_open && (
-        <Button
-          onClick={() => { void handleEndVault(); }}
-            variant="destructive"
-          >
-            End Vault
-          </Button>
-        )}
-        <Button
-          onClick={() => { void handleDeleteVault(); }}
-          variant="secondary"
-        >
-          Delete Vault
-        </Button>
-        <Button
-          onClick={() => setShowLiveMetrics((s) => !s)}
-          variant="outline"
-        >
-          {showLiveMetrics ? 'Hide Live Metrics' : 'Show Live Metrics'}
-        </Button>
-        <Button
-          onClick={() => { void handleManualUpdate(); }}
-          className="bg-purple-600 hover:bg-purple-700"
-        >
-          Manual Update
-        </Button>
-        <Button
-          onClick={() => setShowRewardForm((s) => !s)}
-          className="bg-purple-600 hover:bg-purple-700"
-        >
-          Distribute Reward
-        </Button>
-      </div>
-
-      {/* Deposit Form */}
-      {showDepositForm && (
-        <Card className="mb-6">
-          <CardHeader>
-            <h3 className="text-lg font-semibold mb-4">Deposit to Vault</h3>
-          </CardHeader>
-          <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
-            <ComboBox
-              options={assetOptions}
-              value={depositForm.asset}
-              onChange={(value) => setDepositForm({ ...depositForm, asset: value })}
-              placeholder="Asset"
-            />
-            {depositForm.asset === 'USD' ? (
-              <div className="px-3 py-2 border rounded-md bg-gray-50 text-gray-700 flex items-center">Quantity fixed to 1</div>
-            ) : (
-              <input
-                type="number"
-                step="any"
-                placeholder="Quantity"
-                value={depositForm.quantity}
-                onChange={(e) => setDepositForm({ ...depositForm, quantity: e.target.value })}
-                className="px-3 py-2 border rounded-md"
-              />
-            )}
-            <input
-              type="number"
-              step="any"
-              placeholder={depositForm.asset === 'USD' ? 'Amount (USD)' : 'Cost (USD)'}
-              value={depositForm.cost}
-              onChange={(e) => setDepositForm({ ...depositForm, cost: e.target.value })}
-              className="px-3 py-2 border rounded-md"
-            />
-            <ComboBox
-              options={accounts}
-              value={depositForm.sourceAccount}
-              onChange={(value) => setDepositForm({ ...depositForm, sourceAccount: value })}
-              placeholder="Source Account (optional)"
-            />
-          </div>
-          {depositForm.asset !== 'USD' && (
-            <p className="text-sm text-gray-500 mb-4">
-              For non-USD assets, enter the quantity and the USD cost at time of deposit.
-              The vault value will be updated based on current market prices.
-            </p>
-          )}
-          <div className="flex space-x-3">
-            <Button
-              onClick={() => { void handleDeposit(); }}
-            >
-              Deposit
-            </Button>
-            <Button
-              onClick={() => setShowDepositForm(false)}
-              variant="outline"
-            >
-              Cancel
-            </Button>
-          </div>
-        </CardContent>
-        </Card>
-      )}
-
-      {/* Withdraw Form */}
-      {showWithdrawForm && (
-        <Card className="mb-6">
-          <CardHeader>
-            <h3 className="text-lg font-semibold mb-4">Withdraw from Vault</h3>
-          </CardHeader>
-          <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
-            <ComboBox
-              options={assetOptions}
-              value={withdrawForm.asset}
-              onChange={(value) => setWithdrawForm({ ...withdrawForm, asset: value })}
-              placeholder="Asset"
-            />
-            {withdrawForm.asset === 'USD' ? (
-              <div className="px-3 py-2 border rounded-md bg-gray-50 text-gray-700 flex items-center">Quantity fixed to 1</div>
-            ) : (
-              <input
-                type="number"
-                step="any"
-                placeholder="Quantity"
-                value={withdrawForm.quantity}
-                onChange={(e) => setWithdrawForm({ ...withdrawForm, quantity: e.target.value })}
-                className="px-3 py-2 border rounded-md"
-              />
-            )}
-            <input
-              type="number"
-              step="any"
-              placeholder="Value (USD)"
-              value={withdrawForm.value}
-              onChange={(e) => setWithdrawForm({ ...withdrawForm, value: e.target.value })}
-              className="px-3 py-2 border rounded-md"
-            />
-            <ComboBox
-              options={allVaults}
-              value={withdrawForm.targetAccount}
-              onChange={(value) => setWithdrawForm({ ...withdrawForm, targetAccount: value })}
-              placeholder="Destination Vault (optional)"
-            />
-          </div>
-          {withdrawForm.asset !== 'USD' && (
-            <p className="text-sm text-gray-500 mb-4">
-              For non-USD assets, enter the quantity to withdraw and the current USD value.
-            </p>
-          )}
-          <div className="flex space-x-3">
-            <Button
-              onClick={() => { void handleWithdraw(); }}
-            >
-              Withdraw
-            </Button>
-            <Button
-              onClick={() => setShowWithdrawForm(false)}
-              variant="outline"
-            >
-              Cancel
-            </Button>
-          </div>
-        </CardContent>
-        </Card>
-      )}
-
-      {/* Vault Details Table */}
-      {(manualMetrics ?? liveMetrics) && (
-        <Card className="mb-6">
-          <CardContent className="p-4">
-            <h3 className="text-lg font-semibold mb-2">{liveMetrics ? 'Live Metrics' : 'Manual Update'}</h3>
-          <div className="text-sm text-gray-700 mb-2">
-            As of: {(liveMetrics ?? manualMetrics)?.as_of ? new Date(String((liveMetrics ?? manualMetrics)?.as_of)).toLocaleString() : '—'}
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div>
-              <div className="text-gray-500 text-sm">Current Value</div>
-              <div className="font-semibold">{formatCurrency((liveMetrics ?? manualMetrics)?.current_value_usd ?? 0)}</div>
-            </div>
-            <div>
-              <div className="text-gray-500 text-sm">ROI (now)</div>
-              <div className="font-semibold">{formatVaultNumber((liveMetrics ?? manualMetrics)?.roi_realtime_percent ?? 0, 2)}%</div>
-            </div>
-            <div>
-              <div className="text-gray-500 text-sm">APR (now)</div>
-              <div className="font-semibold">{formatVaultNumber((liveMetrics ?? manualMetrics)?.apr_percent ?? 0, 2)}%</div>
-            </div>
-          </div>
-          {(liveMetrics ?? manualMetrics)?.benchmark_asset && (
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
-              <div>
-                <div className="text-gray-500 text-sm">Benchmark</div>
-                <div className="font-semibold">{(liveMetrics ?? manualMetrics)?.benchmark_asset}</div>
-              </div>
-              <div>
-                <div className="text-gray-500 text-sm">Benchmark ROI</div>
-                <div className="font-semibold">{formatVaultNumber(((liveMetrics ?? manualMetrics)?.benchmark_roi_percent) ?? 0, 2)}%</div>
-              </div>
-              <div>
-                <div className="text-gray-500 text-sm">Benchmark APR</div>
-                <div className="font-semibold">{formatVaultNumber(((liveMetrics ?? manualMetrics)?.benchmark_apr_percent) ?? 0, 2)}%</div>
-              </div>
-            </div>
-          )}
-        </CardContent>
-        </Card>
-      )}
-      <div className="mb-8">
-        <h2 className="text-xl font-semibold mb-4">Vault Details</h2>
-        <DataTable
-          data={[vault]}
-          columns={vaultColumns}
-          loading={false}
-          error={null}
-          emptyMessage="No vault data available"
-          editable={false}
-          selectableRows={false}
-          data-testid="vault-details-table"
-        />
-      </div>
-
-      {/* Vault Transactions */}
-      <div>
-        <h2 className="text-xl font-semibold mb-4">Vault Transactions</h2>
-        <DataTable
-          data={transactions}
-          columns={transactionColumns}
-          loading={false}
-          error={null}
-          emptyMessage="No transactions found for this vault"
-          editable={false}
-          selectableRows={false}
-          data-testid="vault-transactions-table"
-        />
+  // If not a tokenized vault, show not found
+  return (
+    <div className="px-4 py-6 sm:px-0">
+      <div className="text-center">
+        <h1 className="text-2xl font-bold text-red-600 mb-4">
+          Vault Not Found
+        </h1>
+        <p className="text-gray-600 mb-4">
+          The requested vault could not be found.
+        </p>
+        <Button onClick={() => navigate('/vaults')}>Back to Vaults</Button>
       </div>
     </div>
   );

@@ -12,7 +12,6 @@ import QuickBuyModal from '../components/modals/QuickBuyModal';
 import QuickExpenseModal from '../components/modals/QuickExpenseModal';
 import QuickIncomeModal from '../components/modals/QuickIncomeModal';
 import QuickInitBalanceModal from '../components/modals/QuickInitBalanceModal';
-import QuickInvestmentModal from '../components/modals/QuickInvestmentModal';
 import QuickRepayModal from '../components/modals/QuickRepayModal';
 import QuickSellModal from '../components/modals/QuickSellModal';
 import QuickTransferModal from '../components/modals/QuickTransferModal';
@@ -33,9 +32,7 @@ import {
   transactionApi,
   adminApi,
   actionsApi,
-  investmentsApi,
   vaultApi,
-  tokenizedVaultApi,
   ApiError,
 } from '../services/api';
 import { fxService } from '../services/fxService';
@@ -102,7 +99,6 @@ const TransactionPage: React.FC = () => {
   const {
     createExpense,
     createIncome,
-    createInvestment,
     isLoading: _isQuickLoading,
     error: quickError,
   } = useQuickCreate();
@@ -332,83 +328,6 @@ const TransactionPage: React.FC = () => {
     }
   };
 
-  const handleQuickInvestmentSubmit = async (data: unknown): Promise<void> => {
-    const investmentData = data as Record<string, unknown>;
-    try {
-      const vaultId = investmentData.vaultId as string | undefined;
-      if (vaultId) {
-        const { quantity, cost, note } = investmentData as {
-          quantity: number;
-          cost: number;
-          note?: string;
-        };
-        if (vaultId.startsWith('vault_')) {
-          // Tokenized vault deposit (USD amount)
-          const account = investmentData.account as string | undefined;
-          await tokenizedVaultApi.deposit(vaultId, {
-            amount: cost,
-            notes: note,
-            source_account: account,
-          });
-          // Also record a neutral cash movement so it shows up in Transactions table
-          if (account) {
-            await transactionApi.create({
-              date: toISODateTime(
-                investmentData.date as string | undefined
-              ),
-              type: 'deposit',
-              asset: 'USD',
-              account,
-              quantity: cost,
-              price_local: 1,
-              counterparty: `Tokenized ${vaultId}`,
-              note: note ?? null,
-              fx_to_usd: 1,
-              fx_to_vnd: 0,
-            });
-          }
-        } else {
-          // Legacy investment vault deposit (qty x cost)
-          await vaultApi.depositToVault(vaultId, { quantity, cost, note });
-          // Also reflect as a neutral deposit in Transactions if a source account is provided
-          const account = investmentData.account as string | undefined;
-          if (account) {
-            await transactionApi.create({
-              date: toISODateTime(
-                investmentData.date as string | undefined
-              ),
-              type: 'deposit',
-              asset: 'USD',
-              account,
-              quantity: cost,
-              price_local: 1,
-              counterparty: `Vault ${vaultId}`,
-              note: note ?? null,
-              fx_to_usd: 1,
-              fx_to_vnd: 0,
-            });
-          }
-        }
-      } else {
-        await createInvestment(investmentData);
-      }
-      await loadTransactions();
-      actions.setError(null);
-      showSuccessToast(
-        vaultId ? 'Vault deposit recorded' : 'Investment recorded'
-      );
-    } catch (e: unknown) {
-      const msg =
-        (e as { message?: string } | null)?.message ??
-        (investmentData.vaultId
-          ? 'Failed to record vault deposit'
-          : 'Failed to record investment');
-      actions.setError(msg);
-      showErrorToast(msg);
-      throw e;
-    }
-  };
-
   const handleQuickInitSubmit = async (data: unknown): Promise<void> => {
     const params = data as Record<string, unknown>;
     try {
@@ -546,14 +465,6 @@ const TransactionPage: React.FC = () => {
       note: '',
       internal_flow: false,
     });
-    const [invMode, setInvMode] = useState<'none' | 'stake' | 'unstake'>(
-      'none'
-    );
-    const [invAccount, setInvAccount] = useState('');
-    const [invHorizon, setInvHorizon] = useState('');
-    const [invOpenOptions, setInvOpenOptions] = useState<Option[]>([]);
-    const [invId, setInvId] = useState('');
-    const [invIdToInfo, setInvIdToInfo] = useState<Record<string, unknown>>({});
     const [submitting, setSubmitting] = useState(false);
     const [qaError, setQaError] = useState<string | null>(null);
     const number = (s?: string) => (s ? parseFloat(String(s)) : 0);
@@ -610,12 +521,6 @@ const TransactionPage: React.FC = () => {
           number(qa.price_local || '') <= 0)
       )
         return 'Valid price is required';
-      if (invMode === 'stake') {
-        if (!invAccount) return 'Investment account is required';
-      }
-      if (invMode === 'unstake') {
-        if (!invId) return 'Select an active investment';
-      }
       return null;
     };
 
@@ -628,78 +533,21 @@ const TransactionPage: React.FC = () => {
       setQaError(null);
       try {
         setSubmitting(true);
-        let created: Transaction | null = null;
-        if (invMode === 'stake') {
-          // Stake: create an incoming stake via investment API
-          const fxUSD = 1;
-          const fxVND = 1;
-          const amtLocal = number(qa.quantity) * number(qa.price_local ?? '1');
-          const amountUSD = amtLocal * fxUSD;
-          const amountVND = amtLocal * fxVND;
-          const stake = {
-            date: toISODateTime(qa.date),
-            type: 'stake',
-            asset: qa.asset,
-            account: invAccount,
-            quantity: number(qa.quantity),
-            price_local: number(qa.price_local ?? '1'),
-            fx_to_usd: fxUSD,
-            fx_to_vnd: fxVND,
-            amount_usd: amountUSD,
-            amount_vnd: amountVND,
-            counterparty: qa.counterparty ?? null,
-            tag: qa.tag ?? null,
-            note: qa.note ?? null,
-            horizon: invHorizon ?? null,
-            investment_id: invId ?? null,
-          };
-          await investmentsApi.stake(stake);
-          // Quick feedback: reload transactions list minimally
-          await loadTransactions();
-        } else if (invMode === 'unstake') {
-          const info = (invIdToInfo[invId] ?? {}) as Record<string, unknown>;
-          const unstakeQty = number(qa.quantity);
-          const fxUSD = 1;
-          const fxVND = 1;
-          const amtLocal = unstakeQty * number(qa.price_local ?? '1');
-          const amountUSD = amtLocal * fxUSD;
-          const amountVND = amtLocal * fxVND;
-          const unstake = {
-            date: toISODateTime(qa.date),
-            type: 'unstake',
-            asset: (info.asset ?? qa.asset) as string,
-            account: (info.account ?? invAccount) as string,
-            quantity: unstakeQty,
-            price_local: number(qa.price_local ?? '1'),
-            fx_to_usd: fxUSD,
-            fx_to_vnd: fxVND,
-            amount_usd: amountUSD,
-            amount_vnd: amountVND,
-            counterparty: qa.counterparty ?? null,
-            tag: qa.tag ?? null,
-            note: qa.note ?? null,
-            investment_id: invId,
-          };
-          await investmentsApi.unstake(unstake);
-          await loadTransactions();
-        } else {
-          // Plain transaction
-          const payload: Record<string, unknown> = {
-            date: toISODateTime(qa.date),
-            type: qa.type,
-            asset: qa.asset,
-            account: qa.account,
-            quantity: number(qa.quantity),
-            price_local: number(qa.price_local ?? '1'),
-            counterparty: qa.counterparty ?? null,
-            tag: qa.tag ?? null,
-            note: qa.note ?? null,
-            fx_to_usd: 0,
-            fx_to_vnd: 0,
-          };
-          created = await transactionApi.create(payload) as Transaction;
-          if (created) onCreated(created);
-        }
+        const payload: Record<string, unknown> = {
+          date: toISODateTime(qa.date),
+          type: qa.type,
+          asset: qa.asset,
+          account: qa.account,
+          quantity: number(qa.quantity),
+          price_local: number(qa.price_local ?? '1'),
+          counterparty: qa.counterparty ?? null,
+          tag: qa.tag ?? null,
+          note: qa.note ?? null,
+          fx_to_usd: 0,
+          fx_to_vnd: 0,
+        };
+        const created = await transactionApi.create(payload) as Transaction;
+        if (created) onCreated(created);
         if (addAnother) {
           // Reset amount fields, keep type/account/asset for speed
           setQa((prev) => ({ ...prev, quantity: '', note: '' }));
@@ -719,42 +567,6 @@ const TransactionPage: React.FC = () => {
 
     // Amount preview
     const amountLocal = number(qa.quantity) * number(qa.price_local ?? '1');
-
-    // Load open investments when entering unstake mode
-    useEffect(() => {
-      const loadOpen = async () => {
-        try {
-          const list = (await investmentsApi.list({ is_open: true })) as Array<{
-            id: string;
-            deposit_date: string;
-            asset: string;
-            account: string;
-            remaining_qty: number;
-            horizon?: string;
-          }>;
-          const idMap: Record<string, { id: string; deposit_date: string; asset: string; account: string; remaining_qty: number; horizon?: string }> = {};
-          const options: Option[] = list.map((inv) => {
-            idMap[String(inv.id)] = inv;
-            const dStr = (() => {
-              const d = new Date(inv.deposit_date);
-              return Number.isNaN(d.getTime())
-                ? String(inv.deposit_date)
-                : d.toISOString().split('T')[0];
-            })();
-            const hz = inv.horizon ? ` [${inv.horizon}]` : '';
-            return {
-              value: String(inv.id),
-              label: `${inv.asset} @ ${inv.account}${hz} — ${dStr} — ${inv.remaining_qty} remaining`,
-            } as Option;
-          });
-          setInvIdToInfo(idMap);
-          setInvOpenOptions(options);
-        } catch {
-          // Ignore errors when loading open investments
-        }
-      };
-      if (invMode === 'unstake') void loadOpen();
-    }, [invMode]);
 
     return (
       <div className="bg-white border border-gray-200 rounded-md p-4">
@@ -883,92 +695,6 @@ const TransactionPage: React.FC = () => {
               value={qa.price_local}
               readOnly
             />
-          )}
-        </div>
-
-        {/* Investment section (optional) */}
-        <div className="mt-4">
-          <div className="flex items-center gap-3 mb-2">
-            <label className="text-sm text-gray-700">Investment</label>
-            <select
-              className="px-2 py-1 border rounded text-sm"
-              value={invMode}
-              onChange={(e) => setInvMode(e.target.value as 'none' | 'stake' | 'unstake')}
-            >
-              <option value="none">None</option>
-              <option value="stake">Stake (open/add)</option>
-              <option value="unstake">Unstake (close/partial)</option>
-            </select>
-          </div>
-          {invMode === 'stake' && (
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              <ComboBox
-                options={
-                  masterData.account.filter(
-                    (a: unknown) =>
-                      (a as { type: string }).type === 'investment'
-                  ) as Array<{ value: string; label: string }>
-                }
-                value={invAccount}
-                onChange={(v) => setInvAccount(String(v))}
-                placeholder="Investment Account"
-                allowCreate
-                onCreate={async (name) => {
-                  await adminApi.createAccount({
-                    name,
-                    type: 'investment',
-                    is_active: true,
-                  });
-                  const accounts = await adminApi.listAccounts();
-                  setMasterData((prev) => ({
-                    ...prev,
-                    account: (
-                      (accounts as Array<{ name: string; type: string }>) || []
-                    ).map((a) => ({
-                      value: a.name,
-                      label: `${a.name} (${a.type})`,
-                    })),
-                  }));
-                }}
-              />
-              <select
-                className="px-3 py-2 border rounded"
-                value={invHorizon}
-                onChange={(e) => setInvHorizon(e.target.value)}
-              >
-                <option value="">Horizon (optional)</option>
-                <option value="short-term">Short-term</option>
-                <option value="long-term">Long-term</option>
-              </select>
-              <input
-                className="px-3 py-2 border rounded"
-                placeholder="Existing Investment ID (optional)"
-                value={invId}
-                onChange={(e) => setInvId(e.target.value)}
-              />
-            </div>
-          )}
-          {invMode === 'unstake' && (
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              <ComboBox
-                options={invOpenOptions}
-                value={invId}
-                onChange={(v) => setInvId(String(v))}
-                placeholder="Active Investment (required)"
-              />
-              <input
-                className="px-3 py-2 border rounded"
-                placeholder="Investment Account (optional override)"
-                value={invAccount}
-                onChange={(e) => setInvAccount(e.target.value)}
-              />
-              <input
-                className="px-3 py-2 border rounded"
-                placeholder="Horizon (optional override)"
-                value={invHorizon}
-                onChange={(e) => setInvHorizon(e.target.value)}
-              />
-            </div>
           )}
         </div>
 
@@ -1708,16 +1434,6 @@ const TransactionPage: React.FC = () => {
                       className="w-full justify-start"
                       onClick={() => {
                         setIsQuickMenuOpen(false);
-                        openQuickModal('investment');
-                      }}
-                    >
-                      New Investment
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      className="w-full justify-start"
-                      onClick={() => {
-                        setIsQuickMenuOpen(false);
                         openQuickModal('transfer');
                       }}
                     >
@@ -1945,11 +1661,6 @@ const TransactionPage: React.FC = () => {
         isOpen={isModalOpen('vault')}
         onClose={closeQuickModal}
         onSubmit={(d) => void handleQuickVaultSubmit(d)}
-      />
-      <QuickInvestmentModal
-        isOpen={isModalOpen('investment')}
-        onClose={closeQuickModal}
-        onSubmit={(d) => void handleQuickInvestmentSubmit(d)}
       />
       <QuickInitBalanceModal
         isOpen={isModalOpen('initBalance')}

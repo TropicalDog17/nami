@@ -39,7 +39,7 @@ export interface Tag {
 // Transaction Types
 // ============================================================================
 
-export type TransactionTypeValue = 'expense' | 'income' | 'transfer' | 'buy' | 'sell' | 'investment' | 'dividend';
+export type TransactionTypeValue = 'expense' | 'income' | 'transfer' | 'buy' | 'sell' | 'dividend';
 
 export interface Transaction {
   id?: string | number;
@@ -114,15 +114,6 @@ export interface TransferFormData {
   note: string;
 }
 
-export interface InvestmentFormData {
-  date: string;
-  quantity: string;
-  price: string;
-  account: string;
-  asset: string;
-  note: string;
-}
-
 export interface VaultFormData {
   name: string;
   asset: string;
@@ -142,7 +133,6 @@ export type ModalType =
   | 'transfer'
   | 'buy'
   | 'sell'
-  | 'investment'
   | 'dividend'
   | 'vault'
   | 'initBalance'
