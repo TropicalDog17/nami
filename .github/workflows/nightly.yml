@@ -87,7 +87,7 @@ jobs:
         echo "All tests completed successfully!" >> $GITHUB_STEP_SUMMARY
 
     - name: Upload coverage reports
-      uses: codecov/codecov-action@v3
+      uses: codecov/codecov-action@v5
       with:
         files: ./backend/coverage.out,./backend/integration-coverage.out
         flags: nightly
