@@ -11,7 +11,7 @@ import { adminApi } from '../services/api';
 
 // Removed unused PopularExpenseCategories widget
 
-type TabId = 'types' | 'accounts' | 'assets' | 'tags' | 'pending';
+type TabId = 'types' | 'accounts' | 'assets' | 'tags' | 'pending' | 'data';
 
 type TransactionType = {
   id?: string | number;
@@ -80,6 +80,7 @@ const AdminPage = () => {
     { id: 'assets', name: 'Assets', icon: '📦' },
     { id: 'tags', name: 'Tags', icon: '🏷️' },
     { id: 'pending', name: 'AI Pending Actions', icon: '🤖' },
+    { id: 'data', name: 'Data Export/Import', icon: '💾' },
   ];
 
   // Auto-clear success message
@@ -433,6 +434,12 @@ const AdminPage = () => {
             <AdminPendingActions />
           </CardContent>
         </Card>
+      ) : activeTab === 'data' ? (
+        <Card>
+          <CardContent className="px-4 py-5 sm:p-6">
+            <DataExportImportTab actions={actions} />
+          </CardContent>
+        </Card>
       ) : (
         <Card>
           <CardContent className="px-4 py-5 sm:p-6">
@@ -749,6 +756,261 @@ const AdminForm: React.FC<{ type: 'types' | 'accounts' | 'assets' | 'tags'; item
         </form>
       </CardContent>
     </Card>
+  );
+};
+
+type ExportData = {
+  version: number;
+  exported_at: string;
+  transactions: unknown[];
+  vaults: unknown[];
+  loans: unknown[];
+  types: unknown[];
+  accounts: unknown[];
+  assets: unknown[];
+  tags: unknown[];
+  pending_actions: unknown[];
+  settings: {
+    default_spending_vault: string;
+    default_income_vault: string;
+    borrowing: {
+      name: string;
+      rate: number;
+      lastAccrualStart: string;
+    };
+  };
+};
+
+type ImportResult = {
+  ok: boolean;
+  imported: {
+    transactions: number;
+    vaults: number;
+    vault_entries: number;
+    loans: number;
+    types: number;
+    accounts: number;
+    assets: number;
+    tags: number;
+    pending_actions: number;
+  };
+};
+
+// Data Export/Import Tab Component
+const DataExportImportTab: React.FC<{
+  actions: {
+    setError: (msg: string) => void;
+    setSuccess: (msg: string) => void;
+    clearError: () => void;
+    clearSuccess: () => void;
+  };
+}> = ({ actions }) => {
+  const [exporting, setExporting] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [importFile, setImportFile] = useState<File | null>(null);
+  const [importPreview, setImportPreview] = useState<ExportData | null>(null);
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
+
+  const handleExport = async () => {
+    setExporting(true);
+    actions.clearError();
+    actions.clearSuccess();
+
+    try {
+      const data = await adminApi.exportData<ExportData>();
+      if (!data) {
+        throw new Error('No data received from server');
+      }
+
+      // Create a blob and download the file
+      const blob = new Blob([JSON.stringify(data, null, 2)], {
+        type: 'application/json',
+      });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `nami-backup-${new Date().toISOString().split('T')[0]}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      actions.setSuccess(
+        `Exported ${data.transactions.length} transactions, ${data.vaults.length} vaults, ${data.loans.length} loans`
+      );
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Unknown error';
+      actions.setError(`Failed to export data: ${msg}`);
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) {
+      setImportFile(null);
+      setImportPreview(null);
+      return;
+    }
+
+    if (file.type !== 'application/json' && !file.name.endsWith('.json')) {
+      actions.setError('Please select a JSON file');
+      setImportFile(null);
+      setImportPreview(null);
+      return;
+    }
+
+    setImportFile(file);
+
+    // Preview the file contents
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const data = JSON.parse(event.target?.result as string) as ExportData;
+        setImportPreview(data);
+        actions.clearError();
+      } catch (err) {
+        actions.setError('Invalid JSON file');
+        setImportPreview(null);
+      }
+    };
+    reader.readAsText(file);
+  };
+
+  const handleImport = async () => {
+    if (!importFile || !importPreview) {
+      actions.setError('Please select a file to import');
+      return;
+    }
+
+    if (
+      !confirm(
+        `This will import data and may create duplicates. Continue?\n\n` +
+          `Transactions: ${importPreview.transactions.length}\n` +
+          `Vaults: ${importPreview.vaults.length}\n` +
+          `Loans: ${importPreview.loans.length}\n` +
+          `Types: ${importPreview.types.length}\n` +
+          `Accounts: ${importPreview.accounts.length}\n` +
+          `Assets: ${importPreview.assets.length}\n` +
+          `Tags: ${importPreview.tags.length}\n` +
+          `Pending Actions: ${importPreview.pending_actions.length}`
+      )
+    ) {
+      return;
+    }
+
+    setImporting(true);
+    actions.clearError();
+    actions.clearSuccess();
+
+    try {
+      const result = await adminApi.importData<ImportResult>(importPreview);
+      if (!result || !result.ok) {
+        throw new Error('Import failed');
+      }
+
+      const stats = result.imported;
+      actions.setSuccess(
+        `Import completed!\n` +
+          `Transactions: ${stats.transactions}\n` +
+          `Vaults: ${stats.vaults} (${stats.vault_entries} entries)\n` +
+          `Loans: ${stats.loans}\n` +
+          `Types: ${stats.types}\n` +
+          `Accounts: ${stats.accounts}\n` +
+          `Assets: ${stats.assets}\n` +
+          `Tags: ${stats.tags}\n` +
+          `Pending Actions: ${stats.pending_actions}`
+      );
+
+      // Reset form
+      setImportFile(null);
+      setImportPreview(null);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Unknown error';
+      actions.setError(`Failed to import data: ${msg}`);
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-lg font-medium text-gray-900 mb-2">Export Data</h2>
+        <p className="text-sm text-gray-500 mb-4">
+          Download all your data as a JSON file. This includes transactions,
+          vaults, loans, settings, and more.
+        </p>
+        <Button onClick={handleExport} disabled={exporting}>
+          {exporting ? 'Exporting...' : 'Export All Data'}
+        </Button>
+      </div>
+
+      <div className="border-t border-gray-200 pt-6">
+        <h2 className="text-lg font-medium text-gray-900 mb-2">Import Data</h2>
+        <p className="text-sm text-gray-500 mb-4">
+          Import data from a previously exported JSON file. This will add new
+          items and skip duplicates.
+        </p>
+
+        <div className="space-y-4">
+          <div>
+            <label
+              htmlFor="import-file"
+              className="block text-sm font-medium text-gray-700 mb-2"
+            >
+              Select Backup File
+            </label>
+            <input
+              ref={fileInputRef}
+              id="import-file"
+              type="file"
+              accept=".json,application/json"
+              onChange={handleFileSelect}
+              className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+              data-testid="import-file-input"
+            />
+          </div>
+
+          {importPreview && (
+            <div className="bg-gray-50 rounded-lg p-4">
+              <h3 className="text-sm font-medium text-gray-900 mb-2">
+                Import Preview
+              </h3>
+              <div className="grid grid-cols-2 gap-2 text-sm text-gray-600">
+                <div>Version: {importPreview.version}</div>
+                <div>
+                  Exported:{' '}
+                  {new Date(importPreview.exported_at).toLocaleString()}
+                </div>
+                <div>Transactions: {importPreview.transactions.length}</div>
+                <div>Vaults: {importPreview.vaults.length}</div>
+                <div>Loans: {importPreview.loans.length}</div>
+                <div>Types: {importPreview.types.length}</div>
+                <div>Accounts: {importPreview.accounts.length}</div>
+                <div>Assets: {importPreview.assets.length}</div>
+                <div>Tags: {importPreview.tags.length}</div>
+                <div>
+                  Pending Actions: {importPreview.pending_actions.length}
+                </div>
+              </div>
+            </div>
+          )}
+
+          <Button
+            onClick={handleImport}
+            disabled={!importFile || importing}
+            data-testid="import-button"
+          >
+            {importing ? 'Importing...' : 'Import Data'}
+          </Button>
+        </div>
+      </div>
+    </div>
   );
 };
 

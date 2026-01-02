@@ -245,6 +245,10 @@ export const adminApi = {
       `/api/admin/maintenance/recalc-fx?only_missing=${onlyMissing ? 'true' : 'false'}`,
       {}
     ),
+
+  // Data Export/Import
+  exportData: <T = unknown>() => api.get<T>('/api/admin/export'),
+  importData: <T = unknown>(data: unknown) => api.post<T>('/api/admin/import', data),
 };
 
 // FX Rates API
