@@ -460,6 +460,28 @@ adminRouter.post("/admin/pending-actions", (req: Request, res: Response) => {
     if (!raw_input || typeof raw_input !== "string") {
       return res.status(400).json({ error: "raw_input is required" });
     }
+
+    // Check for duplicates if action_json is provided
+    if (action_json && typeof action_json === "object") {
+      const actionData = action_json as { action?: string; params?: any };
+      if (actionData.action && actionData.params) {
+        const duplicate = pendingActionsRepository.findDuplicate({
+          action: actionData.action,
+          date: actionData.params.date,
+          amount: actionData.params.vnd_amount,
+          counterparty: actionData.params.counterparty,
+        });
+
+        if (duplicate) {
+          return res.status(200).json({
+            ...duplicate,
+            duplicate: true,
+            message: "A similar pending action already exists",
+          });
+        }
+      }
+    }
+
     const created = pendingActionsRepository.create({
       source: source as any,
       raw_input,

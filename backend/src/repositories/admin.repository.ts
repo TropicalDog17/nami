@@ -660,6 +660,58 @@ export class PendingActionsRepositoryJson implements IPendingActionsRepository {
     return readStore().pendingActions.filter((p) => p.batch_id === batchId);
   }
 
+  findDuplicate(params: {
+    action: string;
+    date: string;
+    amount: number;
+    counterparty?: string;
+  }): PendingAction | undefined {
+    const { action, date, amount, counterparty } = params;
+
+    // Find pending actions with matching action, date, and amount
+    const candidates = readStore().pendingActions.filter((p) => {
+      // Only check pending status
+      if (p.status !== "pending") {
+        return false;
+      }
+
+      // Extract action and params from action_json
+      if (!p.action_json || typeof p.action_json !== "object") {
+        return false;
+      }
+
+      const actionData = p.action_json as any;
+      if (!actionData.action || !actionData.params) {
+        return false;
+      }
+
+      // Check if action type matches
+      if (actionData.action !== action) {
+        return false;
+      }
+
+      // Check if date matches
+      if (actionData.params.date !== date) {
+        return false;
+      }
+
+      // Check if amount matches
+      if (actionData.params.vnd_amount !== amount) {
+        return false;
+      }
+
+      // If counterparty provided, check if it matches
+      if (counterparty) {
+        return actionData.params.counterparty === counterparty;
+      }
+
+      return true;
+    });
+
+    // Return first match if any
+    return candidates.length > 0 ? candidates[0] : undefined;
+  }
+
   create(data: {
     source: PendingSource;
     raw_input: string;
@@ -770,6 +822,35 @@ export class PendingActionsRepositoryDb
       [batchId],
       this.rowToPendingAction.bind(this),
     );
+  }
+
+  findDuplicate(params: {
+    action: string;
+    date: string;
+    amount: number;
+    counterparty?: string;
+  }): PendingAction | undefined {
+    const { action, date, amount, counterparty } = params;
+
+    // Build query to find matching pending actions
+    let sql = `
+      SELECT * FROM pending_actions
+      WHERE status = 'pending'
+      AND json_extract(action_json, '$.action') = ?
+      AND json_extract(action_json, '$.params.date') = ?
+      AND json_extract(action_json, '$.params.vnd_amount') = ?
+    `;
+    const queryParams: any[] = [action, date, amount];
+
+    // Add counterparty filter if provided
+    if (counterparty) {
+      sql += ` AND json_extract(action_json, '$.params.counterparty') = ?`;
+      queryParams.push(counterparty);
+    }
+
+    sql += ` LIMIT 1`;
+
+    return this.findOne(sql, queryParams, this.rowToPendingAction.bind(this));
   }
 
   create(data: {

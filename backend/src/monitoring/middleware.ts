@@ -13,7 +13,6 @@ export function createMetricsMiddleware() {
     normalizePath: [
       ["/api/transactions/.*", "/api/transactions/:id"],
       ["/api/vaults/.*", "/api/vaults/:name"],
-      ["/api/cons-vaults/.*", "/api/cons-vaults/:id"],
       ["/api/reports/.*", "/api/reports/:type"],
     ],
   });

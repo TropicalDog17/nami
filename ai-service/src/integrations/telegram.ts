@@ -32,6 +32,45 @@ interface SessionState {
 
 const sessionStore = new Map<number, SessionState>()
 
+// Generate a unique ID for the review session
+function generateReviewId(): string {
+  return `review_${Date.now()}_${Math.random().toString(36).substring(7)}`
+}
+
+// Format the preview message
+function formatPreviewMessage(action: any, rawInput: string): string {
+  const lines = [
+    '📋 *Pending Action Review*',
+    '',
+    'I parsed the following action from your message:',
+    ''
+  ]
+
+  if (action) {
+    const params = action.params
+    lines.push('*Action:* `' + action.action + '`')
+    lines.push('*Amount:* `' + params.vnd_amount.toLocaleString() + ' VND`')
+    lines.push('*Date:* `' + params.date + '`')
+    if (params.counterparty) {
+      lines.push('*Counterparty:* `' + params.counterparty + '`')
+    }
+    if (params.tag) {
+      lines.push('*Tag:* `' + params.tag + '`')
+    }
+    if (params.note) {
+      lines.push('*Note:* `' + params.note + '`')
+    }
+  }
+
+  lines.push('')
+  lines.push('*Original message:*')
+  lines.push('"' + rawInput + '"')
+  lines.push('')
+  lines.push('Please review and approve, or provide corrections.')
+
+  return lines.join('\n')
+}
+
 export function buildBot(cfg: AppConfig, openai: OpenAI) {
   const bot = new Telegraf<Ctx>(cfg.TELEGRAM_BOT_TOKEN)
 
@@ -109,6 +148,64 @@ export function buildBot(cfg: AppConfig, openai: OpenAI) {
       return
     }
 
+    // If user is providing corrections to a pending review
+    if (state.pendingReview) {
+      correlationLogger.info({ chatId }, 'User providing corrections to pending review')
+
+      // Parse the correction as a new request
+      try {
+        const llmClient = new LLMClient(
+          {
+            provider: cfg.MODEL_PROVIDER,
+            timeout: 30000,
+          },
+          correlationId
+        )
+
+        // Use the original input + correction for context
+        const correctionPrompt = `Original: "${state.pendingReview.payload.raw_input}"\n\nUser correction: "${text}"\n\nParse the corrected version.`
+        const parsed = await parseExpenseText(llmClient, correctionPrompt, correlationId)
+
+        if (!parsed.action) {
+          await ctx.reply('❌ Could not parse corrections. Please try again with clearer instructions.')
+          return
+        }
+
+        // Update the pending review with the new parsed action
+        state.pendingReview.parsedAction = parsed.action
+        state.pendingReview.payload.action_json = parsed.action
+        state.pendingReview.payload.toon_text = parsed.toon
+
+        // Show updated preview
+        const reviewId = generateReviewId()
+        const previewMsg = formatPreviewMessage(parsed.action, state.pendingReview.payload.raw_input)
+
+        await ctx.reply(previewMsg, {
+          parse_mode: 'Markdown',
+          reply_markup: {
+            inline_keyboard: [
+              [
+                { text: '✅ Approve', callback_data: `approve_${reviewId}` },
+                { text: '✏️ Edit', callback_data: `edit_${reviewId}` }
+              ],
+              [
+                { text: '❌ Cancel', callback_data: `cancel_${reviewId}` }
+              ]
+            ]
+          }
+        })
+
+        correlationLogger.info({
+          originalAction: state.pendingReview.parsedAction,
+          correctedAction: parsed.action
+        }, 'User corrections applied')
+        return
+      } catch (e: any) {
+        await ctx.reply('❌ Failed to apply corrections: ' + redact(e.message))
+        return
+      }
+    }
+
     try {
       // LLM provider and credentials are resolved from env/config via LLMClient
       const llmClient = new LLMClient(
@@ -122,6 +219,11 @@ export function buildBot(cfg: AppConfig, openai: OpenAI) {
       // Parse expense text without grounding - backend handles account assignment via vault defaults
       const parsed = await parseExpenseText(llmClient, text, correlationId)
 
+      if (!parsed.action) {
+        await ctx.reply('❌ Could not parse your message. Please try again with a clearer format.')
+        return
+      }
+
       const payload: PendingActionCreate = {
         source: 'telegram_text',
         raw_input: text,
@@ -130,16 +232,43 @@ export function buildBot(cfg: AppConfig, openai: OpenAI) {
         confidence: parsed.confidence
       }
 
-      const res = await createPendingAction(cfg, payload, correlationId)
+      // Store in session for review
+      const reviewId = generateReviewId()
+      sessionStore.set(chatId, {
+        ...state,
+        pendingReview: {
+          payload,
+          correlationId,
+          parsedAction: parsed.action
+        }
+      })
+
+      // Show preview with approve/edit buttons
+      const previewMsg = formatPreviewMessage(parsed.action, text)
+
+      await ctx.reply(previewMsg, {
+        parse_mode: 'Markdown',
+        reply_markup: {
+          inline_keyboard: [
+            [
+              { text: '✅ Approve', callback_data: `approve_${reviewId}` },
+              { text: '✏️ Edit', callback_data: `edit_${reviewId}` }
+            ],
+            [
+              { text: '❌ Cancel', callback_data: `cancel_${reviewId}` }
+            ]
+          ]
+        }
+      })
 
       correlationLogger.info(
         {
-          pendingId: res.id,
+          reviewId,
           hasAction: !!parsed.action,
           actionType: parsed.action?.action,
           account: parsed.action?.params.account,
         },
-        'Successfully processed text message'
+        'Showing preview for user review'
       )
     } catch (e: any) {
       const categorizedError = handleAndLogError(
@@ -516,6 +645,114 @@ export function buildBot(cfg: AppConfig, openai: OpenAI) {
         error: categorizedError.message,
         category: categorizedError.category
       }, 'Failed to process topic message')
+    }
+  })
+
+  // Handle callback queries from inline buttons
+  bot.on('callback_query', async (ctx) => {
+    const chatId = ctx.callbackQuery?.message?.chat.id
+    const messageId = ctx.callbackQuery?.message?.message_id
+    const data = 'data' in ctx.callbackQuery ? ctx.callbackQuery.data : undefined
+
+    if (!chatId || !data) return
+
+    const correlationId = `callback-${chatId}-${Date.now()}`
+    const correlationLogger = createCorrelationLogger(correlationId)
+
+    correlationLogger.info({
+      chatId,
+      action: data,
+      messageId
+    }, 'Processing callback query')
+
+    // Acknowledge the callback query
+    await ctx.answerCbQuery()
+
+    const state = sessionStore.get(chatId)
+
+    if (data.startsWith('approve_')) {
+      // User approved the action
+      if (!state?.pendingReview) {
+        await ctx.reply('❌ No pending review found. Please try again.')
+        return
+      }
+
+      try {
+        const res = await createPendingAction(cfg, state.pendingReview.payload, state.pendingReview.correlationId)
+
+        if (res.duplicate) {
+          correlationLogger.info(
+            {
+              pendingId: res.id,
+              hasAction: !!state.pendingReview.parsedAction,
+              actionType: state.pendingReview.parsedAction?.action,
+            },
+            'User approved but found duplicate pending action'
+          )
+
+          await ctx.reply(`⚠️ Duplicate detected!\n\nThis action is already pending review (ID: ${res.id}).\n\n${res.message || ''}`)
+        } else {
+          correlationLogger.info(
+            {
+              pendingId: res.id,
+              hasAction: !!state.pendingReview.parsedAction,
+              actionType: state.pendingReview.parsedAction?.action,
+            },
+            'User approved and created pending action'
+          )
+
+          await ctx.reply('✅ Action approved and created successfully!')
+        }
+
+        // Edit the original message to show it was approved
+        await ctx.editMessageText('✅ *Approved*\n\n' + formatPreviewMessage(state.pendingReview.parsedAction, state.pendingReview.payload.raw_input), {
+          parse_mode: 'Markdown'
+        }).catch(() => {})
+
+        // Clear the pending review
+        sessionStore.set(chatId, {
+          ...state,
+          pendingReview: undefined
+        })
+      } catch (e: any) {
+        correlationLogger.error({ error: e.message }, 'Failed to create approved action')
+        await ctx.reply('❌ Failed to create action: ' + redact(e.message))
+      }
+    } else if (data.startsWith('edit_')) {
+      // User wants to edit the action
+      if (!state?.pendingReview) {
+        await ctx.reply('❌ No pending review found. Please try again.')
+        return
+      }
+
+      await ctx.reply(
+        '✏️ *Edit Mode*\n\n' +
+        'Please provide your corrections. You can say things like:\n' +
+        '• "Change amount to 150k"\n' +
+        '• "Date should be yesterday"\n' +
+        '• "Counterparty is Starbucks"\n' +
+        '• "Tag should be coffee"\n\n' +
+        'Or send a completely new version.',
+        { parse_mode: 'Markdown' }
+      )
+
+      // Update the message to show we're in edit mode
+      await ctx.editMessageText(
+        '✏️ *Waiting for corrections...*\n\n' + formatPreviewMessage(state.pendingReview.parsedAction, state.pendingReview.payload.raw_input),
+        { parse_mode: 'Markdown' }
+      ).catch(() => {})
+    } else if (data.startsWith('cancel_')) {
+      // User cancelled the action
+      sessionStore.delete(chatId)
+
+      await ctx.reply('❌ Action cancelled.')
+
+      // Edit the original message to show it was cancelled
+      if (messageId) {
+        await ctx.editMessageText('❌ *Cancelled*\n\n' + (state?.pendingReview ?
+          formatPreviewMessage(state.pendingReview.parsedAction, state.pendingReview.payload.raw_input) :
+          'Action was cancelled'), { parse_mode: 'Markdown' }).catch(() => {})
+      }
     }
   })
 

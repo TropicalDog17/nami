@@ -15,6 +15,7 @@ import {
   ChartTooltip,
   ChartTooltipContent,
 } from '@/components/ui/chart';
+import { useApp } from '@/context/AppContext';
 
 type SeriesData = {
   date: string;
@@ -44,6 +45,7 @@ export const AUMChart: React.FC<AUMChartProps> = ({
   const [seriesDataFull, setSeriesDataFull] = useState<SeriesData[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { currency } = useApp();
 
   const timeRange = externalTimeRange ?? internalTimeRange;
 
@@ -201,12 +203,39 @@ export const AUMChart: React.FC<AUMChartProps> = ({
     });
   }, [seriesData]);
 
+  // Calculate Y-axis domain to start at a reasonable minimum
+  const yAxisDomain = useMemo(() => {
+    if (seriesData.length === 0) return [0, 100000] as [number, number];
+
+    const values = seriesData.map(d => d.aum_usd);
+    const minValue = Math.min(...values);
+    const maxValue = Math.max(...values);
+
+    // Calculate nice rounded bounds that include zero
+    // Find the order of magnitude
+    const maxMagnitude = Math.pow(10, Math.floor(Math.log10(maxValue)));
+    const minMagnitude = Math.pow(10, Math.floor(Math.log10(minValue)));
+
+    // Round up max value to next nice number
+    const domainMax = Math.ceil(maxValue / maxMagnitude) * maxMagnitude;
+
+    // Round down min value, but ensure we include zero if it makes sense
+    // If min is less than 20% of the range, start from zero
+    const range = maxValue - minValue;
+    const domainMin = (minValue < range * 0.2) ? 0 : Math.floor(minValue / minMagnitude) * minMagnitude;
+
+    return [domainMin, domainMax] as [number, number];
+  }, [seriesData]);
+
   const formatCurrency = (value: number) => {
+    // For VND, round to 1 decimal place; for USD, use 2 decimal places
+    const decimalDigits = currency === 'VND' ? 1 : 2;
+
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
-      currency: 'USD',
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
+      currency: currency,
+      minimumFractionDigits: decimalDigits,
+      maximumFractionDigits: decimalDigits,
     }).format(value);
   };
 
@@ -316,15 +345,23 @@ export const AUMChart: React.FC<AUMChartProps> = ({
                       axisLine={false}
                       tickMargin={8}
                       className="text-xs"
-                      tickFormatter={(value) => `$${value.toLocaleString()}`}
+                      tickFormatter={(value) => {
+                        const decimals = currency === 'VND' ? 1 : 1;
+                        const symbol = currency === 'VND' ? '₫' : '$';
+                        return `${symbol}${value.toFixed(decimals)}`;
+                      }}
+                      domain={yAxisDomain}
                     />
                     <ChartTooltip
                       cursor={false}
                       content={
                         <ChartTooltipContent
-                          formatter={(value) =>
-                            `$${Number(value).toLocaleString()}`
+                          formatter={(value) => {
+                            const decimals = currency === 'VND' ? 1 : 1;
+                            const symbol = currency === 'VND' ? '₫' : '$';
+                            return `${symbol}${Number(value).toFixed(decimals)}`;
                           }
+                        }
                         />
                       }
                     />

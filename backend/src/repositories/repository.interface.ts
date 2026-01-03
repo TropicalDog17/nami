@@ -121,6 +121,12 @@ export interface IPendingActionsRepository {
   findById(id: string): PendingAction | undefined;
   findByStatus(status: string): PendingAction[];
   findByBatchId(batchId: string): PendingAction[];
+  findDuplicate(params: {
+    action: string;
+    date: string;
+    amount: number;
+    counterparty?: string;
+  }): PendingAction | undefined;
   create(action: PendingAction): PendingAction;
   update(
     id: string,

@@ -13,7 +13,7 @@ export async function createPendingAction(
   cfg: AppConfig,
   payload: PendingActionCreate,
   correlationId?: string
-): Promise<{ id: string }> {
+): Promise<{ id: string; duplicate?: boolean; message?: string }> {
   const correlationLogger = createCorrelationLogger(correlationId)
 
   return withRetry(
@@ -35,7 +35,8 @@ export async function createPendingAction(
         signal: AbortSignal.timeout(30000) // 30 second timeout
       })
 
-      if (!res.ok) {
+      // Accept both 201 (created) and 200 (duplicate found)
+      if (!res.ok && res.status !== 200) {
         const text = await res.text()
         const error = new Error(`Backend create pending failed: ${res.status} ${text}`)
         throw handleAndLogError(
@@ -50,8 +51,14 @@ export async function createPendingAction(
         )
       }
 
-      const result = await res.json() as { id: string }
-      correlationLogger.info({ id: result.id }, 'Successfully created pending action')
+      const result = await res.json() as { id: string; duplicate?: boolean; message?: string }
+
+      if (result.duplicate) {
+        correlationLogger.info({ id: result.id }, 'Duplicate pending action found')
+      } else {
+        correlationLogger.info({ id: result.id }, 'Successfully created pending action')
+      }
+
       return result
     },
     'createPendingAction',

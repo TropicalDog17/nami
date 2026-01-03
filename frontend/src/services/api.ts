@@ -248,7 +248,8 @@ export const adminApi = {
 
   // Data Export/Import
   exportData: <T = unknown>() => api.get<T>('/api/admin/export'),
-  importData: <T = unknown>(data: unknown) => api.post<T>('/api/admin/import', data),
+  importData: <T = unknown>(data: unknown) =>
+    api.post<T>('/api/admin/import', data),
 };
 
 // FX Rates API
@@ -443,22 +444,16 @@ export const pricesApi = {
 // Tokenized Vault API
 export const tokenizedVaultApi = {
   // Basic CRUD
-  // Migrated to consolidated endpoints
+  // Use tokenized=true query param to get tokenized shape
   list: <T = unknown>(filters: Record<string, unknown> = {}) =>
-    api.get<T>('/api/cons-vaults', filters),
+    api.get<T>('/api/vaults', { ...filters, tokenized: true }),
   get: <T = unknown>(id: string, params: Record<string, unknown> = {}) =>
-    api.get<T>(`/api/cons-vaults/${id}`, params),
-  create: <T = unknown>(vault: unknown) =>
-    api.post<T>('/api/cons-vaults', vault),
+    api.get<T>(`/api/vaults/${id}`, { ...params, tokenized: true }),
+  create: <T = unknown>(vault: unknown) => api.post<T>('/api/vaults', vault),
   update: <T = unknown>(id: string, vault: unknown) =>
-    api.put<T>(`/api/cons-vaults/${id}`, vault),
-  delete: <T = unknown>(id: string) => api.delete<T>(`/api/cons-vaults/${id}`),
+    api.put<T>(`/api/vaults/${id}`, vault),
+  delete: <T = unknown>(id: string) => api.delete<T>(`/api/vaults/${id}`),
 
-  // Manual pricing - consolidated endpoints
-  updatePrice: <T = unknown>(
-    id: string,
-    data: { new_price: number; notes?: string }
-  ) => api.post<T>(`/api/cons-vaults/${id}/update-price`, data),
   updateTotalValue: <T = unknown>(
     id: string,
     data: {
@@ -466,13 +461,13 @@ export const tokenizedVaultApi = {
       net_contribution_delta?: number;
       notes?: string;
     }
-  ) => api.post<T>(`/api/cons-vaults/${id}/update-total-value`, data),
+  ) => api.post<T>(`/api/vaults/${id}/update-total-value`, data),
   enableManualPricing: <T = unknown>(
     id: string,
     data: { initial_price: number }
-  ) => api.post<T>(`/api/cons-vaults/${id}/enable-manual-pricing`, data),
+  ) => api.post<T>(`/api/vaults/${id}/enable-manual-pricing`, data),
   disableManualPricing: <T = unknown>(id: string) =>
-    api.post<T>(`/api/cons-vaults/${id}/disable-manual-pricing`, {}),
+    api.post<T>(`/api/vaults/${id}/disable-manual-pricing`, {}),
 
   // Deposits and withdrawals (consolidated endpoints)
   deposit: <T = unknown>(
@@ -484,7 +479,7 @@ export const tokenizedVaultApi = {
       asset?: string;
     }
   ) =>
-    api.post<T>(`/api/cons-vaults/${id}/deposit`, {
+    api.post<T>(`/api/vaults/${id}/deposit`, {
       amount: data.amount,
       ...(data.notes ? { notes: data.notes } : {}),
       ...(data.source_account ? { source_account: data.source_account } : {}),
@@ -499,7 +494,7 @@ export const tokenizedVaultApi = {
       asset?: string;
     }
   ) =>
-    api.post<T>(`/api/cons-vaults/${id}/withdraw`, {
+    api.post<T>(`/api/vaults/${id}/withdraw`, {
       amount: data.amount,
       ...(data.notes ? { notes: data.notes } : {}),
       ...(data.target_account ? { target_account: data.target_account } : {}),
@@ -508,6 +503,5 @@ export const tokenizedVaultApi = {
 
   // Vault management (deprecated)
   close: <T = unknown>(id: string) =>
-    api.post<T>(`/api/cons-vaults/${id}/close`, {}),
+    api.post<T>(`/api/vaults/${id}/close`, {}),
 };
-
