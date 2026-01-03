@@ -2,6 +2,9 @@ import { format, differenceInDays } from 'date-fns';
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+
 import QuickBorrowLoanModal from '../components/modals/QuickBorrowLoanModal';
 import QuickRepayModal from '../components/modals/QuickRepayModal';
 import { TimeSeriesLineChart } from '../components/reports/Charts';
@@ -9,8 +12,6 @@ import ManualPricingControl from '../components/tokenized/ManualPricingControl';
 import ComboBox from '../components/ui/ComboBox';
 import DataTable, { TableColumn } from '../components/ui/DataTable';
 import { useToast } from '../components/ui/Toast';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   vaultApi,
   transactionApi,
@@ -680,9 +681,12 @@ const VaultDetailPage: React.FC = () => {
         }>();
         const vaults = Array.isArray(vaultsData)
           ? vaultsData
+              // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
               .filter((v) => v.status === 'active' && v.id !== vaultId)
               .map((v) => ({
+                // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
                 value: v.id,
+                // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
                 label: v.name,
               }))
           : [];
@@ -782,7 +786,7 @@ const VaultDetailPage: React.FC = () => {
     }
   };
 
-  const formatVaultNumber = (
+  const _formatVaultNumber = (
     value: string | number,
     decimals: number = 2
   ): string => {
@@ -852,7 +856,7 @@ const VaultDetailPage: React.FC = () => {
     },
   ];
 
-  const isUsdOnlyVault = useMemo(() => {
+  const _isUsdOnlyVault = useMemo(() => {
     return false; // This appears to be unused legacy code
   }, []);
 

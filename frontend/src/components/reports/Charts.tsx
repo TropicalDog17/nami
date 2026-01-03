@@ -13,6 +13,7 @@ import {
 import React from 'react';
 import { Bar, Doughnut } from 'react-chartjs-2';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, ResponsiveContainer } from 'recharts';
+
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   ChartContainer,
@@ -461,7 +462,10 @@ export const PnLLineChart: React.FC<{ data: PnLData; currency?: Currency }> = ({
             axisLine={false}
             tickMargin={8}
             className="text-xs"
-            tickFormatter={(value) => value.toLocaleString()}
+            tickFormatter={(value) => {
+              // eslint-disable-next-line @typescript-eslint/no-unsafe-return, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
+              return value.toLocaleString();
+            }}
           />
           <ChartTooltip
             cursor={false}
@@ -604,7 +608,7 @@ export const TimeSeriesLineChart: React.FC<{
   }>;
   yFormat?: 'percent' | 'currency' | 'number';
   currency?: Currency;
-}> = ({ labels, datasets, yFormat = 'number', currency = 'USD' }) => {
+}> = ({ labels, datasets, yFormat = 'number', _currency }) => {
   // Create safe keys for CSS variables (no spaces or special characters)
   const datasetKeys = datasets.map((ds, index) => `dataset${index}`);
 
@@ -624,7 +628,7 @@ export const TimeSeriesLineChart: React.FC<{
     const key = datasetKeys[index];
     acc[key] = {
       label: ds.label,
-      color: ds.color || `hsl(${index * 60}, 70%, 50%)`,
+      color: ds.color ?? `hsl(${index * 60}, 70%, 50%)`,
     };
     return acc;
   }, {} as Record<string, { label: string; color: string }>);
@@ -733,7 +737,7 @@ export const DailySpendingChart: React.FC<{
             axisLine={false}
             tickMargin={8}
             className="text-xs"
-            tickFormatter={(value) => Math.abs(value).toLocaleString()}
+            tickFormatter={(value) => Math.abs(Number(value)).toLocaleString()}
           />
           <ChartTooltip
             cursor={false}

@@ -4,7 +4,6 @@
  */
 
 import React, { ReactNode } from 'react';
-
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -142,11 +141,7 @@ export const QuickModalFooter: React.FC<QuickModalFooterProps> = ({
 
   return (
     <DialogFooter>
-      <Button
-        type="button"
-        variant="outline"
-        onClick={handleSecondary}
-      >
+      <Button type="button" variant="outline" onClick={handleSecondary}>
         {secondaryText}
       </Button>
       <Button
@@ -203,9 +198,7 @@ export const FormField: React.FC<FormFieldProps> = ({
       {hint && !error && (
         <p className="text-xs text-muted-foreground mt-1">{hint}</p>
       )}
-      {error && (
-        <p className="text-sm text-destructive mt-1">{error}</p>
-      )}
+      {error && <p className="text-sm text-destructive mt-1">{error}</p>}
     </div>
   );
 };

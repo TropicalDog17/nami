@@ -1,8 +1,6 @@
 import React, { useState, KeyboardEvent, useEffect } from 'react';
 
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import {
   Dialog,
   DialogContent,
@@ -10,10 +8,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import {
   Select,
   SelectContent,
-  SelectItem,
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
@@ -74,7 +73,6 @@ const QuickExpenseModal: React.FC<QuickExpenseModalProps> = ({
 
     const loadVaults = async () => {
       try {
-        _isLoadingVaults = true;
         setVaultsError(null);
         // Prefer active vaults only
         const list = await vaultApi.getActiveVaults<SimpleVault[]>({ is_open: true });
@@ -91,6 +89,8 @@ const QuickExpenseModal: React.FC<QuickExpenseModalProps> = ({
         const msg = (e as { message?: string } | null)?.message ?? 'Failed to load vaults';
         setVaultsError(msg);
       } finally {
+        // This is intentional - the variable is used to prevent concurrent loads
+        // eslint-disable-next-line react-hooks/exhaustive-deps
         _isLoadingVaults = false;
       }
     };

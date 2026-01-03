@@ -25,6 +25,7 @@ function promiseToast<T>(
 /**
  * Toast utility functions using Sonner
  */
+// eslint-disable-next-line react-refresh/only-export-components
 export const toast = {
   success: (message: string) => sonnerToast.success(message),
   error: (message: string) => sonnerToast.error(message),

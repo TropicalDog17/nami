@@ -5,8 +5,9 @@
 import React from 'react';
 import { Doughnut } from 'react-chartjs-2';
 
-import type { Currency } from './chartConfig';
 import { Card, CardContent } from '@/components/ui/card';
+
+import type { Currency } from './chartConfig';
 
 export type HoldingsData = {
   by_asset?: Record<

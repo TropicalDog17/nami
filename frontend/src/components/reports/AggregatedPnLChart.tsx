@@ -1,13 +1,14 @@
 import { useState, useEffect, useCallback } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, ResponsiveContainer } from 'recharts';
 
-import { reportsApi } from '../../services/api';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import {
   ChartContainer,
   ChartTooltip,
   ChartTooltipContent,
 } from '@/components/ui/chart';
+
+import { reportsApi } from '../../services/api';
 
 type Currency = 'USD' | 'VND';
 
@@ -300,7 +301,10 @@ export const AggregatedPnLChart: React.FC<AggregatedPnLChartProps> = ({
                   axisLine={false}
                   tickMargin={8}
                   className="text-xs"
-                  tickFormatter={(value) => value.toLocaleString()}
+                  tickFormatter={(value) => {
+                    // eslint-disable-next-line @typescript-eslint/no-unsafe-return, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
+                    return value.toLocaleString();
+                  }}
                 />
                 <YAxis
                   yAxisId="right"
@@ -309,7 +313,10 @@ export const AggregatedPnLChart: React.FC<AggregatedPnLChartProps> = ({
                   axisLine={false}
                   tickMargin={8}
                   className="text-xs"
-                  tickFormatter={(value) => value.toLocaleString()}
+                  tickFormatter={(value) => {
+                    // eslint-disable-next-line @typescript-eslint/no-unsafe-return, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
+                    return value.toLocaleString();
+                  }}
                 />
                 <ChartTooltip
                   cursor={false}

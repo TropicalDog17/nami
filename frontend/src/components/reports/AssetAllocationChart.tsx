@@ -1,7 +1,8 @@
 import React from 'react';
 
-import { formatCurrency, formatPercentage } from '../../utils/currencyFormatter';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+
+import { formatCurrency, formatPercentage } from '../../utils/currencyFormatter';
 
 interface AssetData {
   [key: string]: {

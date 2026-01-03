@@ -8,7 +8,6 @@ import {
   ResponsiveContainer,
 } from 'recharts';
 
-import { reportsApi } from '../../services/api';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   ChartContainer,
@@ -16,6 +15,8 @@ import {
   ChartTooltipContent,
 } from '@/components/ui/chart';
 import { useApp } from '@/context/AppContext';
+
+import { reportsApi } from '../../services/api';
 
 type SeriesData = {
   date: string;
@@ -348,6 +349,7 @@ export const AUMChart: React.FC<AUMChartProps> = ({
                       tickFormatter={(value) => {
                         const decimals = currency === 'VND' ? 1 : 1;
                         const symbol = currency === 'VND' ? '₫' : '$';
+                        // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
                         return `${symbol}${value.toFixed(decimals)}`;
                       }}
                       domain={yAxisDomain}

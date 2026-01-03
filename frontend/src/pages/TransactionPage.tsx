@@ -172,12 +172,16 @@ const TransactionPage: React.FC = () => {
           return d.toLocaleDateString();
         })(),
         // Type
+        // eslint-disable-next-line @typescript-eslint/no-base-to-string
         String((tx as Record<string, unknown>)?.type ?? ''),
         // Asset
+        // eslint-disable-next-line @typescript-eslint/no-base-to-string
         String((tx as Record<string, unknown>)?.asset ?? ''),
         // Account
+        // eslint-disable-next-line @typescript-eslint/no-base-to-string
         String((tx as Record<string, unknown>)?.account ?? ''),
         // Quantity
+        // eslint-disable-next-line @typescript-eslint/no-base-to-string
         String((tx as Record<string, unknown>)?.quantity ?? ''),
         // Amount (converted to target currency)
         (() => {
@@ -190,10 +194,13 @@ const TransactionPage: React.FC = () => {
             : '';
         })(),
         // Counterparty
+        // eslint-disable-next-line @typescript-eslint/no-base-to-string
         String((tx as Record<string, unknown>)?.counterparty ?? ''),
         // Tag
+        // eslint-disable-next-line @typescript-eslint/no-base-to-string
         String((tx as Record<string, unknown>)?.tag ?? ''),
         // Note
+        // eslint-disable-next-line @typescript-eslint/no-base-to-string
         String((tx as Record<string, unknown>)?.note ?? ''),
       ];
 

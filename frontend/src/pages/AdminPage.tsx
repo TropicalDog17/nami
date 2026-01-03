@@ -870,7 +870,7 @@ const DataExportImportTab: React.FC<{
         const data = JSON.parse(event.target?.result as string) as ExportData;
         setImportPreview(data);
         actions.clearError();
-      } catch (err) {
+      } catch (_err) {
         actions.setError('Invalid JSON file');
         setImportPreview(null);
       }
@@ -906,7 +906,7 @@ const DataExportImportTab: React.FC<{
 
     try {
       const result = await adminApi.importData<ImportResult>(importPreview);
-      if (!result || !result.ok) {
+      if (!result?.ok) {
         throw new Error('Import failed');
       }
 
@@ -945,7 +945,7 @@ const DataExportImportTab: React.FC<{
           Download all your data as a JSON file. This includes transactions,
           vaults, loans, settings, and more.
         </p>
-        <Button onClick={handleExport} disabled={exporting}>
+        <Button onClick={() => { void handleExport(); }} disabled={exporting}>
           {exporting ? 'Exporting...' : 'Export All Data'}
         </Button>
       </div>
@@ -1002,7 +1002,7 @@ const DataExportImportTab: React.FC<{
           )}
 
           <Button
-            onClick={handleImport}
+            onClick={() => { void handleImport(); }}
             disabled={!importFile || importing}
             data-testid="import-button"
           >

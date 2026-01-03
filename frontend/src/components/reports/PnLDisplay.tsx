@@ -1,7 +1,8 @@
 import React from 'react';
 
-import { formatCurrency, formatPercentage, formatPnL } from '../../utils/currencyFormatter';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+
+import { formatCurrency, formatPercentage, formatPnL } from '../../utils/currencyFormatter';
 
 interface PnLData {
   realized_pnl_usd: number;
