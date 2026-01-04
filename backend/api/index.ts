@@ -2,12 +2,10 @@ import type { VercelRequest, VercelResponse } from "@vercel/node";
 import express from "express";
 import cors from "cors";
 import swaggerUi from "swagger-ui-express";
-
-import { config } from "../src/core/config";
 import {
-  errorHandler,
-  requestLogger,
-  notFoundHandler,
+    errorHandler,
+    requestLogger,
+    notFoundHandler,
 } from "../src/core/middleware";
 
 import { transactionsRouter } from "../src/handlers/transaction.handler";
@@ -29,7 +27,7 @@ const app = express();
 
 // Setup monitoring
 const { metricsMiddleware, registerMetricsEndpoint, metrics } =
-  setupMonitoring(app);
+    setupMonitoring(app);
 app.use(metricsMiddleware);
 setMetrics(metrics);
 
@@ -37,11 +35,11 @@ app.use(cors());
 app.use(express.json());
 
 app.get("/health", (_req, res) =>
-  res.json({
-    ok: true,
-    timestamp: new Date().toISOString(),
-    uptime: process.uptime(),
-  })
+    res.json({
+        ok: true,
+        timestamp: new Date().toISOString(),
+        uptime: process.uptime(),
+    })
 );
 
 // API routes
@@ -62,10 +60,10 @@ app.get("/api/openapi.json", (_req, res) => res.json(openapiSpec));
 
 // Swagger UI options to prevent caching issues
 const swaggerOptions = {
-  explorer: true,
-  swaggerOptions: {
-    url: "/api/openapi.json",
-  },
+    explorer: true,
+    swaggerOptions: {
+        url: "/api/openapi.json",
+    },
 };
 
 app.use("/api/docs", swaggerUi.serve);
@@ -86,35 +84,36 @@ app.use(errorHandler);
 let initialized = false;
 
 function ensureInitialized() {
-  if (initialized) return;
+    if (initialized) return;
 
-  try {
-    // Initialize database if using database backend
-    if (process.env.STORAGE_BACKEND === "database") {
-      initializeDatabase();
-      logger.info("Database initialized");
+    try {
+        // Initialize database if using database backend
+        if (process.env.STORAGE_BACKEND === "database") {
+            initializeDatabase();
+            logger.info("Database initialized");
+        }
+
+        // Ensure default vaults exist at startup
+        const defaultSpendingVault =
+            settingsRepository.getDefaultSpendingVaultName();
+        const defaultIncomeVault =
+            settingsRepository.getDefaultIncomeVaultName();
+        vaultService.ensureVault(defaultSpendingVault);
+        vaultService.ensureVault(defaultIncomeVault);
+
+        // Initialize borrowing settings
+        settingsRepository.getBorrowingSettings();
+
+        logger.info("Initialization complete.");
+        initialized = true;
+    } catch (e) {
+        const msg = (e as { message?: string } | null)?.message ?? String(e);
+        logger.error({ error: msg }, "Bootstrap failed");
     }
-
-    // Ensure default vaults exist at startup
-    const defaultSpendingVault =
-      settingsRepository.getDefaultSpendingVaultName();
-    const defaultIncomeVault = settingsRepository.getDefaultIncomeVaultName();
-    vaultService.ensureVault(defaultSpendingVault);
-    vaultService.ensureVault(defaultIncomeVault);
-
-    // Initialize borrowing settings
-    settingsRepository.getBorrowingSettings();
-
-    logger.info("Initialization complete.");
-    initialized = true;
-  } catch (e) {
-    const msg = (e as { message?: string } | null)?.message ?? String(e);
-    logger.error({ error: msg }, "Bootstrap failed");
-  }
 }
 
 // Vercel serverless handler
 export default function handler(req: VercelRequest, res: VercelResponse) {
-  ensureInitialized();
-  return app(req as any, res as any);
+    ensureInitialized();
+    return app(req as any, res as any);
 }
