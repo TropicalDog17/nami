@@ -1,186 +1,221 @@
-import express from 'express'
-import OpenAI from 'openai'
-import { loadConfig } from './utils/config.js'
-import { logger, createCorrelationLogger } from './utils/logger.js'
-import { buildBot } from './integrations/telegram.js'
-import { HealthChecker } from './api/health.js'
-import { apiTestRouter } from './api/api-test.js'
-import { handleAndLogError, ErrorCategory, ErrorSeverity } from './utils/errors.js'
-import { setupMonitoring, setMetrics } from './monitoring/index.js'
-import { createBasicAuthMiddleware } from './api/basic-auth.js'
+import express from "express";
+import OpenAI from "openai";
+import { loadConfig } from "./utils/config.js";
+import { logger, createCorrelationLogger } from "./utils/logger.js";
+import { buildBot } from "./integrations/telegram.js";
+import { HealthChecker } from "./api/health.js";
+import { apiTestRouter } from "./api/api-test.js";
+import {
+  handleAndLogError,
+  ErrorCategory,
+  ErrorSeverity,
+} from "./utils/errors.js";
+import { setupMonitoring, setMetrics } from "./monitoring/index.js";
+import { createBasicAuthMiddleware } from "./api/basic-auth.js";
 
 function validateConfig(cfg: any): void {
-  const correlationLogger = createCorrelationLogger('startup')
-  const errors: string[] = []
+  const correlationLogger = createCorrelationLogger("startup");
+  const errors: string[] = [];
 
   // Critical configuration validation
   if (!cfg.TELEGRAM_BOT_TOKEN || cfg.TELEGRAM_BOT_TOKEN.length < 20) {
-    errors.push('TELEGRAM_BOT_TOKEN is required and must be valid')
+    errors.push("TELEGRAM_BOT_TOKEN is required and must be valid");
   }
 
   // Provider-specific API key validation
-  if (cfg.MODEL_PROVIDER === 'openai') {
+  if (cfg.MODEL_PROVIDER === "openai") {
     if (!cfg.OPENAI_API_KEY || cfg.OPENAI_API_KEY.length < 20) {
-      errors.push('OPENAI_API_KEY is required and must be valid when MODEL_PROVIDER=openai')
+      errors.push(
+        "OPENAI_API_KEY is required and must be valid when MODEL_PROVIDER=openai",
+      );
     }
-  } else if (cfg.MODEL_PROVIDER === 'anthropic' || cfg.MODEL_PROVIDER === 'zai') {
+  } else if (
+    cfg.MODEL_PROVIDER === "anthropic" ||
+    cfg.MODEL_PROVIDER === "zai"
+  ) {
     if (!cfg.ANTHROPIC_AUTH_TOKEN && !cfg.ANTHROPIC_API_KEY) {
-      errors.push('ANTHROPIC_AUTH_TOKEN or ANTHROPIC_API_KEY is required when MODEL_PROVIDER=anthropic or zai')
+      errors.push(
+        "ANTHROPIC_AUTH_TOKEN or ANTHROPIC_API_KEY is required when MODEL_PROVIDER=anthropic or zai",
+      );
     }
   }
 
-  if (!cfg.BACKEND_BASE_URL || !cfg.BACKEND_BASE_URL.startsWith('http')) {
-    errors.push('BACKEND_BASE_URL is required and must be a valid URL')
+  if (!cfg.BACKEND_BASE_URL || !cfg.BACKEND_BASE_URL.startsWith("http")) {
+    errors.push("BACKEND_BASE_URL is required and must be a valid URL");
   }
 
   if (!cfg.BACKEND_SIGNING_SECRET || cfg.BACKEND_SIGNING_SECRET.length < 16) {
-    errors.push('BACKEND_SIGNING_SECRET is required and must be at least 16 characters')
+    errors.push(
+      "BACKEND_SIGNING_SECRET is required and must be at least 16 characters",
+    );
   }
 
-  if (!cfg.SERVICE_BASE_URL || !cfg.SERVICE_BASE_URL.startsWith('http')) {
-    errors.push('SERVICE_BASE_URL is required and must be a valid URL')
+  if (!cfg.SERVICE_BASE_URL || !cfg.SERVICE_BASE_URL.startsWith("http")) {
+    errors.push("SERVICE_BASE_URL is required and must be a valid URL");
   }
 
   if (cfg.PORT < 1 || cfg.PORT > 65535) {
-    errors.push('PORT must be between 1 and 65535')
+    errors.push("PORT must be between 1 and 65535");
   }
 
   if (cfg.allowedChatIds.size === 0) {
-    errors.push('ALLOWED_CHAT_IDS must contain at least one chat ID')
+    errors.push("ALLOWED_CHAT_IDS must contain at least one chat ID");
   }
 
   if (errors.length > 0) {
-    const error = new Error(`Configuration validation failed: ${errors.join(', ')}`)
+    const error = new Error(
+      `Configuration validation failed: ${errors.join(", ")}`,
+    );
     handleAndLogError(
       error,
-      { errors, config: { ...cfg, OPENAI_API_KEY: cfg.OPENAI_API_KEY ? '[REDACTED]' : undefined } },
-      'validateConfig'
-    )
-    process.exit(1)
+      {
+        errors,
+        config: {
+          ...cfg,
+          OPENAI_API_KEY: cfg.OPENAI_API_KEY ? "[REDACTED]" : undefined,
+        },
+      },
+      "validateConfig",
+    );
+    process.exit(1);
   }
 
-  correlationLogger.info({
-    port: cfg.PORT,
-    allowedChats: cfg.allowedChatIds.size,
-    hasTelegramToken: !!cfg.TELEGRAM_BOT_TOKEN,
-    hasOpenAIKey: !!cfg.OPENAI_API_KEY,
-    modelProvider: cfg.MODEL_PROVIDER,
-    backendUrl: cfg.BACKEND_BASE_URL,
-    timezone: cfg.DEFAULT_TIMEZONE
-  }, 'Configuration validated successfully')
+  correlationLogger.info(
+    {
+      port: cfg.PORT,
+      allowedChats: cfg.allowedChatIds.size,
+      hasTelegramToken: !!cfg.TELEGRAM_BOT_TOKEN,
+      hasOpenAIKey: !!cfg.OPENAI_API_KEY,
+      modelProvider: cfg.MODEL_PROVIDER,
+      backendUrl: cfg.BACKEND_BASE_URL,
+      timezone: cfg.DEFAULT_TIMEZONE,
+    },
+    "Configuration validated successfully",
+  );
 }
 
 async function main() {
-  const startupLogger = createCorrelationLogger('startup')
+  const startupLogger = createCorrelationLogger("startup");
 
   try {
-    startupLogger.info({}, 'Starting Nami AI Service...')
+    startupLogger.info({}, "Starting Nami AI Service...");
 
     // Load and validate configuration
-    const cfg = loadConfig()
-    validateConfig(cfg)
+    const cfg = loadConfig();
+    validateConfig(cfg);
 
-    const app = express()
+    const app = express();
 
     // Setup monitoring FIRST (before routes)
-    const { metricsMiddleware, registerMetricsEndpoint, metrics } = setupMonitoring(app)
-    app.use(metricsMiddleware)
-    setMetrics(metrics)
+    const { metricsMiddleware, registerMetricsEndpoint, metrics } =
+      setupMonitoring(app);
+    app.use(metricsMiddleware);
+    setMetrics(metrics);
 
-    app.use(express.json({ limit: '2mb' }))
+    app.use(express.json({ limit: "2mb" }));
 
     // Basic auth middleware (applied before routes)
-    app.use(createBasicAuthMiddleware(cfg))
+    app.use(createBasicAuthMiddleware(cfg));
 
     // Initialize health checker
-    const healthChecker = new HealthChecker(cfg)
+    const healthChecker = new HealthChecker(cfg);
 
     // Initialize OpenAI client
     const openai = new OpenAI({
       apiKey: cfg.OPENAI_API_KEY,
       timeout: 60000, // 60 seconds
-      maxRetries: 3
-    })
+      maxRetries: 3,
+    });
 
     // Comprehensive health check endpoint
-    app.get('/healthz', async (req, res) => {
+    app.get("/healthz", async (req, res) => {
       try {
-        const health = await healthChecker.checkHealth()
-        const statusCode = health.status === 'healthy' ? 200 : health.status === 'degraded' ? 200 : 503
-        res.status(statusCode).json(health)
+        const health = await healthChecker.checkHealth();
+        const statusCode =
+          health.status === "healthy"
+            ? 200
+            : health.status === "degraded"
+              ? 200
+              : 503;
+        res.status(statusCode).json(health);
       } catch (error: any) {
-        logger.error({ err: error }, 'Health check failed')
+        logger.error({ err: error }, "Health check failed");
         res.status(500).json({
-          status: 'unhealthy',
-          error: 'Health check failed',
-          timestamp: new Date().toISOString()
-        })
+          status: "unhealthy",
+          error: "Health check failed",
+          timestamp: new Date().toISOString(),
+        });
       }
-    })
+    });
 
     // Simple readiness probe
-    app.get('/ready', (req, res) => {
-      res.json({ ready: true, timestamp: new Date().toISOString() })
-    })
+    app.get("/ready", (req, res) => {
+      res.json({ ready: true, timestamp: new Date().toISOString() });
+    });
 
     // Prometheus metrics endpoint
-    registerMetricsEndpoint()
+    registerMetricsEndpoint();
 
     // API testing endpoints
-    app.use('/api/test', apiTestRouter)
+    app.use("/api/test", apiTestRouter);
 
     // Start server FIRST
-    const port = cfg.PORT
+    const port = cfg.PORT;
     const server = app.listen(port, () => {
       startupLogger.info(
-        { port, nodeEnv: process.env.NODE_ENV || 'development' },
-        '🚀 Nami AI Service is listening'
-      )
-    })
+        { port, nodeEnv: process.env.NODE_ENV || "development" },
+        "🚀 Nami AI Service is listening",
+      );
+    });
 
     // Build and initialize bot AFTER server is listening
-    const bot = buildBot(cfg, openai)
-    bot.launch().then(() => {
-      startupLogger.info({}, '📱 Telegram bot started')
-    }).catch((err) => {
-      startupLogger.error({ err }, '⚠️  Failed to launch Telegram bot (continuing without bot)')
-    })
-
+    const bot = buildBot(cfg, openai);
+    bot
+      .launch()
+      .then(() => {
+        startupLogger.info({}, "📱 Telegram bot started");
+      })
+      .catch((err) => {
+        startupLogger.error(
+          { err },
+          "⚠️  Failed to launch Telegram bot (continuing without bot)",
+        );
+      });
 
     // Global error handlers
-    process.on('uncaughtException', (error) => {
-      handleAndLogError(error, {}, 'uncaughtException')
-      process.exit(1)
-    })
+    process.on("uncaughtException", (error) => {
+      handleAndLogError(error, {}, "uncaughtException");
+      process.exit(1);
+    });
 
-    process.on('unhandledRejection', (reason, promise) => {
+    process.on("unhandledRejection", (reason, promise) => {
       handleAndLogError(
         new Error(`Unhandled rejection at: ${promise}, reason: ${reason}`),
         { reason },
-        'unhandledRejection'
-      )
-    })
-
+        "unhandledRejection",
+      );
+    });
   } catch (error: any) {
     const categorizedError = handleAndLogError(
       error,
-      { phase: 'startup' },
-      'serviceStartup'
-    )
+      { phase: "startup" },
+      "serviceStartup",
+    );
 
     if (categorizedError.severity === ErrorSeverity.CRITICAL) {
-      startupLogger.error({}, '❌ Critical startup error - service cannot start')
+      startupLogger.error(
+        {},
+        "❌ Critical startup error - service cannot start",
+      );
     } else {
-      startupLogger.error({}, '❌ Startup error occurred')
+      startupLogger.error({}, "❌ Startup error occurred");
     }
 
-    process.exit(1)
+    process.exit(1);
   }
 }
 
 main().catch((err) => {
-  logger.error({ err }, 'Fatal error in main')
-  process.exit(1)
-})
-
-
+  logger.error({ err }, "Fatal error in main");
+  process.exit(1);
+});

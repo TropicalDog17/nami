@@ -5,15 +5,16 @@ This directory contains the Prometheus and Grafana configuration for monitoring 
 ## Overview
 
 The monitoring stack consists of:
+
 - **Prometheus**: Metrics collection and storage
 - **Grafana**: Visualization and dashboards
 
 ## Services Monitored
 
-| Service | Port | Metrics Endpoint |
-|---------|------|------------------|
-| Backend Service | 8080 | `/metrics` |
-| AI Service | 8081 | `/metrics` |
+| Service         | Port | Metrics Endpoint |
+| --------------- | ---- | ---------------- |
+| Backend Service | 8080 | `/metrics`       |
+| AI Service      | 8081 | `/metrics`       |
 
 ## Quick Start
 
@@ -63,6 +64,7 @@ Set the `GRAFANA_PASSWORD` environment variable to customize the Grafana admin p
 ## Dashboards
 
 The "Nami Service Overview" dashboard provides:
+
 - Service status indicators
 - Request rate graphs
 - Error rate monitoring

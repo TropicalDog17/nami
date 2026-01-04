@@ -13,4 +13,3 @@ HTTP API for external communications and service monitoring.
 - `GET /healthz` - Health status
 - `GET /ready` - Readiness probe
 - `POST /telegram/webhook` - Telegram webhook
-

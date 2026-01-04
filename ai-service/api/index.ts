@@ -16,11 +16,15 @@ try {
   cfg = loadConfig();
   healthChecker = new HealthChecker(cfg);
 } catch (error) {
-  logger.error({ error }, "Failed to load config - some endpoints may not work");
+  logger.error(
+    { error },
+    "Failed to load config - some endpoints may not work",
+  );
 }
 
 // Setup monitoring
-const { metricsMiddleware, registerMetricsEndpoint, metrics } = setupMonitoring(app);
+const { metricsMiddleware, registerMetricsEndpoint, metrics } =
+  setupMonitoring(app);
 app.use(metricsMiddleware);
 setMetrics(metrics);
 
@@ -38,7 +42,11 @@ app.get("/healthz", async (req, res) => {
     }
     const health = await healthChecker.checkHealth();
     const statusCode =
-      health.status === "healthy" ? 200 : health.status === "degraded" ? 200 : 503;
+      health.status === "healthy"
+        ? 200
+        : health.status === "degraded"
+          ? 200
+          : 503;
     res.status(statusCode).json(health);
   } catch (error: any) {
     logger.error({ err: error }, "Health check failed");

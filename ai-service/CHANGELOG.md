@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+
 - Comprehensive setup documentation
 - Docker and Docker Compose configurations
 - Kubernetes deployment manifests
@@ -16,11 +17,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Security best practices guide
 
 ### Changed
+
 - Improved documentation structure
 
 ## [1.0.0] - 2025-01-07
 
 ### Added
+
 - Initial AI service implementation
 - Telegram bot integration for expense parsing
 - OpenAI GPT-4 Vision API integration for bank screenshot analysis
@@ -38,6 +41,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Production-ready Docker containerization
 
 ### Features
+
 - **Text Parsing**: Parse natural language expense descriptions like "Lunch 120k at McDo from Bank today"
 - **Vision Analysis**: Extract transactions from bank screenshots using AI vision
 - **Telegram Integration**: User-friendly bot interface with both polling and webhook support
@@ -46,12 +50,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Security**: HMAC-signed API requests, configuration validation, and secure secret handling
 
 ### Architecture
+
 - **Microservice Design**: Clean separation of concerns with modular components
 - **Scalable**: Containerized deployment with horizontal scaling support
 - **Resilient**: Retry mechanisms, timeout handling, and graceful degradation
 - **Observable**: Comprehensive logging, metrics, and health monitoring
 
 ### Technical Stack
+
 - **Runtime**: Node.js 18+ with TypeScript
 - **AI**: OpenAI GPT-4 Vision API
 - **Communication**: Telegram Bot API
@@ -62,6 +68,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Health Monitoring**: Component-level health checks
 
 ### Documentation
+
 - Comprehensive README with setup and usage instructions
 - Deployment guide for Docker, Kubernetes, and production environments
 - API reference documentation
@@ -69,6 +76,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Security best practices
 
 ### Quality Assurance
+
 - 100% TypeScript type safety
 - Comprehensive error handling
 - Input validation and sanitization
@@ -81,11 +89,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## Version History
 
 ### v0.x.x - Development Phase
+
 - Initial prototype development
 - Core functionality implementation
 - Iterative testing and refinement
 
 ### v1.0.0 - Production Release
+
 - Production-ready implementation
 - Complete feature set
 - Comprehensive documentation
@@ -98,9 +108,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## Upgrade Guide
 
 ### From v0.x to v1.0.0
+
 This is the first production release. See the setup documentation for initial deployment instructions.
 
 ### Future Upgrades
+
 When upgrading between versions:
 
 1. **Backup Configuration**: Always backup your `.env` file and any custom configurations
@@ -115,6 +127,7 @@ When upgrading between versions:
 ## Support
 
 For support and questions:
+
 - Review the troubleshooting section in the documentation
 - Check the GitHub issues for known problems
 - Monitor health endpoints for service status

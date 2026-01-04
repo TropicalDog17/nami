@@ -1,4 +1,4 @@
-version: '3.8'
+version: "3.8"
 
 services:
   # Main AI Service
@@ -46,10 +46,10 @@ services:
       resources:
         limits:
           memory: 512M
-          cpus: '0.5'
+          cpus: "0.5"
         reservations:
           memory: 256M
-          cpus: '0.25'
+          cpus: "0.25"
 
     # Logging configuration
     logging:
@@ -107,12 +107,12 @@ services:
       - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus-data:/prometheus
     command:
-      - '--config.file=/etc/prometheus/prometheus.yml'
-      - '--storage.tsdb.path=/prometheus'
-      - '--web.console.libraries=/etc/prometheus/console_libraries'
-      - '--web.console.templates=/etc/prometheus/consoles'
-      - '--storage.tsdb.retention.time=200h'
-      - '--web.enable-lifecycle'
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--web.console.libraries=/etc/prometheus/console_libraries"
+      - "--web.console.templates=/etc/prometheus/consoles"
+      - "--storage.tsdb.retention.time=200h"
+      - "--web.enable-lifecycle"
     networks:
       - nami-network
     profiles:

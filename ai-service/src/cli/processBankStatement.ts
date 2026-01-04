@@ -19,50 +19,51 @@
  *   npx tsx src/cli/processBankStatement.ts data/SaoKeTK.xlsx --bank=techcombank_credit
  */
 
-import path from 'path'
-import { fileURLToPath } from 'url'
+import path from "path";
+import { fileURLToPath } from "url";
 import {
   processBankStatementFile,
   getBankConfig,
-  formatBatchResult
-} from '../api/batchProcessor.js'
+  formatBatchResult,
+} from "../api/batchProcessor.js";
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url))
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 interface CliOptions {
-  filePath: string
-  bank: string
-  skipAI: boolean
-  dryRun: boolean
-  spendingAccount?: string
-  incomeAccount?: string
-  batchSize: number
+  filePath: string;
+  bank: string;
+  skipAI: boolean;
+  dryRun: boolean;
+  spendingAccount?: string;
+  incomeAccount?: string;
+  batchSize: number;
 }
 
 function parseArgs(args: string[]): CliOptions {
-  const filePath = args.find(a => !a.startsWith('--')) ||
-    path.join(__dirname, '../../data/SaoKeTK_29112025_28122025.xlsx')
+  const filePath =
+    args.find((a) => !a.startsWith("--")) ||
+    path.join(__dirname, "../../data/SaoKeTK_29112025_28122025.xlsx");
 
-  let bank = 'techcombank'
-  let skipAI = false
-  let dryRun = false
-  let spendingAccount: string | undefined
-  let incomeAccount: string | undefined
-  let batchSize = 5
+  let bank = "techcombank";
+  let skipAI = false;
+  let dryRun = false;
+  let spendingAccount: string | undefined;
+  let incomeAccount: string | undefined;
+  let batchSize = 5;
 
   for (const arg of args) {
-    if (arg.startsWith('--bank=')) {
-      bank = arg.split('=')[1]
-    } else if (arg === '--skip-ai') {
-      skipAI = true
-    } else if (arg === '--dry-run') {
-      dryRun = true
-    } else if (arg.startsWith('--spending=')) {
-      spendingAccount = arg.split('=')[1]
-    } else if (arg.startsWith('--income=')) {
-      incomeAccount = arg.split('=')[1]
-    } else if (arg.startsWith('--batch-size=')) {
-      batchSize = parseInt(arg.split('=')[1], 10) || 5
+    if (arg.startsWith("--bank=")) {
+      bank = arg.split("=")[1];
+    } else if (arg === "--skip-ai") {
+      skipAI = true;
+    } else if (arg === "--dry-run") {
+      dryRun = true;
+    } else if (arg.startsWith("--spending=")) {
+      spendingAccount = arg.split("=")[1];
+    } else if (arg.startsWith("--income=")) {
+      incomeAccount = arg.split("=")[1];
+    } else if (arg.startsWith("--batch-size=")) {
+      batchSize = parseInt(arg.split("=")[1], 10) || 5;
     }
   }
 
@@ -73,8 +74,8 @@ function parseArgs(args: string[]): CliOptions {
     dryRun,
     spendingAccount,
     incomeAccount,
-    batchSize
-  }
+    batchSize,
+  };
 }
 
 function printUsage(): void {
@@ -97,37 +98,37 @@ Examples:
   npx tsx src/cli/processBankStatement.ts data/SaoKeTK.xlsx
   npx tsx src/cli/processBankStatement.ts data/SaoKeTK.xlsx --skip-ai --dry-run
   npx tsx src/cli/processBankStatement.ts data/SaoKeTK.xlsx --bank=techcombank_credit
-`)
+`);
 }
 
 async function main(): Promise<void> {
-  const args = process.argv.slice(2)
+  const args = process.argv.slice(2);
 
-  if (args.includes('--help') || args.includes('-h')) {
-    printUsage()
-    process.exit(0)
+  if (args.includes("--help") || args.includes("-h")) {
+    printUsage();
+    process.exit(0);
   }
 
-  const options = parseArgs(args)
+  const options = parseArgs(args);
 
-  console.log('\n🏦 Bank Statement Processor')
-  console.log('═'.repeat(50))
-  console.log(`File: ${options.filePath}`)
-  console.log(`Bank: ${options.bank}`)
-  console.log(`Skip AI: ${options.skipAI}`)
-  console.log(`Dry Run: ${options.dryRun}`)
-  console.log(`Batch Size: ${options.batchSize}`)
-  console.log('═'.repeat(50))
-  console.log('')
+  console.log("\n🏦 Bank Statement Processor");
+  console.log("═".repeat(50));
+  console.log(`File: ${options.filePath}`);
+  console.log(`Bank: ${options.bank}`);
+  console.log(`Skip AI: ${options.skipAI}`);
+  console.log(`Dry Run: ${options.dryRun}`);
+  console.log(`Batch Size: ${options.batchSize}`);
+  console.log("═".repeat(50));
+  console.log("");
 
   try {
     // Get bank configuration
-    const bankConfig = getBankConfig(options.bank)
-    console.log(`📋 Statement Type: ${bankConfig.statementType}`)
-    console.log('')
+    const bankConfig = getBankConfig(options.bank);
+    console.log(`📋 Statement Type: ${bankConfig.statementType}`);
+    console.log("");
 
     // Process the file
-    console.log('⏳ Processing...\n')
+    console.log("⏳ Processing...\n");
 
     const result = await processBankStatementFile(
       options.filePath,
@@ -137,25 +138,25 @@ async function main(): Promise<void> {
         dryRun: options.dryRun,
         batchSize: options.batchSize,
         defaultSpendingAccount: options.spendingAccount,
-        defaultIncomeAccount: options.incomeAccount
+        defaultIncomeAccount: options.incomeAccount,
       },
-      'cli-process'
-    )
+      "cli-process",
+    );
 
     // Print result
-    console.log('\n' + formatBatchResult(result))
+    console.log("\n" + formatBatchResult(result));
 
     if (result.failedCount > 0) {
-      process.exit(1)
+      process.exit(1);
     }
   } catch (error: any) {
-    console.error(`\n❌ Error: ${error.message}`)
+    console.error(`\n❌ Error: ${error.message}`);
     if (error.stack) {
-      console.error('\nStack trace:')
-      console.error(error.stack)
+      console.error("\nStack trace:");
+      console.error(error.stack);
     }
-    process.exit(1)
+    process.exit(1);
   }
 }
 
-main()
+main();

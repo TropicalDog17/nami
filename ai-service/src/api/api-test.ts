@@ -1,28 +1,28 @@
-import express from 'express'
-import { LLMClient, LLMProvider } from '../integrations/llm.js'
-import { parseExpenseText } from '../core/parser.js'
-import { parseBankScreenshot } from '../integrations/vision.js'
-import { createCorrelationLogger } from '../utils/logger.js'
-import { v4 as uuidv4 } from 'uuid'
-import { z } from 'zod'
-import OpenAI from 'openai'
+import express from "express";
+import { LLMClient, LLMProvider } from "../integrations/llm.js";
+import { parseExpenseText } from "../core/parser.js";
+import { parseBankScreenshot } from "../integrations/vision.js";
+import { createCorrelationLogger } from "../utils/logger.js";
+import { v4 as uuidv4 } from "uuid";
+import { z } from "zod";
+import OpenAI from "openai";
 
-const router = express.Router()
+const router = express.Router();
 
 // Test request schemas
 const TextParseRequestSchema = z.object({
-  message: z.string().min(1, 'Message is required'),
+  message: z.string().min(1, "Message is required"),
   // Provider and API key are now determined from the service env/config.
   // These fields are kept only for backward compatibility and are ignored.
-  provider: z.enum(['openai', 'anthropic']).default('openai').optional(),
-  apiKey: z.string().min(1, 'API key is required').optional(),
+  provider: z.enum(["openai", "anthropic"]).default("openai").optional(),
+  apiKey: z.string().min(1, "API key is required").optional(),
   model: z.string().optional(),
   accounts: z
     .array(
       z.object({
         name: z.string(),
         id: z.string().optional(),
-      })
+      }),
     )
     .default([]),
   tags: z
@@ -30,158 +30,187 @@ const TextParseRequestSchema = z.object({
       z.object({
         name: z.string(),
         id: z.string().optional(),
-      })
+      }),
     )
     .default([]),
-})
+});
 
 const VisionParseRequestSchema = z.object({
-  imageUrl: z.string().url('Valid image URL is required'),
-  provider: z.enum(['openai', 'anthropic']).default('openai'),
-  apiKey: z.string().min(1, 'API key is required'),
+  imageUrl: z.string().url("Valid image URL is required"),
+  provider: z.enum(["openai", "anthropic"]).default("openai"),
+  apiKey: z.string().min(1, "API key is required"),
   model: z.string().optional(),
-  localeHint: z.string().default('vi-VN')
-})
+  localeHint: z.string().default("vi-VN"),
+});
 
 const LLMChatRequestSchema = z.object({
-  messages: z.array(z.object({
-    role: z.enum(['system', 'user', 'assistant']),
-    content: z.string()
-  })).min(1, 'At least one message is required'),
-  provider: z.enum(['openai', 'anthropic']).default('openai'),
-  apiKey: z.string().min(1, 'API key is required'),
+  messages: z
+    .array(
+      z.object({
+        role: z.enum(["system", "user", "assistant"]),
+        content: z.string(),
+      }),
+    )
+    .min(1, "At least one message is required"),
+  provider: z.enum(["openai", "anthropic"]).default("openai"),
+  apiKey: z.string().min(1, "API key is required"),
   model: z.string().optional(),
   temperature: z.number().min(0).max(2).default(0.2),
-  maxTokens: z.number().min(1).max(8000).default(1000)
-})
+  maxTokens: z.number().min(1).max(8000).default(1000),
+});
 
 // POST /api/test/text-parse
-router.post('/text-parse', async (req, res) => {
-  const correlationId = uuidv4()
-  const logger = createCorrelationLogger(correlationId)
+router.post("/text-parse", async (req, res) => {
+  const correlationId = uuidv4();
+  const logger = createCorrelationLogger(correlationId);
 
   try {
-    const validated = TextParseRequestSchema.parse(req.body)
-    logger.info({}, 'Starting text parse test')
+    const validated = TextParseRequestSchema.parse(req.body);
+    logger.info({}, "Starting text parse test");
 
     // Use env-driven configuration; request-level provider/apiKey are ignored.
-    const llmClient = new LLMClient({}, correlationId)
+    const llmClient = new LLMClient({}, correlationId);
 
-    const accounts = validated.accounts.map(a => ({ name: a.name, id: a.id || a.name }))
-    const tags = validated.tags.map(t => ({ name: t.name, id: t.id || t.name }))
+    const accounts = validated.accounts.map((a) => ({
+      name: a.name,
+      id: a.id || a.name,
+    }));
+    const tags = validated.tags.map((t) => ({
+      name: t.name,
+      id: t.id || t.name,
+    }));
 
     const result = await parseExpenseText(
       llmClient,
       validated.message,
-      correlationId
-    )
+      correlationId,
+    );
 
-    logger.info({
-      hasAction: !!result.action,
-      provider: llmClient.getProvider(),
-      model: llmClient.getModel()
-    }, 'Text parse test completed')
+    logger.info(
+      {
+        hasAction: !!result.action,
+        provider: llmClient.getProvider(),
+        model: llmClient.getModel(),
+      },
+      "Text parse test completed",
+    );
 
     res.json({
       success: true,
       correlationId,
-        provider: llmClient.getProvider(),
+      provider: llmClient.getProvider(),
       model: llmClient.getModel(),
-      result
-    })
-
+      result,
+    });
   } catch (error: any) {
-    logger.error({ error: error.message, stack: error.stack }, 'Text parse test failed')
+    logger.error(
+      { error: error.message, stack: error.stack },
+      "Text parse test failed",
+    );
     res.status(500).json({
       success: false,
       correlationId,
-      error: error.message
-    })
+      error: error.message,
+    });
   }
-})
+});
 
 // POST /api/test/vision-parse
-router.post('/vision-parse', async (req, res) => {
-  const correlationId = uuidv4()
-  const logger = createCorrelationLogger(correlationId)
+router.post("/vision-parse", async (req, res) => {
+  const correlationId = uuidv4();
+  const logger = createCorrelationLogger(correlationId);
 
   try {
-    const validated = VisionParseRequestSchema.parse(req.body)
-    logger.info({ provider: validated.provider }, 'Starting vision parse test')
+    const validated = VisionParseRequestSchema.parse(req.body);
+    logger.info({ provider: validated.provider }, "Starting vision parse test");
 
-    const llmClient = new LLMClient({
-      provider: validated.provider,
-      apiKey: validated.apiKey,
-      model: validated.model,
-      timeout: 60000
-    }, correlationId)
+    const llmClient = new LLMClient(
+      {
+        provider: validated.provider,
+        apiKey: validated.apiKey,
+        model: validated.model,
+        timeout: 60000,
+      },
+      correlationId,
+    );
 
     // Note: vision.ts still uses OpenAI directly for now
     // This will need to be updated to use LLMClient abstraction
-    if (validated.provider !== 'openai') {
-      throw new Error('Vision parsing currently only supports OpenAI provider')
+    if (validated.provider !== "openai") {
+      throw new Error("Vision parsing currently only supports OpenAI provider");
     }
 
     const openaiClient = new OpenAI({
       apiKey: validated.apiKey,
-      timeout: 60000
-    })
+      timeout: 60000,
+    });
 
     const result = await parseBankScreenshot(
       openaiClient,
       validated.imageUrl,
       correlationId,
-      validated.localeHint
-    )
+      validated.localeHint,
+    );
 
-    logger.info({
-      rowsCount: result.rows.length,
-      provider: validated.provider
-    }, 'Vision parse test completed')
+    logger.info(
+      {
+        rowsCount: result.rows.length,
+        provider: validated.provider,
+      },
+      "Vision parse test completed",
+    );
 
     res.json({
       success: true,
       correlationId,
       provider: validated.provider,
-      result
-    })
-
+      result,
+    });
   } catch (error: any) {
-    logger.error({ error: error.message, stack: error.stack }, 'Vision parse test failed')
+    logger.error(
+      { error: error.message, stack: error.stack },
+      "Vision parse test failed",
+    );
     res.status(500).json({
       success: false,
       correlationId,
-      error: error.message
-    })
+      error: error.message,
+    });
   }
-})
+});
 
 // POST /api/test/llm-chat
-router.post('/llm-chat', async (req, res) => {
-  const correlationId = uuidv4()
-  const logger = createCorrelationLogger(correlationId)
+router.post("/llm-chat", async (req, res) => {
+  const correlationId = uuidv4();
+  const logger = createCorrelationLogger(correlationId);
 
   try {
-    const validated = LLMChatRequestSchema.parse(req.body)
-    logger.info({ provider: validated.provider }, 'Starting LLM chat test')
+    const validated = LLMChatRequestSchema.parse(req.body);
+    logger.info({ provider: validated.provider }, "Starting LLM chat test");
 
-    const llmClient = new LLMClient({
-      provider: validated.provider,
-      apiKey: validated.apiKey,
-      model: validated.model,
-      timeout: 30000
-    }, correlationId)
+    const llmClient = new LLMClient(
+      {
+        provider: validated.provider,
+        apiKey: validated.apiKey,
+        model: validated.model,
+        timeout: 30000,
+      },
+      correlationId,
+    );
 
     const response = await llmClient.chat(validated.messages, {
       temperature: validated.temperature,
-      maxTokens: validated.maxTokens
-    })
+      maxTokens: validated.maxTokens,
+    });
 
-    logger.info({
-      contentLength: response.content.length,
-      provider: validated.provider,
-      model: response.model
-    }, 'LLM chat test completed')
+    logger.info(
+      {
+        contentLength: response.content.length,
+        provider: validated.provider,
+        model: response.model,
+      },
+      "LLM chat test completed",
+    );
 
     res.json({
       success: true,
@@ -190,49 +219,51 @@ router.post('/llm-chat', async (req, res) => {
       model: response.model,
       response: {
         content: response.content,
-        usage: response.usage
-      }
-    })
-
+        usage: response.usage,
+      },
+    });
   } catch (error: any) {
-    logger.error({ error: error.message, stack: error.stack }, 'LLM chat test failed')
+    logger.error(
+      { error: error.message, stack: error.stack },
+      "LLM chat test failed",
+    );
     res.status(500).json({
       success: false,
       correlationId,
-      error: error.message
-    })
+      error: error.message,
+    });
   }
-})
+});
 
 // GET /api/test/providers
-router.get('/providers', (req, res) => {
+router.get("/providers", (req, res) => {
   res.json({
     providers: [
       {
-        name: 'openai',
+        name: "openai",
         defaultModels: {
-          text: 'gpt-4o-mini',
-          vision: 'gpt-4o-mini'
-        }
+          text: "gpt-4o-mini",
+          vision: "gpt-4o-mini",
+        },
       },
       {
-        name: 'anthropic',
+        name: "anthropic",
         defaultModels: {
-          text: 'claude-3-5-haiku-20241022',
-          vision: 'claude-3-5-haiku-20241022' // Not yet supported
-        }
-      }
-    ]
-  })
-})
+          text: "claude-3-5-haiku-20241022",
+          vision: "claude-3-5-haiku-20241022", // Not yet supported
+        },
+      },
+    ],
+  });
+});
 
 // GET /api/test/health
-router.get('/health', (req, res) => {
+router.get("/health", (req, res) => {
   res.json({
-    status: 'healthy',
+    status: "healthy",
     timestamp: new Date().toISOString(),
-    version: '0.1.0-test'
-  })
-})
+    version: "0.1.0-test",
+  });
+});
 
-export { router as apiTestRouter }
+export { router as apiTestRouter };

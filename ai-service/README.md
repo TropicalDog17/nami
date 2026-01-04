@@ -10,4 +10,3 @@ Telegram bot service for AI-powered transaction processing using vision and lang
 - **`src/utils/`** - Configuration, logging, error handling, and retry logic
 - **`src/tests/`** - Unit and integration tests
 - **`tests/`** - Test suite
-

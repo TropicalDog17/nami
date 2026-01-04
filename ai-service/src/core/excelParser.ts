@@ -1,15 +1,15 @@
-import XLSX from 'xlsx'
-import { createCorrelationLogger } from '../utils/logger.js'
+import XLSX from "xlsx";
+import { createCorrelationLogger } from "../utils/logger.js";
 
 export interface BankTransaction {
-  date: string           // "29/11/2025"
-  remitter: string       // Counterparty
-  remitter_bank: string  // Bank name
-  details: string        // Description
-  transaction_no: string // Reference ID
-  debit: string          // "52,000" or ""
-  credit: string         // "284" or ""
-  balance: string        // "2,978,361"
+  date: string; // "29/11/2025"
+  remitter: string; // Counterparty
+  remitter_bank: string; // Bank name
+  details: string; // Description
+  transaction_no: string; // Reference ID
+  debit: string; // "52,000" or ""
+  credit: string; // "284" or ""
+  balance: string; // "2,978,361"
 }
 
 /**
@@ -17,30 +17,30 @@ export interface BankTransaction {
  * - DEBIT_ACCOUNT (bank account): debit = expense, credit = income
  * - CREDIT_CARD: debit/charge = expense, credit/payment = payment to card (reduces balance)
  */
-export type StatementType = 'DEBIT_ACCOUNT' | 'CREDIT_CARD'
+export type StatementType = "DEBIT_ACCOUNT" | "CREDIT_CARD";
 
 export interface BankStatementConfig {
-  bank: string
-  statementType: StatementType
-  headerRow: number
-  dataStartRow: number
+  bank: string;
+  statementType: StatementType;
+  headerRow: number;
+  dataStartRow: number;
   columns: {
-    date: number
-    remitter: number
-    remitterBank: number
-    details: number
-    transactionNo: number
-    debit: number
-    credit: number
-    balance: number
-  }
-  skipPattern?: RegExp
+    date: number;
+    remitter: number;
+    remitterBank: number;
+    details: number;
+    transactionNo: number;
+    debit: number;
+    credit: number;
+    balance: number;
+  };
+  skipPattern?: RegExp;
 }
 
 // Techcombank debit account configuration based on analyzed Excel file
 export const TECHCOMBANK_DEBIT_CONFIG: BankStatementConfig = {
-  bank: 'techcombank',
-  statementType: 'DEBIT_ACCOUNT',
+  bank: "techcombank",
+  statementType: "DEBIT_ACCOUNT",
   headerRow: 33,
   dataStartRow: 35,
   columns: {
@@ -53,13 +53,13 @@ export const TECHCOMBANK_DEBIT_CONFIG: BankStatementConfig = {
     credit: 53,
     balance: 59,
   },
-  skipPattern: /Số dư đầu kỳ|Phiếu này|Diễn giải|Description|Opening balance/i
-}
+  skipPattern: /Số dư đầu kỳ|Phiếu này|Diễn giải|Description|Opening balance/i,
+};
 
 // Techcombank credit card configuration (placeholder - adjust columns when you have a sample file)
 export const TECHCOMBANK_CREDIT_CONFIG: BankStatementConfig = {
-  bank: 'techcombank_credit',
-  statementType: 'CREDIT_CARD',
+  bank: "techcombank_credit",
+  statementType: "CREDIT_CARD",
   headerRow: 33,
   dataStartRow: 35,
   columns: {
@@ -68,15 +68,15 @@ export const TECHCOMBANK_CREDIT_CONFIG: BankStatementConfig = {
     remitterBank: 16,
     details: 24,
     transactionNo: 32,
-    debit: 45,   // Charges on credit card
-    credit: 53,  // Payments/refunds on credit card
+    debit: 45, // Charges on credit card
+    credit: 53, // Payments/refunds on credit card
     balance: 59,
   },
-  skipPattern: /Số dư đầu kỳ|Phiếu này|Diễn giải|Description|Opening balance/i
-}
+  skipPattern: /Số dư đầu kỳ|Phiếu này|Diễn giải|Description|Opening balance/i,
+};
 
 // Alias for backward compatibility
-export const TECHCOMBANK_CONFIG = TECHCOMBANK_DEBIT_CONFIG
+export const TECHCOMBANK_CONFIG = TECHCOMBANK_DEBIT_CONFIG;
 
 /**
  * Parse an Excel bank statement file
@@ -84,86 +84,95 @@ export const TECHCOMBANK_CONFIG = TECHCOMBANK_DEBIT_CONFIG
 export function parseExcelBankStatement(
   filePath: string,
   config: BankStatementConfig,
-  correlationId?: string
+  correlationId?: string,
 ): BankTransaction[] {
-  const logger = createCorrelationLogger(correlationId)
+  const logger = createCorrelationLogger(correlationId);
 
-  logger.info({ filePath, bank: config.bank }, 'Starting Excel bank statement parsing')
+  logger.info(
+    { filePath, bank: config.bank },
+    "Starting Excel bank statement parsing",
+  );
 
-  const workbook = XLSX.readFile(filePath)
-  const sheetName = workbook.SheetNames[0]
-  const worksheet = workbook.Sheets[sheetName]
+  const workbook = XLSX.readFile(filePath);
+  const sheetName = workbook.SheetNames[0];
+  const worksheet = workbook.Sheets[sheetName];
 
   // Convert to array of arrays
-  const rows: any[][] = XLSX.utils.sheet_to_json(worksheet, { header: 1, raw: false })
+  const rows: any[][] = XLSX.utils.sheet_to_json(worksheet, {
+    header: 1,
+    raw: false,
+  });
 
-  logger.debug({ totalRows: rows.length, sheetName }, 'Loaded worksheet')
+  logger.debug({ totalRows: rows.length, sheetName }, "Loaded worksheet");
 
-  const transactions: BankTransaction[] = []
-  const skipPattern = config.skipPattern || /Số dư đầu kỳ|Phiếu này|Diễn giải/i
+  const transactions: BankTransaction[] = [];
+  const skipPattern = config.skipPattern || /Số dư đầu kỳ|Phiếu này|Diễn giải/i;
 
   for (let i = config.dataStartRow; i < rows.length; i++) {
-    const row = rows[i]
-    if (!row || row.length === 0) continue
+    const row = rows[i];
+    if (!row || row.length === 0) continue;
 
-    const dateVal = row[config.columns.date]
+    const dateVal = row[config.columns.date];
 
     // Skip invalid rows
-    if (!dateVal) continue
-    if (skipPattern.test(String(dateVal))) continue
+    if (!dateVal) continue;
+    if (skipPattern.test(String(dateVal))) continue;
 
     // Check if it looks like a date (DD/MM/YYYY format)
-    if (!/\d{1,2}\/\d{1,2}\/\d{4}/.test(String(dateVal))) continue
+    if (!/\d{1,2}\/\d{1,2}\/\d{4}/.test(String(dateVal))) continue;
 
     const transaction: BankTransaction = {
-      date: String(row[config.columns.date] || '').trim(),
-      remitter: String(row[config.columns.remitter] || '').trim(),
-      remitter_bank: String(row[config.columns.remitterBank] || '').trim(),
-      details: String(row[config.columns.details] || '').trim(),
-      transaction_no: String(row[config.columns.transactionNo] || '').trim(),
-      debit: String(row[config.columns.debit] || '').trim(),
-      credit: String(row[config.columns.credit] || '').trim(),
-      balance: String(row[config.columns.balance] || '').trim(),
-    }
+      date: String(row[config.columns.date] || "").trim(),
+      remitter: String(row[config.columns.remitter] || "").trim(),
+      remitter_bank: String(row[config.columns.remitterBank] || "").trim(),
+      details: String(row[config.columns.details] || "").trim(),
+      transaction_no: String(row[config.columns.transactionNo] || "").trim(),
+      debit: String(row[config.columns.debit] || "").trim(),
+      credit: String(row[config.columns.credit] || "").trim(),
+      balance: String(row[config.columns.balance] || "").trim(),
+    };
 
     // Must have either debit or credit
-    if (!transaction.debit && !transaction.credit) continue
+    if (!transaction.debit && !transaction.credit) continue;
 
-    transactions.push(transaction)
+    transactions.push(transaction);
   }
 
-  logger.info({
-    transactionCount: transactions.length,
-    filePath,
-    bank: config.bank
-  }, 'Finished parsing Excel bank statement')
+  logger.info(
+    {
+      transactionCount: transactions.length,
+      filePath,
+      bank: config.bank,
+    },
+    "Finished parsing Excel bank statement",
+  );
 
-  return transactions
+  return transactions;
 }
 
 /**
  * Parse Vietnamese number format "52,000" -> 52000
  */
 export function parseVNDAmount(amount: string): number {
-  if (!amount || amount.trim() === '') return 0
-  return Number(amount.replace(/,/g, '')) || 0
+  if (!amount || amount.trim() === "") return 0;
+  return Number(amount.replace(/,/g, "")) || 0;
 }
 
 /**
  * Convert DD/MM/YYYY to YYYY-MM-DD
  */
 export function convertDateFormat(ddmmyyyy: string): string {
-  const parts = ddmmyyyy.split('/')
-  if (parts.length !== 3) return ddmmyyyy
+  const parts = ddmmyyyy.split("/");
+  if (parts.length !== 3) return ddmmyyyy;
 
-  const [day, month, year] = parts
-  return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`
+  const [day, month, year] = parts;
+  return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
 }
 
 /**
  * Transaction type after classification
  */
-export type TransactionCategory = 'INCOME' | 'EXPENSE' | 'CARD_PAYMENT'
+export type TransactionCategory = "INCOME" | "EXPENSE" | "CARD_PAYMENT";
 
 /**
  * Get transaction type based on debit/credit fields and statement type
@@ -178,17 +187,18 @@ export type TransactionCategory = 'INCOME' | 'EXPENSE' | 'CARD_PAYMENT'
  */
 export function getTransactionType(
   transaction: BankTransaction,
-  statementType: StatementType = 'DEBIT_ACCOUNT'
+  statementType: StatementType = "DEBIT_ACCOUNT",
 ): TransactionCategory {
-  const hasDebit = transaction.debit && parseVNDAmount(transaction.debit) > 0
-  const hasCredit = transaction.credit && parseVNDAmount(transaction.credit) > 0
+  const hasDebit = transaction.debit && parseVNDAmount(transaction.debit) > 0;
+  const hasCredit =
+    transaction.credit && parseVNDAmount(transaction.credit) > 0;
 
-  if (statementType === 'DEBIT_ACCOUNT') {
+  if (statementType === "DEBIT_ACCOUNT") {
     // Bank account: debit = expense, credit = income
-    return hasDebit ? 'EXPENSE' : 'INCOME'
+    return hasDebit ? "EXPENSE" : "INCOME";
   } else {
     // Credit card: debit = expense, credit = payment to card
-    return hasDebit ? 'EXPENSE' : 'CARD_PAYMENT'
+    return hasDebit ? "EXPENSE" : "CARD_PAYMENT";
   }
 }
 
@@ -196,9 +206,9 @@ export function getTransactionType(
  * Get amount from transaction
  */
 export function getTransactionAmount(transaction: BankTransaction): number {
-  const debitAmount = parseVNDAmount(transaction.debit)
-  const creditAmount = parseVNDAmount(transaction.credit)
-  return debitAmount > 0 ? debitAmount : creditAmount
+  const debitAmount = parseVNDAmount(transaction.debit);
+  const creditAmount = parseVNDAmount(transaction.credit);
+  return debitAmount > 0 ? debitAmount : creditAmount;
 }
 
 /**
@@ -207,10 +217,10 @@ export function getTransactionAmount(transaction: BankTransaction): number {
  */
 export function isExpense(
   transaction: BankTransaction,
-  statementType: StatementType = 'DEBIT_ACCOUNT'
+  statementType: StatementType = "DEBIT_ACCOUNT",
 ): boolean {
-  const type = getTransactionType(transaction, statementType)
-  return type === 'EXPENSE'
+  const type = getTransactionType(transaction, statementType);
+  return type === "EXPENSE";
 }
 
 /**
@@ -218,10 +228,10 @@ export function isExpense(
  */
 export function isIncome(
   transaction: BankTransaction,
-  statementType: StatementType = 'DEBIT_ACCOUNT'
+  statementType: StatementType = "DEBIT_ACCOUNT",
 ): boolean {
-  const type = getTransactionType(transaction, statementType)
-  return type === 'INCOME'
+  const type = getTransactionType(transaction, statementType);
+  return type === "INCOME";
 }
 
 /**
@@ -229,8 +239,8 @@ export function isIncome(
  */
 export function isCardPayment(
   transaction: BankTransaction,
-  statementType: StatementType = 'DEBIT_ACCOUNT'
+  statementType: StatementType = "DEBIT_ACCOUNT",
 ): boolean {
-  const type = getTransactionType(transaction, statementType)
-  return type === 'CARD_PAYMENT'
+  const type = getTransactionType(transaction, statementType);
+  return type === "CARD_PAYMENT";
 }

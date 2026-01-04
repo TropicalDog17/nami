@@ -194,17 +194,21 @@ docker-logs: ## Show Docker service logs
 	@docker-compose --profile monitoring logs -f
 
 # Code quality targets
-fmt: fmt-backend fmt-frontend ## Format all code
+fmt: fmt-backend fmt-frontend fmt-ai-service ## Format all code
 
 fmt-backend: ## Format backend code
 	@echo "Formatting backend code..."
-	@cd backend && npx prettier --write "src/**/*.ts" 2>/dev/null || echo "Prettier not installed, skipping formatting"
+	@cd backend && pnpm run fmt
 	@echo "Backend code formatting completed"
 
 fmt-frontend: ## Format frontend code
 	@echo "Formatting frontend code..."
 	@cd frontend && pnpm run fmt
 	@echo "Frontend code formatted"
+fmt-ai-service: ## Format AI service code
+	@echo "Formatting AI service code..."	
+	@cd ai-service && pnpm run fmt
+	@echo "AI service code formatting completed"
 
 lint: lint-backend lint-frontend ## Run linters for both backend and frontend
 
