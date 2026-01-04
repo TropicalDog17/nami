@@ -999,11 +999,7 @@ async function buildVaultHeaderMetrics(vaultName: string) {
   if (typeof lastValuationUSD === "number") {
     aum = lastValuationUSD + netFlowSinceValUSD;
   } else {
-    aum = await computeMarkToMarketUSD(
-      positions,
-      undefined,
-      priceCache,
-    );
+    aum = await computeMarkToMarketUSD(positions, undefined, priceCache);
   }
 
   const pnl = aum + withdrawnCum - depositedCum; // equity - net_contributed
@@ -1033,8 +1029,12 @@ async function buildVaultHeaderMetrics(vaultName: string) {
     roi_percent: Number.isFinite(roi) ? roi : 0,
     apr_percent: Number.isFinite(apr) ? apr : 0,
     last_valuation_usd:
-      typeof lastValuationUSD === "number" && Number.isFinite(lastValuationUSD) ? lastValuationUSD : 0,
-    net_flow_since_valuation_usd: Number.isFinite(netFlowSinceValUSD) ? netFlowSinceValUSD : 0,
+      typeof lastValuationUSD === "number" && Number.isFinite(lastValuationUSD)
+        ? lastValuationUSD
+        : 0,
+    net_flow_since_valuation_usd: Number.isFinite(netFlowSinceValUSD)
+      ? netFlowSinceValUSD
+      : 0,
     deposits_cum_usd: Number.isFinite(depositedCum) ? depositedCum : 0,
     withdrawals_cum_usd: Number.isFinite(withdrawnCum) ? withdrawnCum : 0,
     as_of: new Date().toISOString(),

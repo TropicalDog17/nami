@@ -4,7 +4,9 @@ import fs from "fs";
 
 // Use /tmp for Vercel serverless (ephemeral storage)
 const isVercel = process.env.VERCEL === "1";
-const DATA_DIR = isVercel ? "/tmp" : path.resolve(__dirname, "..", "..", "data");
+const DATA_DIR = isVercel
+  ? "/tmp"
+  : path.resolve(__dirname, "..", "..", "data");
 const DB_PATH = path.join(DATA_DIR, "nami.db");
 
 let db: Database.Database | null = null;

@@ -159,7 +159,11 @@ function safeCompare(a: string, b: string): boolean {
  * Basic authentication middleware
  * Requires valid credentials when BASIC_AUTH_ENABLED=true
  */
-export function basicAuth(req: Request, res: Response, next: NextFunction): void {
+export function basicAuth(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): void {
   if (!config.basicAuthEnabled) {
     next();
     return;
@@ -184,7 +188,9 @@ export function basicAuth(req: Request, res: Response, next: NextFunction): void
 
   try {
     const base64Credentials = authHeader.slice(6);
-    const credentials = Buffer.from(base64Credentials, "base64").toString("utf-8");
+    const credentials = Buffer.from(base64Credentials, "base64").toString(
+      "utf-8",
+    );
     const [providedUsername, providedPassword] = credentials.split(":");
 
     if (!providedUsername || !providedPassword) {

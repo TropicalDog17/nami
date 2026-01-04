@@ -2,23 +2,25 @@ import type { VercelRequest, VercelResponse } from "@vercel/node";
 import express from "express";
 import cors from "cors";
 import swaggerUi from "swagger-ui-express";
+import { openapiSpec } from "../src/openapi";
 import {
     errorHandler,
     requestLogger,
     notFoundHandler,
 } from "../src/core/middleware";
 
-import { transactionsRouter } from "../src/handlers/transaction.handler";
-import { reportsRouter } from "../src/handlers/reports.handler";
-import { actionsRouter } from "../src/handlers/actions.handler";
-import { pricesRouter } from "../src/handlers/prices.handler";
-import { openapiSpec } from "../src/openapi";
-import { vaultsRouter } from "../src/handlers/vault.handler";
-import { adminRouter } from "../src/handlers/admin.handler";
-import { loansRouter } from "../src/handlers/loan.handler";
-import { aiRouter } from "../src/handlers/ai.handler";
+import {
+    transactionsRouter,
+    reportsRouter,
+    actionsRouter,
+    pricesRouter,
+    vaultsRouter,
+    adminRouter,
+    loansRouter,
+    aiRouter,
+} from "../src/handlers";
 import { settingsRepository } from "../src/repositories";
-import { vaultService } from "../src/services/vault.service";
+import { vaultService } from "../src/services";
 import { initializeDatabase } from "../src/database/connection";
 import { setupMonitoring, setMetrics } from "../src/monitoring";
 import { logger } from "../src/utils/logger";
@@ -43,14 +45,16 @@ app.get("/health", (_req, res) =>
 );
 
 // API routes
-app.use("/api", transactionsRouter);
-app.use("/api", reportsRouter);
-app.use("/api", actionsRouter);
-app.use("/api", pricesRouter);
-app.use("/api", vaultsRouter);
-app.use("/api", adminRouter);
-app.use("/api", loansRouter);
-app.use("/api", aiRouter);
+app.use("/api", [
+    transactionsRouter,
+    reportsRouter,
+    actionsRouter,
+    pricesRouter,
+    vaultsRouter,
+    adminRouter,
+    loansRouter,
+    aiRouter,
+]);
 
 // Metrics endpoint for Prometheus scraping
 registerMetricsEndpoint();

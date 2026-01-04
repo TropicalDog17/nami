@@ -20,7 +20,7 @@ export class PriceCacheRepository extends BaseDbRepository {
     const row = this.findOne(
       `SELECT * FROM price_cache WHERE cache_key = ?`,
       [cacheKey],
-      (r: any) => r
+      (r: any) => r,
     );
 
     if (!row) return null;
@@ -53,7 +53,7 @@ export class PriceCacheRepository extends BaseDbRepository {
         rate.timestamp,
         rate.source,
         now,
-      ]
+      ],
     );
   }
 
@@ -66,7 +66,7 @@ export class PriceCacheRepository extends BaseDbRepository {
        WHERE asset_type = ? AND asset_symbol = ?
        ORDER BY timestamp ASC`,
       [asset.type, asset.symbol.toUpperCase()],
-      (r: any) => r.timestamp
+      (r: any) => r.timestamp,
     );
     return rows;
   }
@@ -94,7 +94,7 @@ export class PriceCacheRepository extends BaseDbRepository {
         rateUSD: r.rate_usd,
         timestamp: r.timestamp,
         source: r.source,
-      })
+      }),
     );
     return rows;
   }
@@ -105,7 +105,7 @@ export class PriceCacheRepository extends BaseDbRepository {
   deleteOlderThan(date: Date): number {
     const result = this.execute(
       `DELETE FROM price_cache WHERE created_at < ?`,
-      [date.toISOString()]
+      [date.toISOString()],
     );
     return result.changes;
   }
@@ -118,7 +118,7 @@ export class PriceCacheRepository extends BaseDbRepository {
       `SELECT COUNT(*) as count FROM price_cache
        WHERE asset_type = ? AND asset_symbol = ?`,
       [asset.type, asset.symbol.toUpperCase()],
-      (r: any) => r.count
+      (r: any) => r.count,
     );
     return row || 0;
   }
@@ -132,7 +132,7 @@ export class PriceCacheRepository extends BaseDbRepository {
        WHERE asset_type = ? AND asset_symbol = ?
        ORDER BY timestamp DESC LIMIT 1`,
       [asset.type, asset.symbol.toUpperCase()],
-      (r: any) => r.timestamp
+      (r: any) => r.timestamp,
     );
     return row || null;
   }
@@ -146,7 +146,7 @@ export class PriceCacheRepository extends BaseDbRepository {
        WHERE asset_type = ? AND asset_symbol = ?
        ORDER BY timestamp ASC LIMIT 1`,
       [asset.type, asset.symbol.toUpperCase()],
-      (r: any) => r.timestamp
+      (r: any) => r.timestamp,
     );
     return row || null;
   }

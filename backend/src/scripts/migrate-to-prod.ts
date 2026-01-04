@@ -94,9 +94,7 @@ async function main() {
 
   // Validate arguments
   if (!args.from && !args.importFile) {
-    console.error(
-      "Error: --from <url> or --import-file <path> is required",
-    );
+    console.error("Error: --from <url> or --import-file <path> is required");
     process.exit(1);
   }
 

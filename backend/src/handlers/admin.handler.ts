@@ -417,11 +417,9 @@ adminRouter.delete("/admin/pending-actions", (req: Request, res: Response) => {
   const batchId = req.query.batch_id as string | undefined;
 
   if (!status) {
-    return res
-      .status(400)
-      .json({
-        error: "status query param required (pending|accepted|rejected)",
-      });
+    return res.status(400).json({
+      error: "status query param required (pending|accepted|rejected)",
+    });
   }
 
   const toDelete = pendingActionsRepository.findByStatus(status);
@@ -680,7 +678,8 @@ adminRouter.get("/admin/export", (_req: Request, res: Response) => {
       tags: adminRepository.findAllTags(),
       pending_actions: pendingActionsRepository.findAll(),
       settings: {
-        default_spending_vault: settingsRepository.getDefaultSpendingVaultName(),
+        default_spending_vault:
+          settingsRepository.getDefaultSpendingVaultName(),
         default_income_vault: settingsRepository.getDefaultIncomeVaultName(),
         borrowing: settingsRepository.getBorrowingSettings(),
       },

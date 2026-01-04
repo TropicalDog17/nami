@@ -75,11 +75,12 @@ export class VaultService {
         const cur = positions.get(k) || { asset: e.asset, units: 0 };
         cur.units += e.amount;
         positions.set(k, cur);
-        
+
         if (e.asset.symbol === "USD") {
           if (typeof lastValuationUSD === "number") netFlowSinceValUSD += usd;
         } else {
-          if (typeof lastValuationUSD === "number") netFlowSinceValNonUSD += usd;
+          if (typeof lastValuationUSD === "number")
+            netFlowSinceValNonUSD += usd;
         }
       } else if (e.type === "WITHDRAW") {
         const usd = Number(e.usdValue || 0);
@@ -88,11 +89,12 @@ export class VaultService {
         const cur = positions.get(k) || { asset: e.asset, units: 0 };
         cur.units -= e.amount;
         positions.set(k, cur);
-        
+
         if (e.asset.symbol === "USD") {
           if (typeof lastValuationUSD === "number") netFlowSinceValUSD -= usd;
         } else {
-          if (typeof lastValuationUSD === "number") netFlowSinceValNonUSD -= usd;
+          if (typeof lastValuationUSD === "number")
+            netFlowSinceValNonUSD -= usd;
         }
       } else if (e.type === "VALUATION") {
         if (typeof e.usdValue === "number") lastValuationUSD = e.usdValue;

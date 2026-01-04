@@ -19,9 +19,9 @@ const CRYPTO_SET = new Set([
   "MATIC",
   "AVAX",
   // Commodities fetched via tokenized crypto (PAXG, etc.)
-  "XAU",  // Gold via PAXG
+  "XAU", // Gold via PAXG
   "GOLD", // Gold via PAXG
-  "XAG",  // Silver (using PAXG as fallback)
+  "XAG", // Silver (using PAXG as fallback)
 ]);
 
 /**
