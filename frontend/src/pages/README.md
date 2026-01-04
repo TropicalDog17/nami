@@ -10,4 +10,3 @@ Route-level React components for main application interfaces.
 - **`VaultsPage.tsx`** - Vault overview
 - **`VaultDetailPage.tsx`** - Detailed vault view
 - **`CreditDashboardPage.tsx`** - Credit card dashboard
-

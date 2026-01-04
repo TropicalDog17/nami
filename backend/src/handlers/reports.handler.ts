@@ -14,7 +14,10 @@ export const reportsRouter = Router();
 
 async function usdToVnd(): Promise<number> {
   try {
-    const vnd = await priceService.getRateUSD({ type: "FIAT", symbol: "VND" });
+    const vnd = await priceService.getRateUSD({
+      type: "FIAT",
+      symbol: "VND",
+    });
     // vnd.rateUSD is 1 VND -> USD, so USD->VND = 1 / rateUSD
     return vnd.rateUSD > 0 ? 1 / vnd.rateUSD : 24000;
   } catch {
@@ -278,7 +281,11 @@ async function buildVaultDailySeries(
           firstDepositDateObj!,
           new Date(entryDate),
         );
-        cashFlows.push({ amount: -usd, daysFromStart, date: entryDate });
+        cashFlows.push({
+          amount: -usd,
+          daysFromStart,
+          date: entryDate,
+        });
 
         const k = `${e.asset.type}:${e.asset.symbol.toUpperCase()}`;
         const cur = positions.get(k) || { asset: e.asset, units: 0 };
@@ -297,7 +304,11 @@ async function buildVaultDailySeries(
             firstDepositDateObj,
             new Date(entryDate),
           );
-          cashFlows.push({ amount: usd, daysFromStart, date: entryDate });
+          cashFlows.push({
+            amount: usd,
+            daysFromStart,
+            date: entryDate,
+          });
         }
 
         const k = `${e.asset.type}:${e.asset.symbol.toUpperCase()}`;
@@ -342,10 +353,16 @@ async function buildVaultDailySeries(
       // Build cash flows for IRR calculation up to this day, plus terminal value
       const cashFlowsForDay = cashFlows
         .filter((cf) => cf.date <= day)
-        .map((cf) => ({ amount: cf.amount, daysFromStart: cf.daysFromStart }));
+        .map((cf) => ({
+          amount: cf.amount,
+          daysFromStart: cf.daysFromStart,
+        }));
 
       // Add terminal value (current AUM) as positive cash flow
-      cashFlowsForDay.push({ amount: aum, daysFromStart: daysElapsed - 1 });
+      cashFlowsForDay.push({
+        amount: aum,
+        daysFromStart: daysElapsed - 1,
+      });
 
       apr = calculateIRRBasedAPR(cashFlowsForDay, daysElapsed, roi / 100);
     }
@@ -495,9 +512,9 @@ reportsRouter.get("/reports/holdings", async (_req, res) => {
     }));
     res.json(rows);
   } catch (e: any) {
-    res
-      .status(500)
-      .json({ error: e?.message || "Failed to generate holdings" });
+    res.status(500).json({
+      error: e?.message || "Failed to generate holdings",
+    });
   }
 });
 
@@ -541,9 +558,9 @@ reportsRouter.get("/reports/holdings/summary", async (_req, res) => {
       last_updated: new Date().toISOString(),
     });
   } catch (e: any) {
-    res
-      .status(500)
-      .json({ error: e?.message || "Failed to generate holdings summary" });
+    res.status(500).json({
+      error: e?.message || "Failed to generate holdings summary",
+    });
   }
 });
 
@@ -702,7 +719,9 @@ reportsRouter.get("/reports/cashflow", async (req, res) => {
 
     res.json(resp);
   } catch (e: any) {
-    res.status(500).json({ error: e?.message || "Failed to compute cashflow" });
+    res.status(500).json({
+      error: e?.message || "Failed to compute cashflow",
+    });
   }
 });
 
@@ -784,7 +803,10 @@ reportsRouter.get("/reports/spending", async (req, res) => {
     const by_day: Record<string, { amount_usd: number; amount_vnd: number }> =
       {};
     for (const d of daily) {
-      by_day[d.date] = { amount_usd: d.total_usd, amount_vnd: d.total_vnd };
+      by_day[d.date] = {
+        amount_usd: d.total_usd,
+        amount_vnd: d.total_vnd,
+      };
     }
 
     // Calculate current month spending
@@ -902,7 +924,9 @@ reportsRouter.get("/reports/spending", async (req, res) => {
       available_balance_vnd,
     });
   } catch (e: any) {
-    res.status(500).json({ error: e?.message || "Failed to compute spending" });
+    res.status(500).json({
+      error: e?.message || "Failed to compute spending",
+    });
   }
 });
 
@@ -1051,9 +1075,9 @@ reportsRouter.get("/reports/vaults/:name/header", async (req, res) => {
     const metrics = await buildVaultHeaderMetrics(name);
     res.json(metrics);
   } catch (e: any) {
-    res
-      .status(500)
-      .json({ error: e?.message || "Failed to build header metrics" });
+    res.status(500).json({
+      error: e?.message || "Failed to build header metrics",
+    });
   }
 });
 
@@ -1118,7 +1142,9 @@ reportsRouter.get("/reports/vaults/summary", async (req, res) => {
 
     res.json({ rows, totals });
   } catch (e: any) {
-    res.status(500).json({ error: e?.message || "Failed to summarize vaults" });
+    res.status(500).json({
+      error: e?.message || "Failed to summarize vaults",
+    });
   }
 });
 
@@ -1134,7 +1160,10 @@ reportsRouter.get("/reports/series", async (req, res) => {
       : vaultRepository.findAll().map((v: any) => v.name);
     const perVault = await Promise.all(
       targetVaults.map((n: any) =>
-        buildVaultDailySeries(n, start, end).then((s) => ({ name: n, s })),
+        buildVaultDailySeries(n, start, end).then((s) => ({
+          name: n,
+          s,
+        })),
       ),
     );
 
@@ -1241,7 +1270,10 @@ reportsRouter.get("/reports/series", async (req, res) => {
           }));
 
         // Add terminal value (current AUM) as positive cash flow
-        cashFlowsForIRR.push({ amount: aum, daysFromStart: daysElapsed - 1 });
+        cashFlowsForIRR.push({
+          amount: aum,
+          daysFromStart: daysElapsed - 1,
+        });
 
         apr = calculateIRRBasedAPR(cashFlowsForIRR, daysElapsed, roi / 100);
       }
@@ -1266,8 +1298,8 @@ reportsRouter.get("/reports/series", async (req, res) => {
 
     res.json({ account: account || "ALL", series });
   } catch (e: any) {
-    res
-      .status(500)
-      .json({ error: e?.message || "Failed to build aggregate series" });
+    res.status(500).json({
+      error: e?.message || "Failed to build aggregate series",
+    });
   }
 });

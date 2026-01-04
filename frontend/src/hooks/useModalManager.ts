@@ -11,44 +11,44 @@ import type { ModalType } from '../types';
  * State for the modal manager
  */
 interface ModalManagerState {
-  isOpen: boolean;
-  modalType: ModalType | null;
+    isOpen: boolean;
+    modalType: ModalType | null;
 }
 
 /**
  * Actions for the modal manager
  */
 type ModalManagerAction =
-  | { type: 'OPEN_MODAL'; payload: ModalType }
-  | { type: 'CLOSE_MODAL' }
-  | { type: 'CLOSE_ALL' };
+    | { type: 'OPEN_MODAL'; payload: ModalType }
+    | { type: 'CLOSE_MODAL' }
+    | { type: 'CLOSE_ALL' };
 
 /**
  * Reducer for modal state management
  */
 function modalReducer(
-  state: ModalManagerState,
-  action: ModalManagerAction
+    state: ModalManagerState,
+    action: ModalManagerAction
 ): ModalManagerState {
-  switch (action.type) {
-    case 'OPEN_MODAL':
-      return {
-        isOpen: true,
-        modalType: action.payload,
-      };
-    case 'CLOSE_MODAL':
-      return {
-        isOpen: false,
-        modalType: null,
-      };
-    case 'CLOSE_ALL':
-      return {
-        isOpen: false,
-        modalType: null,
-      };
-    default:
-      return state;
-  }
+    switch (action.type) {
+        case 'OPEN_MODAL':
+            return {
+                isOpen: true,
+                modalType: action.payload,
+            };
+        case 'CLOSE_MODAL':
+            return {
+                isOpen: false,
+                modalType: null,
+            };
+        case 'CLOSE_ALL':
+            return {
+                isOpen: false,
+                modalType: null,
+            };
+        default:
+            return state;
+    }
 }
 
 /**
@@ -69,50 +69,50 @@ function modalReducer(
  * closeModal();
  */
 export function useModalManager() {
-  const [state, dispatch] = useReducer(modalReducer, {
-    isOpen: false,
-    modalType: null,
-  });
+    const [state, dispatch] = useReducer(modalReducer, {
+        isOpen: false,
+        modalType: null,
+    });
 
-  /**
-   * Opens a specific modal
-   */
-  const openModal = useCallback((modalType: ModalType) => {
-    dispatch({ type: 'OPEN_MODAL', payload: modalType });
-  }, []);
+    /**
+     * Opens a specific modal
+     */
+    const openModal = useCallback((modalType: ModalType) => {
+        dispatch({ type: 'OPEN_MODAL', payload: modalType });
+    }, []);
 
-  /**
-   * Closes the current modal
-   */
-  const closeModal = useCallback(() => {
-    dispatch({ type: 'CLOSE_MODAL' });
-  }, []);
+    /**
+     * Closes the current modal
+     */
+    const closeModal = useCallback(() => {
+        dispatch({ type: 'CLOSE_MODAL' });
+    }, []);
 
-  /**
-   * Closes all modals
-   */
-  const closeAllModals = useCallback(() => {
-    dispatch({ type: 'CLOSE_ALL' });
-  }, []);
+    /**
+     * Closes all modals
+     */
+    const closeAllModals = useCallback(() => {
+        dispatch({ type: 'CLOSE_ALL' });
+    }, []);
 
-  /**
-   * Checks if a specific modal is open
-   */
-  const isModalOpen = useCallback(
-    (modalType: ModalType): boolean => {
-      return state.isOpen && state.modalType === modalType;
-    },
-    [state.isOpen, state.modalType]
-  );
+    /**
+     * Checks if a specific modal is open
+     */
+    const isModalOpen = useCallback(
+        (modalType: ModalType): boolean => {
+            return state.isOpen && state.modalType === modalType;
+        },
+        [state.isOpen, state.modalType]
+    );
 
-  return {
-    isOpen: state.isOpen,
-    modalType: state.modalType,
-    openModal,
-    closeModal,
-    closeAllModals,
-    isModalOpen,
-  };
+    return {
+        isOpen: state.isOpen,
+        modalType: state.modalType,
+        openModal,
+        closeModal,
+        closeAllModals,
+        isModalOpen,
+    };
 }
 
 /**
@@ -122,20 +122,20 @@ export function useModalManager() {
  * const { isOpen, openModal, closeModal } = useSingleModal();
  */
 export function useSingleModal() {
-  const [isOpen, setIsOpen] = useState(false);
+    const [isOpen, setIsOpen] = useState(false);
 
-  const openModal = useCallback(() => {
-    setIsOpen(true);
-  }, []);
+    const openModal = useCallback(() => {
+        setIsOpen(true);
+    }, []);
 
-  const closeModal = useCallback(() => {
-    setIsOpen(false);
-  }, []);
+    const closeModal = useCallback(() => {
+        setIsOpen(false);
+    }, []);
 
-  return {
-    isOpen,
-    openModal,
-    closeModal,
-    toggle: useCallback(() => setIsOpen((prev) => !prev), []),
-  };
+    return {
+        isOpen,
+        openModal,
+        closeModal,
+        toggle: useCallback(() => setIsOpen((prev) => !prev), []),
+    };
 }

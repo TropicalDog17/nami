@@ -203,7 +203,7 @@ fmt-backend: ## Format backend code
 
 fmt-frontend: ## Format frontend code
 	@echo "Formatting frontend code..."
-	@cd frontend && npm run lint:fix
+	@cd frontend && pnpm run fmt
 	@echo "Frontend code formatted"
 
 lint: lint-backend lint-frontend ## Run linters for both backend and frontend

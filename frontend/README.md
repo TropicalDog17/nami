@@ -12,4 +12,3 @@ React web application for transaction management and financial reporting.
 - **`src/utils/`** - Helper utilities
 - **`src/styles/`** - Global styles and Tailwind configuration
 - **`tests/`** - End-to-end and component tests
-

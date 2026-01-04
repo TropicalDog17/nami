@@ -14,14 +14,14 @@ export type { HoldingsData } from '../HoldingsChart';
 
 // Re-export all charts from the main Charts file for now
 export {
-  CashFlowChart,
-  SpendingChart,
-  PnLChart,
-  PnLLineChart,
-  AprChart,
-  AprLineChart,
-  TimeSeriesLineChart,
-  DailySpendingChart,
-  MonthlySpendingTrendChart,
-  SpendingComparisonChart,
+    CashFlowChart,
+    SpendingChart,
+    PnLChart,
+    PnLLineChart,
+    AprChart,
+    AprLineChart,
+    TimeSeriesLineChart,
+    DailySpendingChart,
+    MonthlySpendingTrendChart,
+    SpendingComparisonChart,
 } from '../Charts';

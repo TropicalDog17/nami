@@ -15,11 +15,11 @@
  * toISODateTime() // '2024-01-15T10:30:45.123Z' (current time)
  */
 export function toISODateTime(value?: string): string {
-  if (!value) return new Date().toISOString();
-  const s = String(value);
-  if (s.includes('T')) return s;
-  const timePart = new Date().toISOString().split('T')[1];
-  return `${s}T${timePart}`;
+    if (!value) return new Date().toISOString();
+    const s = String(value);
+    if (s.includes('T')) return s;
+    const timePart = new Date().toISOString().split('T')[1];
+    return `${s}T${timePart}`;
 }
 
 /**
@@ -28,5 +28,5 @@ export function toISODateTime(value?: string): string {
  * @returns Today's date as a string in local date format
  */
 export function getTodayDate(): string {
-  return new Date().toISOString().split('T')[0];
+    return new Date().toISOString().split('T')[0];
 }
