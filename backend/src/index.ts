@@ -1,11 +1,9 @@
 import express from "express";
 import cors from "cors";
 import swaggerUi from "swagger-ui-express";
-import pLimit from "p-limit";
 import { config } from "./core/config";
 import {
   errorHandler,
-  requestLogger,
   notFoundHandler,
   basicAuth,
 } from "./core/middleware";
@@ -64,7 +62,7 @@ registerMetricsEndpoint();
 // OpenAPI/Swagger
 app.get("/api/openapi.json", (_req, res) => res.json(openapiSpec));
 
-// Swagger UI options to prevent caching issues
+// Swagger UI options
 const swaggerOptions = {
   explorer: true,
   swaggerOptions: {
@@ -72,13 +70,11 @@ const swaggerOptions = {
   },
 };
 
-app.use("/api/docs", swaggerUi.serve);
-app.get("/api/docs", swaggerUi.setup(openapiSpec, swaggerOptions));
+// Serve Swagger UI at /api/docs
+app.use("/api/docs", swaggerUi.serve, swaggerUi.setup(openapiSpec, swaggerOptions));
 
-// Also serve at /swagger/index.html for production
-app.use("/swagger", swaggerUi.serve);
-app.get("/swagger/", swaggerUi.setup(openapiSpec, swaggerOptions));
-app.get("/swagger/index.html", swaggerUi.setup(openapiSpec, swaggerOptions));
+// Also serve at /swagger for backward compatibility
+app.use("/swagger", swaggerUi.serve, swaggerUi.setup(openapiSpec, swaggerOptions));
 
 // 404 handler - must be after all routes
 app.use(notFoundHandler);
