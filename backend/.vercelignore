@@ -1,0 +1,20 @@
+# Local/dev files
+node_modules
+.env
+.env.*
+!.env.example
+*.log
+.DS_Store
+
+# Test files
+tests
+**/*.test.ts
+**/*.spec.ts
+vitest.config.ts
+
+# Build artifacts
+dist
+
+# IDE/Editor
+.vscode
+.idea
