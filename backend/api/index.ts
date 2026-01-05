@@ -4,20 +4,20 @@ import cors from "cors";
 import swaggerUi from "swagger-ui-express";
 import { openapiSpec } from "../src/openapi";
 import {
-  errorHandler,
-  requestLogger,
-  notFoundHandler,
+    errorHandler,
+    requestLogger,
+    notFoundHandler,
 } from "../src/core/middleware";
 
 import {
-  transactionsRouter,
-  reportsRouter,
-  actionsRouter,
-  pricesRouter,
-  vaultsRouter,
-  adminRouter,
-  loansRouter,
-  aiRouter,
+    transactionsRouter,
+    reportsRouter,
+    actionsRouter,
+    pricesRouter,
+    vaultsRouter,
+    adminRouter,
+    loansRouter,
+    aiRouter,
 } from "../src/handlers";
 import { settingsRepository } from "../src/repositories";
 import { vaultService } from "../src/services";
@@ -29,7 +29,7 @@ const app = express();
 
 // Setup monitoring
 const { metricsMiddleware, registerMetricsEndpoint, metrics } =
-  setupMonitoring(app);
+    setupMonitoring(app);
 app.use(metricsMiddleware);
 setMetrics(metrics);
 
@@ -37,23 +37,23 @@ app.use(cors());
 app.use(express.json());
 
 app.get("/health", (_req, res) =>
-  res.json({
-    ok: true,
-    timestamp: new Date().toISOString(),
-    uptime: process.uptime(),
-  }),
+    res.json({
+        ok: true,
+        timestamp: new Date().toISOString(),
+        uptime: process.uptime(),
+    })
 );
 
 // API routes
 app.use("/api", [
-  transactionsRouter,
-  reportsRouter,
-  actionsRouter,
-  pricesRouter,
-  vaultsRouter,
-  adminRouter,
-  loansRouter,
-  aiRouter,
+    transactionsRouter,
+    reportsRouter,
+    actionsRouter,
+    pricesRouter,
+    vaultsRouter,
+    adminRouter,
+    loansRouter,
+    aiRouter,
 ]);
 
 // Metrics endpoint for Prometheus scraping
@@ -62,19 +62,30 @@ registerMetricsEndpoint();
 // OpenAPI/Swagger
 app.get("/api/openapi.json", (_req, res) => res.json(openapiSpec));
 
-// Swagger UI options to prevent caching issues
-const swaggerOptions = {
-  explorer: true,
-  swaggerOptions: {
-    url: "/api/openapi.json",
-  },
+// Swagger UI options - use CDN for assets to work with Vercel's SSO protection
+const swaggerOptions: swaggerUi.SwaggerUiOptions = {
+    explorer: true,
+    swaggerOptions: {
+        url: "/api/openapi.json",
+    },
+    // Load Swagger UI assets from CDN instead of local files (required for Vercel serverless)
+    customCssUrl:
+        "https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/5.11.0/swagger-ui.min.css",
+    customJs: [
+        "https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/5.11.0/swagger-ui-bundle.js",
+        "https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/5.11.0/swagger-ui-standalone-preset.js",
+    ],
 };
 
-// Serve Swagger UI at /api/docs
-app.use("/api/docs", swaggerUi.serve, swaggerUi.setup(openapiSpec, swaggerOptions));
+// Serve Swagger UI at /api/docs (setup only, no serve - assets come from CDN)
+app.get("/api/docs", (req, res, next) => {
+    return swaggerUi.setup(openapiSpec, swaggerOptions)(req, res, next);
+});
 
-// Serve Swagger UI at /swagger - use combined serve and setup for proper static file handling
-app.use("/swagger", swaggerUi.serve, swaggerUi.setup(openapiSpec, swaggerOptions));
+// Serve Swagger UI at /swagger
+app.get("/swagger", (req, res, next) => {
+    return swaggerUi.setup(openapiSpec, swaggerOptions)(req, res, next);
+});
 
 // 404 handler - must be after all routes
 app.use(notFoundHandler);
@@ -86,35 +97,36 @@ app.use(errorHandler);
 let initialized = false;
 
 function ensureInitialized() {
-  if (initialized) return;
+    if (initialized) return;
 
-  try {
-    // Initialize database if using database backend
-    if (process.env.STORAGE_BACKEND === "database") {
-      initializeDatabase();
-      logger.info("Database initialized");
+    try {
+        // Initialize database if using database backend
+        if (process.env.STORAGE_BACKEND === "database") {
+            initializeDatabase();
+            logger.info("Database initialized");
+        }
+
+        // Ensure default vaults exist at startup
+        const defaultSpendingVault =
+            settingsRepository.getDefaultSpendingVaultName();
+        const defaultIncomeVault =
+            settingsRepository.getDefaultIncomeVaultName();
+        vaultService.ensureVault(defaultSpendingVault);
+        vaultService.ensureVault(defaultIncomeVault);
+
+        // Initialize borrowing settings
+        settingsRepository.getBorrowingSettings();
+
+        logger.info("Initialization complete.");
+        initialized = true;
+    } catch (e) {
+        const msg = (e as { message?: string } | null)?.message ?? String(e);
+        logger.error({ error: msg }, "Bootstrap failed");
     }
-
-    // Ensure default vaults exist at startup
-    const defaultSpendingVault =
-      settingsRepository.getDefaultSpendingVaultName();
-    const defaultIncomeVault = settingsRepository.getDefaultIncomeVaultName();
-    vaultService.ensureVault(defaultSpendingVault);
-    vaultService.ensureVault(defaultIncomeVault);
-
-    // Initialize borrowing settings
-    settingsRepository.getBorrowingSettings();
-
-    logger.info("Initialization complete.");
-    initialized = true;
-  } catch (e) {
-    const msg = (e as { message?: string } | null)?.message ?? String(e);
-    logger.error({ error: msg }, "Bootstrap failed");
-  }
 }
 
 // Vercel serverless handler
 export default function handler(req: VercelRequest, res: VercelResponse) {
-  ensureInitialized();
-  return app(req as any, res as any);
+    ensureInitialized();
+    return app(req as any, res as any);
 }
