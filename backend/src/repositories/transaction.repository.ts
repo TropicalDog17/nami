@@ -11,7 +11,7 @@ import {
 export class TransactionRepositoryJson implements ITransactionRepository {
   findAll(): Transaction[] {
     return readStore().transactions.sort((a, b) =>
-      b.createdAt.localeCompare(a.createdAt),
+      String(b.createdAt || '').localeCompare(String(a.createdAt || '')),
     );
   }
 

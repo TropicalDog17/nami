@@ -10,6 +10,7 @@ import {
 import { vaultService } from "../services/vault.service";
 import { transactionService } from "../services/transaction.service";
 import { Asset } from "../types";
+import { basicAuth } from "../core/middleware";
 
 export const adminRouter = Router();
 
@@ -661,7 +662,7 @@ adminRouter.delete(
  * Export all data for migration
  * GET /api/admin/export
  */
-adminRouter.get("/admin/export", (_req: Request, res: Response) => {
+adminRouter.get("/admin/export", basicAuth, (_req: Request, res: Response) => {
   try {
     const data = {
       version: 1,
@@ -684,6 +685,15 @@ adminRouter.get("/admin/export", (_req: Request, res: Response) => {
         borrowing: settingsRepository.getBorrowingSettings(),
       },
     };
+
+    // Set headers for file download
+    const timestamp = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+    res.setHeader('Content-Type', 'application/json');
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="nami-export-${timestamp}.json"`
+    );
+
     res.json(data);
   } catch (e: any) {
     res.status(500).json({ error: e?.message || "Failed to export data" });
@@ -695,7 +705,7 @@ adminRouter.get("/admin/export", (_req: Request, res: Response) => {
  * POST /api/admin/import
  * Body: { transactions, vaults, loans, types, accounts, assets, tags, settings }
  */
-adminRouter.post("/admin/import", async (req: Request, res: Response) => {
+adminRouter.post("/admin/import", basicAuth, async (req: Request, res: Response) => {
   try {
     const data = req.body;
     if (!data || typeof data !== "object") {

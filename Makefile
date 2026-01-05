@@ -18,9 +18,9 @@ setup: ## Set up the development environment (install dependencies, setup databa
 
 install: ## Install all dependencies (Node packages)
 	@echo "Installing Node dependencies..."
-	@cd backend && pnpm install
-	@cd frontend && pnpm install
-	@cd ai-service && pnpm install
+	@cd backend && pnpm install && pnpm build
+	@cd frontend && pnpm install && pnpm build
+	@cd ai-service && pnpm install && pnpm build
 	@echo "Dependencies installed"
 
 

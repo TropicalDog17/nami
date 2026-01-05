@@ -237,6 +237,165 @@ export const LoanCreateBatchSchemaOpenAPI = registry.register(
   }),
 );
 
+// Export/Import schemas
+export const TypeSchemaOpenAPI = registry.register(
+  "Type",
+  z
+    .object({
+      id: z.number(),
+      name: z.string(),
+      description: z.string().nullable(),
+      is_active: z.boolean().optional(),
+    })
+    .openapi({
+      description: "Transaction type",
+    }),
+);
+
+export const AccountSchemaOpenAPI = registry.register(
+  "Account",
+  z
+    .object({
+      id: z.number(),
+      name: z.string(),
+      type: z.string().nullable(),
+      is_active: z.boolean().optional(),
+    })
+    .openapi({
+      description: "Account",
+    }),
+);
+
+export const TagSchemaOpenAPI = registry.register(
+  "Tag",
+  z
+    .object({
+      id: z.number(),
+      name: z.string(),
+      category: z.string().nullable(),
+      is_active: z.boolean().optional(),
+    })
+    .openapi({
+      description: "Tag",
+    }),
+);
+
+export const PendingActionSchemaOpenAPI = registry.register(
+  "PendingAction",
+  z
+    .object({
+      id: z.string(),
+      source: z.string(),
+      raw_input: z.string(),
+      toon_text: z.string().nullable(),
+      action_json: z.any().nullable(),
+      confidence: z.number().optional(),
+      batch_id: z.string().optional(),
+      meta: z.any().optional(),
+      status: z.enum(["pending", "accepted", "rejected"]),
+      created_at: z.string(),
+      updated_at: z.string(),
+      error: z.string().nullable().optional(),
+      created_tx_ids: z.array(z.string()).optional(),
+    })
+    .openapi({
+      description: "AI pending action",
+    }),
+);
+
+export const BorrowingSettingsSchemaOpenAPI = registry.register(
+  "BorrowingSettings",
+  z
+    .object({
+      name: z.string(),
+      rate: z.number(),
+      lastAccrualStart: z.string().optional(),
+    })
+    .openapi({
+      description: "Borrowing settings",
+    }),
+);
+
+export const ExportDataSchemaOpenAPI = registry.register(
+  "ExportData",
+  z
+    .object({
+      version: z.number(),
+      exported_at: z.string().datetime(),
+      transactions: z.array(TransactionSchemaOpenAPI),
+      vaults: z.array(
+        z.object({
+          name: z.string(),
+          status: z.enum(["ACTIVE", "CLOSED"]),
+          createdAt: z.string().datetime(),
+          entries: z.array(VaultEntrySchemaOpenAPI),
+        }),
+      ),
+      loans: z.array(LoanAgreementSchemaOpenAPI),
+      types: z.array(TypeSchemaOpenAPI),
+      accounts: z.array(AccountSchemaOpenAPI),
+      assets: z
+        .array(
+          z.object({
+            id: z.number(),
+            symbol: z.string(),
+            name: z.string().nullable(),
+            decimals: z.number().optional(),
+            is_active: z.boolean().optional(),
+          }),
+        )
+        .optional(),
+      tags: z.array(TagSchemaOpenAPI),
+      pending_actions: z.array(PendingActionSchemaOpenAPI),
+      settings: z
+        .object({
+          default_spending_vault: z.string(),
+          default_income_vault: z.string(),
+          borrowing: BorrowingSettingsSchemaOpenAPI,
+        })
+        .optional(),
+    })
+    .openapi({
+      description: "Complete export of all application data",
+    }),
+);
+
+export const ImportRequestSchemaOpenAPI = registry.register(
+  "ImportRequest",
+  ExportDataSchemaOpenAPI.omit({ version: true, exported_at: true }).openapi({
+    description: "Request to import data",
+  }),
+);
+
+export const ImportResponseSchemaOpenAPI = registry.register(
+  "ImportResponse",
+  z
+    .object({
+      ok: z.boolean(),
+      imported: z.object({
+        transactions: z.number(),
+        vaults: z.number(),
+        vault_entries: z.number(),
+        loans: z.number(),
+        types: z.number(),
+        accounts: z.number(),
+        assets: z.number(),
+        tags: z.number(),
+        pending_actions: z.number(),
+      }),
+    })
+    .openapi({
+      description: "Response after importing data",
+    }),
+);
+
+// Register security scheme
+registry.registerComponent("securitySchemes", "basicAuth", {
+  type: "http",
+  scheme: "basic",
+  description: "Basic authentication using username and password from environment variables (BASIC_AUTH_USERNAME, BASIC_AUTH_PASSWORD). Only enabled when BASIC_AUTH_ENABLED=true.",
+});
+
 // Register routes
 export function registerRoutes() {
   // Health endpoints
@@ -646,6 +805,59 @@ export function registerRoutes() {
     },
     responses: {
       201: { description: "Created" },
+    },
+  });
+
+  // Admin - Export/Import endpoints
+  registry.registerPath({
+    method: "get",
+    path: "/api/admin/export",
+    summary: "Export all data",
+    description:
+      "Export all application data including transactions, vaults, loans, types, accounts, assets, tags, pending actions, and settings. Returns a downloadable JSON file.",
+    security: [{ basicAuth: [] }],
+    responses: {
+      200: {
+        description: "OK - Returns JSON file for download",
+        content: {
+          "application/json": {
+            schema: ExportDataSchemaOpenAPI,
+          },
+        },
+      },
+      401: { description: "Unauthorized - Invalid or missing credentials" },
+      500: { description: "Internal server error" },
+    },
+  });
+
+  registry.registerPath({
+    method: "post",
+    path: "/api/admin/import",
+    summary: "Import data",
+    description:
+      "Import application data including transactions, vaults, loans, types, accounts, assets, tags, pending actions, and settings",
+    security: [{ basicAuth: [] }],
+    request: {
+      body: {
+        content: {
+          "application/json": {
+            schema: ImportRequestSchemaOpenAPI,
+          },
+        },
+      },
+    },
+    responses: {
+      200: {
+        description: "OK",
+        content: {
+          "application/json": {
+            schema: ImportResponseSchemaOpenAPI,
+          },
+        },
+      },
+      400: { description: "Bad request" },
+      401: { description: "Unauthorized - Invalid or missing credentials" },
+      500: { description: "Internal server error" },
     },
   });
 }
