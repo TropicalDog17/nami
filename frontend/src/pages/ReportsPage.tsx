@@ -19,7 +19,7 @@ import DataTable, {
 import DateInput from '../components/ui/DateInput';
 import { useBackendStatus } from '../context/BackendStatusContext';
 import { reportsApi, tokenizedVaultApi } from '../services/api';
-
+import { fxService } from '../services/fxService';
 const ReportsPage = () => {
     const [activeTab, setActiveTab] = useState('holdings');
     const [currency, setCurrency] = useState<'USD' | 'VND'>('USD');
@@ -85,9 +85,7 @@ const ReportsPage = () => {
                         const usdToVnd = await (async () => {
                             try {
                                 const dt = new Date(filters.asOf);
-                                const rate = await (
-                                    await import('../services/fxService')
-                                ).fxService.getFXRate(
+                                const rate = await fxService.getFXRate(
                                     'USD',
                                     'VND',
                                     isNaN(dt.getTime()) ? undefined : dt

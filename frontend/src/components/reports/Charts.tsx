@@ -1,17 +1,4 @@
-import {
-    Chart as ChartJS,
-    CategoryScale,
-    LinearScale,
-    BarElement,
-    Title,
-    Tooltip,
-    Legend,
-    ArcElement,
-    PointElement,
-    LineElement,
-} from 'chart.js';
 import React from 'react';
-import { Bar, Doughnut } from 'react-chartjs-2';
 import {
     LineChart,
     Line,
@@ -19,6 +6,13 @@ import {
     YAxis,
     CartesianGrid,
     ResponsiveContainer,
+    BarChart,
+    Bar,
+    PieChart,
+    Pie,
+    Cell,
+    Legend,
+    Tooltip,
 } from 'recharts';
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -28,19 +22,21 @@ import {
     ChartTooltipContent,
 } from '@/components/ui/chart';
 
-ChartJS.register(
-    CategoryScale,
-    LinearScale,
-    BarElement,
-    Title,
-    Tooltip,
-    Legend,
-    ArcElement,
-    PointElement,
-    LineElement
-);
-
 type Currency = 'USD' | 'VND';
+
+// Chart colors palette
+const CHART_COLORS = [
+    '#FF6384',
+    '#36A2EB',
+    '#FFCE56',
+    '#4BC0C0',
+    '#9966FF',
+    '#FF9F40',
+    '#FF6384',
+    '#C9CBCF',
+    '#4BC0C0',
+    '#36A2EB',
+];
 
 type HoldingsData = {
     by_asset?: Record<
@@ -57,9 +53,9 @@ export const HoldingsChart: React.FC<{
     if (!data?.by_asset) return null;
 
     const assets = Object.entries(data.by_asset);
-    const labels = assets.map(([asset]) => asset);
-    const values = assets.map(([, holding]) =>
-        Math.abs(
+    const chartData = assets.map(([asset, holding], index) => ({
+        name: asset,
+        value: Math.abs(
             parseFloat(
                 String(
                     currency === 'USD'
@@ -67,74 +63,70 @@ export const HoldingsChart: React.FC<{
                         : (holding.value_vnd ?? 0)
                 )
             )
-        )
+        ),
+        fill: CHART_COLORS[index % CHART_COLORS.length],
+    }));
+
+    const total = chartData.reduce((sum, item) => sum + item.value, 0);
+
+    const chartConfig = chartData.reduce(
+        (acc, item) => {
+            acc[item.name] = { label: item.name, color: item.fill };
+            return acc;
+        },
+        {} as Record<string, { label: string; color: string }>
     );
 
-    const chartData = {
-        labels,
-        datasets: [
-            {
-                data: values,
-                backgroundColor: [
-                    '#FF6384',
-                    '#36A2EB',
-                    '#FFCE56',
-                    '#4BC0C0',
-                    '#9966FF',
-                    '#FF9F40',
-                    '#FF6384',
-                    '#C9CBCF',
-                ],
-                hoverBackgroundColor: [
-                    '#FF6384',
-                    '#36A2EB',
-                    '#FFCE56',
-                    '#4BC0C0',
-                    '#9966FF',
-                    '#FF9F40',
-                    '#FF6384',
-                    '#C9CBCF',
-                ],
-            },
-        ],
-    };
-
-    const options = {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: {
-            legend: {
-                position: 'bottom' as const,
-                labels: {
-                    boxWidth: 12,
-                    padding: 10,
-                },
-            },
-            title: {
-                display: false,
-            },
-            tooltip: {
-                callbacks: {
-                    label: function (context: {
-                        label?: string;
-                        parsed: number;
-                        dataset: { data: number[] };
-                    }) {
-                        const label = context.label ?? '';
-                        const value = context.parsed;
-                        const total = context.dataset.data.reduce(
-                            (a: number, b: number) => a + b,
-                            0
-                        );
-                        const percentage = ((value / total) * 100).toFixed(1);
-                        return `${label}: ${value.toLocaleString()} ${currency} (${percentage}%)`;
-                    },
-                },
-            },
-        },
-    };
-
-    return <Doughnut data={chartData} options={options} />;
+    return (
+        <ChartContainer config={chartConfig} className="h-full w-full">
+            <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                    <Pie
+                        data={chartData}
+                        cx="50%"
+                        cy="50%"
+                        innerRadius="40%"
+                        outerRadius="70%"
+                        paddingAngle={2}
+                        dataKey="value"
+                        nameKey="name"
+                    >
+                        {chartData.map((entry, index) => (
+                            <Cell key={`cell-${index}`} fill={entry.fill} />
+                        ))}
+                    </Pie>
+                    <Tooltip
+                        content={({ active, payload }) => {
+                            if (!active || !payload?.length) return null;
+                            const item = payload[0];
+                            const value = item.value as number;
+                            const percentage = ((value / total) * 100).toFixed(
+                                1
+                            );
+                            return (
+                                <div className="rounded-lg border bg-background p-2 shadow-sm">
+                                    <div className="font-medium">
+                                        {item.name}
+                                    </div>
+                                    <div className="text-muted-foreground">
+                                        {value.toLocaleString()} {currency} (
+                                        {percentage}%)
+                                    </div>
+                                </div>
+                            );
+                        }}
+                    />
+                    <Legend
+                        verticalAlign="bottom"
+                        height={36}
+                        formatter={(value) => (
+                            <span className="text-xs">{value}</span>
+                        )}
+                    />
+                </PieChart>
+            </ResponsiveContainer>
+        </ChartContainer>
+    );
 };
 
 type CashFlowByType = Record<
@@ -155,97 +147,99 @@ export const CashFlowChart: React.FC<{
     if (!data?.by_type) return null;
 
     const types = Object.entries(data.by_type);
-    const labels = types.map(([type]) => type);
-    const inflows = types.map(([, flow]) =>
-        parseFloat(
+    const chartData = types.map(([type, flow]) => ({
+        name: type,
+        inflows: parseFloat(
             String(
                 currency === 'USD'
                     ? (flow.inflow_usd ?? 0)
                     : (flow.inflow_vnd ?? 0)
             )
-        )
-    );
-    const outflows = types.map(
-        ([, flow]) =>
-            -parseFloat(
-                String(
-                    currency === 'USD'
-                        ? (flow.outflow_usd ?? 0)
-                        : (flow.outflow_vnd ?? 0)
-                )
+        ),
+        outflows: -parseFloat(
+            String(
+                currency === 'USD'
+                    ? (flow.outflow_usd ?? 0)
+                    : (flow.outflow_vnd ?? 0)
             )
+        ),
+    }));
+
+    const chartConfig = {
+        inflows: { label: 'Inflows', color: '#4CAF50' },
+        outflows: { label: 'Outflows', color: '#F44336' },
+    };
+
+    return (
+        <ChartContainer config={chartConfig} className="h-full w-full">
+            <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={chartData}>
+                    <CartesianGrid
+                        strokeDasharray="3 3"
+                        className="stroke-muted"
+                    />
+                    <XAxis
+                        dataKey="name"
+                        tickLine={false}
+                        axisLine={false}
+                        tickMargin={8}
+                        className="text-xs"
+                    />
+                    <YAxis
+                        tickLine={false}
+                        axisLine={false}
+                        tickMargin={8}
+                        className="text-xs"
+                        tickFormatter={(value) =>
+                            Math.abs(value).toLocaleString()
+                        }
+                    />
+                    <Tooltip
+                        content={({ active, payload, label }) => {
+                            if (!active || !payload?.length) return null;
+                            return (
+                                <div className="rounded-lg border bg-background p-2 shadow-sm">
+                                    <div className="font-medium">{label}</div>
+                                    {payload.map((item, index) => (
+                                        <div
+                                            key={index}
+                                            className="flex items-center gap-2"
+                                        >
+                                            <div
+                                                className="h-2 w-2 rounded-full"
+                                                style={{
+                                                    backgroundColor:
+                                                        item.color,
+                                                }}
+                                            />
+                                            <span className="text-muted-foreground">
+                                                {item.name}:{' '}
+                                                {Math.abs(
+                                                    item.value as number
+                                                ).toLocaleString()}{' '}
+                                                {currency}
+                                            </span>
+                                        </div>
+                                    ))}
+                                </div>
+                            );
+                        }}
+                    />
+                    <Legend />
+                    <Bar
+                        dataKey="inflows"
+                        fill="var(--color-inflows)"
+                        radius={[4, 4, 0, 0]}
+                    />
+                    <Bar
+                        dataKey="outflows"
+                        fill="var(--color-outflows)"
+                        radius={[4, 4, 0, 0]}
+                    />
+                </BarChart>
+            </ResponsiveContainer>
+        </ChartContainer>
     );
-
-    const chartData = {
-        labels,
-        datasets: [
-            {
-                label: 'Inflows',
-                data: inflows,
-                backgroundColor: '#4CAF50',
-                borderColor: '#4CAF50',
-                borderWidth: 1,
-            },
-            {
-                label: 'Outflows',
-                data: outflows,
-                backgroundColor: '#F44336',
-                borderColor: '#F44336',
-                borderWidth: 1,
-            },
-        ],
-    };
-
-    const options = {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: {
-            legend: {
-                position: 'top' as const,
-                labels: {
-                    boxWidth: 12,
-                    padding: 8,
-                },
-            },
-            title: {
-                display: false,
-            },
-            tooltip: {
-                callbacks: {
-                    label: function (context: {
-                        parsed: { y: number };
-                        dataset: { label?: string };
-                    }) {
-                        const value = Math.abs(context.parsed.y);
-                        return `${context.dataset.label ?? 'Value'}: ${value.toLocaleString()} ${currency}`;
-                    },
-                },
-            },
-        },
-        scales: {
-            y: {
-                beginAtZero: true,
-                ticks: {
-                    // @ts-expect-error - chartjs types - chartjs types
-                    callback: function (value: number | string) {
-                        const n =
-                            typeof value === 'number'
-                                ? value
-                                : parseFloat(String(value));
-                        return Math.abs(n).toLocaleString();
-                    },
-                },
-            },
-            x: {
-                // @ts-expect-error - chartjs types - chartjs types
-                ticks: {
-                    fontSize: 10,
-                },
-            },
-        },
-    };
-
-    return <Bar data={chartData} options={options} />;
 };
 
 type SpendingByTag = Record<
@@ -270,74 +264,77 @@ export const SpendingChart: React.FC<{
                 parseFloat(String(b.amount_usd ?? 0)) -
                 parseFloat(String(a.amount_usd ?? 0))
         )
-        .slice(0, 10); // Top 10 spending categories
+        .slice(0, 10);
 
-    const labels = tags.map(([tag]) => tag);
-    const amounts = tags.map(([, spending]) =>
-        parseFloat(
+    const chartData = tags.map(([tag, spending], index) => ({
+        name: tag,
+        value: parseFloat(
             String(
                 currency === 'USD'
                     ? (spending.amount_usd ?? 0)
                     : (spending.amount_vnd ?? 0)
             )
-        )
+        ),
+        percentage: parseFloat(String(spending.percentage ?? 0)),
+        fill: CHART_COLORS[index % CHART_COLORS.length],
+    }));
+
+    const chartConfig = chartData.reduce(
+        (acc, item) => {
+            acc[item.name] = { label: item.name, color: item.fill };
+            return acc;
+        },
+        {} as Record<string, { label: string; color: string }>
     );
 
-    const chartData = {
-        labels,
-        datasets: [
-            {
-                data: amounts,
-                backgroundColor: [
-                    '#FF6384',
-                    '#36A2EB',
-                    '#FFCE56',
-                    '#4BC0C0',
-                    '#9966FF',
-                    '#FF9F40',
-                    '#FF6384',
-                    '#C9CBCF',
-                    '#4BC0C0',
-                    '#36A2EB',
-                ],
-            },
-        ],
-    };
-
-    const options = {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: {
-            legend: {
-                position: 'bottom' as const,
-                labels: {
-                    boxWidth: 12,
-                    padding: 10,
-                },
-            },
-            title: {
-                display: false,
-            },
-            tooltip: {
-                callbacks: {
-                    label: function (context: {
-                        label?: string;
-                        parsed: number;
-                        dataIndex: number;
-                    }) {
-                        const label = context.label ?? '';
-                        const value = context.parsed;
-                        const percentage = parseFloat(
-                            String(tags[context.dataIndex][1].percentage ?? 0)
-                        ).toFixed(1);
-                        return `${label}: ${value.toLocaleString()} ${currency} (${percentage}%)`;
-                    },
-                },
-            },
-        },
-    };
-
-    return <Doughnut data={chartData} options={options} />;
+    return (
+        <ChartContainer config={chartConfig} className="h-full w-full">
+            <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                    <Pie
+                        data={chartData}
+                        cx="50%"
+                        cy="50%"
+                        innerRadius="40%"
+                        outerRadius="70%"
+                        paddingAngle={2}
+                        dataKey="value"
+                        nameKey="name"
+                    >
+                        {chartData.map((entry, index) => (
+                            <Cell key={`cell-${index}`} fill={entry.fill} />
+                        ))}
+                    </Pie>
+                    <Tooltip
+                        content={({ active, payload }) => {
+                            if (!active || !payload?.length) return null;
+                            const item = payload[0];
+                            const entry = item.payload as (typeof chartData)[0];
+                            return (
+                                <div className="rounded-lg border bg-background p-2 shadow-sm">
+                                    <div className="font-medium">
+                                        {entry.name}
+                                    </div>
+                                    <div className="text-muted-foreground">
+                                        {entry.value.toLocaleString()}{' '}
+                                        {currency} ({entry.percentage.toFixed(1)}
+                                        %)
+                                    </div>
+                                </div>
+                            );
+                        }}
+                    />
+                    <Legend
+                        verticalAlign="bottom"
+                        height={36}
+                        formatter={(value) => (
+                            <span className="text-xs">{value}</span>
+                        )}
+                    />
+                </PieChart>
+            </ResponsiveContainer>
+        </ChartContainer>
+    );
 };
 
 type PnLData = {
@@ -369,68 +366,73 @@ export const PnLChart: React.FC<{ data: PnLData; currency?: Currency }> = ({
         )
     );
 
-    const chartData = {
-        labels: ['Realized P&L', 'Total P&L'],
-        datasets: [
-            {
-                label: `P&L (${currency})`,
-                data: [realizedPnL, totalPnL],
-                backgroundColor: [
-                    realizedPnL >= 0 ? '#4CAF50' : '#F44336',
-                    totalPnL >= 0 ? '#4CAF50' : '#F44336',
-                ],
-                borderColor: [
-                    realizedPnL >= 0 ? '#4CAF50' : '#F44336',
-                    totalPnL >= 0 ? '#4CAF50' : '#F44336',
-                ],
-                borderWidth: 1,
-            },
-        ],
+    const chartData = [
+        {
+            name: 'Realized P&L',
+            value: realizedPnL,
+            fill: realizedPnL >= 0 ? '#4CAF50' : '#F44336',
+        },
+        {
+            name: 'Total P&L',
+            value: totalPnL,
+            fill: totalPnL >= 0 ? '#4CAF50' : '#F44336',
+        },
+    ];
+
+    const chartConfig = {
+        value: { label: `P&L (${currency})`, color: '#4CAF50' },
     };
 
-    const options = {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: {
-            legend: {
-                display: false,
-            },
-            title: {
-                display: false,
-            },
-            tooltip: {
-                callbacks: {
-                    label: function (context: {
-                        parsed: { y: number };
-                        label?: string;
-                    }) {
-                        const value = context.parsed.y;
-                        return `${context.label ?? 'Value'}: ${value.toLocaleString()} ${currency}`;
-                    },
-                },
-            },
-        },
-        scales: {
-            y: {
-                beginAtZero: true,
-                ticks: {
-                    // @ts-expect-error - chartjs types - chartjs types
-                    callback: function (value: number | string) {
-                        const n =
-                            typeof value === 'number'
-                                ? value
-                                : parseFloat(String(value));
-                        return n.toLocaleString();
-                    },
-                },
-            },
-            x: {
-                ticks: {},
-            },
-        },
-    };
-
-    return <Bar data={chartData} options={options} />;
+    return (
+        <ChartContainer config={chartConfig} className="h-full w-full">
+            <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={chartData}>
+                    <CartesianGrid
+                        strokeDasharray="3 3"
+                        className="stroke-muted"
+                    />
+                    <XAxis
+                        dataKey="name"
+                        tickLine={false}
+                        axisLine={false}
+                        tickMargin={8}
+                        className="text-xs"
+                    />
+                    <YAxis
+                        tickLine={false}
+                        axisLine={false}
+                        tickMargin={8}
+                        className="text-xs"
+                        tickFormatter={(value) => value.toLocaleString()}
+                    />
+                    <Tooltip
+                        content={({ active, payload }) => {
+                            if (!active || !payload?.length) return null;
+                            const item = payload[0];
+                            return (
+                                <div className="rounded-lg border bg-background p-2 shadow-sm">
+                                    <div className="font-medium">
+                                        {item.payload.name}
+                                    </div>
+                                    <div className="text-muted-foreground">
+                                        {(
+                                            item.value as number
+                                        ).toLocaleString()}{' '}
+                                        {currency}
+                                    </div>
+                                </div>
+                            );
+                        }}
+                    />
+                    <Bar dataKey="value" radius={[4, 4, 0, 0]}>
+                        {chartData.map((entry, index) => (
+                            <Cell key={`cell-${index}`} fill={entry.fill} />
+                        ))}
+                    </Bar>
+                </BarChart>
+            </ResponsiveContainer>
+        </ChartContainer>
+    );
 };
 
 // P&L Line Chart
@@ -524,54 +526,64 @@ export const AprChart: React.FC<{ apr?: number; benchmarkApr?: number }> = ({
     apr = 0,
     benchmarkApr = 0,
 }) => {
-    const labels = ['Vault APR', 'Benchmark APR'];
-    const dataset = [apr, benchmarkApr];
-    const chartData = {
-        labels,
-        datasets: [
-            {
-                label: 'APR (%)',
-                data: dataset,
-                backgroundColor: ['#3B82F6', '#9CA3AF'],
-                borderColor: ['#3B82F6', '#9CA3AF'],
-                borderWidth: 1,
-            },
-        ],
+    const chartData = [
+        { name: 'Vault APR', value: apr, fill: '#3B82F6' },
+        { name: 'Benchmark APR', value: benchmarkApr, fill: '#9CA3AF' },
+    ];
+
+    const chartConfig = {
+        value: { label: 'APR (%)', color: '#3B82F6' },
     };
-    const options = {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: {
-            legend: { display: false },
-            tooltip: {
-                callbacks: {
-                    label: function (context: {
-                        parsed: { y: number };
-                        label?: string;
-                    }) {
-                        const value = context.parsed.y;
-                        return `${context.label ?? 'APR'}: ${Number(value).toFixed(2)}%`;
-                    },
-                },
-            },
-        },
-        scales: {
-            y: {
-                beginAtZero: true,
-                ticks: {
-                    // @ts-expect-error - chartjs types
-                    callback: function (value: number | string) {
-                        const n =
-                            typeof value === 'number'
-                                ? value
-                                : parseFloat(String(value));
-                        return `${Number(n).toFixed(2)}%`;
-                    },
-                },
-            },
-        },
-    };
-    return <Bar data={chartData} options={options} />;
+
+    return (
+        <ChartContainer config={chartConfig} className="h-full w-full">
+            <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={chartData}>
+                    <CartesianGrid
+                        strokeDasharray="3 3"
+                        className="stroke-muted"
+                    />
+                    <XAxis
+                        dataKey="name"
+                        tickLine={false}
+                        axisLine={false}
+                        tickMargin={8}
+                        className="text-xs"
+                    />
+                    <YAxis
+                        tickLine={false}
+                        axisLine={false}
+                        tickMargin={8}
+                        className="text-xs"
+                        tickFormatter={(value) =>
+                            `${Number(value).toFixed(2)}%`
+                        }
+                    />
+                    <Tooltip
+                        content={({ active, payload }) => {
+                            if (!active || !payload?.length) return null;
+                            const item = payload[0];
+                            return (
+                                <div className="rounded-lg border bg-background p-2 shadow-sm">
+                                    <div className="font-medium">
+                                        {item.payload.name}
+                                    </div>
+                                    <div className="text-muted-foreground">
+                                        {Number(item.value).toFixed(2)}%
+                                    </div>
+                                </div>
+                            );
+                        }}
+                    />
+                    <Bar dataKey="value" radius={[4, 4, 0, 0]}>
+                        {chartData.map((entry, index) => (
+                            <Cell key={`cell-${index}`} fill={entry.fill} />
+                        ))}
+                    </Bar>
+                </BarChart>
+            </ResponsiveContainer>
+        </ChartContainer>
+    );
 };
 
 // APR as Line chart
@@ -653,9 +665,9 @@ export const TimeSeriesLineChart: React.FC<{
     }>;
     yFormat?: 'percent' | 'currency' | 'number';
     currency?: Currency;
-}> = ({ labels, datasets, yFormat = 'number', _currency }) => {
+}> = ({ labels, datasets, yFormat = 'number' }) => {
     // Create safe keys for CSS variables (no spaces or special characters)
-    const datasetKeys = datasets.map((ds, index) => `dataset${index}`);
+    const datasetKeys = datasets.map((_, index) => `dataset${index}`);
 
     // Format labels to "Month Day" format and combine with data
     const chartData = labels.map((label, index) => {
@@ -727,7 +739,7 @@ export const TimeSeriesLineChart: React.FC<{
                             />
                         }
                     />
-                    {datasets.map((ds, index) => (
+                    {datasets.map((_, index) => (
                         <Line
                             key={datasetKeys[index]}
                             type="monotone"
@@ -847,13 +859,14 @@ type MonthlyTrendData = {
         amount_vnd: number;
     }>;
 };
+
 export const MonthlySpendingTrendChart: React.FC<{
     data: MonthlyTrendData;
     currency?: Currency;
 }> = ({ data, currency = 'USD' }) => {
     if (!data?.monthly_trend || data.monthly_trend.length === 0) return null;
 
-    const labels = data.monthly_trend.map((m) => {
+    const chartData = data.monthly_trend.map((m, index, arr) => {
         const [year, month] = m.month.split('-');
         const monthNames = [
             'Jan',
@@ -869,114 +882,84 @@ export const MonthlySpendingTrendChart: React.FC<{
             'Nov',
             'Dec',
         ];
-        return `${monthNames[parseInt(month, 10) - 1]} ${year.slice(2)}`;
+        return {
+            name: `${monthNames[parseInt(month, 10) - 1]} ${year.slice(2)}`,
+            value: currency === 'USD' ? m.amount_usd : m.amount_vnd,
+            isLast: index === arr.length - 1,
+        };
     });
-    const values = data.monthly_trend.map((m) =>
-        currency === 'USD' ? m.amount_usd : m.amount_vnd
+
+    const chartConfig = {
+        value: { label: `Monthly Spending (${currency})`, color: '#F97316' },
+    };
+
+    return (
+        <ChartContainer config={chartConfig} className="h-full w-full">
+            <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={chartData}>
+                    <CartesianGrid
+                        strokeDasharray="3 3"
+                        className="stroke-muted"
+                    />
+                    <XAxis
+                        dataKey="name"
+                        tickLine={false}
+                        axisLine={false}
+                        tickMargin={8}
+                        className="text-xs"
+                        angle={-45}
+                        textAnchor="end"
+                        height={60}
+                    />
+                    <YAxis
+                        tickLine={false}
+                        axisLine={false}
+                        tickMargin={8}
+                        className="text-xs"
+                        tickFormatter={(value) => {
+                            const symbol = currency === 'USD' ? '$' : '₫';
+                            return `${symbol}${Number(value).toLocaleString()}`;
+                        }}
+                    />
+                    <Tooltip
+                        content={({ active, payload }) => {
+                            if (!active || !payload?.length) return null;
+                            const item = payload[0];
+                            const symbol = currency === 'USD' ? '$' : '₫';
+                            return (
+                                <div className="rounded-lg border bg-background p-2 shadow-sm">
+                                    <div className="font-medium">
+                                        {item.payload.name}
+                                    </div>
+                                    <div className="text-muted-foreground">
+                                        {symbol}
+                                        {(
+                                            item.value as number
+                                        ).toLocaleString()}
+                                    </div>
+                                </div>
+                            );
+                        }}
+                    />
+                    <Bar dataKey="value" radius={[4, 4, 0, 0]}>
+                        {chartData.map((entry, index) => (
+                            <Cell
+                                key={`cell-${index}`}
+                                fill={
+                                    entry.isLast
+                                        ? '#F97316'
+                                        : 'rgba(249, 115, 22, 0.6)'
+                                }
+                            />
+                        ))}
+                    </Bar>
+                </BarChart>
+            </ResponsiveContainer>
+        </ChartContainer>
     );
-
-    // Calculate average for reference line
-    const avg = values.reduce((a, b) => a + b, 0) / values.length;
-
-    const chartData = {
-        labels,
-        datasets: [
-            {
-                label: `Monthly Spending (${currency})`,
-                data: values,
-                backgroundColor: values.map((v, i) =>
-                    i === values.length - 1
-                        ? '#F97316'
-                        : 'rgba(249, 115, 22, 0.6)'
-                ),
-                borderColor: '#F97316',
-                borderWidth: 1,
-                borderRadius: 4,
-            },
-        ],
-    };
-
-    const options = {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: {
-            legend: { display: false },
-            tooltip: {
-                callbacks: {
-                    label: function (context: { parsed: { y: number } }) {
-                        const value = context.parsed.y;
-                        const symbol = currency === 'USD' ? '$' : '₫';
-                        return `${symbol}${value.toLocaleString()}`;
-                    },
-                    afterLabel: function (context: { dataIndex: number }) {
-                        if (context.dataIndex > 0) {
-                            const current = values[context.dataIndex];
-                            const previous = values[context.dataIndex - 1];
-                            if (previous > 0) {
-                                const change =
-                                    ((current - previous) / previous) * 100;
-                                return `${change >= 0 ? '+' : ''}${change.toFixed(1)}% vs prev month`;
-                            }
-                        }
-                        return '';
-                    },
-                },
-            },
-            annotation: {
-                annotations: {
-                    averageLine: {
-                        type: 'line' as const,
-                        yMin: avg,
-                        yMax: avg,
-                        borderColor: '#9CA3AF',
-                        borderWidth: 2,
-                        borderDash: [5, 5],
-                    },
-                },
-            },
-        },
-        scales: {
-            y: {
-                beginAtZero: true,
-                ticks: {
-                    // @ts-expect-error - chartjs types - chartjs types
-                    callback: function (value: number | string) {
-                        const n =
-                            typeof value === 'number'
-                                ? value
-                                : parseFloat(String(value));
-                        const symbol = currency === 'USD' ? '$' : '₫';
-                        return `${symbol}${n.toLocaleString()}`;
-                    },
-                },
-            },
-            x: {
-                ticks: {
-                    maxRotation: 45,
-                    minRotation: 45,
-                },
-            },
-        },
-    };
-
-    return <Bar data={chartData} options={options} />;
 };
 
 // Spending Comparison Chart (Current vs Last Month by category)
-type _SpendingComparisonData = {
-    by_tag?: Record<
-        string,
-        { amount_usd: number; amount_vnd: number; count: number }
-    >;
-    current_month_by_tag?: Record<
-        string,
-        { amount_usd: number; amount_vnd: number }
-    >;
-    last_month_by_tag?: Record<
-        string,
-        { amount_usd: number; amount_vnd: number }
-    >;
-};
 export const SpendingComparisonChart: React.FC<{
     currentMonthData: Record<string, number>;
     lastMonthData: Record<string, number>;
@@ -994,71 +977,98 @@ export const SpendingComparisonChart: React.FC<{
 
     if (allCategories.length === 0) return null;
 
-    const chartData = {
-        labels: allCategories,
-        datasets: [
-            {
-                label: 'Current Month',
-                data: allCategories.map((cat) => currentMonthData[cat] || 0),
-                backgroundColor: '#F97316',
-                borderColor: '#F97316',
-                borderWidth: 1,
-                borderRadius: 4,
-            },
-            {
-                label: 'Last Month',
-                data: allCategories.map((cat) => lastMonthData[cat] || 0),
-                backgroundColor: '#9CA3AF',
-                borderColor: '#9CA3AF',
-                borderWidth: 1,
-                borderRadius: 4,
-            },
-        ],
+    const chartData = allCategories.map((cat) => ({
+        name: cat,
+        current: currentMonthData[cat] || 0,
+        last: lastMonthData[cat] || 0,
+    }));
+
+    const chartConfig = {
+        current: { label: 'Current Month', color: '#F97316' },
+        last: { label: 'Last Month', color: '#9CA3AF' },
     };
 
-    const options = {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: {
-            legend: { position: 'top' as const },
-            tooltip: {
-                callbacks: {
-                    // @ts-expect-error - chartjs types - chartjs types
-                    label: function (context: {
-                        dataset: { label?: string };
-                        parsed: { y: number };
-                    }) {
-                        const symbol = currency === 'USD' ? '$' : '₫';
-                        return `${context.dataset.label ?? ''}: ${symbol}${context.parsed.y.toLocaleString()}`;
-                    },
-                },
-            },
-        },
-        scales: {
-            y: {
-                beginAtZero: true,
-                ticks: {
-                    // @ts-expect-error - chartjs types - chartjs types
-                    callback: function (value: number | string) {
-                        const n =
-                            typeof value === 'number'
-                                ? value
-                                : parseFloat(String(value));
-                        const symbol = currency === 'USD' ? '$' : '₫';
-                        return `${symbol}${n.toLocaleString()}`;
-                    },
-                },
-            },
-            x: {
-                ticks: {
-                    maxRotation: 45,
-                    minRotation: 45,
-                },
-            },
-        },
-    };
-
-    return <Bar data={chartData} options={options} />;
+    return (
+        <ChartContainer config={chartConfig} className="h-full w-full">
+            <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={chartData}>
+                    <CartesianGrid
+                        strokeDasharray="3 3"
+                        className="stroke-muted"
+                    />
+                    <XAxis
+                        dataKey="name"
+                        tickLine={false}
+                        axisLine={false}
+                        tickMargin={8}
+                        className="text-xs"
+                        angle={-45}
+                        textAnchor="end"
+                        height={60}
+                    />
+                    <YAxis
+                        tickLine={false}
+                        axisLine={false}
+                        tickMargin={8}
+                        className="text-xs"
+                        tickFormatter={(value) => {
+                            const symbol = currency === 'USD' ? '$' : '₫';
+                            return `${symbol}${Number(value).toLocaleString()}`;
+                        }}
+                    />
+                    <Tooltip
+                        content={({ active, payload, label }) => {
+                            if (!active || !payload?.length) return null;
+                            const symbol = currency === 'USD' ? '$' : '₫';
+                            return (
+                                <div className="rounded-lg border bg-background p-2 shadow-sm">
+                                    <div className="font-medium">{label}</div>
+                                    {payload.map((item, index) => (
+                                        <div
+                                            key={index}
+                                            className="flex items-center gap-2"
+                                        >
+                                            <div
+                                                className="h-2 w-2 rounded-full"
+                                                style={{
+                                                    backgroundColor:
+                                                        item.color,
+                                                }}
+                                            />
+                                            <span className="text-muted-foreground">
+                                                {item.name === 'current'
+                                                    ? 'Current Month'
+                                                    : 'Last Month'}
+                                                : {symbol}
+                                                {(
+                                                    item.value as number
+                                                ).toLocaleString()}
+                                            </span>
+                                        </div>
+                                    ))}
+                                </div>
+                            );
+                        }}
+                    />
+                    <Legend
+                        formatter={(value) =>
+                            value === 'current' ? 'Current Month' : 'Last Month'
+                        }
+                    />
+                    <Bar
+                        dataKey="current"
+                        fill="var(--color-current)"
+                        radius={[4, 4, 0, 0]}
+                    />
+                    <Bar
+                        dataKey="last"
+                        fill="var(--color-last)"
+                        radius={[4, 4, 0, 0]}
+                    />
+                </BarChart>
+            </ResponsiveContainer>
+        </ChartContainer>
+    );
 };
 
 // Summary Stats Component

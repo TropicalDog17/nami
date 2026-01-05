@@ -5,15 +5,9 @@
  * Individual charts can be gradually moved to separate files.
  */
 
-// Export chart configuration
-export * from '../chartConfig';
-
-// Export refactored individual charts
-export { HoldingsChart } from '../HoldingsChart';
-export type { HoldingsData } from '../HoldingsChart';
-
 // Re-export all charts from the main Charts file for now
 export {
+    HoldingsChart,
     CashFlowChart,
     SpendingChart,
     PnLChart,
@@ -24,4 +18,5 @@ export {
     DailySpendingChart,
     MonthlySpendingTrendChart,
     SpendingComparisonChart,
+    SummaryStats,
 } from '../Charts';
