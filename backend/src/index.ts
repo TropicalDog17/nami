@@ -30,7 +30,10 @@ app.use(metricsMiddleware);
 setMetrics(metrics);
 
 app.use(cors());
-app.use(express.json());
+// Increase body size limits for large JSON imports
+// Vercel has a 4.5MB limit, so we set slightly below that
+app.use(express.json({ limit: "4mb" }));
+app.use(express.urlencoded({ limit: "4mb", extended: true }));
 
 // Basic auth middleware (applied before routes, after CORS)
 app.use(basicAuth);
