@@ -4,7 +4,7 @@
 
 Nami Portfolio is a transaction-based portfolio management system with accounts, vaults, reporting, and pricing capabilities. The API provides REST endpoints for managing financial transactions, vaults/investments, loans, and generating comprehensive reports.
 
-**Base URL:** `http://localhost:8080` (development) or `https://nami-backend-ashy.vercel.app` (production)
+**Base URL:** The API uses relative URLs and works with the domain it's deployed on (e.g., `http://localhost:8080` for development or your deployed Vercel URL for production)
 
 **API Version:** 1.0.0
 

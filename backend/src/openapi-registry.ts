@@ -878,10 +878,9 @@ export function generateOpenAPIDocument() {
         "Transaction-based portfolio backend with accounts, vaults, reporting, and pricing.",
     },
     servers: [
-      { url: "http://localhost:8080", description: "Local development" },
       {
-        url: "https://nami-backend-ashy.vercel.app",
-        description: "Production",
+        url: "/",
+        description: "Current server (uses relative path)",
       },
     ],
   });
