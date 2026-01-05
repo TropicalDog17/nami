@@ -68,25 +68,40 @@ const swaggerHtml = `
 <head>
   <meta charset="UTF-8">
   <title>Nami API - Swagger UI</title>
-  <link rel="stylesheet" type="text/css" href="https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/5.11.0/swagger-ui.min.css" />
+  <link rel="stylesheet" type="text/css" href="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5.11.0/swagger-ui.css" />
   <style>
     html { box-sizing: border-box; overflow-y: scroll; }
     *, *:before, *:after { box-sizing: inherit; }
-    body { margin: 0; background: #fafafa; }
+    body { margin: 0; background: #fafafa; font-family: sans-serif; }
+    .swagger-ui .topbar { display: none }
   </style>
 </head>
 <body>
   <div id="swagger-ui"></div>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/5.11.0/swagger-ui-bundle.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/5.11.0/swagger-ui-standalone-preset.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5.11.0/swagger-ui-bundle.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5.11.0/swagger-ui-standalone-preset.js" crossorigin="anonymous"></script>
   <script>
     window.onload = function() {
-      SwaggerUIBundle({
+      const ui = SwaggerUIBundle({
         url: "/api/openapi.json",
         dom_id: '#swagger-ui',
-        presets: [SwaggerUIBundle.presets.apis, SwaggerUIStandalonePreset],
-        layout: "StandaloneLayout"
+        deepLinking: true,
+        presets: [
+          SwaggerUIBundle.presets.apis,
+          SwaggerUIStandalonePreset
+        ],
+        plugins: [
+          SwaggerUIBundle.plugins.DownloadUrl
+        ],
+        layout: "StandaloneLayout",
+        defaultModelsExpandDepth: 1,
+        defaultModelExpandDepth: 1,
+        docExpansion: "list",
+        filter: true,
+        showRequestHeaders: true,
+        tryItOutEnabled: true
       });
+      window.ui = ui;
     };
   </script>
 </body>
