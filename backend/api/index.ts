@@ -1,7 +1,6 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import express from "express";
 import cors from "cors";
-import swaggerUi from "swagger-ui-express";
 import { openapiSpec } from "../src/openapi";
 import {
     errorHandler,
@@ -62,29 +61,42 @@ registerMetricsEndpoint();
 // OpenAPI/Swagger
 app.get("/api/openapi.json", (_req, res) => res.json(openapiSpec));
 
-// Swagger UI options - use CDN for assets to work with Vercel's SSO protection
-const swaggerOptions: swaggerUi.SwaggerUiOptions = {
-    explorer: true,
-    swaggerOptions: {
+// Custom Swagger UI HTML that loads assets from CDN (required for Vercel serverless with SSO)
+const swaggerHtml = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Nami API - Swagger UI</title>
+  <link rel="stylesheet" type="text/css" href="https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/5.11.0/swagger-ui.min.css" />
+  <style>
+    html { box-sizing: border-box; overflow-y: scroll; }
+    *, *:before, *:after { box-sizing: inherit; }
+    body { margin: 0; background: #fafafa; }
+  </style>
+</head>
+<body>
+  <div id="swagger-ui"></div>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/5.11.0/swagger-ui-bundle.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/5.11.0/swagger-ui-standalone-preset.min.js"></script>
+  <script>
+    window.onload = function() {
+      SwaggerUIBundle({
         url: "/api/openapi.json",
-    },
-    // Load Swagger UI assets from CDN instead of local files (required for Vercel serverless)
-    customCssUrl:
-        "https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/5.11.0/swagger-ui.min.css",
-    customJs: [
-        "https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/5.11.0/swagger-ui-bundle.js",
-        "https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/5.11.0/swagger-ui-standalone-preset.js",
-    ],
-};
+        dom_id: '#swagger-ui',
+        presets: [SwaggerUIBundle.presets.apis, SwaggerUIStandalonePreset],
+        layout: "StandaloneLayout"
+      });
+    };
+  </script>
+</body>
+</html>
+`;
 
-// Serve Swagger UI at /api/docs (setup only, no serve - assets come from CDN)
-app.get("/api/docs", (req, res, next) => {
-    return swaggerUi.setup(openapiSpec, swaggerOptions)(req, res, next);
-});
-
-// Serve Swagger UI at /swagger
-app.get("/swagger", (req, res, next) => {
-    return swaggerUi.setup(openapiSpec, swaggerOptions)(req, res, next);
+// Serve Swagger UI at /api/docs and /swagger
+app.get(["/api/docs", "/swagger"], (_req, res) => {
+    res.setHeader("Content-Type", "text/html");
+    res.send(swaggerHtml);
 });
 
 // 404 handler - must be after all routes
