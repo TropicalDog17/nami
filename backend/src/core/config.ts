@@ -71,7 +71,7 @@ function loadConfig(): Config {
                 ? "database"
                 : "json",
         backendSigningSecret: process.env.BACKEND_SIGNING_SECRET,
-        basicAuthEnabled: getBool("BASIC_AUTH_ENABLED", false),
+        basicAuthEnabled: getBool("BASIC_AUTH_ENABLED", true),
         basicAuthUsername: process.env.BASIC_AUTH_USERNAME,
         basicAuthPassword: process.env.BASIC_AUTH_PASSWORD,
         noExternalRates: getBool("NO_EXTERNAL_RATES", false),
