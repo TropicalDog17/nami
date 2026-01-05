@@ -2,6 +2,7 @@ import type { VercelRequest, VercelResponse } from "@vercel/node";
 import express from "express";
 import cors from "cors";
 import { openapiSpec } from "../src/openapi";
+import { swaggerHtml } from "../src/swagger";
 import {
     errorHandler,
     requestLogger,
@@ -61,54 +62,8 @@ registerMetricsEndpoint();
 // OpenAPI/Swagger
 app.get("/api/openapi.json", (_req, res) => res.json(openapiSpec));
 
-// Custom Swagger UI HTML that loads assets from CDN (required for Vercel serverless with SSO)
-const swaggerHtml = `
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <title>Nami API - Swagger UI</title>
-  <link rel="stylesheet" type="text/css" href="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5.11.0/swagger-ui.css" />
-  <style>
-    html { box-sizing: border-box; overflow-y: scroll; }
-    *, *:before, *:after { box-sizing: inherit; }
-    body { margin: 0; background: #fafafa; font-family: sans-serif; }
-    .swagger-ui .topbar { display: none }
-  </style>
-</head>
-<body>
-  <div id="swagger-ui"></div>
-  <script src="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5.11.0/swagger-ui-bundle.js" crossorigin="anonymous"></script>
-  <script src="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5.11.0/swagger-ui-standalone-preset.js" crossorigin="anonymous"></script>
-  <script>
-    window.onload = function() {
-      const ui = SwaggerUIBundle({
-        url: "/api/openapi.json",
-        dom_id: '#swagger-ui',
-        deepLinking: true,
-        presets: [
-          SwaggerUIBundle.presets.apis,
-          SwaggerUIStandalonePreset
-        ],
-        plugins: [
-          SwaggerUIBundle.plugins.DownloadUrl
-        ],
-        layout: "StandaloneLayout",
-        defaultModelsExpandDepth: 1,
-        defaultModelExpandDepth: 1,
-        docExpansion: "list",
-        filter: true,
-        showRequestHeaders: true,
-        tryItOutEnabled: true
-      });
-      window.ui = ui;
-    };
-  </script>
-</body>
-</html>
-`;
-
 // Serve Swagger UI at /api/docs and /swagger
+// The HTML is loaded from CDN assets for Vercel serverless compatibility
 app.get(["/api/docs", "/swagger"], (_req, res) => {
     res.setHeader("Content-Type", "text/html");
     res.send(swaggerHtml);
