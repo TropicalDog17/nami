@@ -70,13 +70,11 @@ const swaggerOptions = {
   },
 };
 
-app.use("/api/docs", swaggerUi.serve);
-app.get("/api/docs", swaggerUi.setup(openapiSpec, swaggerOptions));
+// Serve Swagger UI at /api/docs
+app.use("/api/docs", swaggerUi.serve, swaggerUi.setup(openapiSpec, swaggerOptions));
 
-// Also serve at /swagger/index.html for production
-app.use("/swagger", swaggerUi.serve);
-app.get("/swagger/", swaggerUi.setup(openapiSpec, swaggerOptions));
-app.get("/swagger/index.html", swaggerUi.setup(openapiSpec, swaggerOptions));
+// Serve Swagger UI at /swagger - use combined serve and setup for proper static file handling
+app.use("/swagger", swaggerUi.serve, swaggerUi.setup(openapiSpec, swaggerOptions));
 
 // 404 handler - must be after all routes
 app.use(notFoundHandler);
