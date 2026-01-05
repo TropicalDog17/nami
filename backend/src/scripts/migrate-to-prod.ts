@@ -1,16 +1,16 @@
 #!/usr/bin/env ts-node-dev
 /**
- * Migration script to transfer data from local backend to production
+ * Migration script to transfer data between backends
  *
  * Usage:
  *   # Export from local, import to production
- *   pnpm run migrate:to-prod --from http://localhost:8080 --to https://nami-backend.vercel.app
+ *   pnpm run migrate:to-prod --from http://localhost:8080 --to https://your-backend-url.com
  *
  *   # Export only (saves to file)
  *   pnpm run migrate:to-prod --from http://localhost:8080 --export-only
  *
  *   # Import from file
- *   pnpm run migrate:to-prod --to https://nami-backend.vercel.app --import-file ./backup.json
+ *   pnpm run migrate:to-prod --to https://your-backend-url.com --import-file ./backup.json
  */
 
 import axios from "axios";

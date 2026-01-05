@@ -1,4 +1,3 @@
-import type { VercelRequest, VercelResponse } from "@vercel/node";
 import express from "express";
 import cors from "cors";
 import { openapiSpec } from "../src/openapi";
@@ -36,7 +35,6 @@ setMetrics(metrics);
 
 app.use(cors());
 // Increase body size limits for large JSON imports
-// Vercel has a 4.5MB limit, so we set slightly below that
 app.use(express.json({ limit: "4mb" }));
 app.use(express.urlencoded({ limit: "4mb", extended: true }));
 
@@ -70,7 +68,6 @@ registerMetricsEndpoint();
 app.get("/api/openapi.json", (_req, res) => res.json(openapiSpec));
 
 // Serve Swagger UI at /api/docs and /swagger
-// The HTML is loaded from CDN assets for Vercel serverless compatibility
 app.get(["/api/docs", "/swagger"], (_req, res) => {
     res.setHeader("Content-Type", "text/html");
     res.send(swaggerHtml);
@@ -114,8 +111,5 @@ function ensureInitialized() {
     }
 }
 
-// Vercel serverless handler
-export default function handler(req: VercelRequest, res: VercelResponse) {
-    ensureInitialized();
-    return app(req as any, res as any);
-}
+// Export the Express app
+export default app;

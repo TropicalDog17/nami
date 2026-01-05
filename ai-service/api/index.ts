@@ -1,4 +1,3 @@
-import type { VercelRequest, VercelResponse } from "@vercel/node";
 import express from "express";
 import { loadConfig } from "../src/utils/config.js";
 import { logger } from "../src/utils/logger.js";
@@ -78,7 +77,5 @@ app.get("/", (req, res) => {
   });
 });
 
-// Vercel serverless handler
-export default function handler(req: VercelRequest, res: VercelResponse) {
-  return app(req as any, res as any);
-}
+// Export the Express app
+export default app;

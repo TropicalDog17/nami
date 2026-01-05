@@ -31,7 +31,6 @@ setMetrics(metrics);
 
 app.use(cors());
 // Increase body size limits for large JSON imports
-// Vercel has a 4.5MB limit, so we set slightly below that
 app.use(express.json({ limit: "4mb" }));
 app.use(express.urlencoded({ limit: "4mb", extended: true }));
 

@@ -41,7 +41,6 @@
         "@types/supertest": "^6.0.3",
         "@typescript-eslint/eslint-plugin": "^8.44.1",
         "@typescript-eslint/parser": "^8.44.1",
-        "@vercel/node": "^5.5.16",
         "@vitejs/plugin-react": "^4.0.3",
         "autoprefixer": "^10.4.15",
         "eslint": "^8.45.0",

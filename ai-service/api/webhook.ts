@@ -1,4 +1,4 @@
-import type { VercelRequest, VercelResponse } from "@vercel/node";
+import type { Request, Response } from "express";
 import OpenAI from "openai";
 import { loadConfig } from "../src/utils/config.js";
 import { logger } from "../src/utils/logger.js";
@@ -19,7 +19,7 @@ function getBot() {
   return bot;
 }
 
-export default async function handler(req: VercelRequest, res: VercelResponse) {
+export default async function handler(req: Request, res: Response) {
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
   }

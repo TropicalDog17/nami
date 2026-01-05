@@ -272,4 +272,3 @@ performance-data/
 # Local development tools
 dev-tools/
 .local/
-.vercel

@@ -20,9 +20,46 @@ type RequestOptions = Omit<RequestInit, 'body' | 'headers'> & {
 
 class ApiClient {
     baseURL: string;
+    private credentials: string | null = null;
 
     constructor(baseURL: string = API_BASE_URL) {
         this.baseURL = baseURL;
+
+        // Check if user has provided credentials via browser prompt
+        if (typeof window !== 'undefined') {
+            // Get credentials from session storage if they were saved after 401
+            const savedCreds = sessionStorage.getItem('api_credentials');
+            if (savedCreds) {
+                this.credentials = savedCreds;
+            }
+        }
+    }
+
+    private getAuthHeaders(): HeadersInit {
+        if (!this.credentials) {
+            return {};
+        }
+        return {
+            'Authorization': `Basic ${this.credentials}`,
+        };
+    }
+
+    private async handleUnauthorized(): Promise<void> {
+        // Prompt user for credentials
+        if (typeof window !== 'undefined') {
+            const username = prompt('Backend requires authentication. Enter username:');
+            if (!username) {
+                throw new ApiError('Authentication required', 401, null);
+            }
+
+            const password = prompt('Enter password:');
+            if (!password) {
+                throw new ApiError('Authentication required', 401, null);
+            }
+
+            this.credentials = btoa(`${username}:${password}`);
+            sessionStorage.setItem('api_credentials', this.credentials);
+        }
     }
 
     async request<T = unknown>(
@@ -33,6 +70,7 @@ class ApiClient {
 
         const mergedHeaders: HeadersInit = {
             'Content-Type': 'application/json',
+            ...this.getAuthHeaders(),
             ...(options.headers ?? {}),
         };
 
@@ -52,7 +90,22 @@ class ApiClient {
         }
 
         try {
-            const response = await fetch(url, config);
+            let response = await fetch(url, config);
+
+            // Handle 401 Unauthorized - prompt for credentials
+            if (response.status === 401 && !this.credentials) {
+                await this.handleUnauthorized();
+
+                // Retry request with credentials
+                const authHeaders = {
+                    ...mergedHeaders,
+                    ...this.getAuthHeaders(),
+                };
+                response = await fetch(url, {
+                    ...config,
+                    headers: authHeaders,
+                });
+            }
 
             if (!response.ok) {
                 let errorText = `HTTP ${response.status}`;
