@@ -264,3 +264,4 @@ nami
 backend/data/
 ai-service/data
 .serena
+backend-rs/

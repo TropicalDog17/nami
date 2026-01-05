@@ -113,6 +113,11 @@ export interface ISettingsRepository {
     rate: number;
     lastAccrualStart?: string;
   };
+  updateBorrowingSettings(settings: {
+    name?: string;
+    rate?: number;
+    lastAccrualStart?: string;
+  }): void;
 }
 
 // Pending actions repository interface

@@ -851,6 +851,9 @@ adminRouter.post("/admin/import", async (req: Request, res: Response) => {
           data.settings.default_income_vault,
         );
       }
+      if (data.settings.borrowing) {
+        settingsRepository.updateBorrowingSettings(data.settings.borrowing);
+      }
     }
 
     res.json({ ok: true, imported: stats });
