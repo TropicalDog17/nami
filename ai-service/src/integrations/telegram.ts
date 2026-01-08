@@ -9,17 +9,30 @@ import { logger, createCorrelationLogger } from "../utils/logger.js";
 import { createPendingAction, redact } from "../api/backendClient.js";
 import { parseExpenseText, parseTopicMessages } from "../core/parser.js";
 import { parseBankScreenshot } from "./vision.js";
-import { PendingActionCreate } from "../core/schemas.js";
+import { PendingActionCreate, ActionRequest } from "../core/schemas.js";
 import { handleAndLogError, ErrorCategory } from "../utils/errors.js";
 import {
     processBankStatementFile,
     getBankConfig,
     formatBatchResult,
 } from "../api/batchProcessor.js";
+import {
+    getLastProcessedMessageId,
+    setLastProcessedMessageId,
+} from "../utils/topicState.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 type Ctx = Context & { state: Record<string, unknown> };
+
+interface PendingBatchItem {
+    id: string;
+    messageId: number;
+    text: string;
+    payload: PendingActionCreate;
+    parsedAction?: ActionRequest;
+    status: "pending" | "approved" | "rejected";
+}
 
 interface SessionState {
     awaitingAccountForBatch?: string;
@@ -27,6 +40,13 @@ interface SessionState {
         payload: PendingActionCreate;
         correlationId: string;
         parsedAction: any;
+    };
+    pendingBatch?: {
+        items: PendingBatchItem[];
+        correlationId: string;
+        chatId: number;
+        topicId: number;
+        displayMessageId?: number;
     };
 }
 
@@ -73,6 +93,101 @@ function formatPreviewMessage(action: any, rawInput: string): string {
     return lines.join("\n");
 }
 
+// Format a single batch item for display
+function formatBatchItemMessage(item: PendingBatchItem, index: number): string {
+    const lines: string[] = [];
+    const statusText =
+        item.status === "approved"
+            ? "[APPROVED]"
+            : item.status === "rejected"
+              ? "[REJECTED]"
+              : "[PENDING]";
+
+    lines.push(`${statusText} *#${index + 1}*`);
+
+    if (item.parsedAction) {
+        const params = item.parsedAction.params;
+        lines.push(`  Amount: ${params.vnd_amount.toLocaleString()} VND`);
+        lines.push(`  Date: ${params.date}`);
+        if (params.counterparty) {
+            lines.push(`  Counterparty: ${params.counterparty}`);
+        }
+        if (params.tag) {
+            lines.push(`  Tag: ${params.tag}`);
+        }
+    } else {
+        lines.push(`  [Could not parse]`);
+    }
+    lines.push(`  Raw: "${item.text.substring(0, 50)}${item.text.length > 50 ? "..." : ""}"`);
+
+    return lines.join("\n");
+}
+
+// Format the batch preview message showing all items
+function formatBatchPreviewMessage(items: PendingBatchItem[]): string {
+    const lines: string[] = [
+        "📋 *Topic Messages to Review*",
+        "",
+        `Found ${items.length} message(s) to process:`,
+        "",
+    ];
+
+    items.forEach((item, index) => {
+        lines.push(formatBatchItemMessage(item, index));
+        lines.push("");
+    });
+
+    const pendingCount = items.filter((i) => i.status === "pending").length;
+    const approvedCount = items.filter((i) => i.status === "approved").length;
+    const rejectedCount = items.filter((i) => i.status === "rejected").length;
+
+    lines.push("---");
+    lines.push(
+        `Pending: ${pendingCount} | Approved: ${approvedCount} | Rejected: ${rejectedCount}`
+    );
+
+    if (pendingCount > 0) {
+        lines.push("");
+        lines.push("Use buttons below to approve/reject each item.");
+    }
+
+    return lines.join("\n");
+}
+
+// Generate inline keyboard for batch approval
+function generateBatchKeyboard(items: PendingBatchItem[]): any {
+    const rows: any[][] = [];
+
+    // Create approve/reject buttons for each pending item
+    items.forEach((item, index) => {
+        if (item.status === "pending") {
+            rows.push([
+                {
+                    text: `✅ #${index + 1}`,
+                    callback_data: `batch_approve_${item.id}`,
+                },
+                {
+                    text: `❌ #${index + 1}`,
+                    callback_data: `batch_reject_${item.id}`,
+                },
+            ]);
+        }
+    });
+
+    // Add action buttons at the bottom
+    const pendingItems = items.filter((i) => i.status === "pending");
+    if (pendingItems.length > 0) {
+        rows.push([
+            { text: "✅ Approve All", callback_data: "batch_approve_all" },
+            { text: "❌ Reject All", callback_data: "batch_reject_all" },
+        ]);
+    }
+
+    rows.push([{ text: "💾 Save & Finish", callback_data: "batch_finish" }]);
+
+    return { inline_keyboard: rows };
+}
+
 export function buildBot(cfg: AppConfig, openai: OpenAI) {
     const bot = new Telegraf<Ctx>(cfg.TELEGRAM_BOT_TOKEN);
 
@@ -85,6 +200,10 @@ export function buildBot(cfg: AppConfig, openai: OpenAI) {
             {
                 command: "statement",
                 description: "How to upload bank statement Excel files",
+            },
+            {
+                command: "sync",
+                description: "Sync and process unread messages from this topic",
             },
         ])
         .catch((err) => {
@@ -125,6 +244,96 @@ export function buildBot(cfg: AppConfig, openai: OpenAI) {
         ].join("\n");
 
         await ctx.reply(helpText, { parse_mode: "Markdown" });
+    });
+
+    // /sync command - process unread messages from topic
+    bot.command("sync", async (ctx) => {
+        const chatId = ctx.chat?.id;
+        if (!chatId) return;
+
+        const topicId = ctx.message?.message_thread_id;
+        if (!topicId) {
+            await ctx.reply(
+                "⚠️ This command must be used in a topic/thread, not the main chat."
+            );
+            return;
+        }
+
+        if (!cfg.allowedTopicIds.has(String(topicId))) {
+            await ctx.reply("⚠️ This topic is not configured for syncing.");
+            return;
+        }
+
+        const correlationId = `sync-${chatId}-${topicId}-${Date.now()}`;
+        const correlationLogger = createCorrelationLogger(correlationId);
+
+        correlationLogger.info(
+            { chatId, topicId },
+            "Starting topic sync"
+        );
+
+        const processingMsg = await ctx.reply("🔄 Syncing topic messages...", {
+            message_thread_id: topicId,
+        });
+
+        try {
+            // Get last processed message ID for this topic
+            const lastProcessedId = getLastProcessedMessageId(chatId, topicId);
+
+            correlationLogger.info(
+                { lastProcessedId },
+                "Last processed message ID"
+            );
+
+            // Collect messages from the topic that are newer than lastProcessedId
+            // Note: Telegram Bot API doesn't have a direct "get messages from topic" endpoint
+            // We'll need to track messages as they come in, or use a workaround
+            // For now, we'll store messages in session and process them when /sync is called
+
+            const state = sessionStore.get(chatId);
+            if (!state?.pendingBatch || state.pendingBatch.items.length === 0) {
+                await ctx.telegram.editMessageText(
+                    chatId,
+                    processingMsg.message_id,
+                    undefined,
+                    "ℹ️ No pending messages to process.\n\n" +
+                        "Messages are collected as they arrive in this topic. " +
+                        "Send expense messages first, then use /sync to review them."
+                );
+                return;
+            }
+
+            // Display the batch for approval
+            const previewMsg = formatBatchPreviewMessage(state.pendingBatch.items);
+
+            await ctx.telegram.editMessageText(
+                chatId,
+                processingMsg.message_id,
+                undefined,
+                previewMsg,
+                {
+                    parse_mode: "Markdown",
+                    reply_markup: generateBatchKeyboard(state.pendingBatch.items),
+                }
+            );
+
+            // Store the display message ID for later updates
+            state.pendingBatch.displayMessageId = processingMsg.message_id;
+            sessionStore.set(chatId, state);
+
+            correlationLogger.info(
+                { itemCount: state.pendingBatch.items.length },
+                "Displayed batch for approval"
+            );
+        } catch (e: any) {
+            correlationLogger.error({ error: e.message }, "Failed to sync topic");
+            await ctx.telegram.editMessageText(
+                chatId,
+                processingMsg.message_id,
+                undefined,
+                "❌ Failed to sync: " + redact(e.message)
+            );
+        }
     });
 
     // Handle text messages
@@ -278,13 +487,63 @@ export function buildBot(cfg: AppConfig, openai: OpenAI) {
             }
 
             const payload: PendingActionCreate = {
-                source: "telegram_text",
+                source: threadId ? "telegram_topic" : "telegram_text",
                 raw_input: text,
                 toon_text: parsed.toon,
                 action_json: parsed.action || undefined,
                 confidence: parsed.confidence,
             };
 
+            // If in a topic, add to batch queue instead of immediate approval
+            if (threadId && cfg.allowedTopicIds.has(String(threadId))) {
+                const messageId = ctx.message?.message_id || 0;
+                const itemId = `item_${Date.now()}_${Math.random().toString(36).substring(7)}`;
+
+                const batchItem: PendingBatchItem = {
+                    id: itemId,
+                    messageId,
+                    text,
+                    payload,
+                    parsedAction: parsed.action,
+                    status: "pending",
+                };
+
+                // Get or initialize the pending batch
+                const existingState = sessionStore.get(chatId) || {};
+                const pendingBatch = existingState.pendingBatch || {
+                    items: [],
+                    correlationId,
+                    chatId,
+                    topicId: threadId,
+                };
+
+                pendingBatch.items.push(batchItem);
+
+                sessionStore.set(chatId, {
+                    ...existingState,
+                    pendingBatch,
+                });
+
+                correlationLogger.info(
+                    {
+                        itemId,
+                        messageId,
+                        batchSize: pendingBatch.items.length,
+                        hasAction: !!parsed.action,
+                        actionType: parsed.action?.action,
+                    },
+                    "Added message to batch queue"
+                );
+
+                // Send a brief confirmation
+                await ctx.reply(
+                    `📥 Added to queue (#${pendingBatch.items.length}). Use /sync to review all.`,
+                    { message_thread_id: threadId }
+                );
+                return;
+            }
+
+            // Normal flow for non-topic messages: immediate approval
             // Store in session for review
             const reviewId = generateReviewId();
             sessionStore.set(chatId, {
@@ -828,8 +1087,211 @@ export function buildBot(cfg: AppConfig, openai: OpenAI) {
                     )
                     .catch(() => {});
             }
+        } else if (data.startsWith("batch_approve_") && !data.includes("_all")) {
+            // Approve individual batch item
+            const itemId = data.replace("batch_approve_", "");
+
+            if (!state?.pendingBatch) {
+                await ctx.reply("❌ No pending batch found.");
+                return;
+            }
+
+            const item = state.pendingBatch.items.find((i) => i.id === itemId);
+            if (!item) {
+                await ctx.reply("❌ Item not found in batch.");
+                return;
+            }
+
+            item.status = "approved";
+            sessionStore.set(chatId, state);
+
+            correlationLogger.info(
+                { itemId, batchSize: state.pendingBatch.items.length },
+                "Marked batch item as approved"
+            );
+
+            // Update the batch display
+            await updateBatchDisplay(ctx, chatId, state, messageId);
+        } else if (data.startsWith("batch_reject_") && !data.includes("_all")) {
+            // Reject individual batch item
+            const itemId = data.replace("batch_reject_", "");
+
+            if (!state?.pendingBatch) {
+                await ctx.reply("❌ No pending batch found.");
+                return;
+            }
+
+            const item = state.pendingBatch.items.find((i) => i.id === itemId);
+            if (!item) {
+                await ctx.reply("❌ Item not found in batch.");
+                return;
+            }
+
+            item.status = "rejected";
+            sessionStore.set(chatId, state);
+
+            correlationLogger.info(
+                { itemId, batchSize: state.pendingBatch.items.length },
+                "Marked batch item as rejected"
+            );
+
+            // Update the batch display
+            await updateBatchDisplay(ctx, chatId, state, messageId);
+        } else if (data === "batch_approve_all") {
+            // Approve all pending items
+            if (!state?.pendingBatch) {
+                await ctx.reply("❌ No pending batch found.");
+                return;
+            }
+
+            state.pendingBatch.items.forEach((item) => {
+                if (item.status === "pending") {
+                    item.status = "approved";
+                }
+            });
+            sessionStore.set(chatId, state);
+
+            correlationLogger.info(
+                { batchSize: state.pendingBatch.items.length },
+                "Marked all pending batch items as approved"
+            );
+
+            // Update the batch display
+            await updateBatchDisplay(ctx, chatId, state, messageId);
+        } else if (data === "batch_reject_all") {
+            // Reject all pending items
+            if (!state?.pendingBatch) {
+                await ctx.reply("❌ No pending batch found.");
+                return;
+            }
+
+            state.pendingBatch.items.forEach((item) => {
+                if (item.status === "pending") {
+                    item.status = "rejected";
+                }
+            });
+            sessionStore.set(chatId, state);
+
+            correlationLogger.info(
+                { batchSize: state.pendingBatch.items.length },
+                "Marked all pending batch items as rejected"
+            );
+
+            // Update the batch display
+            await updateBatchDisplay(ctx, chatId, state, messageId);
+        } else if (data === "batch_finish") {
+            // Finish batch processing - save approved items
+            if (!state?.pendingBatch) {
+                await ctx.reply("❌ No pending batch found.");
+                return;
+            }
+
+            const approvedItems = state.pendingBatch.items.filter(
+                (i) => i.status === "approved"
+            );
+            const rejectedItems = state.pendingBatch.items.filter(
+                (i) => i.status === "rejected"
+            );
+
+            if (approvedItems.length === 0) {
+                await ctx.reply(
+                    "ℹ️ No items were approved. Batch cleared."
+                );
+                // Clear batch
+                sessionStore.set(chatId, {
+                    ...state,
+                    pendingBatch: undefined,
+                });
+                return;
+            }
+
+            correlationLogger.info(
+                {
+                    approved: approvedItems.length,
+                    rejected: rejectedItems.length,
+                },
+                "Processing approved batch items"
+            );
+
+            // Create pending actions for approved items
+            let successCount = 0;
+            let failCount = 0;
+            let maxMessageId = 0;
+
+            for (const item of approvedItems) {
+                try {
+                    await createPendingAction(
+                        cfg,
+                        item.payload,
+                        state.pendingBatch.correlationId
+                    );
+                    successCount++;
+                    if (item.messageId > maxMessageId) {
+                        maxMessageId = item.messageId;
+                    }
+                } catch (e: any) {
+                    failCount++;
+                    correlationLogger.error(
+                        { error: e.message, itemId: item.id },
+                        "Failed to create pending action for batch item"
+                    );
+                }
+            }
+
+            // Update last processed message ID
+            if (maxMessageId > 0) {
+                setLastProcessedMessageId(
+                    state.pendingBatch.chatId,
+                    state.pendingBatch.topicId,
+                    maxMessageId
+                );
+            }
+
+            // Clear batch
+            sessionStore.set(chatId, {
+                ...state,
+                pendingBatch: undefined,
+            });
+
+            const resultMsg = [
+                "✅ *Batch Processing Complete*",
+                "",
+                `✓ Created: ${successCount}`,
+                `✗ Failed: ${failCount}`,
+                `⊘ Rejected: ${rejectedItems.length}`,
+                "",
+                "Review pending actions in the web UI.",
+            ].join("\n");
+
+            await ctx.editMessageText(resultMsg, { parse_mode: "Markdown" });
+
+            correlationLogger.info(
+                { successCount, failCount, rejected: rejectedItems.length },
+                "Batch processing completed"
+            );
         }
     });
+
+    // Helper function to update batch display
+    async function updateBatchDisplay(
+        ctx: any,
+        chatId: number,
+        state: SessionState,
+        messageId: number | undefined
+    ) {
+        if (!state.pendingBatch || !messageId) return;
+
+        const previewMsg = formatBatchPreviewMessage(state.pendingBatch.items);
+
+        await ctx
+            .editMessageText(previewMsg, {
+                parse_mode: "Markdown",
+                reply_markup: generateBatchKeyboard(state.pendingBatch.items),
+            })
+            .catch((e: any) => {
+                logger.warn({ error: e.message }, "Failed to update batch display");
+            });
+    }
 
     return bot;
 }
