@@ -90,11 +90,15 @@ export class VaultService {
         cur.units -= e.amount;
         positions.set(k, cur);
 
-        if (e.asset.symbol === "USD") {
-          if (typeof lastValuationUSD === "number") netFlowSinceValUSD -= usd;
-        } else {
-          if (typeof lastValuationUSD === "number")
-            netFlowSinceValNonUSD -= usd;
+        // Reward distributions don't reduce AUM - they're profit withdrawals
+        const isRewardDistribution = e.note?.toLowerCase().includes("reward distribution");
+        if (!isRewardDistribution) {
+          if (e.asset.symbol === "USD") {
+            if (typeof lastValuationUSD === "number") netFlowSinceValUSD -= usd;
+          } else {
+            if (typeof lastValuationUSD === "number")
+              netFlowSinceValNonUSD -= usd;
+          }
         }
       } else if (e.type === "VALUATION") {
         if (typeof e.usdValue === "number") lastValuationUSD = e.usdValue;

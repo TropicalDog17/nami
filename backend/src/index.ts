@@ -3,7 +3,7 @@ import express from "express";
 import cors from "cors";
 import swaggerUi from "swagger-ui-express";
 import { config } from "./core/config";
-import { errorHandler, notFoundHandler, basicAuth } from "./core/middleware";
+import { errorHandler, notFoundHandler } from "./core/middleware";
 
 import { transactionsRouter } from "./handlers/transaction.handler";
 import { reportsRouter } from "./handlers/reports.handler";
@@ -33,9 +33,6 @@ app.use(cors());
 // Increase body size limits for large JSON imports
 app.use(express.json({ limit: "4mb" }));
 app.use(express.urlencoded({ limit: "4mb", extended: true }));
-
-// Basic auth middleware (applied before routes, after CORS)
-app.use(basicAuth);
 
 app.get("/health", (_req, res) =>
     res.json({

@@ -407,10 +407,15 @@ const VaultDetailPage: React.FC = () => {
                             : (ppsRaw ?? 1);
                     const mapped = (Array.isArray(tx) ? tx : []).map(
                         (e: Record<string, unknown>) => {
-                            const usd =
-                                typeof e?.usdValue === 'string'
-                                    ? parseFloat(e.usdValue)
-                                    : Number(e?.usdValue ?? 0);
+                            // Handle usdValue that may be formatted as "4,181.63" or "4,181.63 "
+                            const usdRaw = e?.usdValue;
+                            let usd = 0;
+                            if (typeof usdRaw === 'string') {
+                                // Remove commas and whitespace, then parse
+                                usd = parseFloat(usdRaw.replace(/,/g, '').trim());
+                            } else {
+                                usd = Number(usdRaw ?? 0);
+                            }
                             const qty =
                                 typeof e?.amount === 'string'
                                     ? parseFloat(e.amount)

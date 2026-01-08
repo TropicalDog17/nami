@@ -169,16 +169,16 @@ const VaultsPage: React.FC = () => {
         [aprSeriesFull, timeRange, filterDataByTimeRange]
     );
 
-    // Load PNL time series for all active vaults (fetch all data, filter on frontend)
+    // Load PNL time series for all vaults including closed ones (fetch all data, filter on frontend)
     useEffect(() => {
         const loadPnlSeries = async () => {
             try {
-                const activeVaults = vaults.filter(
+                // Include all vaults (active and closed) except system vaults
+                const allVaults = vaults.filter(
                     (v) =>
-                        v.status === 'active' &&
                         !['spend', 'borrowings'].includes(v.name.toLowerCase())
                 );
-                if (activeVaults.length === 0) {
+                if (allVaults.length === 0) {
                     setPnlSeriesFull([]);
                     return;
                 }
@@ -188,7 +188,7 @@ const VaultsPage: React.FC = () => {
                     end: new Date().toISOString().split('T')[0],
                 };
 
-                const seriesPromises = activeVaults.map((v) =>
+                const seriesPromises = allVaults.map((v) =>
                     reportsApi.vaultSeries<{
                         vault: string;
                         series: Array<{
@@ -245,16 +245,16 @@ const VaultsPage: React.FC = () => {
         }
     }, [vaults]);
 
-    // Load APR time series for all active vaults using backend aggregate endpoint
+    // Load APR time series for all vaults including closed ones using backend aggregate endpoint
     useEffect(() => {
         const loadAprSeries = async () => {
             try {
-                const activeVaults = vaults.filter(
+                // Include all vaults (active and closed) except system vaults
+                const allVaults = vaults.filter(
                     (v) =>
-                        v.status === 'active' &&
                         !['spend', 'borrowings'].includes(v.name.toLowerCase())
                 );
-                if (activeVaults.length === 0) {
+                if (allVaults.length === 0) {
                     setAprSeriesFull([]);
                     return;
                 }
@@ -277,8 +277,8 @@ const VaultsPage: React.FC = () => {
 
                 const series = result?.series ?? [];
                 if (Array.isArray(series) && series.length > 0) {
-                    // Find the earliest inception date among active vaults
-                    const earliestInception = activeVaults.reduce(
+                    // Find the earliest inception date among all vaults
+                    const earliestInception = allVaults.reduce(
                         (earliest, vault) => {
                             const inceptionDate = new Date(
                                 vault.inception_date

@@ -533,7 +533,7 @@ vaultsRouter.post(
       if (shouldMark) {
         const stats = await vaultService.vaultStats(name);
         const intended =
-          Number(req.body?.new_total_usd ?? 0) || stats.aumUSDManual + amount;
+          Number(req.body?.new_total_usd ?? 0) || stats.aumUSDManual;
         const asset = { type: "FIAT", symbol: "USD" } as const;
         vaultService.addVaultEntry({
           vault: name,

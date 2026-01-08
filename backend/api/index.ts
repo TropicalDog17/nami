@@ -6,7 +6,6 @@ import {
     errorHandler,
     requestLogger,
     notFoundHandler,
-    basicAuth,
 } from "../src/core/middleware";
 
 import {
@@ -37,9 +36,6 @@ app.use(cors());
 // Increase body size limits for large JSON imports
 app.use(express.json({ limit: "4mb" }));
 app.use(express.urlencoded({ limit: "4mb", extended: true }));
-
-// Basic auth middleware (applied before routes, after CORS)
-app.use(basicAuth);
 
 app.get("/health", (_req, res) =>
     res.json({

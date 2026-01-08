@@ -227,21 +227,14 @@ export const AUMChart: React.FC<AUMChartProps> = ({
         const minValue = Math.min(...values);
         const maxValue = Math.max(...values);
 
-        // Calculate nice rounded bounds that include zero
-        // Find the order of magnitude
-        const maxMagnitude = Math.pow(10, Math.floor(Math.log10(maxValue)));
-        const minMagnitude = Math.pow(10, Math.floor(Math.log10(minValue)));
-
-        // Round up max value to next nice number
-        const domainMax = Math.ceil(maxValue / maxMagnitude) * maxMagnitude;
+        // Add 5% padding above the ATH value for better visual spacing
+        const padding = maxValue * 0.05;
+        const domainMax = maxValue + padding;
 
         // Round down min value, but ensure we include zero if it makes sense
         // If min is less than 20% of the range, start from zero
         const range = maxValue - minValue;
-        const domainMin =
-            minValue < range * 0.2
-                ? 0
-                : Math.floor(minValue / minMagnitude) * minMagnitude;
+        const domainMin = minValue < range * 0.2 ? 0 : minValue;
 
         return [domainMin, domainMax] as [number, number];
     }, [seriesData]);
