@@ -38,8 +38,7 @@ export type ActionRequest = z.infer<typeof ActionRequestSchema>;
 export type PendingSource =
   | "telegram_text"
   | "telegram_image"
-  | "bank_statement_excel"
-  | "telegram_topic";
+  | "bank_statement_excel";
 
 export interface PendingActionCreate {
   source: PendingSource;

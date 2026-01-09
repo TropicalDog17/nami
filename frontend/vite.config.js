@@ -118,13 +118,19 @@ export default defineConfig(({ mode }) => {
             },
         },
         server: {
-            port: Number(env.PORT) || 3000,
+            allowedHosts: [
+                'localhost',
+                '127.0.0.1',
+                'tropicaldog17-ms-7e02.tail28e1c9.ts.net' // <-- add this
+            ], port: Number(env.PORT) || 3000,
+            host: env.HOST || '0.0.0.0',
             proxy: {
                 '/api': {
-                    target: env.VITE_API_BASE_URL || 'http://localhost:8080',
+                    target: 'http://127.0.0.1:8080', // backend running on localhost:8080
                     changeOrigin: true,
-                },
-            },
+                    secure: false
+                }
+            }
         },
     };
 });

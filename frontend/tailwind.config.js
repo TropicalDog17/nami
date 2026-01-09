@@ -10,6 +10,7 @@ export default {
                 lg: 'var(--radius)',
                 md: 'calc(var(--radius) - 2px)',
                 sm: 'calc(var(--radius) - 4px)',
+                xl: 'calc(var(--radius) + 4px)',
             },
             colors: {
                 background: 'hsl(var(--background))',
@@ -52,6 +53,42 @@ export default {
                     4: 'hsl(var(--chart-4))',
                     5: 'hsl(var(--chart-5))',
                 },
+            },
+            boxShadow: {
+                xs: '0 1px 2px 0 rgb(0 0 0 / 0.03)',
+                sm: '0 1px 3px 0 rgb(0 0 0 / 0.05), 0 1px 2px -1px rgb(0 0 0 / 0.05)',
+                DEFAULT: '0 4px 6px -1px rgb(0 0 0 / 0.05), 0 2px 4px -2px rgb(0 0 0 / 0.05)',
+                md: '0 10px 15px -3px rgb(0 0 0 / 0.05), 0 4px 6px -4px rgb(0 0 0 / 0.05)',
+                lg: '0 20px 25px -5px rgb(0 0 0 / 0.05), 0 8px 10px -6px rgb(0 0 0 / 0.05)',
+                xl: '0 25px 50px -12px rgb(0 0 0 / 0.08)',
+            },
+            typography: {
+                DEFAULT: {
+                    css: {
+                        maxWidth: '65ch',
+                        color: 'hsl(var(--foreground))',
+                        lineHeight: '1.75',
+                    },
+                },
+            },
+            keyframes: {
+                'fade-in': {
+                    '0%': { opacity: '0' },
+                    '100%': { opacity: '1' },
+                },
+                'slide-in-from-top': {
+                    '0%': { transform: 'translateY(-10px)', opacity: '0' },
+                    '100%': { transform: 'translateY(0)', opacity: '1' },
+                },
+                'slide-in-from-bottom': {
+                    '0%': { transform: 'translateY(10px)', opacity: '0' },
+                    '100%': { transform: 'translateY(0)', opacity: '1' },
+                },
+            },
+            animation: {
+                'fade-in': 'fade-in 0.2s ease-out',
+                'slide-in-from-top': 'slide-in-from-top 0.3s ease-out',
+                'slide-in-from-bottom': 'slide-in-from-bottom 0.3s ease-out',
             },
         },
     },

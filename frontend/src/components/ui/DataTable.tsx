@@ -275,7 +275,7 @@ const DataTable = <TRow extends TableRowBase>({
             onKeyDown: handleKeyDown,
             autoFocus: true,
             className:
-                'w-full px-2 py-1 text-sm border border-blue-500 rounded focus:outline-none focus:ring-2 focus:ring-blue-500',
+                'w-full px-2 py-1 text-sm border border-input rounded-lg focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 transition-all duration-200',
         } as const;
 
         switch (column.editType) {
@@ -523,7 +523,7 @@ const DataTable = <TRow extends TableRowBase>({
 
     if (error) {
         return (
-            <div className="bg-red-50 border border-red-200 rounded-md p-4">
+            <div className="bg-destructive/10 border border-destructive/20 rounded-lg p-4">
                 <div className="flex">
                     <div className="flex-shrink-0">
                         <svg
@@ -576,12 +576,12 @@ const DataTable = <TRow extends TableRowBase>({
                             placeholder="Search..."
                             value={filterText}
                             onChange={(e) => setFilterText(e.target.value)}
-                            className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md leading-5 bg-white placeholder-gray-500 focus:outline-none focus:placeholder-gray-400 focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                            className="block w-full pl-10 pr-3 py-2 border border-input rounded-lg leading-5 bg-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 transition-all duration-200"
                             data-testid="datatable-search-input"
                         />
                         <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                             <svg
-                                className="h-5 w-5 text-gray-400"
+                                className="h-5 w-5 text-muted-foreground"
                                 fill="none"
                                 stroke="currentColor"
                                 viewBox="0 0 24 24"
@@ -599,18 +599,19 @@ const DataTable = <TRow extends TableRowBase>({
             )}
 
             {/* Table */}
-            <div className="overflow-x-auto shadow ring-1 ring-black ring-opacity-5 md:rounded-lg w-full">
+            <div className="overflow-x-auto shadow-xs rounded-xl border border-border/50 w-full">
                 <table
-                    className="min-w-full w-full divide-y divide-gray-300"
+                    className="min-w-full w-full divide-y divide-border/50"
                     data-testid="datatable"
                 >
-                    <thead className="bg-gray-50">
+                    <thead className="bg-muted/50">
                         <tr>
                             {selectableRows && (
                                 <th className="px-4 py-3 text-center">
                                     <input
                                         type="checkbox"
                                         aria-label="Select all"
+                                        className="rounded border-input text-primary focus:ring-2 focus:ring-ring focus:ring-offset-2"
                                         checked={
                                             paginatedData.length > 0 &&
                                             paginatedData.every((r) => {
@@ -647,9 +648,9 @@ const DataTable = <TRow extends TableRowBase>({
                                 <th
                                     key={column.key}
                                     scope="col"
-                                    className={`px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider ${
+                                    className={`px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider ${
                                         sortable
-                                            ? 'cursor-pointer hover:bg-gray-100'
+                                            ? 'cursor-pointer hover:bg-muted/80 transition-colors'
                                             : ''
                                     }`}
                                     style={{ width: column.width }}
@@ -657,11 +658,11 @@ const DataTable = <TRow extends TableRowBase>({
                                         sortable && handleSort(column.key)
                                     }
                                 >
-                                    <div className="flex items-center space-x-1">
+                                    <div className="flex items-center gap-1">
                                         <span>{column.title}</span>
                                         {sortable && (
                                             <svg
-                                                className="w-4 h-4 text-gray-400"
+                                                className="w-4 h-4 text-muted-foreground/60"
                                                 fill="none"
                                                 stroke="currentColor"
                                                 viewBox="0 0 24 24"
@@ -680,7 +681,7 @@ const DataTable = <TRow extends TableRowBase>({
                             {actions && actions.length > 0 && (
                                 <th
                                     scope="col"
-                                    className="relative px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider sticky right-0 bg-gray-50 z-10"
+                                    className="relative px-6 py-3 text-center text-xs font-medium text-muted-foreground uppercase tracking-wider sticky right-0 bg-muted/50 z-10"
                                 >
                                     <span className="sr-only">Actions</span>
                                     Actions
@@ -688,7 +689,7 @@ const DataTable = <TRow extends TableRowBase>({
                             )}
                         </tr>
                     </thead>
-                    <tbody className="bg-white divide-y divide-gray-200">
+                    <tbody className="bg-card divide-y divide-border/50">
                         {loading ? (
                             <tr>
                                 <td
@@ -742,7 +743,7 @@ const DataTable = <TRow extends TableRowBase>({
                             paginatedData.map((row, rowIndex) => (
                                 <tr
                                     key={row.id ?? rowIndex}
-                                    className={`hover:bg-gray-50 ${onRowClick ? 'cursor-pointer' : ''}`}
+                                    className={`hover:bg-muted/30 transition-colors ${onRowClick ? 'cursor-pointer' : ''}`}
                                     onClick={() => onRowClick?.(row)}
                                 >
                                     {selectableRows && (
@@ -783,9 +784,9 @@ const DataTable = <TRow extends TableRowBase>({
                                         return (
                                             <td
                                                 key={column.key}
-                                                className={`px-6 py-4 whitespace-nowrap text-sm text-gray-900 group ${
+                                                className={`px-6 py-4 whitespace-nowrap text-sm text-foreground group ${
                                                     isEditable
-                                                        ? 'cursor-pointer hover:bg-blue-50'
+                                                        ? 'cursor-pointer hover:bg-primary/5'
                                                         : ''
                                                 }`}
                                                 onClick={() => {
@@ -859,7 +860,7 @@ const DataTable = <TRow extends TableRowBase>({
                                     )
                                 }
                                 disabled={currentPage === 1}
-                                className="relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                                className="relative inline-flex items-center px-4 py-2 border border-input text-sm font-medium rounded-lg text-foreground bg-background hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 shadow-xs"
                             >
                                 Previous
                             </button>
@@ -870,7 +871,7 @@ const DataTable = <TRow extends TableRowBase>({
                                     )
                                 }
                                 disabled={currentPage === totalPages}
-                                className="ml-3 relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                                className="ml-3 relative inline-flex items-center px-4 py-2 border border-input text-sm font-medium rounded-lg text-foreground bg-background hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 shadow-xs"
                             >
                                 Next
                             </button>
@@ -900,7 +901,7 @@ const DataTable = <TRow extends TableRowBase>({
                                             )
                                         }
                                         disabled={currentPage === 1}
-                                        className="relative inline-flex items-center px-2 py-2 rounded-l-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                                        className="relative inline-flex items-center px-2 py-2 rounded-l-lg border border-input bg-background text-sm font-medium text-muted-foreground hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200"
                                     >
                                         Previous
                                     </button>
@@ -916,8 +917,8 @@ const DataTable = <TRow extends TableRowBase>({
                                                     }
                                                     className={`relative inline-flex items-center px-4 py-2 border text-sm font-medium ${
                                                         currentPage === pageNum
-                                                            ? 'z-10 bg-blue-50 border-blue-500 text-blue-600'
-                                                            : 'bg-white border-gray-300 text-gray-500 hover:bg-gray-50'
+                                                            ? 'z-10 bg-primary/10 border-primary text-primary'
+                                                            : 'bg-background border-input text-muted-foreground hover:bg-muted'
                                                     }`}
                                                 >
                                                     {pageNum}
@@ -932,7 +933,7 @@ const DataTable = <TRow extends TableRowBase>({
                                             )
                                         }
                                         disabled={currentPage === totalPages}
-                                        className="relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                                        className="relative inline-flex items-center px-2 py-2 rounded-r-lg border border-input bg-background text-sm font-medium text-muted-foreground hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200"
                                     >
                                         Next
                                     </button>

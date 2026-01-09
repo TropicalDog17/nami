@@ -487,7 +487,7 @@ export function buildBot(cfg: AppConfig, openai: OpenAI) {
             }
 
             const payload: PendingActionCreate = {
-                source: threadId ? "telegram_topic" : "telegram_text",
+                source: "telegram_text",
                 raw_input: text,
                 toon_text: parsed.toon,
                 action_json: parsed.action || undefined,

@@ -424,7 +424,7 @@ const AdminPage = () => {
             </div>
 
             {/* Tabs */}
-            <div className="border-b border-gray-200 mb-6">
+            <div className="border-b border-gray-200 mb-6 flex justify-center">
                 <nav className="-mb-px flex space-x-8">
                     {tabs.map((tab) => (
                         <Button

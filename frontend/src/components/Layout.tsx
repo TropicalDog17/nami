@@ -33,27 +33,31 @@ const Layout = ({ children }: LayoutProps) => {
 
     return (
         <div
-            className={`min-h-screen bg-background ${!isOnline ? 'pt-12' : ''}`}
+            className={`min-h-screen bg-muted/30 ${!isOnline ? 'pt-12' : ''}`}
         >
-            <nav className="border-b bg-card shadow-sm">
+            <nav className="border-b border-border/50 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
                 <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
                     <div className="flex h-16 justify-between">
                         <div className="flex">
-                            <div className="flex flex-shrink-0 items-center">
-                                <h1 className="text-xl font-bold text-foreground">
-                                    Nami
-                                </h1>
-                            </div>
-                            <div className="hidden sm:ml-6 sm:flex sm:space-x-8">
+                            <Link
+                                to="/"
+                                className="flex flex-shrink-0 items-center gap-2 rounded-lg px-3 py-2 text-xl font-semibold tracking-tight text-foreground transition-all duration-200 hover:bg-primary/10 hover:text-primary"
+                            >
+                                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground shadow-sm">
+                                    <span className="text-sm font-bold">N</span>
+                                </div>
+                                <span>Nami</span>
+                            </Link>
+                            <div className="hidden sm:ml-8 sm:flex sm:space-x-1">
                                 {navigation.map((item) => (
                                     <Link
                                         key={item.name}
                                         to={item.href}
                                         className={`${
                                             item.current
-                                                ? 'border-primary text-foreground'
-                                                : 'border-transparent text-muted-foreground hover:border-border hover:text-foreground'
-                                        } inline-flex items-center border-b-2 px-1 pt-1 text-sm font-medium transition-colors`}
+                                                ? 'bg-primary/10 text-primary'
+                                                : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                                        } rounded-lg px-4 py-2 text-sm font-medium transition-all duration-200`}
                                     >
                                         {item.name}
                                     </Link>
@@ -64,7 +68,7 @@ const Layout = ({ children }: LayoutProps) => {
                 </div>
             </nav>
 
-            <main className="mx-auto max-w-7xl py-6 sm:px-6 lg:px-8">
+            <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
                 {children}
             </main>
         </div>
