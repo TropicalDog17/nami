@@ -47,7 +47,7 @@ adminRouter.post(
         .status(400)
         .json({ error: e?.message || "failed to set spending vault" });
     }
-  },
+  }
 );
 
 adminRouter.post(
@@ -66,7 +66,7 @@ adminRouter.post(
         .status(400)
         .json({ error: e?.message || "failed to set income vault" });
     }
-  },
+  }
 );
 
 // Transaction Types
@@ -251,7 +251,7 @@ adminRouter.post(
     const pendingActions = pendingActionsRepository.findByStatus("pending");
     const toReject = batchId
       ? pendingActions.filter(
-          (p: { batch_id?: string }) => p.batch_id === batchId,
+          (p: { batch_id?: string }) => p.batch_id === batchId
         )
       : pendingActions;
     let count = 0;
@@ -262,7 +262,7 @@ adminRouter.post(
       if (updated) count++;
     }
     res.json({ ok: true, rejected: count });
-  },
+  }
 );
 
 adminRouter.post(
@@ -296,7 +296,7 @@ adminRouter.post(
               case "spend_vnd":
                 vaultService.ensureVault(
                   params.account ||
-                    settingsRepository.getDefaultSpendingVaultName(),
+                    settingsRepository.getDefaultSpendingVaultName()
                 );
                 tx = await transactionService.createExpenseTransaction({
                   asset,
@@ -317,7 +317,7 @@ adminRouter.post(
               case "income_vnd":
                 vaultService.ensureVault(
                   params.account ||
-                    settingsRepository.getDefaultIncomeVaultName(),
+                    settingsRepository.getDefaultIncomeVaultName()
                 );
                 tx = await transactionService.createIncomeTransaction({
                   asset,
@@ -338,7 +338,7 @@ adminRouter.post(
               case "credit_spend_vnd":
                 vaultService.ensureVault(
                   params.account ||
-                    settingsRepository.getDefaultSpendingVaultName(),
+                    settingsRepository.getDefaultSpendingVaultName()
                 );
                 tx = await transactionService.createExpenseTransaction({
                   asset,
@@ -409,7 +409,7 @@ adminRouter.post(
     }
 
     res.json({ ok: true, accepted: acceptedCount, skipped: skippedCount });
-  },
+  }
 );
 
 adminRouter.delete("/admin/pending-actions", (req: Request, res: Response) => {
@@ -539,7 +539,7 @@ adminRouter.post(
               // Expense from spending vault
               vaultService.ensureVault(
                 params.account ||
-                  settingsRepository.getDefaultSpendingVaultName(),
+                  settingsRepository.getDefaultSpendingVaultName()
               );
               tx = await transactionService.createExpenseTransaction({
                 asset,
@@ -556,8 +556,7 @@ adminRouter.post(
             case "income_vnd":
               // Income to income vault
               vaultService.ensureVault(
-                params.account ||
-                  settingsRepository.getDefaultIncomeVaultName(),
+                params.account || settingsRepository.getDefaultIncomeVaultName()
               );
               tx = await transactionService.createIncomeTransaction({
                 asset,
@@ -575,7 +574,7 @@ adminRouter.post(
               // Credit card expense (from credit account)
               vaultService.ensureVault(
                 params.account ||
-                  settingsRepository.getDefaultSpendingVaultName(),
+                  settingsRepository.getDefaultSpendingVaultName()
               );
               tx = await transactionService.createExpenseTransaction({
                 asset,
@@ -631,7 +630,7 @@ adminRouter.post(
     if (!updated)
       return res.status(404).json({ error: "Pending action not found" });
     res.json({ ok: true, item: updated });
-  },
+  }
 );
 
 adminRouter.post(
@@ -642,7 +641,7 @@ adminRouter.post(
     if (!updated)
       return res.status(404).json({ error: "Pending action not found" });
     res.json({ ok: true, item: updated });
-  },
+  }
 );
 
 adminRouter.delete(
@@ -652,10 +651,8 @@ adminRouter.delete(
     const ok = pendingActionsRepository.delete(id);
     if (!ok) return res.status(404).json({ error: "Pending action not found" });
     res.json({ deleted: 1 });
-  },
+  }
 );
-
-// ==================== Data Export/Import ====================
 
 /**
  * Export all data for migration
@@ -686,10 +683,10 @@ adminRouter.get("/admin/export", (_req: Request, res: Response) => {
     };
 
     // Set headers for file download
-    const timestamp = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
-    res.setHeader('Content-Type', 'application/json');
+    const timestamp = new Date().toISOString().split("T")[0]; // YYYY-MM-DD
+    res.setHeader("Content-Type", "application/json");
     res.setHeader(
-      'Content-Disposition',
+      "Content-Disposition",
       `attachment; filename="nami-export-${timestamp}.json"`
     );
 
@@ -800,8 +797,10 @@ adminRouter.post("/admin/import", async (req: Request, res: Response) => {
             for (const entry of vault.entries) {
               try {
                 // Ensure usdValue is always a number (handle formatted strings like "4,181.63")
-                if (entry && typeof entry.usdValue === 'string') {
-                  entry.usdValue = parseFloat(entry.usdValue.replace(/,/g, '').trim());
+                if (entry && typeof entry.usdValue === "string") {
+                  entry.usdValue = parseFloat(
+                    entry.usdValue.replace(/,/g, "").trim()
+                  );
                 }
                 vaultRepository.createEntry(entry);
                 stats.vault_entries++;
@@ -856,12 +855,12 @@ adminRouter.post("/admin/import", async (req: Request, res: Response) => {
     if (data.settings) {
       if (data.settings.default_spending_vault) {
         settingsRepository.setDefaultSpendingVaultName(
-          data.settings.default_spending_vault,
+          data.settings.default_spending_vault
         );
       }
       if (data.settings.default_income_vault) {
         settingsRepository.setDefaultIncomeVaultName(
-          data.settings.default_income_vault,
+          data.settings.default_income_vault
         );
       }
       if (data.settings.borrowing) {
