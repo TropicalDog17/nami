@@ -63,8 +63,22 @@ const VaultsPage: React.FC = () => {
 
     // Aggregate time series data for APR chart
     const [aprSeriesFull, setAprSeriesFull] = useState<
-        Array<{ date: string; weighted_apr_percent: number }>
+        Array<{
+            date: string;
+            weighted_apr_percent: number;
+            weighted_roi_percent: number;
+        }>
     >([]);
+
+    const investableVaults = useMemo(() => {
+        return vaults.filter(
+            (v) => !['spend', 'borrowings'].includes(v.name.toLowerCase())
+        );
+    }, [vaults]);
+
+    const investableVaultIds = useMemo(() => {
+        return investableVaults.map((v) => v.id);
+    }, [investableVaults]);
 
     const loadVaults = useCallback(async (): Promise<void> => {
         try {
@@ -169,155 +183,80 @@ const VaultsPage: React.FC = () => {
         [aprSeriesFull, timeRange, filterDataByTimeRange]
     );
 
-    // Load PNL time series for all vaults including closed ones (fetch all data, filter on frontend)
+    // Load aggregate time series for charts (fetch all data, filter on frontend)
     useEffect(() => {
-        const loadPnlSeries = async () => {
-            try {
-                // Include all vaults (active and closed) except system vaults
-                const allVaults = vaults.filter(
-                    (v) =>
-                        !['spend', 'borrowings'].includes(v.name.toLowerCase())
-                );
-                if (allVaults.length === 0) {
-                    setPnlSeriesFull([]);
-                    return;
-                }
-
-                // Always fetch all data (no start date)
-                const params: Record<string, string> = {
-                    end: new Date().toISOString().split('T')[0],
-                };
-
-                const seriesPromises = allVaults.map((v) =>
-                    reportsApi.vaultSeries<{
-                        vault: string;
-                        series: Array<{
-                            date: string;
-                            aum_usd: number;
-                            pnl_usd: number;
-                            roi_percent: number;
-                            apr_percent: number;
-                        }>;
-                    }>(v.id, params)
-                );
-
-                const allSeries = await Promise.all(seriesPromises);
-
-                // Aggregate by date
-                const dateMap = new Map<string, number>();
-
-                allSeries.forEach((result) => {
-                    type SeriesPoint = {
-                        date: string;
-                        pnl_usd: number;
-                        aum_usd: number;
-                        apr_percent: number;
-                    };
-                    type VaultSeriesResult = { series?: SeriesPoint[] };
-                    const series =
-                        (result as VaultSeriesResult | null)?.series ?? [];
-                    if (Array.isArray(series)) {
-                        series.forEach(
-                            (point: { date: string; pnl_usd: number }) => {
-                                const existing = dateMap.get(point.date) ?? 0;
-                                dateMap.set(
-                                    point.date,
-                                    existing + (point.pnl_usd || 0)
-                                );
-                            }
-                        );
-                    }
-                });
-
-                // Convert to array and sort
-                const aggregated = Array.from(dateMap.entries())
-                    .map(([date, total_pnl_usd]) => ({ date, total_pnl_usd }))
-                    .sort((a, b) => a.date.localeCompare(b.date));
-
-                setPnlSeriesFull(aggregated);
-            } catch {
+        const loadAggregateSeries = async () => {
+            if (investableVaultIds.length === 0) {
                 setPnlSeriesFull([]);
+                setAprSeriesFull([]);
+                return;
             }
-        };
 
-        if (vaults.length > 0) {
-            void loadPnlSeries();
-        }
-    }, [vaults]);
-
-    // Load APR time series for all vaults including closed ones using backend aggregate endpoint
-    useEffect(() => {
-        const loadAprSeries = async () => {
             try {
-                // Include all vaults (active and closed) except system vaults
-                const allVaults = vaults.filter(
-                    (v) =>
-                        !['spend', 'borrowings'].includes(v.name.toLowerCase())
-                );
-                if (allVaults.length === 0) {
-                    setAprSeriesFull([]);
-                    return;
-                }
-
-                // Use backend aggregate series endpoint with proper IRR calculation
                 const params: Record<string, string> = {
                     end: new Date().toISOString().split('T')[0],
+                    vaults: investableVaultIds.join(','),
                 };
 
                 const result = await reportsApi.series<{
                     account: string;
                     series: Array<{
                         date: string;
-                        aum_usd: number;
                         pnl_usd: number;
-                        roi_percent: number;
                         apr_percent: number;
+                        roi_percent: number;
                     }>;
                 }>(params);
 
                 const series = result?.series ?? [];
-                if (Array.isArray(series) && series.length > 0) {
-                    // Find the earliest inception date among all vaults
-                    const earliestInception = allVaults.reduce(
-                        (earliest, vault) => {
-                            const inceptionDate = new Date(
-                                vault.inception_date
-                            );
-                            return !earliest || inceptionDate < earliest
-                                ? inceptionDate
-                                : earliest;
-                        },
-                        null as Date | null
-                    );
+                if (!Array.isArray(series) || series.length === 0) {
+                    setPnlSeriesFull([]);
+                    setAprSeriesFull([]);
+                    return;
+                }
 
-                    // Filter series to start from the earliest vault inception
-                    const filteredSeries = earliestInception
-                        ? series.filter(
-                              (point) =>
-                                  new Date(point.date) >= earliestInception
-                          )
-                        : series;
+                const earliestInception = investableVaults.reduce(
+                    (earliest, vault) => {
+                        const inceptionDate = new Date(vault.inception_date);
+                        return !earliest || inceptionDate < earliest
+                            ? inceptionDate
+                            : earliest;
+                    },
+                    null as Date | null
+                );
 
-                    const aggregated = filteredSeries
+                const filteredSeries = earliestInception
+                    ? series.filter(
+                          (point) => new Date(point.date) >= earliestInception
+                      )
+                    : series;
+
+                setPnlSeriesFull(
+                    filteredSeries
+                        .map((point) => ({
+                            date: point.date,
+                            total_pnl_usd: point.pnl_usd || 0,
+                        }))
+                        .sort((a, b) => a.date.localeCompare(b.date))
+                );
+
+                setAprSeriesFull(
+                    filteredSeries
                         .map((point) => ({
                             date: point.date,
                             weighted_apr_percent: point.apr_percent || 0,
+                            weighted_roi_percent: point.roi_percent || 0,
                         }))
-                        .sort((a, b) => a.date.localeCompare(b.date));
-
-                    setAprSeriesFull(aggregated);
-                } else {
-                    setAprSeriesFull([]);
-                }
+                        .sort((a, b) => a.date.localeCompare(b.date))
+                );
             } catch {
+                setPnlSeriesFull([]);
                 setAprSeriesFull([]);
             }
         };
 
-        if (vaults.length > 0) {
-            void loadAprSeries();
-        }
-    }, [vaults]);
+        void loadAggregateSeries();
+    }, [investableVaultIds, investableVaults]);
 
     const handleCreateVault = () => {
         setShowCreateForm(true);
@@ -496,29 +435,40 @@ const VaultsPage: React.FC = () => {
             },
         },
         {
-            key: 'total_supply',
-            title: 'Total Supply',
+            key: 'performance_since_inception',
+            title: 'Return Since Inception',
             type: 'number',
-            decimals: 6,
-            render: (value, _c, row) => {
+            decimals: 2,
+            render: (_value, _c, row) => {
                 const isSpend =
                     String(row.name || '').toLowerCase() === 'spend';
                 const isBorrowings =
                     String(row.name || '').toLowerCase() === 'borrowings';
                 if (isSpend || isBorrowings)
                     return <span className="text-gray-500">—</span>;
-                const supply =
-                    typeof value === 'string' && value !== ''
-                        ? parseFloat(value)
-                        : 0;
-                return supply.toLocaleString(undefined, {
-                    maximumFractionDigits: 6,
-                });
+                const raw =
+                    typeof row.performance_since_inception === 'string'
+                        ? parseFloat(row.performance_since_inception)
+                        : row.performance_since_inception;
+                if (!(typeof raw === 'number' && isFinite(raw))) {
+                    return <span className="text-gray-500">—</span>;
+                }
+                const isPositive = raw > 0;
+                const className = isPositive
+                    ? 'text-green-700'
+                    : raw < 0
+                      ? 'text-red-700'
+                      : 'text-gray-700';
+                return (
+                    <span className={className}>
+                        {formatPercentage(raw / 100, 2)}
+                    </span>
+                );
             },
         },
         {
             key: 'apr_percent',
-            title: 'APR Since Inception',
+            title: 'Est. APR (IRR)',
             type: 'number',
             decimals: 2,
             render: (_value, _c, row) => {
@@ -703,6 +653,7 @@ const VaultsPage: React.FC = () => {
                     <AUMChart
                         timeRange={timeRange}
                         onTimeRangeChange={setTimeRange}
+                        vaults={investableVaultIds}
                     />
 
                     {/* Total PnL Chart */}
@@ -743,7 +694,9 @@ const VaultsPage: React.FC = () => {
                     <Card className="col-span-1 lg:col-span-1">
                         <CardHeader className="pb-3">
                             <CardTitle className="text-sm font-medium">
-                                Weighted APR Over Time
+                                {timeRange === 'all'
+                                    ? 'Weighted APR Over Time'
+                                    : 'Weighted Return Over Time'}
                             </CardTitle>
                         </CardHeader>
                         <CardContent>
@@ -753,10 +706,15 @@ const VaultsPage: React.FC = () => {
                                         labels={aprSeries.map((p) => p.date)}
                                         datasets={[
                                             {
-                                                label: 'Weighted APR (%)',
+                                                label:
+                                                    timeRange === 'all'
+                                                        ? 'Weighted APR (%)'
+                                                        : 'Weighted Return (%)',
                                                 data: aprSeries.map(
                                                     (p) =>
-                                                        p.weighted_apr_percent
+                                                        timeRange === 'all'
+                                                            ? p.weighted_apr_percent
+                                                            : p.weighted_roi_percent
                                                 ),
                                                 color: '#2563EB',
                                                 fill: true,
@@ -766,7 +724,9 @@ const VaultsPage: React.FC = () => {
                                     />
                                 ) : (
                                     <div className="flex items-center justify-center h-full text-gray-500 text-sm">
-                                        No APR data available
+                                        {timeRange === 'all'
+                                            ? 'No APR data available'
+                                            : 'No return data available'}
                                     </div>
                                 )}
                             </div>

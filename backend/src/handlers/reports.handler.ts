@@ -177,6 +177,66 @@ function calculateIRRBasedAPR(
   return irr * 100;
 }
 
+function calculateRangeReturnPercent(
+  rows: Array<{
+    date: string;
+    aum_usd: number;
+    deposits_cum_usd: number;
+    withdrawals_cum_usd: number;
+  }>,
+): { returnPercent: number | null; daysElapsed: number } {
+  if (rows.length < 2) return { returnPercent: null, daysElapsed: 0 };
+
+  const first = rows[0];
+  const last = rows[rows.length - 1];
+  const startDate = new Date(first.date);
+  const endDate = new Date(last.date);
+  const daysElapsed = dateDiffInDays(startDate, endDate) + 1;
+
+  const cashFlows: Array<{ amount: number; daysFromStart: number }> = [];
+
+  const startAum = Number.isFinite(first.aum_usd) ? first.aum_usd : 0;
+  if (startAum > 1e-8) {
+    cashFlows.push({ amount: -startAum, daysFromStart: 0 });
+  }
+
+  let prevDeposits = first.deposits_cum_usd || 0;
+  let prevWithdrawals = first.withdrawals_cum_usd || 0;
+
+  for (let i = 1; i < rows.length; i++) {
+    const row = rows[i];
+    const depDelta = (row.deposits_cum_usd || 0) - prevDeposits;
+    const wdrDelta = (row.withdrawals_cum_usd || 0) - prevWithdrawals;
+    const daysFromStart = dateDiffInDays(startDate, new Date(row.date));
+
+    if (depDelta > 0) {
+      cashFlows.push({ amount: -depDelta, daysFromStart });
+    }
+    if (wdrDelta > 0) {
+      cashFlows.push({ amount: wdrDelta, daysFromStart });
+    }
+
+    prevDeposits = row.deposits_cum_usd || 0;
+    prevWithdrawals = row.withdrawals_cum_usd || 0;
+  }
+
+  const endAum = Number.isFinite(last.aum_usd) ? last.aum_usd : 0;
+  if (endAum > 1e-8) {
+    cashFlows.push({ amount: endAum, daysFromStart: daysElapsed - 1 });
+  }
+
+  if (cashFlows.length < 2 || daysElapsed <= 0) {
+    return { returnPercent: null, daysElapsed };
+  }
+
+  const irr = calculateIRR(cashFlows);
+  const periodReturn = Math.pow(1 + irr, daysElapsed / 365) - 1;
+  if (!Number.isFinite(periodReturn)) {
+    return { returnPercent: null, daysElapsed };
+  }
+  return { returnPercent: periodReturn * 100, daysElapsed };
+}
+
 async function computeMarkToMarketUSD(
   positions: Map<string, { asset: Asset; units: number }>,
   at?: string,
@@ -259,6 +319,9 @@ async function buildVaultDailySeries(
     roi_percent: number;
     apr_percent: number;
   }> = [];
+
+  // Track last APR to keep it flat when AUM = 0
+  let lastApr = 0;
 
   let idx = 0;
   for (const day of days) {
@@ -343,30 +406,42 @@ async function buildVaultDailySeries(
     const netContributed = depositedCum - withdrawnCum;
     const roi = netContributed > 1e-8 ? (pnl / netContributed) * 100 : 0;
 
-    let apr = 0;
+    let apr = lastApr;
     if (firstDepositDateObj) {
       const daysElapsed = Math.max(
         1,
         dateDiffInDays(firstDepositDateObj, new Date(day)) + 1,
       );
 
-      // Build cash flows for IRR calculation up to this day, plus terminal value
-      const cashFlowsForDay = cashFlows
-        .filter((cf) => cf.date <= day)
-        .map((cf) => ({
-          amount: cf.amount,
-          daysFromStart: cf.daysFromStart,
-        }));
+      // If vault is fully liquidated (AUM = 0 AND netContributed ≈ 0), keep the previous APR (stay flat)
+      // But if there's still net contributed capital (like 100% loss), calculate actual APR
+      if (aum < 1e-8 && netContributed < 1e-8) {
+        apr = lastApr; // Keep previous APR for fully liquidated vaults
+      } else if (aum < 1e-8) {
+        // 100% loss scenario: AUM = 0 but still have net contributed capital
+        apr = roi; // Use ROI as the realized return
+      } else {
+        // Build cash flows for IRR calculation up to this day, plus terminal value
+        const cashFlowsForDay = cashFlows
+          .filter((cf) => cf.date <= day)
+          .map((cf) => ({
+            amount: cf.amount,
+            daysFromStart: cf.daysFromStart,
+          }));
 
-      // Add terminal value (current AUM) as positive cash flow
-      cashFlowsForDay.push({
-        amount: aum,
-        daysFromStart: daysElapsed - 1,
-      });
+        // Add terminal value (current AUM) as positive cash flow
+        cashFlowsForDay.push({
+          amount: aum,
+          daysFromStart: daysElapsed - 1,
+        });
 
-      apr = calculateIRRBasedAPR(cashFlowsForDay, daysElapsed, roi / 100);
+        apr = calculateIRRBasedAPR(cashFlowsForDay, daysElapsed, roi / 100);
+      }
     }
 
+    // Clamp APR to reasonable range (-100% to 1000%) to prevent extreme values
+    let aprToUse = Number.isFinite(apr) ? apr : 0;
+    aprToUse = Math.max(-100, Math.min(1000, aprToUse));
     series.push({
       date: day,
       aum_usd: Number.isFinite(aum) ? aum : 0,
@@ -374,8 +449,11 @@ async function buildVaultDailySeries(
       withdrawals_cum_usd: Number.isFinite(withdrawnCum) ? withdrawnCum : 0,
       pnl_usd: Number.isFinite(pnl) ? pnl : 0,
       roi_percent: Number.isFinite(roi) ? roi : 0,
-      apr_percent: Number.isFinite(apr) ? apr : 0,
+      apr_percent: aprToUse,
     });
+
+    // Update lastApr for next iteration (to keep APR flat when AUM = 0)
+    lastApr = aprToUse;
   }
 
   return series;
@@ -475,24 +553,36 @@ async function buildLatestVaultMetrics(vaultName: string) {
       dateDiffInDays(firstDepositDateObj, new Date()) + 1,
     );
 
-    // Add terminal value
-    const cashFlowsForCalculation = cashFlows.map((cf) => ({
-      amount: cf.amount,
-      daysFromStart: cf.daysFromStart,
-    }));
-    cashFlowsForCalculation.push({
-      amount: aum,
-      daysFromStart: daysElapsed - 1,
-    });
+    // If vault is fully liquidated (AUM = 0), get the last APR from the series (stay flat)
+    if (aum < 1e-8) {
+      // Use buildVaultDailySeries to get the preserved APR
+      const series = await buildVaultDailySeries(vaultName);
+      if (series.length > 0) {
+        apr = series[series.length - 1].apr_percent;
+      }
+    } else {
+      // Add terminal value
+      const cashFlowsForCalculation = cashFlows.map((cf) => ({
+        amount: cf.amount,
+        daysFromStart: cf.daysFromStart,
+      }));
+      cashFlowsForCalculation.push({
+        amount: aum,
+        daysFromStart: daysElapsed - 1,
+      });
 
-    apr = calculateIRRBasedAPR(cashFlowsForCalculation, daysElapsed, roi / 100);
+      apr = calculateIRRBasedAPR(cashFlowsForCalculation, daysElapsed, roi / 100);
+    }
   }
+
+  // Clamp APR to reasonable range (-100% to 1000%)
+  const clampedApr = Number.isFinite(apr) ? Math.max(-100, Math.min(1000, apr)) : 0;
 
   return {
     aum_usd: Number.isFinite(aum) ? aum : 0,
     pnl_usd: Number.isFinite(pnl) ? pnl : 0,
     roi_percent: Number.isFinite(roi) ? roi : 0,
-    apr_percent: Number.isFinite(apr) ? apr : 0,
+    apr_percent: clampedApr,
   };
 }
 
@@ -1037,21 +1127,33 @@ async function buildVaultHeaderMetrics(vaultName: string) {
       dateDiffInDays(firstDepositDateObj, new Date()) + 1,
     );
 
-    // Add terminal value (current AUM) as positive cash flow
-    const cashFlowsWithTerminal = [
-      ...cashFlows,
-      { amount: aum, daysFromStart: daysElapsed - 1 },
-    ];
+    // If vault is fully liquidated (AUM = 0), get the last APR from the series (stay flat)
+    if (aum < 1e-8) {
+      // Use buildVaultDailySeries to get the preserved APR
+      const series = await buildVaultDailySeries(vaultName);
+      if (series.length > 0) {
+        apr = series[series.length - 1].apr_percent;
+      }
+    } else {
+      // Add terminal value (current AUM) as positive cash flow
+      const cashFlowsWithTerminal = [
+        ...cashFlows,
+        { amount: aum, daysFromStart: daysElapsed - 1 },
+      ];
 
-    apr = calculateIRRBasedAPR(cashFlowsWithTerminal, daysElapsed, roi / 100);
+      apr = calculateIRRBasedAPR(cashFlowsWithTerminal, daysElapsed, roi / 100);
+    }
   }
+
+  // Clamp APR to reasonable range (-100% to 1000%)
+  const clampedApr = Number.isFinite(apr) ? Math.max(-100, Math.min(1000, apr)) : 0;
 
   return {
     vault: vaultName,
     aum_usd: Number.isFinite(aum) ? aum : 0,
     pnl_usd: Number.isFinite(pnl) ? pnl : 0,
     roi_percent: Number.isFinite(roi) ? roi : 0,
-    apr_percent: Number.isFinite(apr) ? apr : 0,
+    apr_percent: clampedApr,
     last_valuation_usd:
       typeof lastValuationUSD === "number" && Number.isFinite(lastValuationUSD)
         ? lastValuationUSD
@@ -1155,9 +1257,34 @@ reportsRouter.get("/reports/series", async (req, res) => {
     const start = req.query.start ? String(req.query.start) : undefined;
     const end = req.query.end ? String(req.query.end) : undefined;
 
-    const targetVaults = account
+    const vaultsParam = req.query.vaults ? String(req.query.vaults) : undefined;
+    const excludeParam = req.query.exclude
+      ? String(req.query.exclude)
+      : undefined;
+
+    let targetVaults = account
       ? [account]
       : vaultRepository.findAll().map((v: any) => v.name);
+
+    // Allow explicitly specifying the vault list (comma-separated) to support
+    // frontend pages that want to exclude system vaults like "spend"/"borrowings".
+    if (!account && vaultsParam) {
+      const wanted = vaultsParam
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
+      if (wanted.length > 0) targetVaults = wanted;
+    }
+
+    if (excludeParam) {
+      const excluded = new Set(
+        excludeParam
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean),
+      );
+      targetVaults = targetVaults.filter((n) => !excluded.has(n));
+    }
     const perVault = await Promise.all(
       targetVaults.map((n: any) =>
         buildVaultDailySeries(n, start, end).then((s) => ({
@@ -1167,9 +1294,19 @@ reportsRouter.get("/reports/series", async (req, res) => {
       ),
     );
 
+    // Pre-index each vault series by date and track previous cumulative values so we can
+    // compute per-day deposits/withdrawals correctly (avoid using Array.find for "previous").
+    const perVaultState = perVault.map(({ name, s }) => ({
+      name,
+      s,
+      byDate: new Map<string, any>(s.map((p: any) => [p.date, p])),
+      prevDepositsCumUsd: 0,
+      prevWithdrawalsCumUsd: 0,
+    }));
+
     // union of dates
     const allDates = new Set<string>();
-    for (const { s } of perVault) s.forEach((p: any) => allDates.add(p.date));
+    for (const { s } of perVaultState) s.forEach((p: any) => allDates.add(p.date));
     const dates = Array.from(allDates).sort((a: any, b: any) =>
       a.localeCompare(b),
     );
@@ -1194,6 +1331,9 @@ reportsRouter.get("/reports/series", async (req, res) => {
     let firstDepositDate: string | undefined = undefined;
     let firstDepositDateObj: Date | undefined = undefined;
 
+    // Track last APR to keep it flat when AUM = 0
+    let lastApr = 0;
+
     for (const date of dates) {
       let aum = 0,
         dep = 0,
@@ -1202,22 +1342,28 @@ reportsRouter.get("/reports/series", async (req, res) => {
       let dailyDeposit = 0;
       let dailyWithdrawal = 0;
 
-      for (const { s } of perVault) {
-        const pt = s.find((p: any) => p.date === date);
-        if (pt) {
-          aum += pt.aum_usd;
+      for (const v of perVaultState) {
+        const pt = v.byDate.get(date);
+        if (!pt) continue;
 
-          // Track cumulative deposits/withdrawals for this day
-          const prevPt = s.find((p: any) => p.date < date);
-          const prevDep = prevPt?.deposits_cum_usd || 0;
-          const prevWdr = prevPt?.withdrawals_cum_usd || 0;
-          dailyDeposit += pt.deposits_cum_usd - prevDep;
-          dailyWithdrawal += pt.withdrawals_cum_usd - prevWdr;
+        aum += pt.aum_usd;
 
-          dep += pt.deposits_cum_usd;
-          wdr += pt.withdrawals_cum_usd;
-          pnl += pt.pnl_usd;
-        }
+        const depositsCumUsd = pt.deposits_cum_usd || 0;
+        const withdrawalsCumUsd = pt.withdrawals_cum_usd || 0;
+
+        // Per-day delta = today's cumulative - yesterday's cumulative (per vault).
+        // Clamp to 0 to guard against any unexpected decreasing cumulative values.
+        const depDelta = depositsCumUsd - v.prevDepositsCumUsd;
+        const wdrDelta = withdrawalsCumUsd - v.prevWithdrawalsCumUsd;
+        if (depDelta > 0) dailyDeposit += depDelta;
+        if (wdrDelta > 0) dailyWithdrawal += wdrDelta;
+
+        dep += depositsCumUsd;
+        wdr += withdrawalsCumUsd;
+        pnl += pt.pnl_usd;
+
+        v.prevDepositsCumUsd = depositsCumUsd;
+        v.prevWithdrawalsCumUsd = withdrawalsCumUsd;
       }
 
       // Record first deposit date
@@ -1250,34 +1396,47 @@ reportsRouter.get("/reports/series", async (req, res) => {
         });
       }
 
-      // Calculate ROI
-      const roi = dep > 0 ? (pnl / dep) * 100 : 0;
+      const netContributed = dep - wdr;
+      // Calculate ROI (consistent with per-vault: PnL / net contributed)
+      const roi = netContributed > 1e-8 ? (pnl / netContributed) * 100 : 0;
 
       // Calculate APR using proper IRR with all aggregated cash flows
-      let apr = 0;
+      let apr = lastApr;
       if (firstDepositDateObj && dep > 0) {
         const daysElapsed = Math.max(
           1,
           dateDiffInDays(firstDepositDateObj, new Date(date)) + 1,
         );
 
-        // Build cash flows for IRR: all deposits/withdrawals up to this day + terminal value
-        const cashFlowsForIRR = aggregatedCashFlows
-          .filter((cf) => cf.date <= date)
-          .map((cf) => ({
-            amount: cf.amount,
-            daysFromStart: cf.daysFromStart,
-          }));
+        // If vault is fully liquidated (AUM = 0 AND netContributed ≈ 0), keep the previous APR (stay flat)
+        // But if there's still net contributed capital (like 100% loss), calculate actual APR
+        if (aum < 1e-8 && netContributed < 1e-8) {
+          apr = lastApr; // Keep previous APR for fully liquidated vaults
+        } else if (aum < 1e-8) {
+          // 100% loss scenario: AUM = 0 but still have net contributed capital
+          apr = roi; // Use ROI as the realized return
+        } else {
+          // Build cash flows for IRR: all deposits/withdrawals up to this day + terminal value
+          const cashFlowsForIRR = aggregatedCashFlows
+            .filter((cf) => cf.date <= date)
+            .map((cf) => ({
+              amount: cf.amount,
+              daysFromStart: cf.daysFromStart,
+            }));
 
-        // Add terminal value (current AUM) as positive cash flow
-        cashFlowsForIRR.push({
-          amount: aum,
-          daysFromStart: daysElapsed - 1,
-        });
+          // Add terminal value (current AUM) as positive cash flow
+          cashFlowsForIRR.push({
+            amount: aum,
+            daysFromStart: daysElapsed - 1,
+          });
 
-        apr = calculateIRRBasedAPR(cashFlowsForIRR, daysElapsed, roi / 100);
+          apr = calculateIRRBasedAPR(cashFlowsForIRR, daysElapsed, roi / 100);
+        }
       }
 
+      // Clamp APR to reasonable range (-100% to 1000%) to prevent extreme values
+      let aprToUse = Number.isFinite(apr) ? apr : 0;
+      aprToUse = Math.max(-100, Math.min(1000, aprToUse));
       rows.push({
         date,
         aum_usd: Number.isFinite(aum) ? aum : 0,
@@ -1285,8 +1444,11 @@ reportsRouter.get("/reports/series", async (req, res) => {
         withdrawals_cum_usd: Number.isFinite(wdr) ? wdr : 0,
         pnl_usd: Number.isFinite(pnl) ? pnl : 0,
         roi_percent: Number.isFinite(roi) ? roi : 0,
-        apr_percent: Number.isFinite(apr) ? apr : 0,
+        apr_percent: aprToUse,
       });
+
+      // Update lastApr for next iteration (to keep APR flat when AUM = 0)
+      lastApr = aprToUse;
     }
 
     const vndRate = await usdToVnd();
@@ -1296,7 +1458,57 @@ reportsRouter.get("/reports/series", async (req, res) => {
       pnl_vnd: p.pnl_usd * vndRate,
     }));
 
-    res.json({ account: account || "ALL", series });
+    const latestUsd = rows.length > 0 ? rows[rows.length - 1] : undefined;
+    const previousUsd = rows.length > 1 ? rows[rows.length - 2] : undefined;
+    const latest = series.length > 0 ? series[series.length - 1] : undefined;
+    const previous = series.length > 1 ? series[series.length - 2] : undefined;
+
+    const totalDaysElapsed =
+      latestUsd && firstDepositDateObj
+        ? dateDiffInDays(firstDepositDateObj, new Date(latestUsd.date)) + 1
+        : 0;
+    const aprEligible = totalDaysElapsed >= 30;
+    const { returnPercent: rangeReturnPercent, daysElapsed: rangeDaysElapsed } =
+      calculateRangeReturnPercent(rows);
+
+    const summary =
+      latest && latestUsd
+        ? {
+            aum_usd: latestUsd.aum_usd,
+            aum_vnd: latestUsd.aum_usd * vndRate,
+            pnl_usd: latestUsd.pnl_usd,
+            pnl_vnd: latestUsd.pnl_usd * vndRate,
+            apr_percent: latestUsd.apr_percent,
+            roi_percent: latestUsd.roi_percent,
+            aum_change_usd: previousUsd ? latestUsd.aum_usd - previousUsd.aum_usd : 0,
+            aum_change_vnd: previous ? latest.aum_vnd - previous.aum_vnd : 0,
+            aum_change_percent:
+              previousUsd && Math.abs(previousUsd.aum_usd) > 1e-12
+                ? ((latestUsd.aum_usd - previousUsd.aum_usd) / previousUsd.aum_usd) *
+                  100
+                : 0,
+            pnl_change_usd: previousUsd ? latestUsd.pnl_usd - previousUsd.pnl_usd : 0,
+            pnl_change_vnd: previous ? latest.pnl_vnd - previous.pnl_vnd : 0,
+            pnl_change_percent:
+              previousUsd && Math.abs(previousUsd.aum_usd) > 1e-12
+                ? ((latestUsd.pnl_usd - previousUsd.pnl_usd) /
+                    Math.abs(previousUsd.aum_usd)) *
+                  100
+                : 0,
+            apr_change_percent_points: previousUsd
+              ? latestUsd.apr_percent - previousUsd.apr_percent
+              : 0,
+            roi_change_percent_points: previousUsd
+              ? latestUsd.roi_percent - previousUsd.roi_percent
+              : 0,
+            apr_eligible: aprEligible,
+            days_elapsed: totalDaysElapsed,
+            range_return_percent: rangeReturnPercent,
+            range_days_elapsed: rangeDaysElapsed,
+          }
+        : null;
+
+    res.json({ account: account || "ALL", series, summary });
   } catch (e: any) {
     res.status(500).json({
       error: e?.message || "Failed to build aggregate series",

@@ -32,9 +32,7 @@ const Layout = ({ children }: LayoutProps) => {
     ];
 
     return (
-        <div
-            className={`min-h-screen bg-muted/30 ${!isOnline ? 'pt-12' : ''}`}
-        >
+        <div className={`min-h-screen bg-muted/30 ${!isOnline ? 'pt-12' : ''}`}>
             <nav className="border-b border-border/50 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
                 <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
                     <div className="flex h-16 justify-between">
@@ -48,7 +46,7 @@ const Layout = ({ children }: LayoutProps) => {
                                 </div>
                                 <span>Nami</span>
                             </Link>
-                            <div className="hidden sm:ml-8 sm:flex sm:space-x-1">
+                            <div className="hidden sm:ml-8 sm:flex sm:space-x-1 items-center">
                                 {navigation.map((item) => (
                                     <Link
                                         key={item.name}

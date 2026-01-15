@@ -1,5 +1,6 @@
 import { getConnection } from "../database/connection";
 import { Transaction, Vault, VaultEntry, LoanAgreement } from "../types";
+import { coerceNumber } from "../utils/number.util";
 
 // Helper to convert SQLite row to Transaction
 export function rowToTransaction(row: any): Transaction {
@@ -88,8 +89,8 @@ export function rowToVaultEntry(row: any): VaultEntry {
       type: row.asset_type,
       symbol: row.asset_symbol,
     },
-    amount: row.amount,
-    usdValue: row.usd_value,
+    amount: coerceNumber(row.amount),
+    usdValue: coerceNumber(row.usd_value),
     at: row.at,
     account: row.account,
     note: row.note,
@@ -103,8 +104,8 @@ export function vaultEntryToRow(entry: VaultEntry): any {
     type: entry.type,
     asset_type: entry.asset.type,
     asset_symbol: entry.asset.symbol,
-    amount: entry.amount,
-    usd_value: entry.usdValue,
+    amount: coerceNumber(entry.amount),
+    usd_value: coerceNumber(entry.usdValue),
     at: entry.at,
     account: entry.account,
     note: entry.note,
