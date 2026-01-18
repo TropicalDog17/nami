@@ -7,6 +7,7 @@ import {
   ITransactionRepository,
   IVaultRepository,
   ILoanRepository,
+  IBorrowingRepository,
   IAdminRepository,
   IPendingActionsRepository,
   ISettingsRepository,
@@ -23,6 +24,10 @@ import {
   LoanRepositoryDb,
   LoanRepositoryJson,
 } from "../repositories/loan.repository";
+import {
+  BorrowingRepositoryDb,
+  BorrowingRepositoryJson,
+} from "../repositories/borrowing.repository";
 import {
   AdminRepositoryDb,
   AdminRepositoryJson,
@@ -62,6 +67,7 @@ class DIContainer {
   >;
   private _vaultRepository?: ReturnType<typeof createVaultRepository>;
   private _loanRepository?: ReturnType<typeof createLoanRepository>;
+  private _borrowingRepository?: ReturnType<typeof createBorrowingRepository>;
   private _adminRepository?: ReturnType<typeof createAdminRepository>;
   private _pendingActionsRepository?: ReturnType<
     typeof createPendingActionsRepository
@@ -90,6 +96,14 @@ class DIContainer {
       this._loanRepository = createLoanRepository();
     }
     return this._loanRepository;
+  }
+
+  // Borrowing repository
+  get borrowingRepository() {
+    if (!this._borrowingRepository) {
+      this._borrowingRepository = createBorrowingRepository();
+    }
+    return this._borrowingRepository;
   }
 
   // Admin repository
@@ -123,6 +137,7 @@ class DIContainer {
     this._transactionRepository = undefined;
     this._vaultRepository = undefined;
     this._loanRepository = undefined;
+    this._borrowingRepository = undefined;
     this._adminRepository = undefined;
     this._pendingActionsRepository = undefined;
     this._settingsRepository = undefined;
@@ -148,6 +163,13 @@ function createLoanRepository(): ILoanRepository {
   return createRepository<ILoanRepository>({
     createDb: () => new LoanRepositoryDb(),
     createJson: () => new LoanRepositoryJson(),
+  });
+}
+
+function createBorrowingRepository(): IBorrowingRepository {
+  return createRepository<IBorrowingRepository>({
+    createDb: () => new BorrowingRepositoryDb(),
+    createJson: () => new BorrowingRepositoryJson(),
   });
 }
 
@@ -186,6 +208,9 @@ export const repositories = {
   get loan() {
     return container.loanRepository;
   },
+  get borrowing() {
+    return container.borrowingRepository;
+  },
   get admin() {
     return container.adminRepository;
   },
@@ -201,6 +226,7 @@ export const repositories = {
 export const transactionRepository = repositories.transaction;
 export const vaultRepository = repositories.vault;
 export const loanRepository = repositories.loan;
+export const borrowingRepository = repositories.borrowing;
 export const adminRepository = repositories.admin;
 export const pendingActionsRepository = repositories.pendingActions;
 export const settingsRepository = repositories.settings;
@@ -218,6 +244,10 @@ export {
   LoanRepositoryJson,
   LoanRepositoryDb,
 } from "../repositories/loan.repository";
+export {
+  BorrowingRepositoryJson,
+  BorrowingRepositoryDb,
+} from "../repositories/borrowing.repository";
 export {
   AdminRepositoryJson,
   AdminRepositoryDb,

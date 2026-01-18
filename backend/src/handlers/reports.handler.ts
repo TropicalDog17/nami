@@ -268,6 +268,160 @@ async function computeMarkToMarketUSD(
   return aum;
 }
 
+function hasNonZeroPositions(
+  positions: Map<string, { asset: Asset; units: number }>,
+): boolean {
+  for (const p of positions.values()) {
+    if (Math.abs(p.units) >= 1e-12) return true;
+  }
+  return false;
+}
+
+function isLiquidatedState(
+  lastValuationUSD: number | undefined,
+  netFlowSinceValUSD: number,
+  positions: Map<string, { asset: Asset; units: number }>,
+  netContributed: number,
+): boolean {
+  if (!(netContributed < 1e-8)) return false;
+  if (typeof lastValuationUSD === "number") {
+    return Math.abs(lastValuationUSD + netFlowSinceValUSD) < 1e-8;
+  }
+  return !hasNonZeroPositions(positions);
+}
+
+function computeStateBeforeDate(
+  entries: VaultEntry[],
+  cutoffDate: string,
+  firstDepositDateObj?: Date,
+) {
+  let depositedCum = 0;
+  let withdrawnCum = 0;
+  const positions = new Map<string, { asset: Asset; units: number }>();
+  let lastValuationUSD: number | undefined = undefined;
+  let netFlowSinceValUSD = 0;
+  let firstDepositObj = firstDepositDateObj;
+  const cashFlows: Array<{ amount: number; daysFromStart: number }> = [];
+
+  for (const e of entries) {
+    const entryDate = String(e.at).slice(0, 10);
+    if (entryDate >= cutoffDate) break;
+
+    if (e.type === "DEPOSIT") {
+      const usd = e.usdValue || 0;
+      depositedCum += usd;
+      if (!firstDepositObj) {
+        firstDepositObj = new Date(entryDate);
+      }
+      const daysFromStart = firstDepositObj
+        ? dateDiffInDays(firstDepositObj, new Date(entryDate))
+        : 0;
+      cashFlows.push({ amount: -usd, daysFromStart });
+
+      const k = `${e.asset.type}:${e.asset.symbol.toUpperCase()}`;
+      const cur = positions.get(k) || { asset: e.asset, units: 0 };
+      cur.units += e.amount;
+      positions.set(k, cur);
+      if (typeof lastValuationUSD === "number") {
+        netFlowSinceValUSD += usd;
+      }
+    } else if (e.type === "WITHDRAW") {
+      const usd = e.usdValue || 0;
+      withdrawnCum += usd;
+      if (firstDepositObj) {
+        const daysFromStart = dateDiffInDays(
+          firstDepositObj,
+          new Date(entryDate),
+        );
+        cashFlows.push({ amount: usd, daysFromStart });
+      }
+
+      const k = `${e.asset.type}:${e.asset.symbol.toUpperCase()}`;
+      const cur = positions.get(k) || { asset: e.asset, units: 0 };
+      cur.units -= e.amount;
+      positions.set(k, cur);
+      if (typeof lastValuationUSD === "number") {
+        netFlowSinceValUSD -= usd;
+      }
+    } else if (e.type === "VALUATION") {
+      lastValuationUSD =
+        typeof e.usdValue === "number" ? e.usdValue : lastValuationUSD;
+      netFlowSinceValUSD = 0;
+    }
+  }
+
+  return {
+    depositedCum,
+    withdrawnCum,
+    positions,
+    lastValuationUSD,
+    netFlowSinceValUSD,
+    cashFlows,
+    firstDepositDateObj: firstDepositObj,
+  };
+}
+
+async function computeAprBeforeLiquidation(
+  entries: VaultEntry[],
+  liquidationDate: string,
+  firstDepositDateObj: Date,
+): Promise<number> {
+  const dayBeforeDate = addDays(
+    new Date(`${liquidationDate}T00:00:00Z`),
+    -1,
+  );
+  if (dayBeforeDate < firstDepositDateObj) return 0;
+
+  const beforeState = computeStateBeforeDate(
+    entries,
+    liquidationDate,
+    firstDepositDateObj,
+  );
+  const firstDepositObj =
+    beforeState.firstDepositDateObj ?? firstDepositDateObj;
+  if (!firstDepositObj) return 0;
+
+  const dayBeforeIso = toISODate(dayBeforeDate);
+  const aumBefore =
+    typeof beforeState.lastValuationUSD === "number"
+      ? beforeState.lastValuationUSD + beforeState.netFlowSinceValUSD
+      : await computeMarkToMarketUSD(
+          beforeState.positions,
+          `${dayBeforeIso}T23:59:59Z`,
+          priceCache,
+        );
+
+  const netContributedBefore =
+    beforeState.depositedCum - beforeState.withdrawnCum;
+  const pnlBefore =
+    aumBefore + beforeState.withdrawnCum - beforeState.depositedCum;
+  const roiBefore =
+    netContributedBefore > 1e-8 ? (pnlBefore / netContributedBefore) * 100 : 0;
+
+  const daysElapsed = Math.max(
+    1,
+    dateDiffInDays(firstDepositObj, dayBeforeDate) + 1,
+  );
+
+  if (aumBefore < 1e-8 && netContributedBefore < 1e-8) return 0;
+  if (aumBefore < 1e-8) return roiBefore;
+
+  const cashFlowsForCalculation = beforeState.cashFlows.map((cf) => ({
+    amount: cf.amount,
+    daysFromStart: cf.daysFromStart,
+  }));
+  cashFlowsForCalculation.push({
+    amount: aumBefore,
+    daysFromStart: daysElapsed - 1,
+  });
+
+  return calculateIRRBasedAPR(
+    cashFlowsForCalculation,
+    daysElapsed,
+    roiBefore / 100,
+  );
+}
+
 async function buildVaultDailySeries(
   vaultName: string,
   start?: string,
@@ -477,6 +631,9 @@ async function buildLatestVaultMetrics(vaultName: string) {
   let netFlowSinceValUSD = 0;
   let firstDepositDate: string | undefined = undefined;
   let firstDepositDateObj: Date | undefined = undefined;
+  let currentDate: string | undefined = undefined;
+  let wasLiquidated = false;
+  let liquidationDate: string | undefined = undefined;
 
   const cashFlows: Array<{
     amount: number;
@@ -486,10 +643,25 @@ async function buildLatestVaultMetrics(vaultName: string) {
 
   // Process all entries
   for (const e of entries as VaultEntry[]) {
+    const entryDate = String(e.at).slice(0, 10);
+    if (!currentDate) currentDate = entryDate;
+    if (entryDate !== currentDate) {
+      const netContributed = depositedCum - withdrawnCum;
+      const isLiquidated = isLiquidatedState(
+        lastValuationUSD,
+        netFlowSinceValUSD,
+        positions,
+        netContributed,
+      );
+      if (isLiquidated && !wasLiquidated) {
+        liquidationDate = currentDate;
+      }
+      wasLiquidated = isLiquidated;
+      currentDate = entryDate;
+    }
     if (e.type === "DEPOSIT") {
       const usd = e.usdValue || 0;
       depositedCum += usd;
-      const entryDate = String(e.at).slice(0, 10);
       if (!firstDepositDate) {
         firstDepositDate = entryDate;
         firstDepositDateObj = new Date(firstDepositDate);
@@ -510,7 +682,6 @@ async function buildLatestVaultMetrics(vaultName: string) {
     } else if (e.type === "WITHDRAW") {
       const usd = e.usdValue || 0;
       withdrawnCum += usd;
-      const entryDate = String(e.at).slice(0, 10);
       if (firstDepositDateObj) {
         const daysFromStart = dateDiffInDays(
           firstDepositDateObj,
@@ -531,6 +702,19 @@ async function buildLatestVaultMetrics(vaultName: string) {
         typeof e.usdValue === "number" ? e.usdValue : lastValuationUSD;
       netFlowSinceValUSD = 0;
     }
+  }
+  if (currentDate) {
+    const netContributed = depositedCum - withdrawnCum;
+    const isLiquidated = isLiquidatedState(
+      lastValuationUSD,
+      netFlowSinceValUSD,
+      positions,
+      netContributed,
+    );
+    if (isLiquidated && !wasLiquidated) {
+      liquidationDate = currentDate;
+    }
+    wasLiquidated = isLiquidated;
   }
 
   // Calculate current AUM
@@ -553,12 +737,15 @@ async function buildLatestVaultMetrics(vaultName: string) {
       dateDiffInDays(firstDepositDateObj, new Date()) + 1,
     );
 
-    // If vault is fully liquidated (AUM = 0), get the last APR from the series (stay flat)
     if (aum < 1e-8) {
-      // Use buildVaultDailySeries to get the preserved APR
-      const series = await buildVaultDailySeries(vaultName);
-      if (series.length > 0) {
-        apr = series[series.length - 1].apr_percent;
+      if (netContributed > 1e-8) {
+        apr = roi;
+      } else if (liquidationDate) {
+        apr = await computeAprBeforeLiquidation(
+          entries as VaultEntry[],
+          liquidationDate,
+          firstDepositDateObj,
+        );
       }
     } else {
       // Add terminal value
@@ -685,6 +872,8 @@ reportsRouter.get("/reports/cashflow", async (req, res) => {
 
     let inflowUSD = 0; // cash received (withdraw from vaults)
     let outflowUSD = 0; // cash paid (deposit into vaults)
+    let financingInUSD = 0;
+    let financingOutUSD = 0;
 
     const by_type: Record<
       string,
@@ -756,10 +945,54 @@ reportsRouter.get("/reports/cashflow", async (req, res) => {
       }
     }
 
-    const netUSD = inflowUSD - outflowUSD;
+    // Always include borrow/repay financing flows from transaction ledger
+    const txs = transactionRepository
+      .findAll()
+      .filter((t) => inRange(t.createdAt));
+    for (const tx of txs) {
+      const usd = Number(tx.usdAmount || 0);
+      if (tx.type === "BORROW") {
+        if (!by_type.borrow) {
+          by_type.borrow = {
+            inflow_usd: 0,
+            outflow_usd: 0,
+            net_usd: 0,
+            inflow_vnd: 0,
+            outflow_vnd: 0,
+            net_vnd: 0,
+            count: 0,
+          };
+        }
+        financingInUSD += usd;
+        by_type.borrow.inflow_usd += usd;
+        by_type.borrow.count += 1;
+      } else if (
+        tx.type === "REPAY" &&
+        String((tx as any).direction || "").toUpperCase() === "BORROW"
+      ) {
+        if (!by_type.repay_borrow) {
+          by_type.repay_borrow = {
+            inflow_usd: 0,
+            outflow_usd: 0,
+            net_usd: 0,
+            inflow_vnd: 0,
+            outflow_vnd: 0,
+            net_vnd: 0,
+            count: 0,
+          };
+        }
+        financingOutUSD += usd;
+        by_type.repay_borrow.outflow_usd += usd;
+        by_type.repay_borrow.count += 1;
+      }
+    }
+
+    const combinedInUSD = inflowUSD + financingInUSD;
+    const combinedOutUSD = outflowUSD + financingOutUSD;
+    const netUSD = combinedInUSD - combinedOutUSD;
     const vndRate = await usdToVnd();
-    const inflowVND = inflowUSD * vndRate;
-    const outflowVND = outflowUSD * vndRate;
+    const inflowVND = combinedInUSD * vndRate;
+    const outflowVND = combinedOutUSD * vndRate;
     const netVND = netUSD * vndRate;
 
     // finalize by_type VND and net values
@@ -773,33 +1006,33 @@ reportsRouter.get("/reports/cashflow", async (req, res) => {
 
     // For now, treat all as operating; no financing flows tracked via vault entries
     const resp = {
-      combined_in_usd: inflowUSD,
+      combined_in_usd: combinedInUSD,
       combined_in_vnd: inflowVND,
-      combined_out_usd: outflowUSD,
+      combined_out_usd: combinedOutUSD,
       combined_out_vnd: outflowVND,
       combined_net_usd: netUSD,
       combined_net_vnd: netVND,
 
-      total_in_usd: inflowUSD,
-      total_out_usd: outflowUSD,
+      total_in_usd: combinedInUSD,
+      total_out_usd: combinedOutUSD,
       net_usd: netUSD,
       total_in_vnd: inflowVND,
       total_out_vnd: outflowVND,
       net_vnd: netVND,
 
       operating_in_usd: inflowUSD,
-      operating_in_vnd: inflowVND,
+      operating_in_vnd: inflowUSD * vndRate,
       operating_out_usd: outflowUSD,
-      operating_out_vnd: outflowVND,
-      operating_net_usd: netUSD,
-      operating_net_vnd: netVND,
+      operating_out_vnd: outflowUSD * vndRate,
+      operating_net_usd: inflowUSD - outflowUSD,
+      operating_net_vnd: (inflowUSD - outflowUSD) * vndRate,
 
-      financing_in_usd: 0,
-      financing_in_vnd: 0,
-      financing_out_usd: 0,
-      financing_out_vnd: 0,
-      financing_net_usd: 0,
-      financing_net_vnd: 0,
+      financing_in_usd: financingInUSD,
+      financing_in_vnd: financingInUSD * vndRate,
+      financing_out_usd: financingOutUSD,
+      financing_out_vnd: financingOutUSD * vndRate,
+      financing_net_usd: financingInUSD - financingOutUSD,
+      financing_net_vnd: (financingInUSD - financingOutUSD) * vndRate,
 
       by_type,
       account: account || "ALL",
@@ -1058,15 +1291,33 @@ async function buildVaultHeaderMetrics(vaultName: string) {
   let netFlowSinceValUSD = 0;
   let firstDepositDate: string | undefined = undefined;
   let firstDepositDateObj: Date | undefined = undefined;
+  let currentDate: string | undefined = undefined;
+  let wasLiquidated = false;
+  let liquidationDate: string | undefined = undefined;
 
   // Track all cash flows for IRR calculation
   const cashFlows: Array<{ amount: number; daysFromStart: number }> = [];
 
   for (const e of entries) {
+    const entryDate = String(e.at).slice(0, 10);
+    if (!currentDate) currentDate = entryDate;
+    if (entryDate !== currentDate) {
+      const netContributed = depositedCum - withdrawnCum;
+      const isLiquidated = isLiquidatedState(
+        lastValuationUSD,
+        netFlowSinceValUSD,
+        positions,
+        netContributed,
+      );
+      if (isLiquidated && !wasLiquidated) {
+        liquidationDate = currentDate;
+      }
+      wasLiquidated = isLiquidated;
+      currentDate = entryDate;
+    }
     if (e.type === "DEPOSIT") {
       const usd = e.usdValue || 0;
       depositedCum += usd;
-      const entryDate = String(e.at).slice(0, 10);
       if (!firstDepositDate) {
         firstDepositDate = entryDate;
         firstDepositDateObj = new Date(firstDepositDate);
@@ -1086,7 +1337,6 @@ async function buildVaultHeaderMetrics(vaultName: string) {
     } else if (e.type === "WITHDRAW") {
       const usd = e.usdValue || 0;
       withdrawnCum += usd;
-      const entryDate = String(e.at).slice(0, 10);
       // Add withdrawal as positive cash flow (money coming out)
       if (firstDepositDateObj) {
         const daysFromStart = dateDiffInDays(
@@ -1106,6 +1356,19 @@ async function buildVaultHeaderMetrics(vaultName: string) {
         typeof e.usdValue === "number" ? e.usdValue : lastValuationUSD;
       netFlowSinceValUSD = 0; // reset on new valuation
     }
+  }
+  if (currentDate) {
+    const netContributed = depositedCum - withdrawnCum;
+    const isLiquidated = isLiquidatedState(
+      lastValuationUSD,
+      netFlowSinceValUSD,
+      positions,
+      netContributed,
+    );
+    if (isLiquidated && !wasLiquidated) {
+      liquidationDate = currentDate;
+    }
+    wasLiquidated = isLiquidated;
   }
 
   // AUM preference: last valuation + flows, else mark-to-market today
@@ -1127,12 +1390,15 @@ async function buildVaultHeaderMetrics(vaultName: string) {
       dateDiffInDays(firstDepositDateObj, new Date()) + 1,
     );
 
-    // If vault is fully liquidated (AUM = 0), get the last APR from the series (stay flat)
     if (aum < 1e-8) {
-      // Use buildVaultDailySeries to get the preserved APR
-      const series = await buildVaultDailySeries(vaultName);
-      if (series.length > 0) {
-        apr = series[series.length - 1].apr_percent;
+      if (netContributed > 1e-8) {
+        apr = roi;
+      } else if (liquidationDate) {
+        apr = await computeAprBeforeLiquidation(
+          entries as VaultEntry[],
+          liquidationDate,
+          firstDepositDateObj,
+        );
       }
     } else {
       // Add terminal value (current AUM) as positive cash flow

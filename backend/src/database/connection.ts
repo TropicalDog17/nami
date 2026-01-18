@@ -45,20 +45,9 @@ export function initializeDatabase(schemaPath?: string): void {
   const actualSchemaPath = schemaPath || path.join(__dirname, "schema.sql");
   const schema = fs.readFileSync(actualSchemaPath, "utf-8");
 
-  // Check if tables exist
-  const tableExists = connection
-    .prepare(
-      `
-    SELECT name FROM sqlite_master
-    WHERE type='table' AND name='transactions'
-  `,
-    )
-    .get();
-
-  if (!tableExists) {
-    connection.exec(schema);
-    console.log("Database schema initialized");
-  }
+  // Always execute schema since it uses IF NOT EXISTS and is safe to re-run.
+  connection.exec(schema);
+  console.log("Database schema initialized");
 }
 
 export function resetConnection(dbPath?: string): void {

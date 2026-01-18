@@ -7,6 +7,7 @@ import ToastWithProvider from './components/ui/Toast';
 import { AppProvider } from './context/AppContext';
 import { BackendStatusProvider } from './context/BackendStatusContext';
 import AdminPage from './pages/AdminPage';
+import BorrowingsPage from './pages/BorrowingsPage';
 import ReportsPage from './pages/ReportsPage';
 import TransactionPage from './pages/TransactionPage';
 import VaultDetailPage from './pages/VaultDetailPage';
@@ -37,6 +38,10 @@ function App() {
                                     <Route
                                         path="/vaults"
                                         element={<VaultsPage />}
+                                    />
+                                    <Route
+                                        path="/borrowings"
+                                        element={<BorrowingsPage />}
                                     />
                                     <Route
                                         path="/vault/:vaultId"

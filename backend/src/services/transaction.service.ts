@@ -9,6 +9,7 @@ import {
 import { transactionRepository } from "../repositories";
 import { vaultRepository } from "../repositories";
 import { settingsRepository } from "../repositories";
+import { borrowingRepository } from "../repositories";
 import { priceService } from "./price.service";
 import { vaultService } from "./vault.service";
 
@@ -189,6 +190,7 @@ export class TransactionService {
     account?: string;
     counterparty?: string;
     note?: string;
+    sourceRef?: string;
   }): Promise<Transaction> {
     const base = await this.buildTransactionBase(
       params.asset,
@@ -202,6 +204,7 @@ export class TransactionService {
       type: "BORROW",
       counterparty: params.counterparty,
       note: params.note,
+      sourceRef: params.sourceRef,
       ...base,
     } as Transaction;
 
@@ -244,6 +247,7 @@ export class TransactionService {
     account?: string;
     counterparty?: string;
     note?: string;
+    sourceRef?: string;
   }): Promise<Transaction> {
     const base = await this.buildTransactionBase(
       params.asset,
@@ -258,6 +262,7 @@ export class TransactionService {
       direction: params.direction,
       counterparty: params.counterparty,
       note: params.note,
+      sourceRef: params.sourceRef,
       ...base,
     } as Transaction;
 
@@ -318,15 +323,32 @@ export class TransactionService {
 
     const holdingsUSD = holdings.reduce((s, i) => s + i.valueUSD, 0);
 
+    const liabilities = await Promise.all(
+      borrowingRepository
+        .findByStatus("ACTIVE")
+        .filter((b) => b.outstanding > 0)
+        .map(async (b) => {
+          const rate = await priceService.getRateUSD(b.asset);
+          return {
+            counterparty: b.counterparty,
+            asset: b.asset,
+            amount: b.outstanding,
+            rateUSD: rate.rateUSD,
+            valueUSD: b.outstanding * rate.rateUSD,
+          };
+        }),
+    );
+    const liabilitiesUSD = liabilities.reduce((s, i) => s + i.valueUSD, 0);
+
     return {
       holdings,
-      liabilities: [],
+      liabilities,
       receivables: [],
       totals: {
         holdingsUSD,
-        liabilitiesUSD: 0,
+        liabilitiesUSD,
         receivablesUSD: 0,
-        netWorthUSD: holdingsUSD,
+        netWorthUSD: holdingsUSD - liabilitiesUSD,
       },
     };
   }

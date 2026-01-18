@@ -21,6 +21,7 @@ export async function parseExpenseText(
   llmClient: LLMClient,
   message: string,
   correlationId?: string,
+  availableTags?: string[],
 ): Promise<ParseTextResult> {
   const correlationLogger = createCorrelationLogger(correlationId);
 
@@ -40,7 +41,12 @@ export async function parseExpenseText(
     "- action must be one of: spend_vnd, credit_spend_vnd",
     '- params: account (can be empty string ""), vnd_amount (number), date (YYYY-MM-DD), counterparty?, tag?, note?',
     '- account should be left as empty string "" - backend will assign via vault defaults',
-    "- tag can be any relevant category (e.g., food, transport, shopping)",
+    "- counterparty: the business/shop/vendor where money was spent (e.g., 'hair salon', 'Starbucks', '7-Eleven', 'hair shop')",
+    "- tag: the beneficiary/purpose for whom the expense is made" +
+      (availableTags && availableTags.length > 0
+        ? `. Prefer existing tags when applicable: ${availableTags.join(", ")}`
+        : "") +
+      ". If no existing tag fits, use a descriptive one (e.g., 'girlfriend', 'personal_care', 'transport', 'shopping')",
     "- If date is explicitly mentioned in the message, use that date",
     "- If date is NOT mentioned, use today's date (format: YYYY-MM-DD)",
     "- Use unformatted numbers (no commas); Vietnamese k = thousand may appear",
@@ -155,10 +161,16 @@ function extractCodeBlock(text: string): string | null {
  * This is useful when processing messages from a Telegram topic/channel where
  * multiple users might post expenses in a single batch.
  */
+/**
+ * Parse multiple expense messages from a topic feed.
+ * This is useful when processing messages from a Telegram topic/channel where
+ * multiple users might post expenses in a single batch.
+ */
 export async function parseTopicMessages(
   llmClient: LLMClient,
   messages: string[],
   correlationId?: string,
+  availableTags?: string[],
 ): Promise<ParseTopicMessageResult> {
   const correlationLogger = createCorrelationLogger(correlationId);
 
@@ -177,6 +189,7 @@ export async function parseTopicMessages(
           llmClient,
           message,
           correlationId,
+          availableTags,
         );
         return {
           text: message,

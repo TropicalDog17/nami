@@ -229,6 +229,14 @@ export const transactionApi = {
         api.post<T>('/api/transactions/repay', payload),
 };
 
+// Borrowings API
+export const borrowingsApi = {
+    list: <T = unknown>(params: Record<string, unknown> = {}) =>
+        api.get<T>('/api/borrowings', params),
+    create: <T = unknown>(payload: unknown) =>
+        api.post<T>('/api/borrowings', payload),
+};
+
 // Actions API
 export const actionsApi = {
     perform: <T = unknown>(action: string, params: Record<string, unknown>) =>

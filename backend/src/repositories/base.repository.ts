@@ -1,6 +1,12 @@
 import fs from "fs";
 import path from "path";
-import { Transaction, Vault, VaultEntry, LoanAgreement } from "../types";
+import {
+  Transaction,
+  Vault,
+  VaultEntry,
+  LoanAgreement,
+  BorrowingAgreement,
+} from "../types";
 
 const DATA_DIR = path.resolve(__dirname, "..", "..", "data");
 const STORE_FILE = path.join(DATA_DIR, "store.json");
@@ -64,6 +70,7 @@ export interface PendingAction {
 export interface StoreShape {
   transactions: Transaction[];
   loans: LoanAgreement[];
+  borrowings: BorrowingAgreement[];
   vaults: Vault[];
   vaultEntries: VaultEntry[];
   adminTypes: AdminType[];
@@ -89,6 +96,7 @@ function ensureDataFile(): void {
     const initial: StoreShape = {
       transactions: [],
       loans: [],
+      borrowings: [],
       vaults: [],
       vaultEntries: [],
       adminTypes: [],
@@ -110,6 +118,7 @@ export function readStore(): StoreShape {
     return {
       transactions: Array.isArray(data.transactions) ? data.transactions : [],
       loans: Array.isArray(data.loans) ? data.loans : [],
+      borrowings: Array.isArray(data.borrowings) ? data.borrowings : [],
       vaults: Array.isArray(data.vaults) ? data.vaults : [],
       vaultEntries: Array.isArray(data.vaultEntries) ? data.vaultEntries : [],
       adminTypes: Array.isArray(data.adminTypes) ? data.adminTypes : [],
@@ -128,6 +137,7 @@ export function readStore(): StoreShape {
     return {
       transactions: [],
       loans: [],
+      borrowings: [],
       vaults: [],
       vaultEntries: [],
       adminTypes: [],

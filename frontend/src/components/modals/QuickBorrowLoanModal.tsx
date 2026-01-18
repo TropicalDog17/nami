@@ -13,16 +13,12 @@ import { Label } from '@/components/ui/label';
 import {
     Select,
     SelectContent,
+    SelectItem,
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
 
 import { useApp } from '../../context/AppContext';
-
-interface Account {
-    name: string;
-    is_active: boolean;
-}
 
 interface Asset {
     symbol: string;
@@ -35,9 +31,10 @@ interface QuickBorrowLoanModalProps {
     mode: 'borrow' | 'loan';
     onClose: () => void;
     onSubmit: (data: {
-        date: string;
+        startDate: string;
+        firstDueDate?: string;
         amount: number;
-        account?: string;
+        monthlyPayment?: number;
         asset: string; // symbol
         counterparty?: string;
         note?: string;
@@ -50,31 +47,42 @@ const QuickBorrowLoanModal: React.FC<QuickBorrowLoanModalProps> = ({
     onClose,
     onSubmit,
 }) => {
-    const { accounts, assets } = useApp();
+    const { assets } = useApp();
     const today = new Date().toISOString().split('T')[0];
 
     const [form, setForm] = useState({
-        date: today,
+        startDate: today,
+        firstDueDate: today,
         amount: '',
-        account: '',
+        monthlyPayment: '',
         asset: 'USD',
         counterparty: '',
         note: '',
     });
     const [submitting, setSubmitting] = useState(false);
 
-    const title = mode === 'borrow' ? 'Quick Borrow' : 'Quick Loan';
-    const cta = mode === 'borrow' ? 'Save Borrow' : 'Save Loan';
+    const title = mode === 'borrow' ? 'Borrowing Agreement' : 'Quick Loan';
+    const cta = mode === 'borrow' ? 'Save Borrowing' : 'Save Loan';
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!form.amount || Number(form.amount) <= 0) return;
+        if (
+            mode === 'borrow' &&
+            form.monthlyPayment &&
+            Number(form.monthlyPayment) <= 0
+        )
+            return;
         setSubmitting(true);
         try {
             await onSubmit({
-                date: form.date,
+                startDate: form.startDate,
+                firstDueDate: form.firstDueDate,
                 amount: Number(form.amount),
-                account: form.account || undefined,
+                monthlyPayment:
+                    mode === 'borrow' && form.monthlyPayment
+                        ? Number(form.monthlyPayment)
+                        : undefined,
                 asset: form.asset,
                 counterparty: form.counterparty || undefined,
                 note: form.note || undefined,
@@ -99,20 +107,47 @@ const QuickBorrowLoanModal: React.FC<QuickBorrowLoanModalProps> = ({
                     className="space-y-4"
                 >
                     <div className="space-y-2">
-                        <Label htmlFor="date">Date</Label>
+                        <Label htmlFor="start-date">
+                            {mode === 'borrow' ? 'Start Date' : 'Date'}
+                        </Label>
                         <Input
-                            id="date"
+                            id="start-date"
                             type="date"
-                            value={form.date}
+                            value={form.startDate}
                             onChange={(e) =>
-                                setForm((s) => ({ ...s, date: e.target.value }))
+                                setForm((s) => ({
+                                    ...s,
+                                    startDate: e.target.value,
+                                }))
                             }
                             required
                         />
                     </div>
 
+                    {mode === 'borrow' && (
+                        <div className="space-y-2">
+                            <Label htmlFor="first-due-date">
+                                First Due Date
+                            </Label>
+                            <Input
+                                id="first-due-date"
+                                type="date"
+                                value={form.firstDueDate}
+                                onChange={(e) =>
+                                    setForm((s) => ({
+                                        ...s,
+                                        firstDueDate: e.target.value,
+                                    }))
+                                }
+                                required
+                            />
+                        </div>
+                    )}
+
                     <div className="space-y-2">
-                        <Label htmlFor="amount">Amount</Label>
+                        <Label htmlFor="amount">
+                            {mode === 'borrow' ? 'Principal' : 'Amount'}
+                        </Label>
                         <Input
                             id="amount"
                             type="number"
@@ -129,29 +164,29 @@ const QuickBorrowLoanModal: React.FC<QuickBorrowLoanModalProps> = ({
                         />
                     </div>
 
-                    <div className="space-y-2">
-                        <Label htmlFor="account">Account</Label>
-                        <Select
-                            value={form.account}
-                            onValueChange={(value) =>
-                                setForm((s) => ({ ...s, account: value }))
-                            }
-                        >
-                            <SelectTrigger id="account">
-                                <SelectValue placeholder="Select account" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <option value="">Select account</option>
-                                {(accounts ?? [])
-                                    .filter((a: Account) => a.is_active)
-                                    .map((a: Account) => (
-                                        <option key={a.name} value={a.name}>
-                                            {a.name}
-                                        </option>
-                                    ))}
-                            </SelectContent>
-                        </Select>
-                    </div>
+                    {mode === 'borrow' && (
+                        <div className="space-y-2">
+                            <Label htmlFor="monthly-payment">
+                                Estimated Monthly Payment
+                            </Label>
+                            <Input
+                                id="monthly-payment"
+                                type="number"
+                                step="any"
+                                value={form.monthlyPayment}
+                                onChange={(e) =>
+                                    setForm((s) => ({
+                                        ...s,
+                                        monthlyPayment: e.target.value,
+                                    }))
+                                }
+                                placeholder="0.00 (optional)"
+                            />
+                            <p className="text-xs text-gray-500">
+                                Used for cashflow prediction only.
+                            </p>
+                        </div>
+                    )}
 
                     <div className="space-y-2">
                         <Label htmlFor="asset">Asset</Label>
@@ -168,13 +203,13 @@ const QuickBorrowLoanModal: React.FC<QuickBorrowLoanModalProps> = ({
                                 {(assets ?? [])
                                     .filter((as: Asset) => as.is_active)
                                     .map((as: Asset) => (
-                                        <option
+                                        <SelectItem
                                             key={as.symbol}
                                             value={as.symbol}
                                         >
                                             {as.symbol}
                                             {as.name ? ` - ${as.name}` : ''}
-                                        </option>
+                                        </SelectItem>
                                     ))}
                             </SelectContent>
                         </Select>
@@ -219,10 +254,7 @@ const QuickBorrowLoanModal: React.FC<QuickBorrowLoanModalProps> = ({
                         >
                             Cancel
                         </Button>
-                        <Button
-                            type="submit"
-                            disabled={submitting || !form.amount}
-                        >
+                        <Button type="submit" disabled={submitting || !form.amount}>
                             {submitting ? 'Saving…' : cta}
                         </Button>
                     </DialogFooter>

@@ -423,23 +423,26 @@ const AdminPage = () => {
             </div>
 
             {/* Tabs */}
-            <div className="border-b border-gray-200 mb-6 flex justify-center">
-                <nav className="-mb-px flex space-x-8">
+            <div className="mb-6 flex justify-center">
+                <nav className="inline-flex bg-gray-100 rounded-lg p-1 gap-1">
                     {tabs.map((tab) => (
-                        <Button
+                        <button
                             key={tab.id}
-                            variant="ghost"
                             onClick={() => setActiveTab(tab.id)}
-                            className={`${
-                                activeTab === tab.id
-                                    ? 'border-blue-500 text-blue-600'
-                                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                            } whitespace-nowrap py-2 px-1 border-b-2 font-medium text-sm flex items-center space-x-2`}
+                            className={`
+                                px-4 py-2 rounded-md text-sm font-medium transition-all duration-200
+                                flex items-center gap-2
+                                ${
+                                    activeTab === tab.id
+                                        ? 'bg-white text-gray-900 shadow-sm'
+                                        : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+                                }
+                            `}
                             data-testid={`admin-tab-${tab.id}`}
                         >
-                            <span>{tab.icon}</span>
+                            <span className="text-base">{tab.icon}</span>
                             <span>{tab.name}</span>
-                        </Button>
+                        </button>
                     ))}
                 </nav>
             </div>

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
 import {
@@ -13,16 +13,12 @@ import { Label } from '@/components/ui/label';
 import {
     Select,
     SelectContent,
+    SelectItem,
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
 
 import { useApp } from '../../context/AppContext';
-
-interface Account {
-    name: string;
-    is_active: boolean;
-}
 
 interface Asset {
     symbol: string;
@@ -36,46 +32,52 @@ interface QuickRepayModalProps {
     onSubmit: (data: {
         date: string;
         amount: number;
-        account?: string;
         asset: string; // symbol
         counterparty?: string;
         note?: string;
         direction: 'BORROW' | 'LOAN';
     }) => Promise<void>;
+    fixedDirection?: 'BORROW' | 'LOAN';
 }
 
 const QuickRepayModal: React.FC<QuickRepayModalProps> = ({
     isOpen,
     onClose,
     onSubmit,
+    fixedDirection,
 }) => {
-    const { accounts, assets } = useApp();
+    const { assets } = useApp();
     const today = new Date().toISOString().split('T')[0];
 
     const [form, setForm] = useState({
         date: today,
         amount: '',
-        account: '',
         asset: 'USD',
         counterparty: '',
         note: '',
-        direction: 'BORROW' as 'BORROW' | 'LOAN',
+        direction: (fixedDirection ?? 'BORROW') as 'BORROW' | 'LOAN',
     });
     const [submitting, setSubmitting] = useState(false);
+
+    useEffect(() => {
+        if (fixedDirection) {
+            setForm((s) => ({ ...s, direction: fixedDirection }));
+        }
+    }, [fixedDirection]);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!form.amount || Number(form.amount) <= 0) return;
         setSubmitting(true);
         try {
+            const direction = fixedDirection ?? form.direction;
             await onSubmit({
                 date: form.date,
                 amount: Number(form.amount),
-                account: form.account || undefined,
                 asset: form.asset,
                 counterparty: form.counterparty || undefined,
                 note: form.note || undefined,
-                direction: form.direction,
+                direction,
             });
             onClose();
         } catch (_err) {
@@ -109,30 +111,32 @@ const QuickRepayModal: React.FC<QuickRepayModalProps> = ({
                         />
                     </div>
 
-                    <div className="space-y-2">
-                        <Label htmlFor="direction">Direction</Label>
-                        <Select
-                            value={form.direction}
-                            onValueChange={(value) =>
-                                setForm((s) => ({
-                                    ...s,
-                                    direction: value as 'BORROW' | 'LOAN',
-                                }))
-                            }
-                        >
-                            <SelectTrigger id="direction">
-                                <SelectValue placeholder="Select direction" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <option value="BORROW">
-                                    Repay a Borrow (you owe)
-                                </option>
-                                <option value="LOAN">
-                                    Collect a Loan (they owe you)
-                                </option>
-                            </SelectContent>
-                        </Select>
-                    </div>
+                    {!fixedDirection && (
+                        <div className="space-y-2">
+                            <Label htmlFor="direction">Direction</Label>
+                            <Select
+                                value={form.direction}
+                                onValueChange={(value) =>
+                                    setForm((s) => ({
+                                        ...s,
+                                        direction: value as 'BORROW' | 'LOAN',
+                                    }))
+                                }
+                            >
+                                <SelectTrigger id="direction">
+                                    <SelectValue placeholder="Select direction" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="BORROW">
+                                        Repay a Borrow (you owe)
+                                    </SelectItem>
+                                    <SelectItem value="LOAN">
+                                        Collect a Loan (they owe you)
+                                    </SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
+                    )}
 
                     <div className="space-y-2">
                         <Label htmlFor="amount">Amount</Label>
@@ -153,30 +157,6 @@ const QuickRepayModal: React.FC<QuickRepayModalProps> = ({
                     </div>
 
                     <div className="space-y-2">
-                        <Label htmlFor="account">Account</Label>
-                        <Select
-                            value={form.account}
-                            onValueChange={(value) =>
-                                setForm((s) => ({ ...s, account: value }))
-                            }
-                        >
-                            <SelectTrigger id="account">
-                                <SelectValue placeholder="Select account" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <option value="">Select account</option>
-                                {(accounts ?? [])
-                                    .filter((a: Account) => a.is_active)
-                                    .map((a: Account) => (
-                                        <option key={a.name} value={a.name}>
-                                            {a.name}
-                                        </option>
-                                    ))}
-                            </SelectContent>
-                        </Select>
-                    </div>
-
-                    <div className="space-y-2">
                         <Label htmlFor="asset">Asset</Label>
                         <Select
                             value={form.asset}
@@ -191,13 +171,13 @@ const QuickRepayModal: React.FC<QuickRepayModalProps> = ({
                                 {(assets ?? [])
                                     .filter((as: Asset) => as.is_active)
                                     .map((as: Asset) => (
-                                        <option
+                                        <SelectItem
                                             key={as.symbol}
                                             value={as.symbol}
                                         >
                                             {as.symbol}
                                             {as.name ? ` - ${as.name}` : ''}
-                                        </option>
+                                        </SelectItem>
                                     ))}
                             </SelectContent>
                         </Select>

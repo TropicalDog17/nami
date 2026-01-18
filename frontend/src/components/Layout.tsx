@@ -20,6 +20,11 @@ const Layout = ({ children }: LayoutProps) => {
                 location.pathname.startsWith('/vault/'),
         },
         {
+            name: 'Borrowing',
+            href: '/borrowings',
+            current: location.pathname === '/borrowings',
+        },
+        {
             name: 'Admin',
             href: '/admin',
             current: location.pathname === '/admin',

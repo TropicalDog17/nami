@@ -6,10 +6,10 @@ import { fileURLToPath } from "url";
 import { LLMClient } from "./llm.js";
 import { AppConfig } from "../utils/config.js";
 import { logger, createCorrelationLogger } from "../utils/logger.js";
-import { createPendingAction, redact } from "../api/backendClient.js";
+import { createPendingAction, redact, getTags } from "../api/backendClient.js";
 import { parseExpenseText, parseTopicMessages } from "../core/parser.js";
 import { parseBankScreenshot } from "./vision.js";
-import { PendingActionCreate, ActionRequest } from "../core/schemas.js";
+import { PendingActionCreate } from "../core/schemas.js";
 import { handleAndLogError, ErrorCategory } from "../utils/errors.js";
 import {
     processBankStatementFile,
@@ -20,37 +20,11 @@ import {
     getLastProcessedMessageId,
     setLastProcessedMessageId,
 } from "../utils/topicState.js";
+import { sessionStore, type SessionState, type PendingBatchItem } from "../utils/sessionState.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 type Ctx = Context & { state: Record<string, unknown> };
-
-interface PendingBatchItem {
-    id: string;
-    messageId: number;
-    text: string;
-    payload: PendingActionCreate;
-    parsedAction?: ActionRequest;
-    status: "pending" | "approved" | "rejected";
-}
-
-interface SessionState {
-    awaitingAccountForBatch?: string;
-    pendingReview?: {
-        payload: PendingActionCreate;
-        correlationId: string;
-        parsedAction: any;
-    };
-    pendingBatch?: {
-        items: PendingBatchItem[];
-        correlationId: string;
-        chatId: number;
-        topicId: number;
-        displayMessageId?: number;
-    };
-}
-
-const sessionStore = new Map<number, SessionState>();
 
 // Generate a unique ID for the review session
 function generateReviewId(): string {
@@ -74,19 +48,19 @@ function formatPreviewMessage(action: any, rawInput: string): string {
         );
         lines.push("*Date:* `" + params.date + "`");
         if (params.counterparty) {
-            lines.push("*Counterparty:* `" + params.counterparty + "`");
+            lines.push("*Counterparty:* `" + escapeMarkdown(params.counterparty) + "`");
         }
         if (params.tag) {
-            lines.push("*Tag:* `" + params.tag + "`");
+            lines.push("*Tag:* `" + escapeMarkdown(params.tag) + "`");
         }
         if (params.note) {
-            lines.push("*Note:* `" + params.note + "`");
+            lines.push("*Note:* `" + escapeMarkdown(params.note) + "`");
         }
     }
 
     lines.push("");
     lines.push("*Original message:*");
-    lines.push('"' + rawInput + '"');
+    lines.push('"' + escapeMarkdown(rawInput) + '"');
     lines.push("");
     lines.push("Please review and approve, or provide corrections.");
 
@@ -94,6 +68,11 @@ function formatPreviewMessage(action: any, rawInput: string): string {
 }
 
 // Format a single batch item for display
+// Escape Markdown special characters in user-provided text
+function escapeMarkdown(text: string): string {
+    return text.replace(/[*_`[\]()~>#+\-=|{}.!\\]/g, "\\$&");
+}
+
 function formatBatchItemMessage(item: PendingBatchItem, index: number): string {
     const lines: string[] = [];
     const statusText =
@@ -110,15 +89,15 @@ function formatBatchItemMessage(item: PendingBatchItem, index: number): string {
         lines.push(`  Amount: ${params.vnd_amount.toLocaleString()} VND`);
         lines.push(`  Date: ${params.date}`);
         if (params.counterparty) {
-            lines.push(`  Counterparty: ${params.counterparty}`);
+            lines.push(`  Counterparty: ${escapeMarkdown(params.counterparty)}`);
         }
         if (params.tag) {
-            lines.push(`  Tag: ${params.tag}`);
+            lines.push(`  Tag: ${escapeMarkdown(params.tag)}`);
         }
     } else {
         lines.push(`  [Could not parse]`);
     }
-    lines.push(`  Raw: "${item.text.substring(0, 50)}${item.text.length > 50 ? "..." : ""}"`);
+    lines.push(`  Raw: "${escapeMarkdown(item.text.substring(0, 50))}${item.text.length > 50 ? "..." : ""}"`);
 
     return lines.join("\n");
 }
@@ -395,12 +374,17 @@ export function buildBot(cfg: AppConfig, openai: OpenAI) {
                     correlationId
                 );
 
+                // Fetch available tags for better parsing
+                const tagsData = await getTags(cfg, correlationId);
+                const availableTags = tagsData.map((t) => t.name);
+
                 // Use the original input + correction for context
                 const correctionPrompt = `Original: "${state.pendingReview.payload.raw_input}"\n\nUser correction: "${text}"\n\nParse the corrected version.`;
                 const parsed = await parseExpenseText(
                     llmClient,
                     correctionPrompt,
-                    correlationId
+                    correlationId,
+                    availableTags
                 );
 
                 if (!parsed.action) {
@@ -472,11 +456,16 @@ export function buildBot(cfg: AppConfig, openai: OpenAI) {
                 correlationId
             );
 
+            // Fetch available tags for better parsing
+            const tagsData = await getTags(cfg, correlationId);
+            const availableTags = tagsData.map((t) => t.name);
+
             // Parse expense text without grounding - backend handles account assignment via vault defaults
             const parsed = await parseExpenseText(
                 llmClient,
                 text,
-                correlationId
+                correlationId,
+                availableTags
             );
 
             if (!parsed.action) {

@@ -5,8 +5,6 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
-import QuickBorrowLoanModal from '../components/modals/QuickBorrowLoanModal';
-import QuickRepayModal from '../components/modals/QuickRepayModal';
 import { TimeSeriesLineChart } from '../components/reports/Charts';
 import ManualPricingControl from '../components/tokenized/ManualPricingControl';
 import ComboBox from '../components/ui/ComboBox';
@@ -17,7 +15,6 @@ import {
     transactionApi,
     tokenizedVaultApi,
     vaultLedgerApi,
-    portfolioApi,
     reportsApi,
     adminApi,
     ApiError,
@@ -310,19 +307,6 @@ const VaultDetailPage: React.FC = () => {
         };
         void fetchHeader();
     }, [isTokenizedVault, tokenizedVaultDetails?.id]);
-
-    // Borrowings special UI state
-    const [borrowingsSummary, setBorrowingsSummary] = useState<null | {
-        outstandingUSD: number;
-        liabilities: Array<{
-            counterparty: string;
-            asset: string;
-            amount: number;
-            valueUSD: number;
-        }>;
-    }>(null);
-    const [showBorrowModal, setShowBorrowModal] = useState(false);
-    const [showRepayModal, setShowRepayModal] = useState(false);
 
     // Tokenized vault deposit/withdraw UI state
     const [showTokenizedDepositForm, setShowTokenizedDepositForm] =
@@ -742,61 +726,6 @@ const VaultDetailPage: React.FC = () => {
         void fetchAllVaults();
     }, [vaultId]);
 
-    // Load Borrowings summary when viewing the Borrowings vault
-    useEffect(() => {
-        const fetchBorrowings = async () => {
-            try {
-                const isBorrowings = isTokenizedVault
-                    ? String(
-                          tokenizedVaultDetails?.name ?? ''
-                      ).toLowerCase() === 'borrowings'
-                    : vaultId.toLowerCase() === 'borrowings';
-                if (!isBorrowings) {
-                    setBorrowingsSummary(null);
-                    return;
-                }
-                const r = await portfolioApi.report<Record<string, unknown>>();
-                const liabs = Array.isArray(r?.liabilities)
-                    ? r.liabilities
-                    : [];
-                const mapped = liabs.map((o: Record<string, unknown>) => {
-                    const counterpartyRaw = o?.counterparty;
-                    const counterparty =
-                        typeof counterpartyRaw === 'string'
-                            ? counterpartyRaw
-                            : '';
-                    const assetRaw = o?.asset;
-                    let asset = '';
-                    if (typeof assetRaw === 'string') {
-                        asset = assetRaw;
-                    } else if (
-                        typeof assetRaw === 'object' &&
-                        assetRaw !== null
-                    ) {
-                        const symbolRaw = (assetRaw as Record<string, unknown>)
-                            .symbol;
-                        asset = typeof symbolRaw === 'string' ? symbolRaw : '';
-                    }
-                    return {
-                        counterparty,
-                        asset,
-                        amount: Number(o?.amount ?? 0),
-                        valueUSD: Number(o?.valueUSD ?? 0),
-                    };
-                });
-                const outstandingUSD = mapped.reduce(
-                    (s: number, x: { valueUSD?: number }) =>
-                        s + (Number(x.valueUSD) || 0),
-                    0
-                );
-                setBorrowingsSummary({ outstandingUSD, liabilities: mapped });
-            } catch (_e) {
-                setBorrowingsSummary(null);
-            }
-        };
-        void fetchBorrowings();
-    }, [isTokenizedVault, tokenizedVaultDetails, vaultId]);
-
     const toISODateTime = (value?: string): string => {
         if (!value) return new Date().toISOString();
         const s = String(value);
@@ -928,11 +857,11 @@ const VaultDetailPage: React.FC = () => {
 
     // Whether the current vault represents the special Borrowings view
     const isBorrowings = useMemo(() => {
-        return (
-            String(tokenizedVaultDetails?.name ?? '').toLowerCase() ===
-            'borrowings'
-        );
-    }, [tokenizedVaultDetails]);
+        const name = String(
+            tokenizedVaultDetails?.name ?? vaultId ?? ''
+        ).toLowerCase();
+        return name === 'borrowings';
+    }, [tokenizedVaultDetails, vaultId]);
 
     // Whether the current vault represents the special Spend view
     const isSpend = useMemo(() => {
@@ -940,142 +869,12 @@ const VaultDetailPage: React.FC = () => {
             String(tokenizedVaultDetails?.name ?? '').toLowerCase() === 'spend'
         );
     }, [tokenizedVaultDetails]);
-
-    // Helpers and handlers for Borrowings quick actions
-    const toAssetObj = (symbol: string) => ({
-        type:
-            symbol.toUpperCase() === 'USD' || symbol.length === 3
-                ? ('FIAT' as const)
-                : ('CRYPTO' as const),
-        symbol: symbol.toUpperCase(),
-    });
-
-    const _refreshBorrowingsExternal = useCallback(async () => {
-        try {
-            const r = await portfolioApi.report<Record<string, unknown>>();
-            const liabs = Array.isArray(r?.liabilities) ? r.liabilities : [];
-            const mapped = liabs.map((o: Record<string, unknown>) => {
-                const counterpartyRaw = o?.counterparty;
-                const counterparty =
-                    typeof counterpartyRaw === 'string' ? counterpartyRaw : '';
-                const assetRaw = o?.asset;
-                let asset = '';
-                if (typeof assetRaw === 'string') {
-                    asset = assetRaw;
-                } else if (typeof assetRaw === 'object' && assetRaw !== null) {
-                    const symbolRaw = (assetRaw as Record<string, unknown>)
-                        .symbol;
-                    asset = typeof symbolRaw === 'string' ? symbolRaw : '';
-                }
-                return {
-                    counterparty,
-                    asset,
-                    amount: Number(o?.amount ?? 0),
-                    valueUSD: Number(o?.valueUSD ?? 0),
-                };
-            });
-            const outstandingUSD = mapped.reduce(
-                (s: number, x: { valueUSD?: number }) =>
-                    s + (Number(x.valueUSD) || 0),
-                0
-            );
-            setBorrowingsSummary({ outstandingUSD, liabilities: mapped });
-        } catch {
-            // ignore
-        }
-    }, []);
-
-    const handleBorrowSubmit = useCallback(
-        async (d: {
-            date: string;
-            amount: number;
-            account?: string;
-            asset: string;
-            counterparty?: string;
-            note?: string;
-        }) => {
-            await transactionApi.borrow({
-                asset: toAssetObj(d.asset),
-                amount: Number(d.amount),
-                account: d.account ?? undefined,
-                counterparty: d.counterparty ?? 'general',
-                note: d.note ?? undefined,
-                at: d.date,
-            } as {
-                asset: { symbol?: string };
-                amount: number;
-                account?: string;
-                counterparty: string;
-                note?: string;
-                at: string;
-            });
-            await loadVault();
-            await _refreshBorrowingsExternal();
-            setShowBorrowModal(false);
-        },
-        [loadVault, _refreshBorrowingsExternal]
-    );
-
-    const handleRepaySubmit = useCallback(
-        async (d: {
-            date: string;
-            amount: number;
-            account?: string;
-            asset: string;
-            counterparty?: string;
-            note?: string;
-            direction: 'BORROW' | 'LOAN';
-        }) => {
-            await transactionApi.repay({
-                asset: toAssetObj(d.asset),
-                amount: Number(d.amount),
-                account: d.account ?? undefined,
-                counterparty: d.counterparty ?? 'general',
-                note: d.note ?? undefined,
-                direction: 'BORROW',
-                at: d.date,
-            } as {
-                asset: { symbol?: string };
-                amount: number;
-                account?: string;
-                counterparty: string;
-                note?: string;
-                direction: string;
-                at: string;
-            });
-            await loadVault();
-            await _refreshBorrowingsExternal();
-            setShowRepayModal(false);
-        },
-        [loadVault, _refreshBorrowingsExternal]
-    );
     if (loading) {
         return (
             <div className="px-4 py-6 sm:px-0">
                 <div className="flex items-center justify-center h-64">
                     <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
                 </div>
-
-                {/* Borrow/Repay modals for Borrowings */}
-                {isBorrowings && (
-                    <>
-                        <QuickBorrowLoanModal
-                            isOpen={showBorrowModal}
-                            mode="borrow"
-                            onClose={() => setShowBorrowModal(false)}
-                            onSubmit={async (d) => {
-                                await handleBorrowSubmit(d);
-                            }}
-                        />
-                        <QuickRepayModal
-                            isOpen={showRepayModal}
-                            onClose={() => setShowRepayModal(false)}
-                            onSubmit={async (d) => {
-                                await handleRepaySubmit(d);
-                            }}
-                        />
-                    </>
-                )}
             </div>
         );
     }
@@ -1092,6 +891,29 @@ const VaultDetailPage: React.FC = () => {
                         Back to Vaults
                     </Button>
                 </div>
+            </div>
+        );
+    }
+
+    if (isBorrowings) {
+        return (
+            <div className="px-4 py-6 sm:px-0">
+                <Card>
+                    <CardHeader>
+                        <CardTitle className="text-lg font-semibold">
+                            Borrowing has moved
+                        </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                        <p className="text-sm text-gray-600 mb-4">
+                            Use the Borrowing tab to manage agreements and
+                            repayments.
+                        </p>
+                        <Button onClick={() => navigate('/borrowings')}>
+                            Go to Borrowing
+                        </Button>
+                    </CardContent>
+                </Card>
             </div>
         );
     }
@@ -1196,8 +1018,6 @@ const VaultDetailPage: React.FC = () => {
             label: status,
             className: 'bg-gray-100 text-gray-800',
         };
-        const isBorrowings =
-            (tokenizedVaultDetails.name ?? '').toLowerCase() === 'borrowings';
 
         const canDeposit =
             tokenizedVaultDetails.status === 'active' &&
@@ -1205,83 +1025,6 @@ const VaultDetailPage: React.FC = () => {
         const canWithdraw =
             tokenizedVaultDetails.status === 'active' &&
             tokenizedVaultDetails.is_withdrawal_allowed;
-
-        const toAssetObj = (symbol: string) => ({
-            type:
-                symbol.toUpperCase() === 'USD' || symbol.length === 3
-                    ? ('FIAT' as const)
-                    : ('CRYPTO' as const),
-            symbol: symbol.toUpperCase(),
-        });
-        const _refreshBorrowings = async () => {
-            try {
-                const r = await portfolioApi.report<Record<string, unknown>>();
-                const liabs = Array.isArray(r?.liabilities)
-                    ? r.liabilities
-                    : [];
-                const mapped = liabs.map((o: Record<string, unknown>) => {
-                    const counterpartyRaw = o?.counterparty;
-                    const counterparty =
-                        typeof counterpartyRaw === 'string'
-                            ? counterpartyRaw
-                            : '';
-                    const assetRaw = o?.asset;
-                    let asset = '';
-                    if (typeof assetRaw === 'string') {
-                        asset = assetRaw;
-                    } else if (
-                        typeof assetRaw === 'object' &&
-                        assetRaw !== null
-                    ) {
-                        const symbolRaw = (assetRaw as Record<string, unknown>)
-                            .symbol;
-                        asset = typeof symbolRaw === 'string' ? symbolRaw : '';
-                    }
-                    return {
-                        counterparty,
-                        asset,
-                        amount: Number(o?.amount ?? 0),
-                        valueUSD: Number(o?.valueUSD ?? 0),
-                    };
-                });
-                const outstandingUSD = mapped.reduce(
-                    (s: number, x: { valueUSD?: number }) =>
-                        s + (Number(x.valueUSD) || 0),
-                    0
-                );
-                setBorrowingsSummary({ outstandingUSD, liabilities: mapped });
-            } catch {
-                // ignore
-            }
-        };
-
-        const _handleBorrowSubmit = async (d: {
-            date: string;
-            amount: number;
-            account?: string;
-            asset: string;
-            counterparty?: string;
-            note?: string;
-        }) => {
-            await transactionApi.borrow({
-                asset: toAssetObj(d.asset),
-                amount: Number(d.amount),
-                account: d.account ?? undefined,
-                counterparty: d.counterparty ?? 'general',
-                note: d.note ?? undefined,
-                at: d.date,
-            } as {
-                asset: { symbol?: string };
-                amount: number;
-                account?: string;
-                counterparty: string;
-                note?: string;
-                at: string;
-            });
-            await loadVault();
-            await _refreshBorrowings();
-            setShowBorrowModal(false);
-        };
 
         return (
             <div
@@ -1313,133 +1056,8 @@ const VaultDetailPage: React.FC = () => {
                     </span>
                 </div>
 
-                {/* Borrowings special summary */}
-                {isBorrowings && (
-                    <Card className="mb-6">
-                        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
-                            <CardTitle className="text-lg font-semibold">
-                                Borrowings Overview
-                            </CardTitle>
-                            <div className="flex gap-2">
-                                <Button
-                                    onClick={() => {
-                                        setShowBorrowModal(true);
-                                        setShowRepayModal(false);
-                                    }}
-                                    variant="destructive"
-                                    size="sm"
-                                >
-                                    Borrow
-                                </Button>
-                                <Button
-                                    onClick={() => {
-                                        setShowRepayModal(true);
-                                        setShowBorrowModal(false);
-                                    }}
-                                    size="sm"
-                                >
-                                    Repay
-                                </Button>
-                            </div>
-                        </CardHeader>
-                        <CardContent>
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                <div>
-                                    <div className="text-gray-500 text-sm">
-                                        Outstanding Balance
-                                    </div>
-                                    <div className="text-2xl font-bold text-red-700">
-                                        {formatCurrency(
-                                            Math.abs(
-                                                borrowingsSummary?.outstandingUSD ??
-                                                    0
-                                            )
-                                        )}
-                                    </div>
-                                    <div className="text-xs text-gray-500">
-                                        Liability
-                                    </div>
-                                </div>
-                                <div>
-                                    <div className="text-gray-500 text-sm">
-                                        Entries
-                                    </div>
-                                    <div className="text-xl font-semibold">
-                                        {borrowingsSummary?.liabilities
-                                            ?.length ?? 0}
-                                    </div>
-                                </div>
-                                <div>
-                                    <div className="text-gray-500 text-sm">
-                                        Updated
-                                    </div>
-                                    <div className="text-sm">
-                                        {new Date().toLocaleString()}
-                                    </div>
-                                </div>
-                            </div>
-                            {borrowingsSummary &&
-                                borrowingsSummary.liabilities.length > 0 && (
-                                    <div className="mt-4 overflow-x-auto">
-                                        <table className="min-w-full text-sm">
-                                            <thead>
-                                                <tr className="text-left text-gray-600">
-                                                    <th className="py-2 pr-4">
-                                                        Counterparty
-                                                    </th>
-                                                    <th className="py-2 pr-4">
-                                                        Asset
-                                                    </th>
-                                                    <th className="py-2 pr-4">
-                                                        Amount
-                                                    </th>
-                                                    <th className="py-2 pr-4">
-                                                        Value (USD)
-                                                    </th>
-                                                </tr>
-                                            </thead>
-                                            <tbody>
-                                                {borrowingsSummary.liabilities.map(
-                                                    (o, idx) => (
-                                                        <tr
-                                                            key={idx}
-                                                            className="border-t"
-                                                        >
-                                                            <td className="py-2 pr-4">
-                                                                {o.counterparty ||
-                                                                    'general'}
-                                                            </td>
-                                                            <td className="py-2 pr-4">
-                                                                {o.asset}
-                                                            </td>
-                                                            <td className="py-2 pr-4">
-                                                                {Number(
-                                                                    o.amount
-                                                                ).toLocaleString(
-                                                                    undefined,
-                                                                    {
-                                                                        maximumFractionDigits: 6,
-                                                                    }
-                                                                )}
-                                                            </td>
-                                                            <td className="py-2 pr-4">
-                                                                {formatCurrency(
-                                                                    o.valueUSD
-                                                                )}
-                                                            </td>
-                                                        </tr>
-                                                    )
-                                                )}
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                )}
-                        </CardContent>
-                    </Card>
-                )}
-
                 {/* Spend Vault Summary */}
-                {isSpend && !isBorrowings && (
+                {isSpend && (
                     <Card className="mb-6">
                         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
                             <CardTitle className="text-lg font-semibold">
@@ -1506,7 +1124,7 @@ const VaultDetailPage: React.FC = () => {
                     </Card>
                 )}
 
-                {!isBorrowings && !isSpend && (
+                {!isSpend && (
                     <>
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
                             <Card>

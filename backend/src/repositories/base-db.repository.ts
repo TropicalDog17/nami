@@ -1,5 +1,11 @@
 import { getConnection } from "../database/connection";
-import { Transaction, Vault, VaultEntry, LoanAgreement } from "../types";
+import {
+  Transaction,
+  Vault,
+  VaultEntry,
+  LoanAgreement,
+  BorrowingAgreement,
+} from "../types";
 import { coerceNumber } from "../utils/number.util";
 
 // Helper to convert SQLite row to Transaction
@@ -149,6 +155,48 @@ export function loanToRow(loan: LoanAgreement): any {
     account: loan.account,
     status: loan.status,
     created_at: loan.createdAt,
+  };
+}
+
+// Helper to convert SQLite row to BorrowingAgreement
+export function rowToBorrowing(row: any): BorrowingAgreement {
+  return {
+    id: row.id,
+    counterparty: row.counterparty,
+    asset: {
+      type: row.asset_type,
+      symbol: row.asset_symbol,
+    },
+    principal: coerceNumber(row.principal),
+    monthlyPayment: coerceNumber(row.monthly_payment),
+    startAt: row.start_at,
+    firstDueAt: row.first_due_at,
+    nextPaymentAt: row.next_payment_at,
+    outstanding: coerceNumber(row.outstanding),
+    note: row.note,
+    account: row.account,
+    status: row.status,
+    createdAt: row.created_at,
+  };
+}
+
+// Helper to convert BorrowingAgreement to SQLite row
+export function borrowingToRow(borrowing: BorrowingAgreement): any {
+  return {
+    id: borrowing.id,
+    counterparty: borrowing.counterparty,
+    asset_type: borrowing.asset.type,
+    asset_symbol: borrowing.asset.symbol,
+    principal: coerceNumber(borrowing.principal),
+    monthly_payment: coerceNumber(borrowing.monthlyPayment),
+    start_at: borrowing.startAt,
+    first_due_at: borrowing.firstDueAt,
+    next_payment_at: borrowing.nextPaymentAt,
+    outstanding: coerceNumber(borrowing.outstanding),
+    note: borrowing.note,
+    account: borrowing.account,
+    status: borrowing.status,
+    created_at: borrowing.createdAt,
   };
 }
 

@@ -13,6 +13,7 @@ import { openapiSpec } from "./openapi";
 import { vaultsRouter } from "./handlers/vault.handler";
 import { adminRouter } from "./handlers/admin.handler";
 import { loansRouter } from "./handlers/loan.handler";
+import { borrowingsRouter } from "./handlers/borrowing.handler";
 import { aiRouter } from "./handlers/ai.handler";
 import { settingsRepository } from "./repositories";
 import { vaultService } from "./services/vault.service";
@@ -20,6 +21,7 @@ import { initializeDatabase, closeConnection } from "./database/connection";
 import { setupMonitoring, setMetrics } from "./monitoring";
 import { logger } from "./utils/logger";
 import { priceService } from "./services/price.service";
+import { borrowingService } from "./services/borrowing.service";
 
 const app = express();
 
@@ -50,6 +52,7 @@ app.use("/api", pricesRouter);
 app.use("/api", vaultsRouter);
 app.use("/api", adminRouter);
 app.use("/api", loansRouter);
+app.use("/api", borrowingsRouter);
 app.use("/api", aiRouter);
 
 // Metrics endpoint for Prometheus scraping
@@ -105,6 +108,9 @@ async function bootstrap() {
 
         // Initialize borrowing settings
         settingsRepository.getBorrowingSettings();
+
+        // Start auto-deduction scheduler for borrowings
+        borrowingService.startAutoDeductionScheduler();
 
         // Sync last 30 days of prices on startup
         logger.info("Syncing last 30 days of prices...");

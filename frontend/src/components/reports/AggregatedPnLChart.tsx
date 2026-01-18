@@ -356,14 +356,14 @@ export const AggregatedPnLChart: React.FC<AggregatedPnLChartProps> = ({
                                         tickLine={false}
                                         axisLine={false}
                                         tickMargin={8}
-                                        className="text-xs"
+                                        className="text-sm"
                                     />
                                     <YAxis
                                         yAxisId="left"
                                         tickLine={false}
                                         axisLine={false}
                                         tickMargin={8}
-                                        className="text-xs"
+                                        className="text-sm"
                                         tickFormatter={(value) => {
                                             // eslint-disable-next-line @typescript-eslint/no-unsafe-return, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
                                             return value.toLocaleString();
@@ -375,7 +375,7 @@ export const AggregatedPnLChart: React.FC<AggregatedPnLChartProps> = ({
                                         tickLine={false}
                                         axisLine={false}
                                         tickMargin={8}
-                                        className="text-xs"
+                                        className="text-sm"
                                         tickFormatter={(value) => {
                                             // eslint-disable-next-line @typescript-eslint/no-unsafe-return, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
                                             return value.toLocaleString();

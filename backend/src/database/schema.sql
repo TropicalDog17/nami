@@ -81,6 +81,27 @@ CREATE INDEX IF NOT EXISTS idx_loans_counterparty ON loans(counterparty);
 CREATE INDEX IF NOT EXISTS idx_loans_status ON loans(status);
 CREATE INDEX IF NOT EXISTS idx_loans_composite_status_start ON loans(status, start_at DESC);
 
+-- Borrowing agreements
+CREATE TABLE IF NOT EXISTS borrowings (
+  id TEXT PRIMARY KEY,
+  counterparty TEXT NOT NULL,
+  asset_type TEXT NOT NULL CHECK(asset_type IN ('CRYPTO', 'FIAT')),
+  asset_symbol TEXT NOT NULL,
+  principal REAL NOT NULL,
+  monthly_payment REAL NOT NULL,
+  start_at TEXT NOT NULL,
+  first_due_at TEXT NOT NULL,
+  next_payment_at TEXT NOT NULL,
+  outstanding REAL NOT NULL,
+  note TEXT,
+  account TEXT,
+  status TEXT NOT NULL CHECK(status IN ('ACTIVE', 'CLOSED')),
+  created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_borrowings_status ON borrowings(status);
+CREATE INDEX IF NOT EXISTS idx_borrowings_next_payment ON borrowings(next_payment_at);
+
 -- Admin configuration tables
 CREATE TABLE IF NOT EXISTS admin_types (
   id INTEGER PRIMARY KEY AUTOINCREMENT,

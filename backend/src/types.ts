@@ -136,6 +136,24 @@ export interface LoanAgreement {
   createdAt: string;
 }
 
+// Borrowings
+export type BorrowingStatus = "ACTIVE" | "CLOSED";
+export interface BorrowingAgreement {
+  id: string;
+  counterparty: string;
+  asset: Asset;
+  principal: number; // original amount borrowed
+  monthlyPayment: number; // fixed monthly payment amount
+  startAt: string; // ISO date when borrowing starts
+  firstDueAt: string; // ISO date of the first due payment
+  nextPaymentAt: string; // ISO date of next payment due
+  outstanding: number; // remaining principal balance
+  note?: string;
+  account?: string; // optional payment account override
+  status: BorrowingStatus;
+  createdAt: string;
+}
+
 // Zod Schemas
 export const AssetSchema = z.object({
   type: z.enum(["CRYPTO", "FIAT"]),
@@ -209,6 +227,19 @@ export const LoanCreateBatchSchema = z.object({
 });
 export type LoanCreateRequest = z.infer<typeof LoanCreateSchema>;
 export type LoanCreateBatchRequest = z.infer<typeof LoanCreateBatchSchema>;
+
+// Borrowing Schemas
+export const BorrowingCreateSchema = z.object({
+  asset: AssetSchema,
+  principal: z.number().positive(),
+  monthlyPayment: z.number().positive(),
+  counterparty: z.string().min(1),
+  startAt: z.string().datetime().optional(),
+  firstDueAt: z.string().datetime().optional(),
+  note: z.string().optional(),
+  account: z.string().optional(),
+});
+export type BorrowingCreateRequest = z.infer<typeof BorrowingCreateSchema>;
 
 export function assetKey(a: Asset): string {
   return `${a.type}:${a.symbol.toUpperCase()}`;

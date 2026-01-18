@@ -243,7 +243,15 @@ export const AdminPendingActions = () => {
                 status: statusFilter,
                 limit: 100,
             });
-            setItems(Array.isArray(result) ? result : []);
+            // Sort by created_at descending (newest first)
+            const sorted = Array.isArray(result)
+                ? result.sort(
+                      (a, b) =>
+                          new Date(b.created_at).getTime() -
+                          new Date(a.created_at).getTime()
+                  )
+                : [];
+            setItems(sorted);
         } catch (error) {
             const message =
                 error instanceof Error ? error.message : String(error);

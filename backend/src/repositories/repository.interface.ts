@@ -1,4 +1,10 @@
-import { Transaction, Vault, VaultEntry, LoanAgreement } from "../types";
+import {
+  Transaction,
+  Vault,
+  VaultEntry,
+  LoanAgreement,
+  BorrowingAgreement,
+} from "../types";
 import {
   AdminType,
   AdminAccount,
@@ -57,6 +63,19 @@ export interface ILoanRepository {
     id: string,
     updates: Partial<LoanAgreement>,
   ): LoanAgreement | undefined;
+  delete(id: string): boolean;
+}
+
+// Borrowing repository interface
+export interface IBorrowingRepository {
+  findAll(): BorrowingAgreement[];
+  findById(id: string): BorrowingAgreement | undefined;
+  findByStatus(status: string): BorrowingAgreement[];
+  create(borrowing: BorrowingAgreement): BorrowingAgreement;
+  update(
+    id: string,
+    updates: Partial<BorrowingAgreement>,
+  ): BorrowingAgreement | undefined;
   delete(id: string): boolean;
 }
 

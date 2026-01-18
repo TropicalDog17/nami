@@ -16,10 +16,11 @@ import {
     vaultsRouter,
     adminRouter,
     loansRouter,
+    borrowingsRouter,
     aiRouter,
 } from "../src/handlers";
 import { settingsRepository } from "../src/repositories";
-import { vaultService } from "../src/services";
+import { vaultService, borrowingService } from "../src/services";
 import { initializeDatabase } from "../src/database/connection";
 import { setupMonitoring, setMetrics } from "../src/monitoring";
 import { logger } from "../src/utils/logger";
@@ -54,6 +55,7 @@ app.use("/api", [
     vaultsRouter,
     adminRouter,
     loansRouter,
+    borrowingsRouter,
     aiRouter,
 ]);
 
@@ -98,6 +100,9 @@ function ensureInitialized() {
 
         // Initialize borrowing settings
         settingsRepository.getBorrowingSettings();
+
+        // Start auto-deduction scheduler for borrowings
+        borrowingService.startAutoDeductionScheduler();
 
         logger.info("Initialization complete.");
         initialized = true;

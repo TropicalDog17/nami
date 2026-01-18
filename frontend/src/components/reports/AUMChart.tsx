@@ -555,7 +555,7 @@ export const AUMChart: React.FC<AUMChartProps> = ({
                                         margin={{
                                             top: 10,
                                             right: 10,
-                                            left: 10,
+                                            left: 0,
                                             bottom: 0,
                                         }}
                                     >
@@ -568,13 +568,14 @@ export const AUMChart: React.FC<AUMChartProps> = ({
                                             tickLine={false}
                                             axisLine={false}
                                             tickMargin={8}
-                                            className="text-xs"
+                                            className="text-sm"
                                         />
                                         <YAxis
                                             tickLine={false}
                                             axisLine={false}
                                             tickMargin={8}
-                                            className="text-xs"
+                                            className="text-sm"
+                                            width={100}
                                             tickFormatter={(value) =>
                                                 formatCurrency(Number(value))
                                             }
