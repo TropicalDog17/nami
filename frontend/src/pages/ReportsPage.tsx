@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useEffect, useMemo, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 import { Button } from '@/components/ui/button';
@@ -12,6 +12,9 @@ import {
     DailySpendingChart,
     MonthlySpendingTrendChart,
 } from '../components/reports/Charts';
+import PredictedOutflowsModule, {
+    PredictedOutflowsData,
+} from '../components/reports/PredictedOutflowsModule';
 import DataTable, {
     TableColumn,
     TableRowBase,
@@ -20,12 +23,39 @@ import DateInput from '../components/ui/DateInput';
 import { useBackendStatus } from '../context/BackendStatusContext';
 import { reportsApi, tokenizedVaultApi } from '../services/api';
 import { fxService } from '../services/fxService';
-const ReportsPage = () => {
-    const [activeTab, setActiveTab] = useState('holdings');
+
+type ReportsTabId = 'holdings' | 'allocation' | 'cashflow' | 'spending' | 'investments';
+
+type ReportsPageProps = {
+    initialTab?: ReportsTabId;
+    visibleTabs?: ReportsTabId[];
+    pageTitle?: string;
+    pageDescription?: string;
+};
+
+const ALL_TABS: Array<{ id: ReportsTabId; name: string; icon: string }> = [
+    { id: 'holdings', name: 'Holdings', icon: '📊' },
+    { id: 'allocation', name: 'Asset Allocation', icon: '🥧' },
+    { id: 'cashflow', name: 'Cash Flow', icon: '💸' },
+    { id: 'spending', name: 'Spending', icon: '🛒' },
+];
+
+const DEFAULT_TITLE = 'Reports & Analytics';
+const DEFAULT_DESCRIPTION =
+    'View comprehensive financial reports including holdings, cash flow analysis, and spending insights.';
+
+const ReportsPage = ({
+    initialTab = 'holdings',
+    visibleTabs,
+    pageTitle = DEFAULT_TITLE,
+    pageDescription = DEFAULT_DESCRIPTION,
+}: ReportsPageProps) => {
+    const [activeTab, setActiveTab] = useState<ReportsTabId>(initialTab);
     const [currency, setCurrency] = useState<'USD' | 'VND'>('USD');
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [data, setData] = useState<Record<string, unknown>>({});
+    const [forecastDays, setForecastDays] = useState(30);
 
     const navigate = useNavigate();
 
@@ -55,12 +85,21 @@ const ReportsPage = () => {
 
     const { isOnline } = useBackendStatus();
 
-    const tabs = [
-        { id: 'holdings', name: 'Holdings', icon: '📊' },
-        { id: 'allocation', name: 'Asset Allocation', icon: '🥧' },
-        { id: 'cashflow', name: 'Cash Flow', icon: '💸' },
-        { id: 'spending', name: 'Spending', icon: '🛒' },
-    ];
+    const tabs = useMemo(() => {
+        if (!visibleTabs?.length) return ALL_TABS;
+        const visible = new Set(visibleTabs);
+        return ALL_TABS.filter((tab) => visible.has(tab.id));
+    }, [visibleTabs]);
+
+    useEffect(() => {
+        if (!tabs.length) return;
+        if (!tabs.some((tab) => tab.id === activeTab)) {
+            setActiveTab(tabs[0].id);
+        }
+    }, [activeTab, tabs]);
+
+    const showTabBar = tabs.length > 1;
+    const activeTabName = tabs.find((t) => t.id === activeTab)?.name;
 
     const fetchData = useCallback(async (): Promise<void> => {
         setLoading(true);
@@ -68,6 +107,7 @@ const ReportsPage = () => {
 
         try {
             let result: unknown = null;
+            const extraUpdates: Record<string, unknown> = {};
 
             switch (activeTab) {
                 case 'holdings':
@@ -154,10 +194,44 @@ const ReportsPage = () => {
                     }
                     break;
                 case 'cashflow':
-                    result = await reportsApi.cashFlow({
-                        start_date: filters.startDate,
-                        end_date: filters.endDate,
-                    });
+                    {
+                        const now = new Date();
+                        const asOf = now.toISOString().split('T')[0];
+                        const horizonDays = Math.max(1, forecastDays);
+                        const horizonMonths = Math.max(
+                            1,
+                            Math.ceil(horizonDays / 30)
+                        );
+
+                        // Forecast starts next month; cap/align horizon to whole months.
+                        // Example: Jan 18 + "30 days" => Feb 1 → Feb 28.
+                        const monthAfterEndStart = new Date(
+                            Date.UTC(
+                                now.getUTCFullYear(),
+                                now.getUTCMonth() + horizonMonths + 1,
+                                1
+                            )
+                        );
+                        const forecastEndDate = new Date(
+                            monthAfterEndStart.getTime() -
+                                24 * 60 * 60 * 1000
+                        );
+                        const forecastEnd = forecastEndDate
+                            .toISOString()
+                            .split('T')[0];
+                        const [actual, predicted] = await Promise.all([
+                            reportsApi.cashFlow({
+                                start_date: filters.startDate,
+                                end_date: filters.endDate,
+                            }),
+                            reportsApi.predictedOutflows({
+                                start_date: asOf,
+                                end_date: forecastEnd,
+                            }),
+                        ]);
+                        result = actual;
+                        extraUpdates.predicted_outflows = predicted;
+                    }
                     break;
                 case 'spending':
                     result = await reportsApi.spending({
@@ -167,7 +241,7 @@ const ReportsPage = () => {
                     break;
             }
 
-            setData((prev) => ({ ...prev, [activeTab]: result }));
+            setData((prev) => ({ ...prev, [activeTab]: result, ...extraUpdates }));
         } catch (err: unknown) {
             const message =
                 err instanceof Error ? err.message : 'Unknown error';
@@ -176,7 +250,7 @@ const ReportsPage = () => {
         } finally {
             setLoading(false);
         }
-    }, [activeTab, filters]);
+    }, [activeTab, filters, forecastDays]);
 
     useEffect(() => {
         if (isOnline) {
@@ -255,6 +329,41 @@ const ReportsPage = () => {
                                         }
                                     />
                                 </div>
+                                {activeTab === 'cashflow' && (
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                                            Forecast Horizon
+                                        </label>
+                                        <select
+                                            value={forecastDays}
+                                            onChange={(e) => {
+                                                const v = parseInt(
+                                                    e.target.value
+                                                );
+                                                setForecastDays(
+                                                    Number.isFinite(v) ? v : 30
+                                                );
+                                            }}
+                                            className="w-full border border-gray-300 rounded px-3 py-2 text-sm"
+                                        >
+                                            <option value={7}>
+                                                Next 7 days
+                                            </option>
+                                            <option value={14}>
+                                                Next 14 days
+                                            </option>
+                                            <option value={30}>
+                                                Next 30 days
+                                            </option>
+                                            <option value={60}>
+                                                Next 60 days
+                                            </option>
+                                            <option value={90}>
+                                                Next 90 days
+                                            </option>
+                                        </select>
+                                    </div>
+                                )}
                             </>
                         )}
 
@@ -494,6 +603,12 @@ const ReportsPage = () => {
         const rawCashFlow = (data.cashflow as CashFlowData) ?? {};
         const cashFlow: CashFlowData =
             typeof rawCashFlow === 'object' ? rawCashFlow : {};
+        const rawPredicted =
+            (data.predicted_outflows as PredictedOutflowsData) ?? null;
+        const predictedOutflows: PredictedOutflowsData | null =
+            rawPredicted && typeof rawPredicted === 'object'
+                ? rawPredicted
+                : null;
         type CashRow = TableRowBase & {
             type: string;
             inflow_usd?: number | string;
@@ -642,6 +757,10 @@ const ReportsPage = () => {
 
         return (
             <div>
+                <PredictedOutflowsModule
+                    data={predictedOutflows}
+                    currency={currency}
+                />
                 {/* Enhanced Cash Flow Chart */}
                 <CashFlowChart data={cashFlow} currency={currency} />
 
@@ -1453,58 +1572,63 @@ const ReportsPage = () => {
         }
     };
 
-    return (
-        <div className="px-4 py-6 sm:px-0">
-            <div className="mb-6">
-                <h1
-                    className="text-2xl font-bold text-gray-900"
-                    data-testid="reports-page-title"
-                >
-                    Reports & Analytics
-                </h1>
-                <p className="mt-1 text-sm text-gray-500">
-                    View comprehensive financial reports including holdings,
-                    cash flow analysis, and spending insights.
-                </p>
-            </div>
+	    return (
+	        <div className="px-4 py-6 sm:px-0">
+	            <div className="mb-6">
+	                <h1
+	                    className="text-2xl font-bold text-gray-900"
+	                    data-testid="reports-page-title"
+	                >
+	                    {pageTitle}
+	                </h1>
+	                {pageDescription ? (
+	                    <p className="mt-1 text-sm text-gray-500">
+	                        {pageDescription}
+	                    </p>
+	                ) : null}
+	            </div>
 
-            {/* Tabs */}
-            <div className="border-b border-gray-200 mb-6">
-                <nav className="-mb-px flex space-x-8">
-                    {tabs.map((tab) => (
-                        <Button
-                            key={tab.id}
-                            onClick={() => setActiveTab(tab.id)}
-                            variant="ghost"
-                            className={`${
-                                activeTab === tab.id
-                                    ? 'border-blue-500 text-blue-600 border-b-2'
-                                    : 'border-transparent text-gray-500 hover:text-gray-700'
-                            } whitespace-nowrap py-2 px-1 font-medium text-sm flex items-center space-x-2 rounded-none`}
-                            data-testid={`reports-tab-${tab.id}`}
-                        >
-                            <span>{tab.icon}</span>
-                            <span>{tab.name}</span>
-                        </Button>
-                    ))}
-                </nav>
-            </div>
+	            {/* Tabs */}
+	            {showTabBar ? (
+	                <div className="border-b border-gray-200 mb-6">
+	                    <nav className="-mb-px flex space-x-8">
+	                        {tabs.map((tab) => (
+	                            <Button
+	                                key={tab.id}
+	                                onClick={() => setActiveTab(tab.id)}
+	                                variant="ghost"
+	                                className={`${
+	                                    activeTab === tab.id
+	                                        ? 'border-blue-500 text-blue-600 border-b-2'
+	                                        : 'border-transparent text-gray-500 hover:text-gray-700'
+	                                } whitespace-nowrap py-2 px-1 font-medium text-sm flex items-center space-x-2 rounded-none`}
+	                                data-testid={`reports-tab-${tab.id}`}
+	                            >
+	                                <span>{tab.icon}</span>
+	                                <span>{tab.name}</span>
+	                            </Button>
+	                        ))}
+	                    </nav>
+	                </div>
+	            ) : null}
 
-            {/* Filters */}
-            {renderFilters()}
+	            {/* Filters */}
+	            {renderFilters()}
 
             {/* Content */}
             <Card>
-                <CardHeader>
-                    <CardTitle
-                        data-testid={`reports-section-title-${activeTab}`}
-                    >
-                        {tabs.find((t) => t.id === activeTab)?.name} Report
-                    </CardTitle>
-                </CardHeader>
-                <CardContent>{renderContent()}</CardContent>
-            </Card>
-        </div>
+	                <CardHeader>
+	                    <CardTitle
+	                        data-testid={`reports-section-title-${activeTab}`}
+	                    >
+	                        {showTabBar
+	                            ? `${activeTabName ?? 'Report'} Report`
+	                            : activeTabName ?? 'Report'}
+	                    </CardTitle>
+	                </CardHeader>
+	                <CardContent>{renderContent()}</CardContent>
+	            </Card>
+	        </div>
     );
 };
 

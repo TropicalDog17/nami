@@ -5,6 +5,7 @@ import { logger, createCorrelationLogger } from "./utils/logger.js";
 import { buildBot } from "./integrations/telegram.js";
 import { HealthChecker } from "./api/health.js";
 import { apiTestRouter } from "./api/api-test.js";
+import { advisorRouter } from "./api/advisorRouter.js";
 import {
     handleAndLogError,
     ErrorCategory,
@@ -160,6 +161,9 @@ async function main() {
 
         // API testing endpoints
         app.use("/api/test", apiTestRouter);
+
+        // AI Advisor endpoints
+        app.use("/api/advisor", advisorRouter);
 
         // Start server FIRST
         const port = cfg.PORT;

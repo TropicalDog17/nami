@@ -370,8 +370,8 @@ export const AUMChart: React.FC<AUMChartProps> = ({
     }, [currency, seriesData]);
 
     const formatCurrency = (value: number) => {
-        // For VND, round to 1 decimal place; for USD, use 2 decimal places
-        const decimalDigits = currency === 'VND' ? 1 : 2;
+        // For VND, round to whole number (0 decimals); for USD, use 2 decimal places
+        const decimalDigits = currency === 'VND' ? 0 : 2;
 
         return new Intl.NumberFormat('en-US', {
             style: 'currency',

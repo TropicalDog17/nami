@@ -34,6 +34,7 @@ export async function parseExpenseText(
     "Starting text parsing",
   );
 
+  const currentYear = new Date().getFullYear();
   const system = `You are a precise financial parser. Output ONLY a fenced code block labelled json with a single JSON object having keys action and params.`;
   const user = [
     "Extract a spend action from the message into JSON with 2-space indent.",
@@ -47,6 +48,7 @@ export async function parseExpenseText(
         ? `. Prefer existing tags when applicable: ${availableTags.join(", ")}`
         : "") +
       ". If no existing tag fits, use a descriptive one (e.g., 'girlfriend', 'personal_care', 'transport', 'shopping')",
+    `- IMPORTANT: The current year is ${currentYear}. Date format is DD/MM (day/month). When parsing dates without a year like "10/1", interpret as January 10th → ${currentYear}-01-10. For "1/10" use ${currentYear}-10-01.`,
     "- If date is explicitly mentioned in the message, use that date",
     "- If date is NOT mentioned, use today's date (format: YYYY-MM-DD)",
     "- Use unformatted numbers (no commas); Vietnamese k = thousand may appear",

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
 import {
@@ -19,11 +19,19 @@ import {
 } from '@/components/ui/select';
 
 import { useApp } from '../../context/AppContext';
+import { borrowingsApi, loansApi } from '../../services/api';
 
 interface Asset {
     symbol: string;
     name: string;
     is_active: boolean;
+}
+
+interface CounterpartyOption {
+    counterparty: string;
+    asset: string;
+    outstanding: number;
+    type: 'BORROW' | 'LOAN';
 }
 
 interface QuickRepayModalProps {
@@ -58,12 +66,124 @@ const QuickRepayModal: React.FC<QuickRepayModalProps> = ({
         direction: (fixedDirection ?? 'BORROW') as 'BORROW' | 'LOAN',
     });
     const [submitting, setSubmitting] = useState(false);
+    const [counterpartyOptions, setCounterpartyOptions] = useState<
+        CounterpartyOption[]
+    >([]);
+    const [loadingCounterparties, setLoadingCounterparties] = useState(false);
+
+    // Fetch counterparties based on direction
+    const fetchCounterparties = useCallback(async () => {
+        const direction = fixedDirection ?? form.direction;
+        setLoadingCounterparties(true);
+        try {
+            const options: CounterpartyOption[] = [];
+
+            if (direction === 'BORROW') {
+                // Fetch active borrowings
+                const borrowings = await borrowingsApi.list<
+                    Array<{
+                        id: string;
+                        counterparty: string;
+                        asset: { symbol: string };
+                        outstanding: number;
+                    }>
+                >({ status: 'ACTIVE' });
+                if (Array.isArray(borrowings)) {
+                    for (const b of borrowings) {
+                        if (b.outstanding > 0) {
+                            const existing = options.find(
+                                (o) =>
+                                    o.counterparty === b.counterparty &&
+                                    o.asset === (b.asset?.symbol || 'USD')
+                            );
+                            if (existing) {
+                                existing.outstanding += b.outstanding;
+                            } else {
+                                options.push({
+                                    counterparty: b.counterparty,
+                                    asset: b.asset?.symbol || 'USD',
+                                    outstanding: b.outstanding,
+                                    type: 'BORROW',
+                                });
+                            }
+                        }
+                    }
+                }
+            } else {
+                // Fetch active loans
+                const loans = await loansApi.list<
+                    Array<{
+                        id: string;
+                        counterparty: string;
+                        asset: { symbol: string };
+                        principal: number;
+                    }>
+                >();
+                if (Array.isArray(loans)) {
+                    for (const loan of loans) {
+                        if (loan.principal > 0) {
+                            const existing = options.find(
+                                (o) =>
+                                    o.counterparty === loan.counterparty &&
+                                    o.asset === (loan.asset?.symbol || 'USD')
+                            );
+                            if (existing) {
+                                existing.outstanding += loan.principal;
+                            } else {
+                                options.push({
+                                    counterparty: loan.counterparty,
+                                    asset: loan.asset?.symbol || 'USD',
+                                    outstanding: loan.principal,
+                                    type: 'LOAN',
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+
+            setCounterpartyOptions(options);
+        } catch (err) {
+            console.error('Failed to fetch counterparties:', err);
+            setCounterpartyOptions([]);
+        } finally {
+            setLoadingCounterparties(false);
+        }
+    }, [fixedDirection, form.direction]);
+
+    // Fetch counterparties when modal opens or direction changes
+    useEffect(() => {
+        if (isOpen) {
+            void fetchCounterparties();
+        }
+    }, [isOpen, fetchCounterparties]);
 
     useEffect(() => {
         if (fixedDirection) {
             setForm((s) => ({ ...s, direction: fixedDirection }));
         }
     }, [fixedDirection]);
+
+    // When counterparty is selected, auto-fill the asset (only if asset is currently default USD)
+    const handleCounterpartyChange = (value: string) => {
+        const selected = counterpartyOptions.find(
+            (o) => o.counterparty === value
+        );
+        setForm((s) => ({
+            ...s,
+            counterparty: value,
+            // Only auto-fill asset if user hasn't explicitly changed it from USD
+            asset: s.asset === 'USD' ? (selected?.asset || 'USD') : s.asset,
+        }));
+    };
+
+    // Handle manual asset input (from text field below dropdown)
+    const handleCounterpartyInputChange = (value: string) => {
+        setForm((s) => ({
+            ...s,
+            counterparty: value,
+        }));
+    };
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -184,20 +304,41 @@ const QuickRepayModal: React.FC<QuickRepayModalProps> = ({
                     </div>
 
                     <div className="space-y-2">
-                        <Label htmlFor="counterparty">
-                            Counterparty (optional)
+                        <Label htmlFor="counterparty-select">
+                            Counterparty {loadingCounterparties && '(loading...)'}
                         </Label>
+                        <Select
+                            value={form.counterparty}
+                            onValueChange={handleCounterpartyChange}
+                        >
+                            <SelectTrigger id="counterparty-select">
+                                <SelectValue placeholder="Select or enter counterparty" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {counterpartyOptions.map((opt) => (
+                                    <SelectItem
+                                        key={`${opt.counterparty}-${opt.asset}`}
+                                        value={opt.counterparty}
+                                    >
+                                        {opt.counterparty || 'general'} (
+                                        {opt.asset}) -{' '}
+                                        {opt.outstanding.toLocaleString(
+                                            undefined,
+                                            { maximumFractionDigits: 6 }
+                                        )}{' '}
+                                        outstanding
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
                         <Input
-                            id="counterparty"
                             type="text"
                             value={form.counterparty}
                             onChange={(e) =>
-                                setForm((s) => ({
-                                    ...s,
-                                    counterparty: e.target.value,
-                                }))
+                                handleCounterpartyInputChange(e.target.value)
                             }
-                            placeholder="e.g., Alice"
+                            placeholder="Or enter custom counterparty"
+                            className="mt-2"
                         />
                     </div>
 

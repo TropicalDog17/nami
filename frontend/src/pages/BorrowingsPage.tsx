@@ -1,7 +1,16 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+    PieChart,
+    Pie,
+    Cell,
+    ResponsiveContainer,
+    Tooltip,
+    Legend,
+} from 'recharts';
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { ChartContainer } from '@/components/ui/chart';
 
 import QuickBorrowLoanModal from '../components/modals/QuickBorrowLoanModal';
 import QuickRepayModal from '../components/modals/QuickRepayModal';
@@ -13,6 +22,17 @@ import {
     transactionApi,
 } from '../services/api';
 import { formatCurrency } from '../utils/currencyFormatter';
+
+// Chart colors palette
+const CHART_COLORS = [
+    '#FF6384',
+    '#36A2EB',
+    '#FFCE56',
+    '#4BC0C0',
+    '#9966FF',
+    '#FF9F40',
+    '#C9CBCF',
+];
 
 type BorrowingsSummary = {
     outstandingUSD: number;
@@ -33,6 +53,119 @@ type BorrowingAgreement = {
     nextPaymentAt: string;
     outstanding: number;
     status: string;
+};
+
+// Merged debt item for the unified table
+type MergedDebtItem = {
+    id: string;
+    counterparty: string;
+    asset: string;
+    principal: number;
+    outstanding: number;
+    percentPaid: number | null;
+    monthlyPayment: number | null;
+    nextPaymentAt: string | null;
+    valueUSD: number;
+    source: 'agreement' | 'liability';
+};
+
+// Progress bar component for table cells
+const ProgressBar: React.FC<{ percent: number | null }> = ({ percent }) => {
+    if (percent === null) {
+        return <span className="text-gray-400 text-sm">N/A</span>;
+    }
+
+    const getColorClass = (p: number) => {
+        if (p >= 75) return 'bg-green-500';
+        if (p >= 25) return 'bg-yellow-500';
+        return 'bg-red-500';
+    };
+
+    return (
+        <div className="flex items-center gap-2">
+            <div className="w-20 h-2 bg-gray-200 rounded-full overflow-hidden">
+                <div
+                    className={`h-full rounded-full ${getColorClass(percent)}`}
+                    style={{ width: `${Math.min(percent, 100)}%` }}
+                />
+            </div>
+            <span className="text-sm text-gray-600 w-12">
+                {percent.toFixed(0)}%
+            </span>
+        </div>
+    );
+};
+
+// Stat card component
+const StatCard: React.FC<{
+    label: string;
+    value: string | number;
+    subtext?: string;
+    variant?: 'default' | 'danger' | 'success';
+    icon?: React.ReactNode;
+}> = ({ label, value, subtext, variant = 'default', icon }) => {
+    const colorClasses = {
+        default: 'text-gray-900',
+        danger: 'text-red-700',
+        success: 'text-green-700',
+    };
+
+    return (
+        <div className="bg-white rounded-lg border p-4">
+            <div className="flex items-center gap-2 text-gray-500 text-sm mb-1">
+                {icon}
+                {label}
+            </div>
+            <div className={`text-2xl font-bold ${colorClasses[variant]}`}>
+                {value}
+            </div>
+            {subtext && (
+                <div className="text-xs text-gray-500 mt-1">{subtext}</div>
+            )}
+        </div>
+    );
+};
+
+// Circular progress indicator
+const CircularProgress: React.FC<{ percent: number }> = ({ percent }) => {
+    const radius = 20;
+    const circumference = 2 * Math.PI * radius;
+    const strokeDashoffset = circumference - (percent / 100) * circumference;
+
+    const getColor = (p: number) => {
+        if (p >= 75) return '#22c55e';
+        if (p >= 25) return '#eab308';
+        return '#ef4444';
+    };
+
+    return (
+        <div className="relative inline-flex items-center justify-center">
+            <svg width="56" height="56" className="-rotate-90">
+                <circle
+                    cx="28"
+                    cy="28"
+                    r={radius}
+                    fill="none"
+                    stroke="#e5e7eb"
+                    strokeWidth="4"
+                />
+                <circle
+                    cx="28"
+                    cy="28"
+                    r={radius}
+                    fill="none"
+                    stroke={getColor(percent)}
+                    strokeWidth="4"
+                    strokeDasharray={circumference}
+                    strokeDashoffset={strokeDashoffset}
+                    strokeLinecap="round"
+                />
+            </svg>
+            <span className="absolute text-sm font-semibold">
+                {percent.toFixed(0)}%
+            </span>
+        </div>
+    );
 };
 
 const toAssetObj = (symbol: string) => ({
@@ -62,6 +195,7 @@ const BorrowingsPage: React.FC = () => {
     const [loading, setLoading] = useState<boolean>(false);
     const [showBorrowModal, setShowBorrowModal] = useState(false);
     const [showRepayModal, setShowRepayModal] = useState(false);
+    const [showPlanCard, setShowPlanCard] = useState(true);
 
     const refreshBorrowings = useCallback(async () => {
         setLoading(true);
@@ -132,6 +266,122 @@ const BorrowingsPage: React.FC = () => {
         void refreshBorrowings();
     }, [refreshBorrowings]);
 
+    // Merge agreements and liabilities into unified debt items
+    const mergedDebtItems = useMemo((): MergedDebtItem[] => {
+        const items: MergedDebtItem[] = [];
+        const seenKeys = new Set<string>();
+
+        // First, add all borrowing agreements
+        for (const agreement of borrowingsAgreements) {
+            const key = `${agreement.counterparty}-${agreement.asset?.symbol || 'USD'}`;
+            seenKeys.add(key);
+
+            const principal = agreement.principal || 0;
+            const outstanding = agreement.outstanding || 0;
+            const percentPaid =
+                principal > 0
+                    ? ((principal - outstanding) / principal) * 100
+                    : null;
+
+            items.push({
+                id: agreement.id,
+                counterparty: agreement.counterparty || 'general',
+                asset: agreement.asset?.symbol || 'USD',
+                principal,
+                outstanding,
+                percentPaid,
+                monthlyPayment: agreement.monthlyPayment || null,
+                nextPaymentAt: agreement.nextPaymentAt || null,
+                valueUSD: outstanding, // For agreements, valueUSD is the outstanding amount
+                source: 'agreement',
+            });
+        }
+
+        // Then, add liabilities that don't have matching agreements
+        if (borrowingsSummary?.liabilities) {
+            for (const liability of borrowingsSummary.liabilities) {
+                const key = `${liability.counterparty}-${liability.asset}`;
+                if (!seenKeys.has(key)) {
+                    items.push({
+                        id: `liability-${key}`,
+                        counterparty: liability.counterparty || 'general',
+                        asset: liability.asset,
+                        principal: 0, // No principal info for liability-only items
+                        outstanding: liability.amount,
+                        percentPaid: null, // Can't calculate without principal
+                        monthlyPayment: null,
+                        nextPaymentAt: null,
+                        valueUSD: liability.valueUSD,
+                        source: 'liability',
+                    });
+                }
+            }
+        }
+
+        return items;
+    }, [borrowingsAgreements, borrowingsSummary]);
+
+    // Calculate summary statistics
+    const summaryStats = useMemo(() => {
+        const totalPrincipal = mergedDebtItems
+            .filter((d) => d.principal > 0)
+            .reduce((sum, d) => sum + d.principal, 0);
+
+        const totalOutstanding = mergedDebtItems.reduce(
+            (sum, d) => sum + d.outstanding,
+            0
+        );
+
+        const totalPaid = mergedDebtItems
+            .filter((d) => d.principal > 0)
+            .reduce((sum, d) => sum + (d.principal - d.outstanding), 0);
+
+        const overallProgress =
+            totalPrincipal > 0
+                ? ((totalPrincipal - totalOutstanding) / totalPrincipal) * 100
+                : 0;
+
+        const activeLoans = borrowingsAgreements.length;
+
+        return {
+            totalDebt: borrowingsSummary?.outstandingUSD ?? totalOutstanding,
+            totalPaid,
+            overallProgress: Math.max(0, Math.min(100, overallProgress)),
+            activeLoans,
+        };
+    }, [mergedDebtItems, borrowingsAgreements, borrowingsSummary]);
+
+    // Prepare donut chart data - group by counterparty
+    const donutChartData = useMemo(() => {
+        const byCounterparty: Record<string, number> = {};
+
+        for (const item of mergedDebtItems) {
+            const cp = item.counterparty || 'general';
+            byCounterparty[cp] = (byCounterparty[cp] || 0) + item.valueUSD;
+        }
+
+        const total = Object.values(byCounterparty).reduce((a, b) => a + b, 0);
+
+        return Object.entries(byCounterparty)
+            .map(([name, value], index) => ({
+                name,
+                value: Math.abs(value),
+                percentage: total > 0 ? (Math.abs(value) / total) * 100 : 0,
+                fill: CHART_COLORS[index % CHART_COLORS.length],
+            }))
+            .sort((a, b) => b.value - a.value);
+    }, [mergedDebtItems]);
+
+    const chartConfig = useMemo(() => {
+        return donutChartData.reduce(
+            (acc, item) => {
+                acc[item.name] = { label: item.name, color: item.fill };
+                return acc;
+            },
+            {} as Record<string, { label: string; color: string }>
+        );
+    }, [donutChartData]);
+
     const nextDueDate = useMemo(() => {
         const dates = borrowingsAgreements
             .map((b) => b.nextPaymentAt)
@@ -199,21 +449,34 @@ const BorrowingsPage: React.FC = () => {
             direction: 'BORROW' | 'LOAN';
         }) => {
             try {
-                await transactionApi.repay({
-                    asset: toAssetObj(d.asset),
-                    amount: Number(d.amount),
-                    counterparty: d.counterparty ?? 'general',
-                    note: d.note ?? undefined,
-                    direction: d.direction,
-                    at: d.date,
-                } as {
-                    asset: { symbol?: string };
-                    amount: number;
-                    counterparty: string;
-                    note?: string;
-                    direction: string;
-                    at: string;
-                });
+                const at = toIsoDate(d.date);
+                // For BORROW direction, use the borrowings/repay endpoint which properly deducts from borrowing
+                if (d.direction === 'BORROW') {
+                    await borrowingsApi.repay({
+                        counterparty: d.counterparty ?? 'general',
+                        asset: toAssetObj(d.asset),
+                        amount: Number(d.amount),
+                        at,
+                        note: d.note,
+                    });
+                } else {
+                    // For LOAN direction, use the generic transaction repay endpoint
+                    await transactionApi.repay({
+                        asset: toAssetObj(d.asset),
+                        amount: Number(d.amount),
+                        counterparty: d.counterparty ?? 'general',
+                        note: d.note ?? undefined,
+                        direction: d.direction,
+                        at,
+                    } as {
+                        asset: { symbol?: string };
+                        amount: number;
+                        counterparty: string;
+                        note?: string;
+                        direction: string;
+                        at: string;
+                    });
+                }
                 showSuccessToast('Repayment saved');
                 await refreshBorrowings();
                 setShowRepayModal(false);
@@ -232,13 +495,14 @@ const BorrowingsPage: React.FC = () => {
 
     return (
         <div className="px-4 py-6 sm:px-0">
+            {/* Page Header */}
             <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                     <h1 className="text-3xl font-bold text-gray-900 mb-1">
                         Borrowing
                     </h1>
                     <p className="text-gray-600">
-                        Track agreements, repayments, and cashflow estimates.
+                        Track agreements, repayments, and progress.
                     </p>
                 </div>
                 <div className="flex gap-2">
@@ -264,41 +528,11 @@ const BorrowingsPage: React.FC = () => {
                 </div>
             </div>
 
-            <Card className="mb-6">
-                <CardHeader className="space-y-1">
-                    <CardTitle className="text-lg font-semibold">
-                        Borrowing Plan
-                    </CardTitle>
-                    <p className="text-sm text-gray-500">
-                        A simple workflow to keep obligations visible and
-                        predictable.
-                    </p>
-                </CardHeader>
-                <CardContent>
-                    <ul className="list-disc pl-5 text-sm text-gray-700 space-y-2">
-                        <li>
-                            Capture each borrowing agreement with principal,
-                            counterparty, and first due date.
-                        </li>
-                        <li>
-                            Add an estimated monthly payment for cashflow
-                            forecasting.
-                        </li>
-                        <li>
-                            Log repayments as they happen to keep balances
-                            accurate.
-                        </li>
-                        <li>
-                            Review upcoming due dates to avoid surprises.
-                        </li>
-                    </ul>
-                </CardContent>
-            </Card>
-
+            {/* Overview Section - Two Columns */}
             <Card className="mb-6">
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
                     <CardTitle className="text-lg font-semibold">
-                        Borrowing Overview
+                        Debt Overview
                     </CardTitle>
                     {lastUpdated && (
                         <span className="text-xs text-gray-500">
@@ -307,41 +541,245 @@ const BorrowingsPage: React.FC = () => {
                     )}
                 </CardHeader>
                 <CardContent>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        <div>
-                            <div className="text-gray-500 text-sm">
-                                Outstanding Balance
-                            </div>
-                            <div className="text-2xl font-bold text-red-700">
-                                {formatCurrency(
-                                    Math.abs(
-                                        borrowingsSummary?.outstandingUSD ?? 0
-                                    )
-                                )}
-                            </div>
-                            <div className="text-xs text-gray-500">
-                                Liability total (USD)
-                            </div>
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        {/* Left: Donut Chart */}
+                        <div className="flex flex-col items-center">
+                            {donutChartData.length > 0 ? (
+                                <ChartContainer
+                                    config={chartConfig}
+                                    className="h-64 w-full"
+                                >
+                                    <ResponsiveContainer
+                                        width="100%"
+                                        height="100%"
+                                    >
+                                        <PieChart>
+                                            <Pie
+                                                data={donutChartData}
+                                                cx="50%"
+                                                cy="50%"
+                                                innerRadius="50%"
+                                                outerRadius="80%"
+                                                paddingAngle={2}
+                                                dataKey="value"
+                                                nameKey="name"
+                                                label={({
+                                                    cx,
+                                                    cy,
+                                                    midAngle,
+                                                    outerRadius,
+                                                    percentage,
+                                                }: {
+                                                    cx: number;
+                                                    cy: number;
+                                                    midAngle: number;
+                                                    outerRadius: number;
+                                                    percentage: number;
+                                                }) => {
+                                                    const RADIAN =
+                                                        Math.PI / 180;
+                                                    const radius =
+                                                        outerRadius + 20;
+                                                    const x =
+                                                        cx +
+                                                        radius *
+                                                            Math.cos(
+                                                                -midAngle *
+                                                                    RADIAN
+                                                            );
+                                                    const y =
+                                                        cy +
+                                                        radius *
+                                                            Math.sin(
+                                                                -midAngle *
+                                                                    RADIAN
+                                                            );
+                                                    return (
+                                                        <text
+                                                            x={x}
+                                                            y={y}
+                                                            fill="#374151"
+                                                            textAnchor={
+                                                                x > cx
+                                                                    ? 'start'
+                                                                    : 'end'
+                                                            }
+                                                            dominantBaseline="central"
+                                                            style={{
+                                                                fontSize:
+                                                                    '11px',
+                                                                fontWeight: 500,
+                                                            }}
+                                                        >
+                                                            {`${(percentage * 100).toFixed(0)}%`}
+                                                        </text>
+                                                    );
+                                                }}
+                                                labelLine={{
+                                                    stroke: '#9ca3af',
+                                                    strokeWidth: 1,
+                                                }}
+                                            >
+                                                {donutChartData.map(
+                                                    (entry, index) => (
+                                                        <Cell
+                                                            key={`cell-${index}`}
+                                                            fill={entry.fill}
+                                                        />
+                                                    )
+                                                )}
+                                            </Pie>
+                                            <Tooltip
+                                                content={({
+                                                    active,
+                                                    payload,
+                                                }) => {
+                                                    if (
+                                                        !active ||
+                                                        !payload?.length
+                                                    )
+                                                        return null;
+                                                    const item = payload[0];
+                                                    const entry = item.payload as (typeof donutChartData)[0];
+                                                    return (
+                                                        <div className="rounded-lg border bg-background p-2 shadow-sm">
+                                                            <div className="font-medium">
+                                                                {entry.name}
+                                                            </div>
+                                                            <div className="text-muted-foreground">
+                                                                {formatCurrency(
+                                                                    entry.value
+                                                                )}{' '}
+                                                                (
+                                                                {entry.percentage.toFixed(
+                                                                    1
+                                                                )}
+                                                                %)
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                }}
+                                            />
+                                            <Legend
+                                                verticalAlign="bottom"
+                                                height={36}
+                                                formatter={(value) => (
+                                                    <span className="text-xs">
+                                                        {value}
+                                                    </span>
+                                                )}
+                                            />
+                                            {/* Center text */}
+                                            <text
+                                                x="50%"
+                                                y="45%"
+                                                textAnchor="middle"
+                                                dominantBaseline="middle"
+                                                className="fill-gray-500"
+                                                style={{ fontSize: '10px' }}
+                                            >
+                                                Total Debt
+                                            </text>
+                                            <text
+                                                x="50%"
+                                                y="55%"
+                                                textAnchor="middle"
+                                                dominantBaseline="middle"
+                                                className="fill-gray-900 font-bold"
+                                                style={{ fontSize: '12px' }}
+                                            >
+                                                {formatCurrency(
+                                                    summaryStats.totalDebt
+                                                )}
+                                            </text>
+                                        </PieChart>
+                                    </ResponsiveContainer>
+                                </ChartContainer>
+                            ) : (
+                                <div className="h-64 flex items-center justify-center text-gray-500">
+                                    No debt data to display
+                                </div>
+                            )}
                         </div>
-                        <div>
-                            <div className="text-gray-500 text-sm">
-                                Active Agreements
+
+                        {/* Right: Stats Grid */}
+                        <div className="grid grid-cols-2 gap-4">
+                            <StatCard
+                                label="Total Debt"
+                                value={formatCurrency(summaryStats.totalDebt)}
+                                subtext="Outstanding balance"
+                                variant="danger"
+                            />
+                            <StatCard
+                                label="Total Paid"
+                                value={formatCurrency(summaryStats.totalPaid)}
+                                subtext="Principal repaid"
+                                variant="success"
+                            />
+                            <div className="bg-white rounded-lg border p-4 flex flex-col items-center justify-center">
+                                <div className="text-gray-500 text-sm mb-2">
+                                    Overall Progress
+                                </div>
+                                <CircularProgress
+                                    percent={summaryStats.overallProgress}
+                                />
+                                <div className="text-xs text-gray-500 mt-2">
+                                    of principal paid
+                                </div>
                             </div>
-                            <div className="text-xl font-semibold">
-                                {borrowingsAgreements.length}
-                            </div>
-                        </div>
-                        <div>
-                            <div className="text-gray-500 text-sm">
-                                Next Due
-                            </div>
-                            <div className="text-sm font-medium">
-                                {nextDueDate}
-                            </div>
+                            <StatCard
+                                label="Active Loans"
+                                value={summaryStats.activeLoans}
+                                subtext={`Next due: ${nextDueDate}`}
+                            />
                         </div>
                     </div>
                 </CardContent>
             </Card>
+
+            {/* Collapsible Borrowing Plan Card */}
+            {showPlanCard && (
+                <Card className="mb-6">
+                    <CardHeader className="space-y-1">
+                        <div className="flex items-center justify-between">
+                            <CardTitle className="text-lg font-semibold">
+                                Borrowing Plan
+                            </CardTitle>
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => setShowPlanCard(false)}
+                                className="text-gray-400 hover:text-gray-600"
+                            >
+                                Hide
+                            </Button>
+                        </div>
+                        <p className="text-sm text-gray-500">
+                            A simple workflow to keep obligations visible and
+                            predictable.
+                        </p>
+                    </CardHeader>
+                    <CardContent>
+                        <ul className="list-disc pl-5 text-sm text-gray-700 space-y-2">
+                            <li>
+                                Capture each borrowing agreement with principal,
+                                counterparty, and first due date.
+                            </li>
+                            <li>
+                                Add an estimated monthly payment for cashflow
+                                forecasting.
+                            </li>
+                            <li>
+                                Log repayments as they happen to keep balances
+                                accurate.
+                            </li>
+                            <li>
+                                Review upcoming due dates to avoid surprises.
+                            </li>
+                        </ul>
+                    </CardContent>
+                </Card>
+            )}
 
             {loading && (
                 <div className="flex items-center justify-center h-24">
@@ -349,14 +787,15 @@ const BorrowingsPage: React.FC = () => {
                 </div>
             )}
 
-            <Card className="mb-6">
+            {/* Merged Debt Details Table */}
+            <Card>
                 <CardHeader className="pb-3">
                     <CardTitle className="text-lg font-semibold">
-                        Liabilities by Counterparty
+                        Debt Details
                     </CardTitle>
                 </CardHeader>
                 <CardContent>
-                    {borrowingsSummary?.liabilities?.length ? (
+                    {mergedDebtItems.length > 0 ? (
                         <div className="overflow-x-auto">
                             <table className="min-w-full text-sm">
                                 <thead>
@@ -365,112 +804,74 @@ const BorrowingsPage: React.FC = () => {
                                             Counterparty
                                         </th>
                                         <th className="py-2 pr-4">Asset</th>
-                                        <th className="py-2 pr-4">Amount</th>
+                                        <th className="py-2 pr-4">Principal</th>
+                                        <th className="py-2 pr-4">
+                                            Outstanding
+                                        </th>
+                                        <th className="py-2 pr-4">Progress</th>
+                                        <th className="py-2 pr-4">
+                                            Monthly Payment
+                                        </th>
+                                        <th className="py-2 pr-4">Next Due</th>
                                         <th className="py-2 pr-4">
                                             Value (USD)
                                         </th>
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {borrowingsSummary.liabilities.map(
-                                        (o, idx) => (
-                                            <tr
-                                                key={`${o.counterparty}-${o.asset}-${idx}`}
-                                                className="border-t"
-                                            >
-                                                <td className="py-2 pr-4">
-                                                    {o.counterparty ||
-                                                        'general'}
-                                                </td>
-                                                <td className="py-2 pr-4">
-                                                    {o.asset}
-                                                </td>
-                                                <td className="py-2 pr-4">
-                                                    {Number(
-                                                        o.amount
-                                                    ).toLocaleString(
-                                                        undefined,
-                                                        {
-                                                            maximumFractionDigits: 6,
-                                                        }
-                                                    )}
-                                                </td>
-                                                <td className="py-2 pr-4">
-                                                    {formatCurrency(o.valueUSD)}
-                                                </td>
-                                            </tr>
-                                        )
-                                    )}
-                                </tbody>
-                            </table>
-                        </div>
-                    ) : (
-                        <p className="text-sm text-gray-500">
-                            No liabilities recorded yet.
-                        </p>
-                    )}
-                </CardContent>
-            </Card>
-
-            <Card>
-                <CardHeader className="pb-3">
-                    <CardTitle className="text-lg font-semibold">
-                        Active Borrowing Agreements
-                    </CardTitle>
-                </CardHeader>
-                <CardContent>
-                    {borrowingsAgreements.length > 0 ? (
-                        <div className="overflow-x-auto">
-                            <table className="min-w-full text-sm">
-                                <thead>
-                                    <tr className="text-left text-gray-600">
-                                        <th className="py-2 pr-4">
-                                            Counterparty
-                                        </th>
-                                        <th className="py-2 pr-4">Asset</th>
-                                        <th className="py-2 pr-4">
-                                            Outstanding
-                                        </th>
-                                        <th className="py-2 pr-4">
-                                            Est. Monthly Payment
-                                        </th>
-                                        <th className="py-2 pr-4">Next Due</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {borrowingsAgreements.map((b) => (
-                                        <tr key={b.id} className="border-t">
-                                            <td className="py-2 pr-4">
-                                                {b.counterparty || 'general'}
+                                    {mergedDebtItems.map((item) => (
+                                        <tr key={item.id} className="border-t">
+                                            <td className="py-3 pr-4">
+                                                {item.counterparty}
                                             </td>
-                                            <td className="py-2 pr-4">
-                                                {b.asset?.symbol || 'USD'}
+                                            <td className="py-3 pr-4">
+                                                {item.asset}
                                             </td>
-                                            <td className="py-2 pr-4">
-                                                {Number(
-                                                    b.outstanding
-                                                ).toLocaleString(undefined, {
-                                                    maximumFractionDigits: 6,
-                                                })}
-                                            </td>
-                                            <td className="py-2 pr-4">
-                                                {b.monthlyPayment
+                                            <td className="py-3 pr-4">
+                                                {item.principal > 0
                                                     ? Number(
-                                                          b.monthlyPayment
+                                                          item.principal
                                                       ).toLocaleString(
                                                           undefined,
                                                           {
-                                                              maximumFractionDigits: 6,
+                                                              maximumFractionDigits: 2,
                                                           }
                                                       )
                                                     : '-'}
                                             </td>
-                                            <td className="py-2 pr-4">
-                                                {b.nextPaymentAt
+                                            <td className="py-3 pr-4 font-medium text-red-700">
+                                                {Number(
+                                                    item.outstanding
+                                                ).toLocaleString(undefined, {
+                                                    maximumFractionDigits: 2,
+                                                })}
+                                            </td>
+                                            <td className="py-3 pr-4">
+                                                <ProgressBar
+                                                    percent={item.percentPaid}
+                                                />
+                                            </td>
+                                            <td className="py-3 pr-4">
+                                                {item.monthlyPayment
+                                                    ? Number(
+                                                          item.monthlyPayment
+                                                      ).toLocaleString(
+                                                          undefined,
+                                                          {
+                                                              maximumFractionDigits: 2,
+                                                          }
+                                                      )
+                                                    : '-'}
+                                            </td>
+                                            <td className="py-3 pr-4">
+                                                {item.nextPaymentAt
                                                     ? new Date(
-                                                          b.nextPaymentAt
+                                                          item.nextPaymentAt
                                                       ).toLocaleDateString()
                                                     : '-'}
+                                            </td>
+                                            <td className="py-3 pr-4">
+                                                {formatCurrency(item.valueUSD)}
                                             </td>
                                         </tr>
                                     ))}
@@ -479,7 +880,7 @@ const BorrowingsPage: React.FC = () => {
                         </div>
                     ) : (
                         <p className="text-sm text-gray-500">
-                            No active borrowing agreements yet.
+                            No debts recorded yet.
                         </p>
                     )}
                     <p className="text-xs text-gray-500 mt-3">

@@ -700,11 +700,11 @@ const TransactionForm = ({ transaction = null, onSubmit, onCancel }: Props) => {
                             <Label>Amount (VND)</Label>
                             <Input
                                 type="number"
-                                step="0.01"
+                                step="1"
                                 readOnly
                                 value={
                                     Number.isFinite(amountVndNum)
-                                        ? amountVndNum.toFixed(2)
+                                        ? amountVndNum.toFixed(0)
                                         : ''
                                 }
                                 placeholder="Auto-calculated"

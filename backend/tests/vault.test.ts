@@ -288,6 +288,45 @@ describe("Vault Handler", () => {
       expect(res.body.entry.type).toBe("WITHDRAW");
       expect(res.body.entry.usdValue).toBe(500);
     });
+
+    it("should create a withdrawal entry and a deposit entry when target_account is provided", async () => {
+      mockVaults = [
+        {
+          name: "SourceVault",
+          status: "ACTIVE",
+          createdAt: "2025-01-01T00:00:00Z",
+        },
+        {
+          name: "DestVault",
+          status: "ACTIVE",
+          createdAt: "2025-01-01T00:00:00Z",
+        },
+      ];
+
+      const app = await createApp();
+      const res = await request(app)
+        .post("/api/vaults/SourceVault/withdraw")
+        .send({ amount: 250, asset: "USD", target_account: "DestVault" })
+        .expect(201);
+
+      expect(res.body.ok).toBe(true);
+      expect(res.body.withdrawEntry.type).toBe("WITHDRAW");
+      expect(res.body.withdrawEntry.vault).toBe("SourceVault");
+      expect(res.body.withdrawEntry.account).toBe("DestVault");
+
+      expect(res.body.depositEntry.type).toBe("DEPOSIT");
+      expect(res.body.depositEntry.vault).toBe("DestVault");
+      expect(res.body.depositEntry.account).toBe("SourceVault");
+
+      expect(
+        mockEntries.filter((e) => e.vault === "SourceVault" && e.type === "WITHDRAW")
+          .length,
+      ).toBe(1);
+      expect(
+        mockEntries.filter((e) => e.vault === "DestVault" && e.type === "DEPOSIT")
+          .length,
+      ).toBe(1);
+    });
   });
 
   describe("DELETE /vaults/:name - Delete vault", () => {

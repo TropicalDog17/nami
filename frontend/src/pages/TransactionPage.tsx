@@ -196,9 +196,10 @@ const TransactionPage: React.FC = () => {
                         tx,
                         currency as 'USD' | 'VND'
                     );
-                    return typeof convertedAmount === 'number'
-                        ? convertedAmount.toFixed(2)
-                        : '';
+                    if (typeof convertedAmount !== 'number') return '';
+                    // USD: 2 decimals, VND: 0 decimals (whole number)
+                    const decimalPlaces = currency === 'VND' ? 0 : 2;
+                    return convertedAmount.toFixed(decimalPlaces);
                 })(),
                 // Counterparty
                 // eslint-disable-next-line @typescript-eslint/no-base-to-string

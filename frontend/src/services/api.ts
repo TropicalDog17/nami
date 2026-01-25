@@ -235,6 +235,15 @@ export const borrowingsApi = {
         api.get<T>('/api/borrowings', params),
     create: <T = unknown>(payload: unknown) =>
         api.post<T>('/api/borrowings', payload),
+    repay: <T = unknown>(payload: unknown) =>
+        api.post<T>('/api/borrowings/repay', payload),
+};
+
+// Loans API
+export const loansApi = {
+    list: <T = unknown>() => api.get<T>('/api/loans'),
+    repay: <T = unknown>(id: string, payload: unknown) =>
+        api.post<T>(`/api/loans/${id}/repay`, payload),
 };
 
 // Actions API
@@ -356,6 +365,10 @@ export const reportsApi = {
         api.get<T>('/api/reports/holdings/summary', params),
     cashFlow: <T = unknown>(params: Record<string, unknown> = {}) =>
         api.get<T>('/api/reports/cashflow', params),
+    predictedOutflows: <T = unknown>(params: Record<string, unknown> = {}) =>
+        api.get<T>('/api/reports/predicted-outflows', params),
+    predictedCashflow: <T = unknown>(params: Record<string, unknown> = {}) =>
+        api.get<T>('/api/reports/predicted-cashflow', params),
     spending: <T = unknown>(params: Record<string, unknown> = {}) =>
         api.get<T>('/api/reports/spending', params),
     pnl: <T = unknown>(params: Record<string, unknown> = {}) =>
@@ -513,6 +526,26 @@ export const pricesApi = {
         start: string,
         end: string
     ) => api.get<T>('/api/prices/daily', { symbol, currency, start, end }),
+};
+
+// AI Advisor API
+export const aiAdvisorApi = {
+    getStatus: <T = unknown>() =>
+        api.get<T>('/api/advisor/status'),
+    generateAnalysis: <T = unknown>(monthlyIncome?: number) =>
+        api.post<T>('/api/advisor/generate', { monthlyIncome }),
+    getAnalysis: <T = unknown>() =>
+        api.get<T>('/api/advisor/analysis'),
+    getHistory: <T = unknown>() =>
+        api.get<T>('/api/advisor/history'),
+    getAnalysisById: <T = unknown>(id: string) =>
+        api.get<T>(`/api/advisor/history/${id}`),
+    compareAnalyses: <T = unknown>(currentId?: string, previousId?: string) => {
+        const params: Record<string, string> = {};
+        if (currentId) params.currentId = currentId;
+        if (previousId) params.previousId = previousId;
+        return api.get<T>('/api/advisor/compare', params);
+    },
 };
 
 // Tokenized Vault API

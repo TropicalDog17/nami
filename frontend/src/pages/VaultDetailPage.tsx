@@ -12,7 +12,6 @@ import DataTable, { TableColumn } from '../components/ui/DataTable';
 import { useToast } from '../components/ui/Toast';
 import {
     vaultApi,
-    transactionApi,
     tokenizedVaultApi,
     vaultLedgerApi,
     reportsApi,
@@ -656,28 +655,15 @@ const VaultDetailPage: React.FC = () => {
             await tokenizedVaultApi.withdraw(tokenizedVaultDetails.id, {
                 amount,
                 notes: tokenizedNotes || undefined,
+                target_account: tokenizedTargetAccount || undefined,
                 asset: tokenizedWithdrawAsset || 'USD',
             });
-            // Also reflect on Transactions if a target account was provided
-            if (tokenizedTargetAccount) {
-                await transactionApi.create({
-                    date: new Date().toISOString(),
-                    type: 'withdraw',
-                    asset: tokenizedWithdrawAsset || 'USD',
-                    account: tokenizedTargetAccount,
-                    quantity: amount,
-                    price_local: 1,
-                    counterparty: `Tokenized ${tokenizedVaultDetails.id}`,
-                    note: tokenizedNotes || null,
-                    fx_to_usd: 1,
-                    fx_to_vnd: 0,
-                });
-            }
             showSuccessToast('Withdrawal recorded');
             setShowTokenizedWithdrawForm(false);
             setTokenizedWithdrawAmount('');
             setTokenizedNotes('');
             setTokenizedWithdrawAsset('USD');
+            setTokenizedTargetAccount('');
             await loadVault();
         } catch (err: unknown) {
             const message =

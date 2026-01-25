@@ -125,10 +125,19 @@ export default defineConfig(({ mode }) => {
             ], port: Number(env.PORT) || 3000,
             host: env.HOST || '0.0.0.0',
             proxy: {
+                '/api/advisor': {
+                    target: 'http://127.0.0.1:8088', // ai-service running on localhost:8088
+                    changeOrigin: true,
+                    secure: false,
+                    rewrite: (path) => path,
+                    timeout: 120000, // 2 minutes timeout for AI requests
+                    proxyTimeout: 120000
+                },
                 '/api': {
                     target: 'http://127.0.0.1:8080', // backend running on localhost:8080
                     changeOrigin: true,
-                    secure: false
+                    secure: false,
+                    timeout: 30000 // 30 seconds for regular API requests
                 }
             }
         },

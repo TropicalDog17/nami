@@ -109,7 +109,13 @@ function parseWithdrawPayload(body: any): {
   const at: string | undefined =
     body.at || (typeof body.date === "string" ? body.date : undefined);
   const account: string | undefined =
-    body.account || body.targetAccount || undefined;
+    body.account ||
+    body.targetAccount ||
+    body.target_account ||
+    body.to ||
+    body.destination ||
+    body.target ||
+    undefined;
   const note: string | undefined = body.note || undefined;
 
   const assetSym = (body.asset?.symbol || body.asset || "USD")
@@ -338,8 +344,41 @@ vaultsRouter.post(
         note: payload.note,
       };
 
+      const toVault = String(
+        req.body?.to ??
+          req.body?.destination ??
+          req.body?.target_account ??
+          req.body?.targetAccount ??
+          "",
+      ).trim();
+
+      if (toVault) {
+        if (toVault === name) {
+          return res
+            .status(400)
+            .json({ error: "cannot transfer to the same vault" });
+        }
+
+        const result = await vaultService.transferBetweenVaults({
+          fromVault: name,
+          toVault,
+          asset: entry.asset,
+          amount: entry.amount,
+          usdValue: entry.usdValue,
+          at: entry.at,
+          note: entry.note,
+        });
+
+        return res.status(201).json({
+          ok: true,
+          entry: result.withdrawEntry,
+          withdrawEntry: result.withdrawEntry,
+          depositEntry: result.depositEntry,
+        });
+      }
+
       vaultService.addVaultEntry(entry);
-      res.status(201).json({ ok: true, entry });
+      return res.status(201).json({ ok: true, entry });
     } catch (e: any) {
       res.status(400).json({ error: e?.message || "invalid withdraw" });
     }

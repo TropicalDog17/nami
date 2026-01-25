@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { vaultRepository } from "../repositories";
 import { transactionRepository } from "../repositories";
+import { borrowingRepository } from "../repositories";
 import { settingsRepository } from "../repositories";
 import { transactionService } from "../services/transaction.service";
 import { priceService } from "../services/price.service";
@@ -43,6 +44,22 @@ function addDays(d: Date, n: number): Date {
       0,
     ),
   );
+}
+function addMonths(iso: string, months: number): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  const next = new Date(
+    Date.UTC(
+      d.getUTCFullYear(),
+      d.getUTCMonth() + months,
+      d.getUTCDate(),
+      d.getUTCHours(),
+      d.getUTCMinutes(),
+      d.getUTCSeconds(),
+      d.getUTCMilliseconds(),
+    ),
+  );
+  return next.toISOString();
 }
 function dateDiffInDays(a: Date, b: Date): number {
   const ms = addDays(b, 0).getTime() - addDays(a, 0).getTime();
@@ -1048,6 +1065,258 @@ reportsRouter.get("/reports/cashflow", async (req, res) => {
   }
 });
 
+const predictedOutflowsHandler = async (req: any, res: any) => {
+  try {
+    const startInput = req.query.start_date
+      ? new Date(String(req.query.start_date))
+      : new Date();
+    if (Number.isNaN(startInput.getTime())) {
+      res.status(400).json({ error: "Invalid start_date or end_date" });
+      return;
+    }
+    const forecastStart = new Date(
+      Date.UTC(
+        startInput.getUTCFullYear(),
+        startInput.getUTCMonth() + 1,
+        1,
+        0,
+        0,
+        0,
+        0,
+      ),
+    );
+    const endInput = req.query.end_date
+      ? new Date(String(req.query.end_date))
+      : new Date(
+          Date.UTC(
+            forecastStart.getUTCFullYear(),
+            forecastStart.getUTCMonth() + 1,
+            0,
+            0,
+            0,
+            0,
+            0,
+          ),
+        );
+    const account = req.query.account
+      ? String(req.query.account)
+      : settingsRepository.getDefaultSpendingVaultName();
+
+    const startDay = addDays(forecastStart, 0);
+    const endDay = addDays(endInput, 0);
+    if (Number.isNaN(startDay.getTime()) || Number.isNaN(endDay.getTime())) {
+      res.status(400).json({ error: "Invalid start_date or end_date" });
+      return;
+    }
+    if (endDay < startDay) {
+      res.status(400).json({ error: "end_date must be >= start_date" });
+      return;
+    }
+
+    // Expected repayments: active borrowings, fixed monthly schedule from nextPaymentAt.
+    const repaymentByDayUSD = new Map<string, number>();
+    const repaymentItems: Array<{
+      date: string;
+      borrowing_id: string;
+      counterparty: string;
+      amount_usd: number;
+    }> = [];
+    const borrowings = borrowingRepository.findByStatus("ACTIVE");
+
+    const getRateUSD = async (asset: Asset, at: string): Promise<number> => {
+      const k = `pred-out-rate:${asset.type}:${asset.symbol}:${at.slice(0, 10)}`;
+      const cached = priceCache.get(k);
+      if (cached !== undefined) return cached;
+      const r = await priceService.getRateUSD(asset, at);
+      const rateUSD = Number(r.rateUSD || 0);
+      priceCache.set(k, rateUSD);
+      return rateUSD;
+    };
+
+    for (const b of borrowings) {
+      const payAccount =
+        b.account || settingsRepository.getDefaultSpendingVaultName();
+      if (payAccount !== account) continue;
+
+      let outstanding = Number(b.outstanding || 0);
+      let nextPaymentAt = b.nextPaymentAt;
+
+      while (outstanding > 0) {
+        const due = new Date(nextPaymentAt);
+        if (Number.isNaN(due.getTime())) break;
+        const dueDay = addDays(due, 0);
+        if (dueDay > endDay) break;
+
+        if (dueDay >= startDay) {
+          const paymentAmount = Math.min(
+            Number(b.monthlyPayment || 0),
+            outstanding,
+          );
+          if (paymentAmount > 0) {
+            const paymentAt = dueDay.toISOString();
+            const rateUSD = await getRateUSD(b.asset, paymentAt);
+            const paymentUSD = Math.abs(paymentAmount * rateUSD);
+            const day = toISODate(dueDay);
+            repaymentByDayUSD.set(
+              day,
+              (repaymentByDayUSD.get(day) || 0) + paymentUSD,
+            );
+            repaymentItems.push({
+              date: day,
+              borrowing_id: b.id,
+              counterparty: b.counterparty,
+              amount_usd: paymentUSD,
+            });
+            outstanding = Math.max(0, outstanding - paymentAmount);
+          } else {
+            break;
+          }
+        }
+
+        const prevNextPaymentAt = nextPaymentAt;
+        nextPaymentAt = addMonths(nextPaymentAt, 1);
+        if (nextPaymentAt === prevNextPaymentAt) break;
+      }
+    }
+
+    const txs = transactionRepository.findAll();
+
+    // Spending trend:
+    // - Primary: predict per-day using weekday averages (Mon/Tue/...) from last 6 months of recorded EXPENSE days.
+    // - Fallback: if not enough weekday samples, use overall average outflow (total expense / recorded expense days).
+    const txsForAccount = txs.filter((t) => (t.account || account) === account);
+
+    const monthKeyForDate = (d: Date) => toISODate(d).slice(0, 7); // YYYY-MM
+
+    const asOfDay = addDays(startInput, 0);
+    const asOfMonthKey = monthKeyForDate(asOfDay);
+
+    const historyMonthStarts: Date[] = Array.from({ length: 6 }, (_, idx) => {
+      const monthsBack = -(6 - idx);
+      return new Date(addMonths(startDay.toISOString(), monthsBack));
+    });
+
+    const historyMonthKeys = new Set(
+      historyMonthStarts.map((d) => d.toISOString().slice(0, 7)),
+    );
+
+    // Aggregate total spend by unique recorded day within the 6-month history window.
+    const expenseByDayUSD = new Map<string, number>();
+    for (const t of txsForAccount) {
+      if (t.type !== "EXPENSE") continue;
+      const when = new Date(String(t.createdAt));
+      if (Number.isNaN(when.getTime())) continue;
+      const whenDay = addDays(when, 0);
+      const monthKey = monthKeyForDate(whenDay);
+      if (!historyMonthKeys.has(monthKey)) continue;
+      if (monthKey === asOfMonthKey && whenDay > asOfDay) continue;
+
+      const usd = Math.abs(Number(t.usdAmount || 0));
+      if (usd <= 0) continue;
+      const dayKey = toISODate(whenDay);
+      expenseByDayUSD.set(dayKey, (expenseByDayUSD.get(dayKey) || 0) + usd);
+    }
+
+    let historyRecordedDays = 0;
+    let historyTotalSpendUSD = 0;
+    for (const usd of expenseByDayUSD.values()) {
+      historyRecordedDays += 1;
+      historyTotalSpendUSD += usd;
+    }
+
+    const baselineDailySpendUSD =
+      historyRecordedDays > 0 ? historyTotalSpendUSD / historyRecordedDays : 0;
+
+    // Weekday averages (0=Sun .. 6=Sat) across recorded expense days.
+    const weekdayAgg: Array<{ sum_usd: number; days: number }> = Array.from(
+      { length: 7 },
+      () => ({ sum_usd: 0, days: 0 }),
+    );
+    for (const [dayKey, usd] of expenseByDayUSD.entries()) {
+      const day = new Date(`${dayKey}T00:00:00Z`);
+      if (Number.isNaN(day.getTime())) continue;
+      const dow = day.getUTCDay();
+      weekdayAgg[dow].sum_usd += usd;
+      weekdayAgg[dow].days += 1;
+    }
+    const MIN_WEEKDAY_SAMPLES = 1;
+
+    const vndRate = await usdToVnd();
+    const series: Array<{
+      date: string;
+      predicted_spend_usd: number;
+      predicted_spend_vnd: number;
+      expected_repayments_usd: number;
+      expected_repayments_vnd: number;
+      total_out_usd: number;
+      total_out_vnd: number;
+    }> = [];
+
+    let totals = {
+      predicted_spend_usd: 0,
+      expected_repayments_usd: 0,
+      total_out_usd: 0,
+    };
+
+    for (let d = addDays(startDay, 0); d <= endDay; d = addDays(d, 1)) {
+      const date = toISODate(d);
+      const repaymentUSD = repaymentByDayUSD.get(date) || 0;
+      const dow = d.getUTCDay();
+      const hasWeekdayBaseline = weekdayAgg[dow].days >= MIN_WEEKDAY_SAMPLES;
+      const weekdayBaselineUSD = hasWeekdayBaseline
+        ? weekdayAgg[dow].sum_usd / weekdayAgg[dow].days
+        : 0;
+      const predictedSpendUSD =
+        weekdayBaselineUSD > 0
+          ? weekdayBaselineUSD
+          : baselineDailySpendUSD > 0
+            ? baselineDailySpendUSD
+            : 0;
+      const totalOutUSD = repaymentUSD + predictedSpendUSD;
+
+      series.push({
+        date,
+        predicted_spend_usd: predictedSpendUSD,
+        predicted_spend_vnd: predictedSpendUSD * vndRate,
+        expected_repayments_usd: repaymentUSD,
+        expected_repayments_vnd: repaymentUSD * vndRate,
+        total_out_usd: totalOutUSD,
+        total_out_vnd: totalOutUSD * vndRate,
+      });
+
+      totals.predicted_spend_usd += predictedSpendUSD;
+      totals.expected_repayments_usd += repaymentUSD;
+      totals.total_out_usd += totalOutUSD;
+    }
+
+    res.json({
+      start_date: toISODate(startDay),
+      end_date: toISODate(endDay),
+      account,
+      baseline_daily_spend_usd: baselineDailySpendUSD,
+      baseline_daily_spend_vnd: baselineDailySpendUSD * vndRate,
+      totals: {
+        predicted_spend_usd: totals.predicted_spend_usd,
+        predicted_spend_vnd: totals.predicted_spend_usd * vndRate,
+        expected_repayments_usd: totals.expected_repayments_usd,
+        expected_repayments_vnd: totals.expected_repayments_usd * vndRate,
+        total_out_usd: totals.total_out_usd,
+        total_out_vnd: totals.total_out_usd * vndRate,
+      },
+      series,
+      repayment_items: repaymentItems,
+    });
+  } catch (e: any) {
+    res.status(500).json({
+      error: e?.message || "Failed to compute predicted outflows",
+    });
+  }
+};
+
+reportsRouter.get("/reports/predicted-outflows", predictedOutflowsHandler);
+// Backward-compatible alias (now returns outflows-only).
+reportsRouter.get("/reports/predicted-cashflow", predictedOutflowsHandler);
+
 reportsRouter.get("/reports/spending", async (req, res) => {
   try {
     const start = req.query.start
@@ -1201,7 +1470,10 @@ reportsRouter.get("/reports/spending", async (req, res) => {
         return dt >= monthDate && dt <= monthEnd;
       });
       const monthTotal = monthTxs.reduce((s, t) => s + (t.usdAmount || 0), 0);
-      const monthLabel = monthDate.toISOString().slice(0, 7); // YYYY-MM
+      // Use local year/month instead of toISOString to avoid timezone issues
+      const year = monthDate.getFullYear();
+      const month = String(monthDate.getMonth() + 1).padStart(2, '0');
+      const monthLabel = `${year}-${month}`;
       monthly_trend.push({
         month: monthLabel,
         amount_usd: monthTotal,

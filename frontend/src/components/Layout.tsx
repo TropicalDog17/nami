@@ -13,6 +13,16 @@ const Layout = ({ children }: LayoutProps) => {
     const navigation = [
         { name: 'Transactions', href: '/', current: location.pathname === '/' },
         {
+            name: 'Cash Flow',
+            href: '/cashflow',
+            current: location.pathname === '/cashflow',
+        },
+        {
+            name: 'Spending',
+            href: '/spending',
+            current: location.pathname === '/spending',
+        },
+        {
             name: 'Vaults',
             href: '/vaults',
             current:
@@ -30,9 +40,9 @@ const Layout = ({ children }: LayoutProps) => {
             current: location.pathname === '/admin',
         },
         {
-            name: 'Reports',
-            href: '/reports',
-            current: location.pathname === '/reports',
+            name: 'AI Advisor',
+            href: '/ai-advisor',
+            current: location.pathname === '/ai-advisor',
         },
     ];
 

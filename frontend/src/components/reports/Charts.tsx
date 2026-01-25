@@ -882,8 +882,10 @@ export const MonthlySpendingTrendChart: React.FC<{
             'Nov',
             'Dec',
         ];
+        const monthName = monthNames[parseInt(month, 10) - 1];
+        const yearShort = year.slice(-2);
         return {
-            name: `${monthNames[parseInt(month, 10) - 1]} ${year.slice(2)}`,
+            name: `${monthName} '${yearShort}`,
             value: currency === 'USD' ? m.amount_usd : m.amount_vnd,
             isLast: index === arr.length - 1,
         };

@@ -282,14 +282,18 @@ const CashFlowChart: React.FC<CashFlowChartProps> = ({ data, currency }) => {
                                                         )}
                                                     </span>
                                                 )}
-                                                <span
-                                                    className={`font-medium ${getNetColor(net)}`}
-                                                >
-                                                    {net >= 0 ? '+' : '-'}
-                                                    {formatCurrency(
-                                                        Math.abs(net)
-                                                    )}
-                                                </span>
+                                                {/* Only show net if both inflow and outflow exist, or if net differs from both */}
+                                                {(inflow > 0 && outflow > 0) ||
+                                                (net !== inflow && net !== -outflow) ? (
+                                                    <span
+                                                        className={`font-medium ${getNetColor(net)}`}
+                                                    >
+                                                        {net >= 0 ? '+' : '-'}
+                                                        {formatCurrency(
+                                                            Math.abs(net)
+                                                        )}
+                                                    </span>
+                                                ) : null}
                                             </div>
                                         </div>
                                     );

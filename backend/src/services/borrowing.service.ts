@@ -76,6 +76,136 @@ export class BorrowingService {
     return borrowingRepository.findAll();
   }
 
+  async recordManualRepayment(params: {
+    counterparty: string;
+    asset: { type: string; symbol: string };
+    amount: number;
+    at?: string;
+    account?: string;
+    note?: string;
+  }): Promise<{ transaction?: any; updatedBorrowings: string[] }> {
+    const counterparty = params.counterparty || "general";
+    const asset = params.asset;
+    const amount = params.amount;
+    const paymentAt = params.at || new Date().toISOString();
+    const account =
+      params.account || settingsRepository.getDefaultSpendingVaultName();
+
+    // Find all active borrowings for this counterparty and asset
+    const borrowings = borrowingRepository
+      .findByStatus("ACTIVE")
+      .filter(
+        (b) =>
+          b.counterparty === counterparty &&
+          b.asset.type === asset.type &&
+          b.asset.symbol === asset.symbol &&
+          b.outstanding > 0
+      );
+
+    if (borrowings.length === 0) {
+      // No matching borrowings - just create the transaction without updating borrowing
+      const tx = await transactionService.createRepayTransaction({
+        asset: asset as any,
+        amount,
+        direction: "BORROW",
+        at: paymentAt,
+        account,
+        counterparty,
+        note: params.note,
+      });
+
+      // Record vault outflow
+      const rate = await priceService.getRateUSD(asset as any, paymentAt);
+      const usdValue = amount * rate.rateUSD;
+      vaultService.ensureVault(account);
+      vaultService.addVaultEntry({
+        vault: account,
+        type: "WITHDRAW",
+        asset: asset as any,
+        amount,
+        usdValue,
+        at: paymentAt,
+        account: counterparty,
+        note: params.note || `Repayment to ${counterparty}`,
+      });
+
+      return { transaction: tx, updatedBorrowings: [] };
+    }
+
+    // Distribute payment across borrowings (proportional to outstanding)
+    const totalOutstanding = borrowings.reduce(
+      (sum, b) => sum + b.outstanding,
+      0
+    );
+    let remainingAmount = amount;
+    const updatedBorrowingIds: string[] = [];
+    let lastTransaction: any;
+
+    for (const borrowing of borrowings) {
+      if (remainingAmount <= 0) break;
+
+      const borrowingShare =
+        (borrowing.outstanding / totalOutstanding) * amount;
+      const paymentAmount = Math.min(
+        borrowingShare,
+        borrowing.outstanding,
+        remainingAmount
+      );
+
+      if (paymentAmount > 0) {
+        const sourceRef = `borrow-manual:${borrowing.id}:${paymentAt.slice(
+          0,
+          10
+        )}`;
+
+        lastTransaction = await transactionService.createRepayTransaction({
+          asset: borrowing.asset,
+          amount: paymentAmount,
+          direction: "BORROW",
+          at: paymentAt,
+          account,
+          counterparty: borrowing.counterparty,
+          note: params.note || `Repayment for ${borrowing.counterparty}`,
+          sourceRef,
+        });
+
+        // Record vault outflow
+        const rate = await priceService.getRateUSD(
+          borrowing.asset,
+          paymentAt
+        );
+        const usdValue = paymentAmount * rate.rateUSD;
+        vaultService.ensureVault(account);
+        vaultService.addVaultEntry({
+          vault: account,
+          type: "WITHDRAW",
+          asset: borrowing.asset,
+          amount: paymentAmount,
+          usdValue,
+          at: paymentAt,
+          account: borrowing.counterparty,
+          note: params.note || `Borrow repayment (${borrowing.id})`,
+        });
+
+        // Update borrowing outstanding
+        const newOutstanding = Math.max(
+          0,
+          borrowing.outstanding - paymentAmount
+        );
+        const updates: Partial<BorrowingAgreement> = {
+          outstanding: newOutstanding,
+          status: newOutstanding > 0 ? "ACTIVE" : "CLOSED",
+        };
+        borrowingRepository.update(borrowing.id, updates);
+        updatedBorrowingIds.push(borrowing.id);
+
+        remainingAmount -= paymentAmount;
+      }
+    }
+
+    return { transaction: lastTransaction, updatedBorrowings: updatedBorrowingIds };
+  }
+
   async processDuePayments(now: Date = new Date()): Promise<void> {
     const borrowings = borrowingRepository.findByStatus("ACTIVE");
     for (const borrowing of borrowings) {

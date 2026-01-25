@@ -89,6 +89,18 @@ async function run(): Promise<void> {
       )
       .all();
 
+    const borrowings = db
+      .prepare(
+        `
+      SELECT id, counterparty, asset_type as assetType, asset_symbol as assetSymbol,
+             principal, monthly_payment as monthlyPayment, start_at as startAt,
+             first_due_at as firstDueAt, next_payment_at as nextPaymentAt,
+             outstanding, note, account, status, created_at as createdAt
+      FROM borrowings
+    `,
+      )
+      .all();
+
     const adminTypes = db.prepare("SELECT * FROM admin_types").all();
     const adminAccounts = db.prepare("SELECT * FROM admin_accounts").all();
     const adminAssets = db.prepare("SELECT * FROM admin_assets").all();
@@ -137,6 +149,10 @@ async function run(): Promise<void> {
       loans: loans.map((l: any) => ({
         ...l,
         asset: { type: l.assetType, symbol: l.assetSymbol },
+      })),
+      borrowings: borrowings.map((b: any) => ({
+        ...b,
+        asset: { type: b.assetType, symbol: b.assetSymbol },
       })),
       adminTypes: adminTypes.map((t: any) => ({
         id: t.id,
