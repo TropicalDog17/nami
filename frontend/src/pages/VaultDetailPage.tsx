@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { TimeSeriesLineChart } from '../components/reports/Charts';
 import ManualPricingControl from '../components/tokenized/ManualPricingControl';
 import ComboBox from '../components/ui/ComboBox';
+import { CurrencyToggle } from '../components/ui/CurrencyToggle';
 import DataTable, { TableColumn } from '../components/ui/DataTable';
 import { useToast } from '../components/ui/Toast';
 import {
@@ -18,6 +19,7 @@ import {
     adminApi,
     ApiError,
 } from '../services/api';
+import { fxService } from '../services/fxService';
 import { formatCurrency, formatPercentage } from '../utils/currencyFormatter';
 
 type TokenizedVaultAsset = {
@@ -90,6 +92,32 @@ const VaultDetailPage: React.FC = () => {
         transaction_count?: number;
         last_transaction_at?: string;
     }>(null);
+
+    // Local currency state for this page only
+    const [currency, setCurrency] = useState<'USD' | 'VND'>('USD');
+    const [fxRate, setFxRate] = useState<number>(1);
+
+    // Fetch FX rate when currency changes
+    useEffect(() => {
+        const fetchFxRate = async () => {
+            if (currency === 'VND') {
+                const rate = await fxService.getFXRate('USD', 'VND');
+                setFxRate(rate);
+            } else {
+                setFxRate(1);
+            }
+        };
+        void fetchFxRate();
+    }, [currency]);
+
+    // Helper to convert and format currency
+    const displayCurrency = useCallback(
+        (valueUSD: number) => {
+            const converted = currency === 'VND' ? valueUSD * fxRate : valueUSD;
+            return formatCurrency(converted, currency);
+        },
+        [currency, fxRate]
+    );
 
     type LedgerTransaction = {
         timestamp?: unknown;
@@ -239,6 +267,7 @@ const VaultDetailPage: React.FC = () => {
         pnl_usd: number;
         roi_percent: number;
         apr_percent: number;
+        twrr_percent: number;
         last_valuation_usd: number;
         net_flow_since_valuation_usd: number;
         deposits_cum_usd: number;
@@ -257,6 +286,7 @@ const VaultDetailPage: React.FC = () => {
             pnl_usd: number;
             roi_percent: number;
             apr_percent: number;
+            twrr_percent: number;
         }>
     >([]);
     const _loadingSeries = useState<boolean>(false)[0];
@@ -277,6 +307,7 @@ const VaultDetailPage: React.FC = () => {
                         pnl_usd: number;
                         roi_percent: number;
                         apr_percent: number;
+                        twrr_percent: number;
                     }>;
                 }>(tokenizedVaultDetails.id);
                 const s = (res as { series?: unknown })?.series ?? [];
@@ -965,22 +996,27 @@ const VaultDetailPage: React.FC = () => {
         const EPS = 0.01; // ignore +/- 1bp noise
         const performance = Math.abs(perfRaw) < EPS ? 0 : perfRaw;
 
-        // APR derived from price-based performance; avoid over-annualizing short histories (< 30 days)
-        const roiDecimal = (performance || 0) / 100;
-        const aprSinceInception =
+        // Use backend's TWRR which properly chains period returns (removes cash-flow timing effects)
+        const backendTwrr =
+            typeof headerMetrics?.twrr_percent === 'number' &&
+            isFinite(headerMetrics.twrr_percent)
+                ? headerMetrics.twrr_percent
+                : undefined;
+
+        // TWRR total return: prefer backend calculation, fall back to price-based if unavailable
+        const twrrTotalDisplay = backendTwrr ?? performance;
+
+        // TWRR APR: annualize the TWRR; avoid over-annualizing short histories (< 30 days)
+        const twrrDecimal = (twrrTotalDisplay || 0) / 100;
+        const twrrAprDisplay =
             daysSinceInception >= 30 && yearsSinceInception > 0
-                ? (Math.pow(1 + roiDecimal, 1 / yearsSinceInception) - 1) * 100
-                : performance;
-        const perfDisplay =
-            typeof headerMetrics?.roi_percent === 'number' &&
-            isFinite(headerMetrics.roi_percent)
-                ? headerMetrics.roi_percent
-                : performance;
-        const aprDisplay =
+                ? (Math.pow(1 + twrrDecimal, 1 / yearsSinceInception) - 1) * 100
+                : twrrTotalDisplay;
+        const mwrrAprDisplay =
             typeof headerMetrics?.apr_percent === 'number' &&
             isFinite(headerMetrics.apr_percent)
                 ? headerMetrics.apr_percent
-                : aprSinceInception;
+                : undefined;
         const status = tokenizedVaultDetails.status?.toLowerCase() ?? 'unknown';
         const statusConfig: Record<
             string,
@@ -1017,8 +1053,8 @@ const VaultDetailPage: React.FC = () => {
                 className="px-4 py-6 sm:px-0"
                 data-testid="tokenized-vault-detail-page"
             >
-                <div className="mb-6 flex items-center justify-between">
-                    <div>
+                <div className="mb-6 flex items-start justify-between gap-4">
+                    <div className="flex-1">
                         <Button
                             onClick={() => navigate('/vaults')}
                             variant="link"
@@ -1035,11 +1071,17 @@ const VaultDetailPage: React.FC = () => {
                                 'Tokenized vault overview'}
                         </p>
                     </div>
-                    <span
-                        className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${statusBadge.className}`}
-                    >
-                        {statusBadge.label}
-                    </span>
+                    <div className="flex flex-col gap-3 items-end">
+                        <CurrencyToggle
+                            currency={currency}
+                            onCurrencyChange={setCurrency}
+                        />
+                        <span
+                            className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${statusBadge.className}`}
+                        >
+                            {statusBadge.label}
+                        </span>
+                    </div>
                 </div>
 
                 {/* Spend Vault Summary */}
@@ -1116,24 +1158,6 @@ const VaultDetailPage: React.FC = () => {
                             <Card>
                                 <CardContent className="p-4">
                                     <h3 className="text-sm font-medium text-gray-500 mb-2">
-                                        Token Price
-                                    </h3>
-                                    <p className="text-2xl font-bold text-gray-900">
-                                        $
-                                        {isNaN(tokenPrice)
-                                            ? '0.0000'
-                                            : tokenPrice.toFixed(4)}
-                                    </p>
-                                    <p className="text-sm text-gray-600">
-                                        {tokenizedVaultDetails.is_user_defined_price
-                                            ? 'Manual price'
-                                            : 'Live price'}
-                                    </p>
-                                </CardContent>
-                            </Card>
-                            <Card>
-                                <CardContent className="p-4">
-                                    <h3 className="text-sm font-medium text-gray-500 mb-2">
                                         Total Supply
                                     </h3>
                                     <p className="text-2xl font-bold text-gray-900">
@@ -1200,36 +1224,62 @@ const VaultDetailPage: React.FC = () => {
                             <Card>
                                 <CardContent className="p-4">
                                     <h3 className="text-sm font-medium text-gray-500 mb-2">
-                                        Performance Since Inception
+                                        TWRR Since Inception
                                     </h3>
                                     <p
-                                        className={`text-2xl font-bold ${perfDisplay >= 0 ? 'text-green-600' : 'text-red-600'}`}
+                                        className={`text-2xl font-bold ${twrrTotalDisplay >= 0 ? 'text-green-600' : 'text-red-600'}`}
                                     >
                                         {formatPercentage(
-                                            (perfDisplay || 0) / 100,
+                                            (twrrTotalDisplay || 0) / 100,
                                             2
                                         )}
                                     </p>
                                     <p className="text-sm text-gray-600">
-                                        Relative to initial share price
+                                        Share-price return (cash-flow timing removed)
                                     </p>
                                 </CardContent>
                             </Card>
                             <Card>
                                 <CardContent className="p-4">
                                     <h3 className="text-sm font-medium text-gray-500 mb-2">
-                                        APR Since Inception
+                                        TWRR APR (Annualized)
                                     </h3>
                                     <p
-                                        className={`text-2xl font-bold ${aprDisplay >= 0 ? 'text-green-600' : 'text-red-600'}`}
+                                        className={`text-2xl font-bold ${twrrAprDisplay >= 0 ? 'text-green-600' : 'text-red-600'}`}
                                     >
                                         {formatPercentage(
-                                            (aprDisplay || 0) / 100,
+                                            (twrrAprDisplay || 0) / 100,
                                             2
                                         )}
                                     </p>
                                     <p className="text-sm text-gray-600">
-                                        Annualized from inception
+                                        Annualized share-price return
+                                    </p>
+                                </CardContent>
+                            </Card>
+                            <Card>
+                                <CardContent className="p-4">
+                                    <h3 className="text-sm font-medium text-gray-500 mb-2">
+                                        MWRR (IRR APR)
+                                    </h3>
+                                    <p
+                                        className={`text-2xl font-bold ${
+                                            typeof mwrrAprDisplay === 'number'
+                                                ? mwrrAprDisplay >= 0
+                                                    ? 'text-green-600'
+                                                    : 'text-red-600'
+                                                : 'text-gray-900'
+                                        }`}
+                                    >
+                                        {typeof mwrrAprDisplay === 'number'
+                                            ? formatPercentage(
+                                                  (mwrrAprDisplay || 0) / 100,
+                                                  2
+                                              )
+                                            : '—'}
+                                    </p>
+                                    <p className="text-sm text-gray-600">
+                                        Money-weighted (IRR), includes contribution timing
                                     </p>
                                 </CardContent>
                             </Card>

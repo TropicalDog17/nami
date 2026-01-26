@@ -28,6 +28,7 @@ type SeriesData = {
     withdrawals_cum_usd?: number;
     roi_percent?: number;
     apr_percent: number;
+    twrr_percent?: number;
 };
 
 type SeriesSummary = {
@@ -37,6 +38,7 @@ type SeriesSummary = {
     pnl_vnd: number;
     apr_percent: number;
     roi_percent: number;
+    twrr_percent?: number;
     aum_change_usd: number;
     aum_change_vnd: number;
     aum_change_percent: number;
@@ -45,10 +47,13 @@ type SeriesSummary = {
     pnl_change_percent: number;
     apr_change_percent_points: number;
     roi_change_percent_points: number;
+    twrr_change_percent_points?: number;
     apr_eligible?: boolean;
     days_elapsed?: number;
     range_return_percent?: number | null;
     range_days_elapsed?: number;
+    range_twrr_percent?: number | null;
+    range_twrr_days_elapsed?: number;
 };
 
 type AUMChartProps = {
@@ -292,6 +297,8 @@ export const AUMChart: React.FC<AUMChartProps> = ({
                 aprDailyChangePercent: 0,
                 currentROI: seriesSummary.roi_percent,
                 roiDailyChange: seriesSummary.roi_change_percent_points,
+                currentTWRR: seriesSummary.twrr_percent ?? 0,
+                twrrDailyChange: seriesSummary.twrr_change_percent_points ?? 0,
                 aprEligible: seriesSummary.apr_eligible ?? true,
             };
         }
@@ -309,6 +316,8 @@ export const AUMChart: React.FC<AUMChartProps> = ({
                 aprDailyChangePercent: 0,
                 currentROI: 0,
                 roiDailyChange: 0,
+                currentTWRR: 0,
+                twrrDailyChange: 0,
                 aprEligible: false,
             };
         }
@@ -329,6 +338,8 @@ export const AUMChart: React.FC<AUMChartProps> = ({
             aprDailyChangePercent: 0,
             currentROI: 0,
             roiDailyChange: 0,
+            currentTWRR: 0,
+            twrrDailyChange: 0,
             aprEligible: false,
         };
     }, [currency, seriesDataFull, seriesSummary]);
@@ -462,17 +473,17 @@ export const AUMChart: React.FC<AUMChartProps> = ({
     return (
         <>
             {/* Metrics Cards */}
-            <div className="col-span-1 lg:col-span-3 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+            <div className="col-span-1 lg:col-span-3 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
                 {loading ? (
-                    <div className="col-span-5 flex items-center justify-center h-32">
+                    <div className="col-span-6 flex items-center justify-center h-32">
                         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
                     </div>
                 ) : error ? (
-                    <div className="col-span-5 flex items-center justify-center h-32 text-red-500 text-sm">
+                    <div className="col-span-6 flex items-center justify-center h-32 text-red-500 text-sm">
                         {error}
                     </div>
                 ) : seriesData.length === 0 ? (
-                    <div className="col-span-5 flex items-center justify-center h-32 text-gray-500 text-sm">
+                    <div className="col-span-6 flex items-center justify-center h-32 text-gray-500 text-sm">
                         No data available
                     </div>
                 ) : (
@@ -500,14 +511,24 @@ export const AUMChart: React.FC<AUMChartProps> = ({
                             'Total return since inception (not annualized)'
                         )}
                         {renderMetricCard(
-                            'APR (Annualized)',
+                            'MWRR (IRR APR)',
                             metrics.aprEligible ? metrics.currentAPR : null,
                             metrics.aprDailyChange,
                             metrics.aprDailyChangePercent,
                             true,
                             false,
                             metrics.aprEligible,
-                            'Annualized IRR since inception (shown after 30 days)'
+                            'Money-weighted return (IRR), annualized (shown after 30 days)'
+                        )}
+                        {renderMetricCard(
+                            'TWRR (Since Inception)',
+                            metrics.currentTWRR,
+                            metrics.twrrDailyChange,
+                            0,
+                            true,
+                            false,
+                            true,
+                            'Time-weighted return since inception (cash-flow timing removed)'
                         )}
                         {renderMetricCard(
                             `Return (${timeRange.toUpperCase()})`,
@@ -517,7 +538,7 @@ export const AUMChart: React.FC<AUMChartProps> = ({
                             true,
                             false,
                             false,
-                            'Money-weighted return over the selected range'
+                            'Money-weighted return over the selected range (IRR-based)'
                         )}
                     </>
                 )}

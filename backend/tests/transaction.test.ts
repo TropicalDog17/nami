@@ -415,3 +415,169 @@ describe("Transaction Handler", () => {
     });
   });
 });
+
+/**
+ * Transaction Service Tests
+ *
+ * Tests for transaction service validation including:
+ * - Description validation (note or counterparty required)
+ */
+describe("TransactionService - Description Validation", () => {
+  let transactionService: any;
+  let mockTransactions: Transaction[] = [];
+
+  beforeEach(async () => {
+    vi.resetModules();
+    mockTransactions = [];
+
+    // Mock repositories
+    vi.doMock("../src/repositories", () => ({
+      transactionRepository: {
+        findAll: () => mockTransactions,
+        create: (tx: Transaction) => {
+          mockTransactions.push(tx);
+          return tx;
+        },
+      },
+      settingsRepository: {
+        getDefaultSpendingVaultName: () => "Spend",
+        getDefaultIncomeVaultName: () => "Income",
+      },
+    }));
+
+    // Mock vault service
+    vi.doMock("../src/services/vault.service", () => ({
+      vaultService: {
+        ensureVault: vi.fn(),
+        addVaultEntry: vi.fn(),
+      },
+    }));
+
+    // Mock price service
+    vi.doMock("../src/services/price.service", () => ({
+      priceService: {
+        getRateUSD: async () => ({
+          symbol: "VND",
+          rateUSD: 0.00004,
+          timestamp: new Date().toISOString(),
+        }),
+      },
+    }));
+
+    // Import service after mocks are set up
+    const serviceModule = await import("../src/services/transaction.service");
+    transactionService = serviceModule.transactionService;
+  });
+
+  describe("createExpenseTransaction", () => {
+    it("should throw error when creating expense without description", async () => {
+      const params = {
+        asset: { type: "FIAT" as const, symbol: "VND" },
+        amount: 100000,
+        category: "food", // Only category, no note/counterparty
+      };
+
+      await expect(
+        transactionService.createExpenseTransaction(params),
+      ).rejects.toThrow("must have either");
+    });
+
+    it("should create expense with note", async () => {
+      const params = {
+        asset: { type: "FIAT" as const, symbol: "VND" },
+        amount: 100000,
+        note: "Coffee",
+      };
+
+      const tx = await transactionService.createExpenseTransaction(params);
+
+      expect(tx.id).toBeDefined();
+      expect(tx.note).toBe("Coffee");
+      expect(tx.type).toBe("EXPENSE");
+    });
+
+    it("should create expense with counterparty", async () => {
+      const params = {
+        asset: { type: "FIAT" as const, symbol: "VND" },
+        amount: 100000,
+        counterparty: "Starbucks",
+      };
+
+      const tx = await transactionService.createExpenseTransaction(params);
+
+      expect(tx.id).toBeDefined();
+      expect(tx.counterparty).toBe("Starbucks");
+      expect(tx.type).toBe("EXPENSE");
+    });
+
+    it("should create expense with both note and counterparty", async () => {
+      const params = {
+        asset: { type: "FIAT" as const, symbol: "VND" },
+        amount: 100000,
+        note: "Morning coffee",
+        counterparty: "Starbucks",
+        category: "food",
+      };
+
+      const tx = await transactionService.createExpenseTransaction(params);
+
+      expect(tx.id).toBeDefined();
+      expect(tx.note).toBe("Morning coffee");
+      expect(tx.counterparty).toBe("Starbucks");
+    });
+
+    it("should throw error with whitespace-only note", async () => {
+      const params = {
+        asset: { type: "FIAT" as const, symbol: "VND" },
+        amount: 100000,
+        note: "   ", // Whitespace only
+      };
+
+      await expect(
+        transactionService.createExpenseTransaction(params),
+      ).rejects.toThrow("must have either");
+    });
+  });
+
+  describe("createIncomeTransaction", () => {
+    it("should throw error when creating income without description", async () => {
+      const params = {
+        asset: { type: "FIAT" as const, symbol: "VND" },
+        amount: 500000,
+        category: "salary", // Only category
+      };
+
+      await expect(
+        transactionService.createIncomeTransaction(params),
+      ).rejects.toThrow("must have either");
+    });
+
+    it("should create income with note", async () => {
+      const params = {
+        asset: { type: "FIAT" as const, symbol: "VND" },
+        amount: 500000,
+        note: "Monthly salary",
+      };
+
+      const tx = await transactionService.createIncomeTransaction(params);
+
+      expect(tx.id).toBeDefined();
+      expect(tx.note).toBe("Monthly salary");
+      expect(tx.type).toBe("INCOME");
+    });
+
+    it("should create income with counterparty", async () => {
+      const params = {
+        asset: { type: "FIAT" as const, symbol: "VND" },
+        amount: 500000,
+        counterparty: "Acme Corp",
+      };
+
+      const tx = await transactionService.createIncomeTransaction(params);
+
+      expect(tx.id).toBeDefined();
+      expect(tx.counterparty).toBe("Acme Corp");
+      expect(tx.type).toBe("INCOME");
+    });
+  });
+});

@@ -1,2 +1,3 @@
+use serena mcp if possible
 + should read the README.md file first in each folder if want to understand the project structure and the purpose of the folder.
 + Always verify if all the service is built successfully.

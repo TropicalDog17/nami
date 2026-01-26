@@ -135,7 +135,20 @@ export function calculateIRRBasedAPR(
     return roi * 100;
   }
 
+  // For extreme loss scenarios (>90% loss), IRR annualization produces misleading results
+  // (e.g., a 2x recovery from $44 to $88 after a 99% crash shows 1000%+ IRR)
+  // In these cases, simple ROI is more meaningful to users
+  if (roi < -0.9) {
+    return roi * 100;
+  }
+
   const irr = calculateIRR(cashFlows);
+
+  // Sanity check: if ROI is negative but IRR is positive (or vice versa with large magnitude),
+  // the IRR calculation is likely unstable - fall back to ROI
+  if (roi < 0 && irr > 0.5) {
+    return roi * 100;
+  }
 
   // IRR is already annualized (annual rate)
   // Convert to percentage

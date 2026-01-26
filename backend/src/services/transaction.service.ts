@@ -23,6 +23,27 @@ export interface TransactionBase {
 }
 
 export class TransactionService {
+  /**
+   * Validates that a transaction has either note or counterparty.
+   * Category/tag alone is not sufficient for meaningful descriptions.
+   */
+  private validateDescription(params: {
+    note?: string;
+    counterparty?: string;
+    category?: string;
+  }): void {
+    const hasDescription =
+      (params.note && params.note.trim().length > 0) ||
+      (params.counterparty && params.counterparty.trim().length > 0);
+
+    if (!hasDescription) {
+      throw new Error(
+        "Transaction must have either 'note' or 'counterparty' to describe it. " +
+        "Category/tag alone is not sufficient."
+      );
+    }
+  }
+
   async buildTransactionBase(
     asset: Asset,
     amount: number,
@@ -100,6 +121,13 @@ export class TransactionService {
     dueDate?: string;
     sourceRef?: string;
   }): Promise<Transaction> {
+    // Validate description
+    this.validateDescription({
+      note: params.note,
+      counterparty: params.counterparty,
+      category: params.category,
+    });
+
     const base = await this.buildTransactionBase(
       params.asset,
       params.amount,
@@ -136,6 +164,13 @@ export class TransactionService {
     dueDate?: string;
     sourceRef?: string;
   }): Promise<Transaction> {
+    // Validate description
+    this.validateDescription({
+      note: params.note,
+      counterparty: params.counterparty,
+      category: params.category,
+    });
+
     const base = await this.buildTransactionBase(
       params.asset,
       params.amount,

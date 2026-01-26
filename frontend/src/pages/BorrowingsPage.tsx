@@ -14,6 +14,7 @@ import { ChartContainer } from '@/components/ui/chart';
 
 import QuickBorrowLoanModal from '../components/modals/QuickBorrowLoanModal';
 import QuickRepayModal from '../components/modals/QuickRepayModal';
+import { CurrencyToggle } from '../components/ui/CurrencyToggle';
 import { useToast } from '../components/ui/Toast';
 import {
     ApiError,
@@ -21,6 +22,7 @@ import {
     portfolioApi,
     transactionApi,
 } from '../services/api';
+import { fxService } from '../services/fxService';
 import { formatCurrency } from '../utils/currencyFormatter';
 
 // Chart colors palette
@@ -186,6 +188,9 @@ const BorrowingsPage: React.FC = () => {
         []
     );
 
+    // Local currency state for this page only
+    const [currency, setCurrency] = useState<'USD' | 'VND'>('USD');
+
     const [borrowingsSummary, setBorrowingsSummary] =
         useState<BorrowingsSummary | null>(null);
     const [borrowingsAgreements, setBorrowingsAgreements] = useState<
@@ -196,38 +201,34 @@ const BorrowingsPage: React.FC = () => {
     const [showBorrowModal, setShowBorrowModal] = useState(false);
     const [showRepayModal, setShowRepayModal] = useState(false);
     const [showPlanCard, setShowPlanCard] = useState(true);
+    const [fxRate, setFxRate] = useState<number>(1);
+
+    // Fetch FX rate when currency changes
+    useEffect(() => {
+        const fetchFxRate = async () => {
+            if (currency === 'VND') {
+                const rate = await fxService.getFXRate('USD', 'VND');
+                setFxRate(rate);
+            } else {
+                setFxRate(1);
+            }
+        };
+        void fetchFxRate();
+    }, [currency]);
+
+    // Helper to convert and format currency
+    const displayCurrency = useCallback(
+        (valueUSD: number) => {
+            const converted = currency === 'VND' ? valueUSD * fxRate : valueUSD;
+            return formatCurrency(converted, currency);
+        },
+        [currency, fxRate]
+    );
 
     const refreshBorrowings = useCallback(async () => {
         setLoading(true);
         try {
-            const r = await portfolioApi.report<Record<string, unknown>>();
-            const liabs = Array.isArray(r?.liabilities) ? r.liabilities : [];
-            const mapped = liabs.map((o: Record<string, unknown>) => {
-                const counterpartyRaw = o?.counterparty;
-                const counterparty =
-                    typeof counterpartyRaw === 'string' ? counterpartyRaw : '';
-                const assetRaw = o?.asset;
-                let asset = '';
-                if (typeof assetRaw === 'string') {
-                    asset = assetRaw;
-                } else if (typeof assetRaw === 'object' && assetRaw !== null) {
-                    const symbolRaw = (assetRaw as Record<string, unknown>)
-                        .symbol;
-                    asset = typeof symbolRaw === 'string' ? symbolRaw : '';
-                }
-                return {
-                    counterparty,
-                    asset,
-                    amount: Number(o?.amount ?? 0),
-                    valueUSD: Number(o?.valueUSD ?? 0),
-                };
-            });
-            const outstandingUSD = mapped.reduce(
-                (s: number, x: { valueUSD?: number }) =>
-                    s + (Number(x.valueUSD) || 0),
-                0
-            );
-            setBorrowingsSummary({ outstandingUSD, liabilities: mapped });
+            // Fetch borrowing agreements directly - no need for report API
             const agreements =
                 await borrowingsApi.list<Array<Record<string, unknown>>>({
                     status: 'ACTIVE',
@@ -248,6 +249,14 @@ const BorrowingsPage: React.FC = () => {
                 })
             );
             setBorrowingsAgreements(normalized);
+            
+            // Calculate total outstanding from borrowings only
+            const totalOutstanding = normalized.reduce(
+                (sum, b) => sum + b.outstanding,
+                0
+            );
+            setBorrowingsSummary({ outstandingUSD: totalOutstanding, liabilities: [] });
+            
             setLastUpdated(new Date().toLocaleString());
         } catch (err: unknown) {
             if (shouldToast(err)) {
@@ -260,22 +269,16 @@ const BorrowingsPage: React.FC = () => {
         } finally {
             setLoading(false);
         }
-    }, [showErrorToast, shouldToast]);
+    }, [showErrorToast, shouldToast]);;
 
     useEffect(() => {
         void refreshBorrowings();
     }, [refreshBorrowings]);
 
-    // Merge agreements and liabilities into unified debt items
-    const mergedDebtItems = useMemo((): MergedDebtItem[] => {
+    const debtItems = useMemo((): MergedDebtItem[] => {
         const items: MergedDebtItem[] = [];
-        const seenKeys = new Set<string>();
 
-        // First, add all borrowing agreements
         for (const agreement of borrowingsAgreements) {
-            const key = `${agreement.counterparty}-${agreement.asset?.symbol || 'USD'}`;
-            seenKeys.add(key);
-
             const principal = agreement.principal || 0;
             const outstanding = agreement.outstanding || 0;
             const percentPaid =
@@ -283,6 +286,10 @@ const BorrowingsPage: React.FC = () => {
                     ? ((principal - outstanding) / principal) * 100
                     : null;
 
+            // Use outstanding as valueUSD directly
+            // Note: The borrowings table stores outstanding in the native asset currency,
+            // but for now we'll assume it's in USD or treat it as USD equivalent
+            // In the future, we may need to fetch FX rates for proper conversion
             items.push({
                 id: agreement.id,
                 counterparty: agreement.counterparty || 'general',
@@ -292,47 +299,26 @@ const BorrowingsPage: React.FC = () => {
                 percentPaid,
                 monthlyPayment: agreement.monthlyPayment || null,
                 nextPaymentAt: agreement.nextPaymentAt || null,
-                valueUSD: outstanding, // For agreements, valueUSD is the outstanding amount
+                valueUSD: outstanding, // Assuming outstanding is in USD or USD-equivalent
                 source: 'agreement',
             });
         }
 
-        // Then, add liabilities that don't have matching agreements
-        if (borrowingsSummary?.liabilities) {
-            for (const liability of borrowingsSummary.liabilities) {
-                const key = `${liability.counterparty}-${liability.asset}`;
-                if (!seenKeys.has(key)) {
-                    items.push({
-                        id: `liability-${key}`,
-                        counterparty: liability.counterparty || 'general',
-                        asset: liability.asset,
-                        principal: 0, // No principal info for liability-only items
-                        outstanding: liability.amount,
-                        percentPaid: null, // Can't calculate without principal
-                        monthlyPayment: null,
-                        nextPaymentAt: null,
-                        valueUSD: liability.valueUSD,
-                        source: 'liability',
-                    });
-                }
-            }
-        }
-
         return items;
-    }, [borrowingsAgreements, borrowingsSummary]);
+    }, [borrowingsAgreements]);;
 
     // Calculate summary statistics
     const summaryStats = useMemo(() => {
-        const totalPrincipal = mergedDebtItems
+        const totalPrincipal = debtItems
             .filter((d) => d.principal > 0)
             .reduce((sum, d) => sum + d.principal, 0);
 
-        const totalOutstanding = mergedDebtItems.reduce(
+        const totalOutstanding = debtItems.reduce(
             (sum, d) => sum + d.outstanding,
             0
         );
 
-        const totalPaid = mergedDebtItems
+        const totalPaid = debtItems
             .filter((d) => d.principal > 0)
             .reduce((sum, d) => sum + (d.principal - d.outstanding), 0);
 
@@ -349,13 +335,13 @@ const BorrowingsPage: React.FC = () => {
             overallProgress: Math.max(0, Math.min(100, overallProgress)),
             activeLoans,
         };
-    }, [mergedDebtItems, borrowingsAgreements, borrowingsSummary]);
+    }, [debtItems, borrowingsAgreements, borrowingsSummary]);
 
     // Prepare donut chart data - group by counterparty
     const donutChartData = useMemo(() => {
         const byCounterparty: Record<string, number> = {};
 
-        for (const item of mergedDebtItems) {
+        for (const item of debtItems) {
             const cp = item.counterparty || 'general';
             byCounterparty[cp] = (byCounterparty[cp] || 0) + item.valueUSD;
         }
@@ -370,7 +356,7 @@ const BorrowingsPage: React.FC = () => {
                 fill: CHART_COLORS[index % CHART_COLORS.length],
             }))
             .sort((a, b) => b.value - a.value);
-    }, [mergedDebtItems]);
+    }, [debtItems]);
 
     const chartConfig = useMemo(() => {
         return donutChartData.reduce(
@@ -528,6 +514,14 @@ const BorrowingsPage: React.FC = () => {
                 </div>
             </div>
 
+            {/* Currency Toggle */}
+            <div className="mb-6">
+                <CurrencyToggle
+                    currency={currency}
+                    onCurrencyChange={setCurrency}
+                />
+            </div>
+
             {/* Overview Section - Two Columns */}
             <Card className="mb-6">
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
@@ -611,7 +605,7 @@ const BorrowingsPage: React.FC = () => {
                                                                 fontWeight: 500,
                                                             }}
                                                         >
-                                                            {`${(percentage * 100).toFixed(0)}%`}
+                                                            {`${(percentage).toFixed(0)}%`}
                                                         </text>
                                                     );
                                                 }}
@@ -647,7 +641,7 @@ const BorrowingsPage: React.FC = () => {
                                                                 {entry.name}
                                                             </div>
                                                             <div className="text-muted-foreground">
-                                                                {formatCurrency(
+                                                                {displayCurrency(
                                                                     entry.value
                                                                 )}{' '}
                                                                 (
@@ -688,7 +682,7 @@ const BorrowingsPage: React.FC = () => {
                                                 className="fill-gray-900 font-bold"
                                                 style={{ fontSize: '12px' }}
                                             >
-                                                {formatCurrency(
+                                                {displayCurrency(
                                                     summaryStats.totalDebt
                                                 )}
                                             </text>
@@ -706,13 +700,13 @@ const BorrowingsPage: React.FC = () => {
                         <div className="grid grid-cols-2 gap-4">
                             <StatCard
                                 label="Total Debt"
-                                value={formatCurrency(summaryStats.totalDebt)}
+                                value={displayCurrency(summaryStats.totalDebt)}
                                 subtext="Outstanding balance"
                                 variant="danger"
                             />
                             <StatCard
                                 label="Total Paid"
-                                value={formatCurrency(summaryStats.totalPaid)}
+                                value={displayCurrency(summaryStats.totalPaid)}
                                 subtext="Principal repaid"
                                 variant="success"
                             />
@@ -787,7 +781,6 @@ const BorrowingsPage: React.FC = () => {
                 </div>
             )}
 
-            {/* Merged Debt Details Table */}
             <Card>
                 <CardHeader className="pb-3">
                     <CardTitle className="text-lg font-semibold">
@@ -795,7 +788,7 @@ const BorrowingsPage: React.FC = () => {
                     </CardTitle>
                 </CardHeader>
                 <CardContent>
-                    {mergedDebtItems.length > 0 ? (
+                    {debtItems.length > 0 ? (
                         <div className="overflow-x-auto">
                             <table className="min-w-full text-sm">
                                 <thead>
@@ -814,12 +807,12 @@ const BorrowingsPage: React.FC = () => {
                                         </th>
                                         <th className="py-2 pr-4">Next Due</th>
                                         <th className="py-2 pr-4">
-                                            Value (USD)
+                                            Value ({currency})
                                         </th>
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {mergedDebtItems.map((item) => (
+                                    {debtItems.map((item) => (
                                         <tr key={item.id} className="border-t">
                                             <td className="py-3 pr-4">
                                                 {item.counterparty}
@@ -871,7 +864,7 @@ const BorrowingsPage: React.FC = () => {
                                                     : '-'}
                                             </td>
                                             <td className="py-3 pr-4">
-                                                {formatCurrency(item.valueUSD)}
+                                                {displayCurrency(item.valueUSD)}
                                             </td>
                                         </tr>
                                     ))}

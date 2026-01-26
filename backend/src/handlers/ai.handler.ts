@@ -32,6 +32,28 @@ const requireSignature = (req: Request, res: Response, next: Function) => {
 };
 
 /**
+ * Validates that a transaction has a meaningful description.
+ * Either counterparty or note must be provided.
+ */
+function validateTransactionDescription(params: {
+  counterparty?: string;
+  note?: string;
+  tag?: string;
+}): { valid: boolean; error?: string } {
+  const hasCounterparty = params.counterparty && params.counterparty.trim().length > 0;
+  const hasNote = params.note && params.note.trim().length > 0;
+
+  if (!hasCounterparty && !hasNote) {
+    return {
+      valid: false,
+      error: "Either 'counterparty' or 'note' is required to describe the transaction"
+    };
+  }
+
+  return { valid: true };
+}
+
+/**
  * POST /api/ai/expense-vnd
  * Record an expense in VND - AI doesn't need to know vault names
  * Body: { vnd_amount, date, counterparty?, tag?, note?, source_ref? }
@@ -53,6 +75,12 @@ aiRouter.post(
         return res
           .status(400)
           .json({ error: "date is required (YYYY-MM-DD format)" });
+      }
+
+      // Validate description
+      const descValidation = validateTransactionDescription({ counterparty, note, tag });
+      if (!descValidation.valid) {
+        return res.status(400).json({ error: descValidation.error });
       }
 
       // Use default spending vault from settings
@@ -125,6 +153,12 @@ aiRouter.post(
         return res
           .status(400)
           .json({ error: "date is required (YYYY-MM-DD format)" });
+      }
+
+      // Validate description
+      const descValidation = validateTransactionDescription({ counterparty, note, tag });
+      if (!descValidation.valid) {
+        return res.status(400).json({ error: descValidation.error });
       }
 
       // Use default income vault from settings
@@ -204,6 +238,12 @@ aiRouter.post(
         return res
           .status(400)
           .json({ error: "date is required (YYYY-MM-DD format)" });
+      }
+
+      // Validate description
+      const descValidation = validateTransactionDescription({ counterparty, note, tag });
+      if (!descValidation.valid) {
+        return res.status(400).json({ error: descValidation.error });
       }
 
       // Use credit account if provided, otherwise use spending vault

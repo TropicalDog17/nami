@@ -187,7 +187,20 @@ function calculateIRRBasedAPR(
     return roi * 100;
   }
 
+  // For extreme loss scenarios (>90% loss), IRR annualization produces misleading results
+  // (e.g., a 2x recovery from $44 to $88 after a 99% crash shows 1000%+ IRR)
+  // In these cases, simple ROI is more meaningful to users
+  if (roi < -0.9) {
+    return roi * 100;
+  }
+
   const irr = calculateIRR(cashFlows);
+
+  // Sanity check: if ROI is negative but IRR is positive (or vice versa with large magnitude),
+  // the IRR calculation is likely unstable - fall back to ROI
+  if (roi < 0 && irr > 0.5) {
+    return roi * 100;
+  }
 
   // IRR is already annualized (annual rate)
   // Convert to percentage
@@ -252,6 +265,47 @@ function calculateRangeReturnPercent(
     return { returnPercent: null, daysElapsed };
   }
   return { returnPercent: periodReturn * 100, daysElapsed };
+}
+
+function calculateRangeTimeWeightedReturnPercent(
+  rows: Array<{
+    date: string;
+    aum_usd: number;
+    deposits_cum_usd: number;
+    withdrawals_cum_usd: number;
+  }>,
+): { returnPercent: number | null; daysElapsed: number } {
+  if (rows.length < 2) return { returnPercent: null, daysElapsed: 0 };
+
+  const first = rows[0];
+  const last = rows[rows.length - 1];
+  const startDate = new Date(first.date);
+  const endDate = new Date(last.date);
+  const daysElapsed = dateDiffInDays(startDate, endDate) + 1;
+
+  let factor = 1;
+  for (let i = 1; i < rows.length; i++) {
+    const prev = rows[i - 1];
+    const cur = rows[i];
+
+    const prevAum = Number.isFinite(prev.aum_usd) ? prev.aum_usd : 0;
+    const curAum = Number.isFinite(cur.aum_usd) ? cur.aum_usd : 0;
+    const depDelta =
+      (cur.deposits_cum_usd || 0) - (prev.deposits_cum_usd || 0);
+    const wdrDelta =
+      (cur.withdrawals_cum_usd || 0) - (prev.withdrawals_cum_usd || 0);
+    const netFlow = depDelta - wdrDelta;
+
+    if (prevAum > 1e-8) {
+      const r = (curAum - prevAum - netFlow) / prevAum;
+      const link = 1 + r;
+      factor = link <= 0 ? 0 : factor * link;
+    }
+  }
+
+  const twrr = (factor - 1) * 100;
+  if (!Number.isFinite(twrr)) return { returnPercent: null, daysElapsed };
+  return { returnPercent: twrr, daysElapsed };
 }
 
 async function computeMarkToMarketUSD(
@@ -489,10 +543,18 @@ async function buildVaultDailySeries(
     pnl_usd: number;
     roi_percent: number;
     apr_percent: number;
+    twrr_percent: number;
   }> = [];
 
   // Track last APR to keep it flat when AUM = 0
   let lastApr = 0;
+
+  // Time-weighted return (TWRR): chain sub-period returns that remove cash-flow timing.
+  let twrrFactor = 1;
+  let twrrPrevAum = 0;
+  let twrrPrevDepositedCum = 0;
+  let twrrPrevWithdrawnCum = 0;
+  let hasPrevTwrrPoint = false;
 
   let idx = 0;
   for (const day of days) {
@@ -613,6 +675,18 @@ async function buildVaultDailySeries(
     // Clamp APR to reasonable range (-100% to 1000%) to prevent extreme values
     let aprToUse = Number.isFinite(apr) ? apr : 0;
     aprToUse = Math.max(-100, Math.min(1000, aprToUse));
+
+    // Update chained TWRR factor from the previous point to today.
+    if (hasPrevTwrrPoint && twrrPrevAum > 1e-8) {
+      const netFlow =
+        (depositedCum - twrrPrevDepositedCum) -
+        (withdrawnCum - twrrPrevWithdrawnCum);
+      const r = (aum - twrrPrevAum - netFlow) / twrrPrevAum;
+      const link = 1 + r;
+      twrrFactor = link <= 0 ? 0 : twrrFactor * link;
+    }
+    const twrrPercent = (twrrFactor - 1) * 100;
+
     series.push({
       date: day,
       aum_usd: Number.isFinite(aum) ? aum : 0,
@@ -621,10 +695,16 @@ async function buildVaultDailySeries(
       pnl_usd: Number.isFinite(pnl) ? pnl : 0,
       roi_percent: Number.isFinite(roi) ? roi : 0,
       apr_percent: aprToUse,
+      twrr_percent: Number.isFinite(twrrPercent) ? twrrPercent : 0,
     });
 
     // Update lastApr for next iteration (to keep APR flat when AUM = 0)
     lastApr = aprToUse;
+
+    hasPrevTwrrPoint = true;
+    twrrPrevAum = Number.isFinite(aum) ? aum : 0;
+    twrrPrevDepositedCum = Number.isFinite(depositedCum) ? depositedCum : 0;
+    twrrPrevWithdrawnCum = Number.isFinite(withdrawnCum) ? withdrawnCum : 0;
   }
 
   return series;
@@ -652,6 +732,14 @@ async function buildLatestVaultMetrics(vaultName: string) {
   let wasLiquidated = false;
   let liquidationDate: string | undefined = undefined;
 
+  // Time-weighted return (TWRR) computed over event dates (cash flows / valuations),
+  // avoiding cash-flow timing effects without building the full daily series.
+  const twrrRows: Array<{
+    aum_usd: number;
+    deposits_cum_usd: number;
+    withdrawals_cum_usd: number;
+  }> = [];
+
   const cashFlows: Array<{
     amount: number;
     daysFromStart: number;
@@ -663,6 +751,16 @@ async function buildLatestVaultMetrics(vaultName: string) {
     const entryDate = String(e.at).slice(0, 10);
     if (!currentDate) currentDate = entryDate;
     if (entryDate !== currentDate) {
+      const aumAtEndOfDay =
+        typeof lastValuationUSD === "number"
+          ? lastValuationUSD + netFlowSinceValUSD
+          : depositedCum - withdrawnCum;
+      twrrRows.push({
+        aum_usd: Number.isFinite(aumAtEndOfDay) ? aumAtEndOfDay : 0,
+        deposits_cum_usd: Number.isFinite(depositedCum) ? depositedCum : 0,
+        withdrawals_cum_usd: Number.isFinite(withdrawnCum) ? withdrawnCum : 0,
+      });
+
       const netContributed = depositedCum - withdrawnCum;
       const isLiquidated = isLiquidatedState(
         lastValuationUSD,
@@ -721,6 +819,16 @@ async function buildLatestVaultMetrics(vaultName: string) {
     }
   }
   if (currentDate) {
+    const aumAtEndOfDay =
+      typeof lastValuationUSD === "number"
+        ? lastValuationUSD + netFlowSinceValUSD
+        : depositedCum - withdrawnCum;
+    twrrRows.push({
+      aum_usd: Number.isFinite(aumAtEndOfDay) ? aumAtEndOfDay : 0,
+      deposits_cum_usd: Number.isFinite(depositedCum) ? depositedCum : 0,
+      withdrawals_cum_usd: Number.isFinite(withdrawnCum) ? withdrawnCum : 0,
+    });
+
     const netContributed = depositedCum - withdrawnCum;
     const isLiquidated = isLiquidatedState(
       lastValuationUSD,
@@ -746,6 +854,22 @@ async function buildLatestVaultMetrics(vaultName: string) {
   const pnl = aum + withdrawnCum - depositedCum;
   const netContributed = depositedCum - withdrawnCum;
   const roi = netContributed > 1e-8 ? (pnl / netContributed) * 100 : 0;
+
+  let twrrFactor = 1;
+  for (let i = 1; i < twrrRows.length; i++) {
+    const prev = twrrRows[i - 1];
+    const cur = twrrRows[i];
+    const prevAum = prev.aum_usd || 0;
+    const netFlow =
+      (cur.deposits_cum_usd - prev.deposits_cum_usd) -
+      (cur.withdrawals_cum_usd - prev.withdrawals_cum_usd);
+    if (prevAum > 1e-8) {
+      const r = (cur.aum_usd - prevAum - netFlow) / prevAum;
+      const link = 1 + r;
+      twrrFactor = link <= 0 ? 0 : twrrFactor * link;
+    }
+  }
+  const twrrPercent = (twrrFactor - 1) * 100;
 
   let apr = 0;
   if (firstDepositDateObj) {
@@ -787,6 +911,7 @@ async function buildLatestVaultMetrics(vaultName: string) {
     pnl_usd: Number.isFinite(pnl) ? pnl : 0,
     roi_percent: Number.isFinite(roi) ? roi : 0,
     apr_percent: clampedApr,
+    twrr_percent: Number.isFinite(twrrPercent) ? twrrPercent : 0,
   };
 }
 
@@ -1353,6 +1478,14 @@ reportsRouter.get("/reports/spending", async (req, res) => {
         amount_usd: number;
         amount_vnd: number;
         percentage: number;
+        transactions: Array<{
+          id: string;
+          description: string;
+          amount_usd: number;
+          amount_vnd: number;
+          createdAt: string;
+          account: string;
+        }>;
       }
     > = {};
     for (const t of selected) {
@@ -1365,17 +1498,28 @@ reportsRouter.get("/reports/spending", async (req, res) => {
           amount_usd: 0,
           amount_vnd: 0,
           percentage: 0,
+          transactions: [],
         };
       by_tag[tag].total_usd += t.usdAmount || 0;
       by_tag[tag].total_vnd += (t.usdAmount || 0) * rateVND;
       by_tag[tag].amount_usd += t.usdAmount || 0;
       by_tag[tag].amount_vnd += (t.usdAmount || 0) * rateVND;
       by_tag[tag].count += 1;
+      by_tag[tag].transactions.push({
+        id: t.id,
+        description: t.note || t.counterparty || "No description",
+        amount_usd: t.usdAmount || 0,
+        amount_vnd: (t.usdAmount || 0) * rateVND,
+        createdAt: t.createdAt,
+        account: t.account || account,
+      });
     }
-    // Calculate percentages
+    // Calculate percentages and sort transactions by amount
     for (const tag of Object.keys(by_tag)) {
       by_tag[tag].percentage =
         total_usd > 0 ? (by_tag[tag].total_usd / total_usd) * 100 : 0;
+      // Sort transactions by amount descending (highest first)
+      by_tag[tag].transactions.sort((a, b) => b.amount_usd - a.amount_usd);
     }
 
     const byDate = new Map<string, number>();
@@ -1548,6 +1692,7 @@ async function buildVaultHeaderMetrics(vaultName: string) {
       pnl_usd: 0,
       roi_percent: 0,
       apr_percent: 0,
+      twrr_percent: 0,
       last_valuation_usd: 0,
       net_flow_since_valuation_usd: 0,
       deposits_cum_usd: 0,
@@ -1567,6 +1712,13 @@ async function buildVaultHeaderMetrics(vaultName: string) {
   let wasLiquidated = false;
   let liquidationDate: string | undefined = undefined;
 
+  // Time-weighted return (TWRR) computed over event dates (cash flows / valuations).
+  const twrrRows: Array<{
+    aum_usd: number;
+    deposits_cum_usd: number;
+    withdrawals_cum_usd: number;
+  }> = [];
+
   // Track all cash flows for IRR calculation
   const cashFlows: Array<{ amount: number; daysFromStart: number }> = [];
 
@@ -1574,6 +1726,16 @@ async function buildVaultHeaderMetrics(vaultName: string) {
     const entryDate = String(e.at).slice(0, 10);
     if (!currentDate) currentDate = entryDate;
     if (entryDate !== currentDate) {
+      const aumAtEndOfDay =
+        typeof lastValuationUSD === "number"
+          ? lastValuationUSD + netFlowSinceValUSD
+          : depositedCum - withdrawnCum;
+      twrrRows.push({
+        aum_usd: Number.isFinite(aumAtEndOfDay) ? aumAtEndOfDay : 0,
+        deposits_cum_usd: Number.isFinite(depositedCum) ? depositedCum : 0,
+        withdrawals_cum_usd: Number.isFinite(withdrawnCum) ? withdrawnCum : 0,
+      });
+
       const netContributed = depositedCum - withdrawnCum;
       const isLiquidated = isLiquidatedState(
         lastValuationUSD,
@@ -1630,6 +1792,16 @@ async function buildVaultHeaderMetrics(vaultName: string) {
     }
   }
   if (currentDate) {
+    const aumAtEndOfDay =
+      typeof lastValuationUSD === "number"
+        ? lastValuationUSD + netFlowSinceValUSD
+        : depositedCum - withdrawnCum;
+    twrrRows.push({
+      aum_usd: Number.isFinite(aumAtEndOfDay) ? aumAtEndOfDay : 0,
+      deposits_cum_usd: Number.isFinite(depositedCum) ? depositedCum : 0,
+      withdrawals_cum_usd: Number.isFinite(withdrawnCum) ? withdrawnCum : 0,
+    });
+
     const netContributed = depositedCum - withdrawnCum;
     const isLiquidated = isLiquidatedState(
       lastValuationUSD,
@@ -1654,6 +1826,22 @@ async function buildVaultHeaderMetrics(vaultName: string) {
   const pnl = aum + withdrawnCum - depositedCum; // equity - net_contributed
   const netContributed = depositedCum - withdrawnCum;
   const roi = netContributed > 1e-8 ? (pnl / netContributed) * 100 : 0;
+
+  let twrrFactor = 1;
+  for (let i = 1; i < twrrRows.length; i++) {
+    const prev = twrrRows[i - 1];
+    const cur = twrrRows[i];
+    const prevAum = prev.aum_usd || 0;
+    const netFlow =
+      (cur.deposits_cum_usd - prev.deposits_cum_usd) -
+      (cur.withdrawals_cum_usd - prev.withdrawals_cum_usd);
+    if (prevAum > 1e-8) {
+      const r = (cur.aum_usd - prevAum - netFlow) / prevAum;
+      const link = 1 + r;
+      twrrFactor = link <= 0 ? 0 : twrrFactor * link;
+    }
+  }
+  const twrrPercent = (twrrFactor - 1) * 100;
 
   let apr = 0;
   if (firstDepositDateObj) {
@@ -1692,6 +1880,7 @@ async function buildVaultHeaderMetrics(vaultName: string) {
     pnl_usd: Number.isFinite(pnl) ? pnl : 0,
     roi_percent: Number.isFinite(roi) ? roi : 0,
     apr_percent: clampedApr,
+    twrr_percent: Number.isFinite(twrrPercent) ? twrrPercent : 0,
     last_valuation_usd:
       typeof lastValuationUSD === "number" && Number.isFinite(lastValuationUSD)
         ? lastValuationUSD
@@ -1761,6 +1950,7 @@ reportsRouter.get("/reports/vaults/summary", async (req, res) => {
           pnl_vnd: metrics.pnl_usd * vndRate,
           roi_percent: metrics.roi_percent,
           apr_percent: metrics.apr_percent,
+          twrr_percent: metrics.twrr_percent,
         };
       }),
     );
@@ -1832,14 +2022,11 @@ reportsRouter.get("/reports/series", async (req, res) => {
       ),
     );
 
-    // Pre-index each vault series by date and track previous cumulative values so we can
-    // compute per-day deposits/withdrawals correctly (avoid using Array.find for "previous").
+    // Pre-index each vault series by date for fast lookup.
     const perVaultState = perVault.map(({ name, s }) => ({
       name,
       s,
       byDate: new Map<string, any>(s.map((p: any) => [p.date, p])),
-      prevDepositsCumUsd: 0,
-      prevWithdrawalsCumUsd: 0,
     }));
 
     // union of dates
@@ -1857,29 +2044,73 @@ reportsRouter.get("/reports/series", async (req, res) => {
       pnl_usd: number;
       roi_percent: number;
       apr_percent: number;
+      twrr_percent: number;
     };
     const rows: Row[] = [];
 
-    // Aggregate cash flows from all vaults for proper IRR calculation
+    // Aggregate cash flows from all vaults for proper IRR calculation.
+    // IMPORTANT: This must be independent of the requested `start`/`end` range.
+    // The series range only slices returned dates; APR/IRR must still be computed
+    // from true inception cash flows (not "reset" to the requested start date).
+    const endBoundary = end || new Date().toISOString().slice(0, 10);
+    const aggregatedCashFlowsRaw: Array<{ amount: number; date: string }> = [];
+    let firstDepositDate: string | undefined = undefined;
+
+    for (const vaultName of targetVaults) {
+      const entries = vaultRepository
+        .findAllEntries(vaultName)
+        .sort((a: any, b: any) => String(a.at).localeCompare(String(b.at)));
+
+      for (const e of entries as any[]) {
+        const entryDate = String(e.at).slice(0, 10);
+        if (entryDate > endBoundary) continue;
+
+        const usd = typeof e.usdValue === "number" ? e.usdValue : 0;
+        if (!Number.isFinite(usd) || usd <= 1e-8) continue;
+
+        if (e.type === "DEPOSIT") {
+          if (!firstDepositDate || entryDate < firstDepositDate) {
+            firstDepositDate = entryDate;
+          }
+          aggregatedCashFlowsRaw.push({ amount: -usd, date: entryDate });
+        } else if (e.type === "WITHDRAW") {
+          aggregatedCashFlowsRaw.push({ amount: usd, date: entryDate });
+        }
+      }
+    }
+
+    const firstDepositDateObj = firstDepositDate
+      ? new Date(firstDepositDate)
+      : undefined;
+
     const aggregatedCashFlows: Array<{
       amount: number;
       daysFromStart: number;
       date: string;
-    }> = [];
-    let firstDepositDate: string | undefined = undefined;
-    let firstDepositDateObj: Date | undefined = undefined;
+    }> = firstDepositDateObj
+      ? aggregatedCashFlowsRaw
+          .map((cf) => ({
+            amount: cf.amount,
+            date: cf.date,
+            daysFromStart: dateDiffInDays(firstDepositDateObj, new Date(cf.date)),
+          }))
+          .sort((a, b) => a.date.localeCompare(b.date))
+      : [];
 
     // Track last APR to keep it flat when AUM = 0
     let lastApr = 0;
+    // Track time-weighted return (TWRR) across the aggregated series.
+    let twrrFactor = 1;
+    let twrrPrevAum = 0;
+    let twrrPrevDep = 0;
+    let twrrPrevWdr = 0;
+    let hasPrevTwrrPoint = false;
 
     for (const date of dates) {
       let aum = 0,
         dep = 0,
         wdr = 0,
         pnl = 0;
-      let dailyDeposit = 0;
-      let dailyWithdrawal = 0;
-
       for (const v of perVaultState) {
         const pt = v.byDate.get(date);
         if (!pt) continue;
@@ -1889,49 +2120,9 @@ reportsRouter.get("/reports/series", async (req, res) => {
         const depositsCumUsd = pt.deposits_cum_usd || 0;
         const withdrawalsCumUsd = pt.withdrawals_cum_usd || 0;
 
-        // Per-day delta = today's cumulative - yesterday's cumulative (per vault).
-        // Clamp to 0 to guard against any unexpected decreasing cumulative values.
-        const depDelta = depositsCumUsd - v.prevDepositsCumUsd;
-        const wdrDelta = withdrawalsCumUsd - v.prevWithdrawalsCumUsd;
-        if (depDelta > 0) dailyDeposit += depDelta;
-        if (wdrDelta > 0) dailyWithdrawal += wdrDelta;
-
         dep += depositsCumUsd;
         wdr += withdrawalsCumUsd;
         pnl += pt.pnl_usd;
-
-        v.prevDepositsCumUsd = depositsCumUsd;
-        v.prevWithdrawalsCumUsd = withdrawalsCumUsd;
-      }
-
-      // Record first deposit date
-      if (dailyDeposit > 0 && !firstDepositDate) {
-        firstDepositDate = date;
-        firstDepositDateObj = new Date(firstDepositDate);
-      }
-
-      // Add cash flows for IRR (deposits = negative, withdrawals = positive)
-      if (firstDepositDateObj && dailyDeposit > 0) {
-        const daysFromStart = dateDiffInDays(
-          firstDepositDateObj,
-          new Date(date),
-        );
-        aggregatedCashFlows.push({
-          amount: -dailyDeposit,
-          daysFromStart,
-          date,
-        });
-      }
-      if (firstDepositDateObj && dailyWithdrawal > 0) {
-        const daysFromStart = dateDiffInDays(
-          firstDepositDateObj,
-          new Date(date),
-        );
-        aggregatedCashFlows.push({
-          amount: dailyWithdrawal,
-          daysFromStart,
-          date,
-        });
       }
 
       const netContributed = dep - wdr;
@@ -1975,6 +2166,15 @@ reportsRouter.get("/reports/series", async (req, res) => {
       // Clamp APR to reasonable range (-100% to 1000%) to prevent extreme values
       let aprToUse = Number.isFinite(apr) ? apr : 0;
       aprToUse = Math.max(-100, Math.min(1000, aprToUse));
+
+      if (hasPrevTwrrPoint && twrrPrevAum > 1e-8) {
+        const netFlow = (dep - twrrPrevDep) - (wdr - twrrPrevWdr);
+        const r = (aum - twrrPrevAum - netFlow) / twrrPrevAum;
+        const link = 1 + r;
+        twrrFactor = link <= 0 ? 0 : twrrFactor * link;
+      }
+      const twrrPercent = (twrrFactor - 1) * 100;
+
       rows.push({
         date,
         aum_usd: Number.isFinite(aum) ? aum : 0,
@@ -1983,10 +2183,16 @@ reportsRouter.get("/reports/series", async (req, res) => {
         pnl_usd: Number.isFinite(pnl) ? pnl : 0,
         roi_percent: Number.isFinite(roi) ? roi : 0,
         apr_percent: aprToUse,
+        twrr_percent: Number.isFinite(twrrPercent) ? twrrPercent : 0,
       });
 
       // Update lastApr for next iteration (to keep APR flat when AUM = 0)
       lastApr = aprToUse;
+
+      hasPrevTwrrPoint = true;
+      twrrPrevAum = Number.isFinite(aum) ? aum : 0;
+      twrrPrevDep = Number.isFinite(dep) ? dep : 0;
+      twrrPrevWdr = Number.isFinite(wdr) ? wdr : 0;
     }
 
     const vndRate = await usdToVnd();
@@ -2008,6 +2214,8 @@ reportsRouter.get("/reports/series", async (req, res) => {
     const aprEligible = totalDaysElapsed >= 30;
     const { returnPercent: rangeReturnPercent, daysElapsed: rangeDaysElapsed } =
       calculateRangeReturnPercent(rows);
+    const { returnPercent: rangeTwrrPercent, daysElapsed: rangeTwrrDaysElapsed } =
+      calculateRangeTimeWeightedReturnPercent(rows);
 
     const summary =
       latest && latestUsd
@@ -2018,6 +2226,7 @@ reportsRouter.get("/reports/series", async (req, res) => {
             pnl_vnd: latestUsd.pnl_usd * vndRate,
             apr_percent: latestUsd.apr_percent,
             roi_percent: latestUsd.roi_percent,
+            twrr_percent: latestUsd.twrr_percent,
             aum_change_usd: previousUsd ? latestUsd.aum_usd - previousUsd.aum_usd : 0,
             aum_change_vnd: previous ? latest.aum_vnd - previous.aum_vnd : 0,
             aum_change_percent:
@@ -2039,10 +2248,15 @@ reportsRouter.get("/reports/series", async (req, res) => {
             roi_change_percent_points: previousUsd
               ? latestUsd.roi_percent - previousUsd.roi_percent
               : 0,
+            twrr_change_percent_points: previousUsd
+              ? latestUsd.twrr_percent - previousUsd.twrr_percent
+              : 0,
             apr_eligible: aprEligible,
             days_elapsed: totalDaysElapsed,
             range_return_percent: rangeReturnPercent,
             range_days_elapsed: rangeDaysElapsed,
+            range_twrr_percent: rangeTwrrPercent,
+            range_twrr_days_elapsed: rangeTwrrDaysElapsed,
           }
         : null;
 

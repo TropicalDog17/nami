@@ -15,6 +15,7 @@ import {
 import PredictedOutflowsModule, {
     PredictedOutflowsData,
 } from '../components/reports/PredictedOutflowsModule';
+import CategoryRow from '../components/reports/CategoryRow';
 import DataTable, {
     TableColumn,
     TableRowBase,
@@ -1280,17 +1281,65 @@ const ReportsPage = ({
                 <Card>
                     <CardHeader>
                         <CardTitle>Spending by Category</CardTitle>
+                        <p className="text-sm text-gray-500 mt-1">
+                            Hover over categories to see top expenses • Click to view all
+                        </p>
                     </CardHeader>
                     <CardContent>
-                        <DataTable
-                            data={byTag}
-                            columns={columns}
-                            loading={loading}
-                            emptyMessage="No spending data found"
-                            filterable={true}
-                            sortable={true}
-                            pagination={true}
-                        />
+                        {loading ? (
+                            <div className="text-center py-8 text-gray-500">
+                                Loading...
+                            </div>
+                        ) : byTag.length === 0 ? (
+                            <div className="text-center py-8 text-gray-500">
+                                No spending data found
+                            </div>
+                        ) : (
+                            <div className="overflow-x-auto">
+                                <table className="min-w-full divide-y divide-gray-200">
+                                    <thead className="bg-gray-50">
+                                        <tr>
+                                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                                Category
+                                            </th>
+                                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                                Amount ({currency})
+                                            </th>
+                                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                                % of Total
+                                            </th>
+                                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                                Transactions
+                                            </th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="bg-white divide-y divide-gray-200">
+                                        {byTag.map((row) => (
+                                            <CategoryRow
+                                                key={row.tag}
+                                                tag={row.tag}
+                                                amount={parseFloat(
+                                                    String(
+                                                        currency === 'USD'
+                                                            ? row.amount_usd
+                                                            : row.amount_vnd ?? 0
+                                                    )
+                                                )}
+                                                percentage={parseFloat(
+                                                    String(row.percentage ?? 0)
+                                                )}
+                                                count={row.count ?? 0}
+                                                transactions={
+                                                    (row as any).transactions ?? []
+                                                }
+                                                currency={currency}
+                                                currencySymbol={currencySymbol}
+                                            />
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        )}
                     </CardContent>
                 </Card>
             </div>

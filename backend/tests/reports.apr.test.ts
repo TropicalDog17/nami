@@ -229,6 +229,45 @@ describe("APR calculations using IRR (Money-Weighted Return)", () => {
       expect(res.body.roi_percent).toBeCloseTo(2, 1);
       expect(res.body.apr_percent).toBeCloseTo(2, 1);
     });
+
+    it("should not reset APR when requesting a limited date range", async () => {
+      vi.setSystemTime(new Date("2026-01-01T12:00:00Z"));
+
+      mockEntries = [
+        {
+          vault: vaultName,
+          type: "DEPOSIT",
+          asset: USD,
+          amount: 100,
+          usdValue: 100,
+          at: "2025-01-01T00:00:00Z",
+        },
+        {
+          vault: vaultName,
+          type: "VALUATION",
+          asset: USD,
+          amount: 0,
+          usdValue: 110,
+          at: "2026-01-01T00:00:00Z",
+        },
+      ];
+
+      const { reportsRouter } = await import("../src/handlers/reports.handler");
+      const app = appFactory(reportsRouter);
+
+      const resAll = await request(app)
+        .get("/api/reports/series?end=2026-01-01")
+        .expect(200);
+      const resRange = await request(app)
+        .get("/api/reports/series?start=2025-12-01&end=2026-01-01")
+        .expect(200);
+
+      expect(resAll.body.summary.apr_percent).toBeCloseTo(10, 1);
+      expect(resRange.body.summary.apr_percent).toBeCloseTo(
+        resAll.body.summary.apr_percent,
+        1,
+      );
+    });
   });
 
   // ============================================================================
@@ -284,6 +323,8 @@ describe("APR calculations using IRR (Money-Weighted Return)", () => {
       // contributes to the gain but was only invested for 30 days
       expect(res.body.apr_percent).toBeGreaterThan(9);
       expect(res.body.apr_percent).toBeLessThan(12);
+      // Time-weighted return should reflect the investment's performance and be ~10%
+      expect(res.body.twrr_percent).toBeCloseTo(10, 1);
     });
 
     it("should weight late deposits less heavily in IRR calculation", async () => {
@@ -330,6 +371,8 @@ describe("APR calculations using IRR (Money-Weighted Return)", () => {
       // The $100 grew significantly while $1000 barely had time to grow
       // This correctly reflects that the investor's experience was different
       expect(res.body.apr_percent).toBeGreaterThan(50); // Much higher than simple 10%
+      // Time-weighted return should still be ~10% (same underlying performance)
+      expect(res.body.twrr_percent).toBeCloseTo(10, 1);
     });
 
     it("should handle monthly DCA pattern correctly", async () => {

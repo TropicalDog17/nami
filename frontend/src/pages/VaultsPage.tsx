@@ -8,12 +8,15 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import AUMChart from '../components/reports/AUMChart';
 import { TimeSeriesLineChart } from '../components/reports/Charts';
 import CreateTokenizedVaultForm from '../components/tokenized/CreateTokenizedVaultForm';
+import { CurrencyToggle } from '../components/ui/CurrencyToggle';
 import DataTable, { TableColumn } from '../components/ui/DataTable';
 import { useToast } from '../components/ui/Toast';
+import { fxService } from '../services/fxService';
 import { tokenizedVaultApi, ApiError, reportsApi } from '../services/api';
 import { formatCurrency, formatPercentage } from '../utils/currencyFormatter';
 
 type TimeRange = '7d' | '30d' | 'all';
+type WeightedReturnMetric = 'twrr' | 'mwrr';
 
 type TokenizedVault = {
     id: string;
@@ -53,8 +56,36 @@ const VaultsPage: React.FC = () => {
     const [showCreateForm, setShowCreateForm] = useState<boolean>(false);
     const [filter, setFilter] = useState<'all' | 'active' | 'closed'>('active');
 
+    // Local currency state for this page only
+    const [currency, setCurrency] = useState<'USD' | 'VND'>('USD');
+    const [fxRate, setFxRate] = useState<number>(1);
+
+    // Fetch FX rate when currency changes
+    useEffect(() => {
+        const fetchFxRate = async () => {
+            if (currency === 'VND') {
+                const rate = await fxService.getFXRate('USD', 'VND');
+                setFxRate(rate);
+            } else {
+                setFxRate(1);
+            }
+        };
+        void fetchFxRate();
+    }, [currency]);
+
+    // Helper to convert and format currency
+    const displayCurrency = useCallback(
+        (valueUSD: number) => {
+            const converted = currency === 'VND' ? valueUSD * fxRate : valueUSD;
+            return formatCurrency(converted, currency);
+        },
+        [currency, fxRate]
+    );
+
     // Unified time range for all charts
     const [timeRange, setTimeRange] = useState<TimeRange>('30d');
+    const [weightedReturnMetric, setWeightedReturnMetric] =
+        useState<WeightedReturnMetric>('twrr');
 
     // Aggregate time series data for PNL chart
     const [pnlSeriesFull, setPnlSeriesFull] = useState<
@@ -67,6 +98,7 @@ const VaultsPage: React.FC = () => {
             date: string;
             weighted_apr_percent: number;
             weighted_roi_percent: number;
+            weighted_twrr_percent: number;
         }>
     >([]);
 
@@ -205,6 +237,7 @@ const VaultsPage: React.FC = () => {
                         pnl_usd: number;
                         apr_percent: number;
                         roi_percent: number;
+                        twrr_percent?: number;
                     }>;
                 }>(params);
 
@@ -246,6 +279,7 @@ const VaultsPage: React.FC = () => {
                             date: point.date,
                             weighted_apr_percent: point.apr_percent || 0,
                             weighted_roi_percent: point.roi_percent || 0,
+                            weighted_twrr_percent: point.twrr_percent || 0,
                         }))
                         .sort((a, b) => a.date.localeCompare(b.date))
                 );
@@ -306,7 +340,7 @@ const VaultsPage: React.FC = () => {
         navigate(`/vault/${vault.id}`);
     };
 
-    const vaultColumns: TableColumn<TokenizedVault>[] = [
+    const vaultColumns: TableColumn<TokenizedVault>[] = useMemo(() => [
         {
             key: 'name',
             title: 'Vault Name',
@@ -388,40 +422,10 @@ const VaultsPage: React.FC = () => {
             },
         },
         {
-            key: 'current_share_price',
-            title: 'Token Price',
-            type: 'currency',
-            currency: 'USD',
-            render: (value, _column, row) => {
-                const isSpend =
-                    String(row.name || '').toLowerCase() === 'spend';
-                const isBorrowings =
-                    String(row.name || '').toLowerCase() === 'borrowings';
-                if (isSpend || isBorrowings) {
-                    return <span className="text-gray-500">—</span>;
-                }
-                const price =
-                    typeof value === 'string' && value !== ''
-                        ? parseFloat(value)
-                        : 0;
-                const isManual = row.is_user_defined_price;
-                return (
-                    <div>
-                        <div className="font-medium">${price.toFixed(4)}</div>
-                        {isManual && (
-                            <div className="text-xs text-orange-600">
-                                Manual
-                            </div>
-                        )}
-                    </div>
-                );
-            },
-        },
-        {
             key: 'total_assets_under_management',
-            title: 'Total Value',
+            title: `Total Value (${currency})`,
             type: 'currency',
-            currency: 'USD',
+            currency: currency,
             render: (value, _c, row) => {
                 const num =
                     typeof value === 'string' && value !== ''
@@ -431,7 +435,7 @@ const VaultsPage: React.FC = () => {
                     String(row.name || '').toLowerCase() === 'borrowings';
                 const cls =
                     isBorrowings && num < 0 ? 'text-red-700 font-medium' : '';
-                return <span className={cls}>{formatCurrency(num)}</span>;
+                return <span className={cls}>{displayCurrency(num)}</span>;
             },
         },
         {
@@ -575,7 +579,7 @@ const VaultsPage: React.FC = () => {
                 </div>
             ),
         },
-    ];
+    ], [displayCurrency, navigate]);
 
     const filteredVaults = useMemo(() => {
         if (filter === 'all') return vaults;
@@ -599,13 +603,21 @@ const VaultsPage: React.FC = () => {
     return (
         <div className="px-4 py-6 sm:px-0" data-testid="vaults-page">
             {/* Header */}
-            <div className="mb-6">
-                <h1 className="text-3xl font-bold text-gray-900 mb-2">
-                    Tokenized Vaults
-                </h1>
-                <p className="text-gray-600">
-                    Create custom tokens and track your investment vaults
-                </p>
+            <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                    <h1 className="text-3xl font-bold text-gray-900 mb-2">
+                        Tokenized Vaults
+                    </h1>
+                    <p className="text-gray-600">
+                        Create custom tokens and track your investment vaults
+                    </p>
+                </div>
+                <div>
+                    <CurrencyToggle
+                        currency={currency}
+                        onCurrencyChange={setCurrency}
+                    />
+                </div>
             </div>
 
             {/* Time Series with unified filter */}
@@ -693,11 +705,45 @@ const VaultsPage: React.FC = () => {
                     {/* Weighted APR Chart */}
                     <Card className="col-span-1 lg:col-span-1">
                         <CardHeader className="pb-3">
-                            <CardTitle className="text-sm font-medium">
-                                {timeRange === 'all'
-                                    ? 'Weighted APR Over Time'
-                                    : 'Weighted Return Over Time'}
-                            </CardTitle>
+                            <div className="flex items-center justify-between gap-2">
+                                <CardTitle className="text-sm font-medium">
+                                    {weightedReturnMetric === 'mwrr'
+                                        ? 'MWRR (IRR APR) Over Time'
+                                        : 'TWRR Over Time'}
+                                </CardTitle>
+                                <div className="flex">
+                                    <Button
+                                        variant={
+                                            weightedReturnMetric === 'twrr'
+                                                ? 'default'
+                                                : 'outline'
+                                        }
+                                        size="sm"
+                                        onClick={() =>
+                                            setWeightedReturnMetric('twrr')
+                                        }
+                                        className="rounded-r-none rounded-l-lg"
+                                        title="Time-weighted return (investment performance; cash-flow timing removed)"
+                                    >
+                                        TWRR
+                                    </Button>
+                                    <Button
+                                        variant={
+                                            weightedReturnMetric === 'mwrr'
+                                                ? 'default'
+                                                : 'outline'
+                                        }
+                                        size="sm"
+                                        onClick={() =>
+                                            setWeightedReturnMetric('mwrr')
+                                        }
+                                        className="rounded-l-none rounded-r-lg border-l-0"
+                                        title="Money-weighted return (IRR/APR; your experience incl. contribution timing)"
+                                    >
+                                        MWRR
+                                    </Button>
+                                </div>
+                            </div>
                         </CardHeader>
                         <CardContent>
                             <div style={{ height: 280 }}>
@@ -707,14 +753,16 @@ const VaultsPage: React.FC = () => {
                                         datasets={[
                                             {
                                                 label:
-                                                    timeRange === 'all'
-                                                        ? 'Weighted APR (%)'
-                                                        : 'Weighted Return (%)',
+                                                    weightedReturnMetric ===
+                                                    'mwrr'
+                                                        ? 'MWRR (IRR APR) (%)'
+                                                        : 'TWRR (%)',
                                                 data: aprSeries.map(
                                                     (p) =>
-                                                        timeRange === 'all'
+                                                        weightedReturnMetric ===
+                                                        'mwrr'
                                                             ? p.weighted_apr_percent
-                                                            : p.weighted_roi_percent
+                                                            : p.weighted_twrr_percent
                                                 ),
                                                 color: '#2563EB',
                                                 fill: true,
@@ -724,9 +772,7 @@ const VaultsPage: React.FC = () => {
                                     />
                                 ) : (
                                     <div className="flex items-center justify-center h-full text-gray-500 text-sm">
-                                        {timeRange === 'all'
-                                            ? 'No APR data available'
-                                            : 'No return data available'}
+                                        No return data available
                                     </div>
                                 )}
                             </div>
