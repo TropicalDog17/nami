@@ -31,7 +31,6 @@ export interface Asset {
 export interface Tag {
     id?: string | number;
     name: string;
-    category?: string;
     is_active: boolean;
 }
 

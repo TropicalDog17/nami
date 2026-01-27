@@ -40,7 +40,6 @@ export interface AdminAsset {
 export interface AdminTag {
   id: number;
   name: string;
-  category?: string;
   is_active: boolean;
   created_at: string;
 }

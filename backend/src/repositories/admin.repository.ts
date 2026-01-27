@@ -209,7 +209,6 @@ export class AdminRepositoryJson implements IAdminRepository {
     const item: AdminTag = {
       id: nextId(store.adminTags),
       name: data.name,
-      category: data.category ?? "",
       is_active: data.is_active !== false,
       created_at: new Date().toISOString(),
     };
@@ -315,7 +314,6 @@ export class AdminRepositoryDb
     return {
       id: row.id,
       name: row.name,
-      category: row.category,
       is_active: !!row.is_active,
       created_at: row.created_at,
     };
@@ -591,21 +589,20 @@ export class AdminRepositoryDb
   }
 
   createTag(data: Partial<AdminTag> & { name: string }): AdminTag {
+    const now = new Date().toISOString();
     const result = this.execute(
-      "INSERT INTO admin_tags (name, category, is_active, created_at) VALUES (?, ?, ?, ?)",
+      "INSERT INTO admin_tags (name, is_active, created_at) VALUES (?, ?, ?)",
       [
         data.name,
-        data.category ?? "",
         data.is_active !== false ? 1 : 0,
-        new Date().toISOString(),
+        now,
       ],
     );
     return {
       id: result.lastInsertRowid as number,
       name: data.name,
-      category: data.category ?? "",
       is_active: data.is_active !== false,
-      created_at: new Date().toISOString(),
+      created_at: now,
     };
   }
 
@@ -616,10 +613,6 @@ export class AdminRepositoryDb
     if (data.name !== undefined) {
       fields.push("name = ?");
       values.push(data.name);
-    }
-    if (data.category !== undefined) {
-      fields.push("category = ?");
-      values.push(data.category);
     }
     if (data.is_active !== undefined) {
       fields.push("is_active = ?");

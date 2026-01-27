@@ -209,11 +209,11 @@ adminRouter.get("/admin/tags/:id", (req: Request, res: Response) => {
 
 adminRouter.post("/admin/tags", (req: Request, res: Response) => {
   try {
-    const { name, category, is_active } = req.body || {};
+    const { name, is_active } = req.body || {};
     if (!name || typeof name !== "string") {
       return res.status(400).json({ error: "name is required" });
     }
-    const created = adminRepository.createTag({ name, category, is_active });
+    const created = adminRepository.createTag({ name, is_active });
     res.status(201).json(created);
   } catch (e: any) {
     res.status(400).json({ error: e?.message || "Failed to create tag" });
@@ -775,7 +775,6 @@ adminRouter.post("/admin/import", async (req: Request, res: Response) => {
         try {
           adminRepository.createTag({
             name: tag.name,
-            category: tag.category,
             is_active: tag.is_active,
           });
           stats.tags++;

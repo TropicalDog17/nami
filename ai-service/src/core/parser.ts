@@ -43,11 +43,11 @@ export async function parseExpenseText(
     '- params: account (can be empty string ""), vnd_amount (number), date (YYYY-MM-DD), counterparty?, tag?, note?',
     '- account should be left as empty string "" - backend will assign via vault defaults',
     "- counterparty: the business/shop/vendor where money was spent (e.g., 'hair salon', 'Starbucks', '7-Eleven', 'hair shop')",
-    "- tag: the beneficiary/purpose for whom the expense is made" +
+    "- tag: expense category" +
       (availableTags && availableTags.length > 0
-        ? `. Prefer existing tags when applicable: ${availableTags.join(", ")}`
+        ? `. STRONGLY prefer categories from this list: ${availableTags.join(", ")}`
         : "") +
-      ". If no existing tag fits, use a descriptive one (e.g., 'girlfriend', 'personal_care', 'transport', 'shopping')",
+      ". If no category fits well, you may suggest a new descriptive one or use 'uncategorized' if truly unclear",
     `- IMPORTANT: The current year is ${currentYear}. Date format is DD/MM (day/month). When parsing dates without a year like "10/1", interpret as January 10th → ${currentYear}-01-10. For "1/10" use ${currentYear}-10-01.`,
     "- If date is explicitly mentioned in the message, use that date",
     "- If date is NOT mentioned, use today's date (format: YYYY-MM-DD)",

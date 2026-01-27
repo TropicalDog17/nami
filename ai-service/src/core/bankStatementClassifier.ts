@@ -74,7 +74,7 @@ Output a JSON array with ${transactions.length} objects in order (no markdown, j
 
 Rules:
 - counterparty should be a clean, short name (e.g., "PVOIL HA NOI CHXD NGHIA TAN" -> "PVOIL Ha Noi")
-- category must be from the available list or null
+- category should STRONGLY prefer the available list; if no good match, you may suggest a new descriptive category or use "uncategorized"
 - note should be a brief English description (max 10 words)
 - confidence is how sure you are (0.0-1.0)
 - Output exactly ${transactions.length} items in order`;

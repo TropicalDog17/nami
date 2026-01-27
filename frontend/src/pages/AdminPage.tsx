@@ -11,7 +11,7 @@ import { adminApi } from '../services/api';
 
 // Removed unused PopularExpenseCategories widget
 
-type TabId = 'types' | 'accounts' | 'assets' | 'tags' | 'pending' | 'data';
+type TabId = 'types' | 'accounts' | 'assets' | 'categories' | 'pending' | 'data';
 
 type TransactionType = {
     id?: string | number;
@@ -78,7 +78,7 @@ const AdminPage = () => {
         { id: 'types', name: 'Transaction Types', icon: '⚙️' },
         { id: 'accounts', name: 'Accounts', icon: '💰' },
         { id: 'assets', name: 'Assets', icon: '📦' },
-        { id: 'tags', name: 'Tags', icon: '🏷️' },
+        { id: 'categories', name: 'Categories', icon: '📂' },
         { id: 'pending', name: 'AI Pending Actions', icon: '🤖' },
     ];
 
@@ -110,7 +110,7 @@ const AdminPage = () => {
                     setAssets(assts ?? []);
                     break;
                 }
-                case 'tags': {
+                case 'categories': {
                     const tgs = await adminApi.listTags<AdminItem[]>();
                     setTags(tgs ?? []);
                     break;
@@ -146,7 +146,7 @@ const AdminPage = () => {
                 return showInactive
                     ? assets || []
                     : (assets || []).filter((a) => a.is_active !== false);
-            case 'tags':
+            case 'categories':
                 return showInactive
                     ? tags || []
                     : (tags || []).filter((t) => t.is_active !== false);
@@ -179,7 +179,7 @@ const AdminPage = () => {
                 case 'assets':
                     await actions.deleteAsset(id);
                     break;
-                case 'tags':
+                case 'categories':
                     await actions.deleteTag(id);
                     break;
             }
@@ -223,7 +223,7 @@ const AdminPage = () => {
                     case 'assets':
                         await actions.updateAsset(editingId, formData as Asset);
                         break;
-                    case 'tags':
+                    case 'categories':
                         await actions.updateTag(editingId, formData as Tag);
                         break;
                 }
@@ -244,7 +244,7 @@ const AdminPage = () => {
                     case 'assets':
                         await actions.createAsset(formData as Asset);
                         break;
-                    case 'tags':
+                    case 'categories':
                         await actions.createTag(formData as Tag);
                         break;
                 }
@@ -277,7 +277,7 @@ const AdminPage = () => {
 
         return (
             <AdminForm
-                type={activeTab as 'types' | 'accounts' | 'assets' | 'tags'}
+                type={activeTab as 'types' | 'accounts' | 'assets' | 'categories'}
                 item={editingItem}
                 onSubmit={handleSubmit}
                 onCancel={() => {
@@ -355,11 +355,10 @@ const AdminPage = () => {
                 ];
                 break;
 
-            case 'tags':
+            case 'categories':
                 columns = [
                     { key: 'id', title: 'ID', width: '80px' },
                     { key: 'name', title: 'Name' },
-                    { key: 'category', title: 'Category' },
                     {
                         key: 'is_active',
                         title: 'Status',
@@ -417,7 +416,7 @@ const AdminPage = () => {
                     Admin Panel
                 </h1>
                 <p className="mt-1 text-sm text-gray-500">
-                    Configure transaction types, accounts, assets, and tags for
+                    Configure transaction types, accounts, assets, and categories for
                     your financial tracking system.
                 </p>
             </div>
@@ -525,7 +524,7 @@ const AdminPage = () => {
 
 // Form component for CRUD operations
 const AdminForm: React.FC<{
-    type: 'types' | 'accounts' | 'assets' | 'tags';
+    type: 'types' | 'accounts' | 'assets' | 'categories';
     item: AdminItem | null;
     onSubmit: (data: Record<string, unknown>) => Promise<void> | void;
     onCancel: () => void;
@@ -552,8 +551,8 @@ const AdminForm: React.FC<{
                         is_active: true,
                     });
                     break;
-                case 'tags':
-                    setFormData({ name: '', category: '', is_active: true });
+                case 'categories':
+                    setFormData({ name: '', is_active: true });
                     break;
             }
         }
@@ -718,43 +717,22 @@ const AdminForm: React.FC<{
                     </>
                 );
 
-            case 'tags':
+            case 'categories':
                 return (
-                    <>
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">
-                                Name*
-                            </label>
-                            <input
-                                type="text"
-                                name="name"
-                                value={String((formData.name as string) ?? '')}
-                                onChange={handleChange}
-                                required
-                                className="w-full border border-gray-300 rounded px-3 py-2"
-                                placeholder="e.g., Food, Housing, Investment"
-                            />
-                        </div>
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">
-                                Category
-                            </label>
-                            <select
-                                name="category"
-                                value={String(
-                                    (formData.category as string) ?? ''
-                                )}
-                                onChange={handleChange}
-                                className="w-full border border-gray-300 rounded px-3 py-2"
-                            >
-                                <option value="">Select Category</option>
-                                <option value="Expense">Expense</option>
-                                <option value="Income">Income</option>
-                                <option value="Investment">Investment</option>
-                                <option value="Transfer">Transfer</option>
-                            </select>
-                        </div>
-                    </>
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                            Name*
+                        </label>
+                        <input
+                            type="text"
+                            name="name"
+                            value={String((formData.name as string) ?? '')}
+                            onChange={handleChange}
+                            required
+                            className="w-full border border-gray-300 rounded px-3 py-2"
+                            placeholder="e.g., Food, Transport, Entertainment"
+                        />
+                    </div>
                 );
         }
     };

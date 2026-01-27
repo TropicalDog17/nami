@@ -201,28 +201,46 @@ const BorrowingsPage: React.FC = () => {
     const [showBorrowModal, setShowBorrowModal] = useState(false);
     const [showRepayModal, setShowRepayModal] = useState(false);
     const [showPlanCard, setShowPlanCard] = useState(true);
-    const [fxRate, setFxRate] = useState<number>(1);
+    const [usdToVndRate, setUsdToVndRate] = useState<number>(25000); // fallback rate
 
-    // Fetch FX rate when currency changes
+    // Fetch FX rate on mount
     useEffect(() => {
         const fetchFxRate = async () => {
-            if (currency === 'VND') {
-                const rate = await fxService.getFXRate('USD', 'VND');
-                setFxRate(rate);
-            } else {
-                setFxRate(1);
-            }
+            const rate = await fxService.getFXRate('USD', 'VND');
+            setUsdToVndRate(rate);
         };
         void fetchFxRate();
-    }, [currency]);
+    }, []);
 
-    // Helper to convert and format currency
-    const displayCurrency = useCallback(
-        (valueUSD: number) => {
-            const converted = currency === 'VND' ? valueUSD * fxRate : valueUSD;
+    // Helper to convert and format currency based on source asset
+    // If sourceAsset is VND and display is USD -> divide by rate
+    // If sourceAsset is VND and display is VND -> show as-is
+    // If sourceAsset is USD and display is VND -> multiply by rate
+    // If sourceAsset is USD and display is USD -> show as-is
+    const displayCurrencyWithAsset = useCallback(
+        (value: number, sourceAsset: string) => {
+            const isSourceVnd = sourceAsset.toUpperCase() === 'VND';
+            let converted: number;
+
+            if (currency === 'USD') {
+                // Display in USD
+                converted = isSourceVnd ? value / usdToVndRate : value;
+            } else {
+                // Display in VND
+                converted = isSourceVnd ? value : value * usdToVndRate;
+            }
             return formatCurrency(converted, currency);
         },
-        [currency, fxRate]
+        [currency, usdToVndRate]
+    );
+
+    // Legacy helper for values that are already in USD (for summary stats, etc.)
+    const displayCurrency = useCallback(
+        (valueUSD: number) => {
+            const converted = currency === 'VND' ? valueUSD * usdToVndRate : valueUSD;
+            return formatCurrency(converted, currency);
+        },
+        [currency, usdToVndRate]
     );
 
     const refreshBorrowings = useCallback(async () => {
@@ -281,61 +299,68 @@ const BorrowingsPage: React.FC = () => {
         for (const agreement of borrowingsAgreements) {
             const principal = agreement.principal || 0;
             const outstanding = agreement.outstanding || 0;
+            const assetSymbol = agreement.asset?.symbol || 'USD';
             const percentPaid =
                 principal > 0
                     ? ((principal - outstanding) / principal) * 100
                     : null;
 
-            // Use outstanding as valueUSD directly
-            // Note: The borrowings table stores outstanding in the native asset currency,
-            // but for now we'll assume it's in USD or treat it as USD equivalent
-            // In the future, we may need to fetch FX rates for proper conversion
+            // Convert to USD if the asset is VND
+            const isVnd = assetSymbol.toUpperCase() === 'VND';
+            const valueUSD = isVnd ? outstanding / usdToVndRate : outstanding;
+
             items.push({
                 id: agreement.id,
                 counterparty: agreement.counterparty || 'general',
-                asset: agreement.asset?.symbol || 'USD',
+                asset: assetSymbol,
                 principal,
                 outstanding,
                 percentPaid,
                 monthlyPayment: agreement.monthlyPayment || null,
                 nextPaymentAt: agreement.nextPaymentAt || null,
-                valueUSD: outstanding, // Assuming outstanding is in USD or USD-equivalent
+                valueUSD, // Properly converted to USD
                 source: 'agreement',
             });
         }
 
         return items;
-    }, [borrowingsAgreements]);;
+    }, [borrowingsAgreements, usdToVndRate]);
 
-    // Calculate summary statistics
+    // Calculate summary statistics (all values converted to USD)
     const summaryStats = useMemo(() => {
-        const totalPrincipal = debtItems
-            .filter((d) => d.principal > 0)
-            .reduce((sum, d) => sum + d.principal, 0);
+        // Helper to convert value to USD based on asset
+        const toUSD = (value: number, asset: string) => {
+            const isVnd = asset.toUpperCase() === 'VND';
+            return isVnd ? value / usdToVndRate : value;
+        };
 
-        const totalOutstanding = debtItems.reduce(
-            (sum, d) => sum + d.outstanding,
+        const totalPrincipalUSD = debtItems
+            .filter((d) => d.principal > 0)
+            .reduce((sum, d) => sum + toUSD(d.principal, d.asset), 0);
+
+        const totalOutstandingUSD = debtItems.reduce(
+            (sum, d) => sum + toUSD(d.outstanding, d.asset),
             0
         );
 
-        const totalPaid = debtItems
+        const totalPaidUSD = debtItems
             .filter((d) => d.principal > 0)
-            .reduce((sum, d) => sum + (d.principal - d.outstanding), 0);
+            .reduce((sum, d) => sum + toUSD(d.principal - d.outstanding, d.asset), 0);
 
         const overallProgress =
-            totalPrincipal > 0
-                ? ((totalPrincipal - totalOutstanding) / totalPrincipal) * 100
+            totalPrincipalUSD > 0
+                ? ((totalPrincipalUSD - totalOutstandingUSD) / totalPrincipalUSD) * 100
                 : 0;
 
         const activeLoans = borrowingsAgreements.length;
 
         return {
-            totalDebt: borrowingsSummary?.outstandingUSD ?? totalOutstanding,
-            totalPaid,
+            totalDebt: totalOutstandingUSD,
+            totalPaid: totalPaidUSD,
             overallProgress: Math.max(0, Math.min(100, overallProgress)),
             activeLoans,
         };
-    }, [debtItems, borrowingsAgreements, borrowingsSummary]);
+    }, [debtItems, borrowingsAgreements, usdToVndRate]);
 
     // Prepare donut chart data - group by counterparty
     const donutChartData = useMemo(() => {
@@ -822,22 +847,11 @@ const BorrowingsPage: React.FC = () => {
                                             </td>
                                             <td className="py-3 pr-4">
                                                 {item.principal > 0
-                                                    ? Number(
-                                                          item.principal
-                                                      ).toLocaleString(
-                                                          undefined,
-                                                          {
-                                                              maximumFractionDigits: 2,
-                                                          }
-                                                      )
+                                                    ? displayCurrencyWithAsset(item.principal, item.asset)
                                                     : '-'}
                                             </td>
                                             <td className="py-3 pr-4 font-medium text-red-700">
-                                                {Number(
-                                                    item.outstanding
-                                                ).toLocaleString(undefined, {
-                                                    maximumFractionDigits: 2,
-                                                })}
+                                                {displayCurrencyWithAsset(item.outstanding, item.asset)}
                                             </td>
                                             <td className="py-3 pr-4">
                                                 <ProgressBar
@@ -846,14 +860,7 @@ const BorrowingsPage: React.FC = () => {
                                             </td>
                                             <td className="py-3 pr-4">
                                                 {item.monthlyPayment
-                                                    ? Number(
-                                                          item.monthlyPayment
-                                                      ).toLocaleString(
-                                                          undefined,
-                                                          {
-                                                              maximumFractionDigits: 2,
-                                                          }
-                                                      )
+                                                    ? displayCurrencyWithAsset(item.monthlyPayment, item.asset)
                                                     : '-'}
                                             </td>
                                             <td className="py-3 pr-4">
